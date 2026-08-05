@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { listUsers } from "../lib/store.js";
 import { stats, tail } from "../lib/metrics.js";
+import { costSummary, costTail } from "../lib/costTelemetry.js";
 import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
@@ -10,10 +11,27 @@ admin.use("*", bearerAuth, requireAdmin);
 
 /**
  * GET /v1/admin/metrics
- * Aggregate request counts + p95 latency across the ring buffer.
+ * Aggregate request counts + p95 latency across the ring buffer, plus
+ * cost telemetry (OpenRouter tokens per model, Exa hits).
  */
 admin.get("/metrics", (c) => {
-  return c.json(stats());
+  return c.json({
+    ...stats(),
+    cost: costSummary(),
+  });
+});
+
+/**
+ * GET /v1/admin/cost?limit=100
+ * Recent per-request cost breakdown (OpenRouter usage, Exa hits).
+ */
+admin.get("/cost", (c) => {
+  const limit = Number(c.req.query("limit") ?? 100);
+  const clamped = Number.isFinite(limit) ? Math.max(1, Math.min(500, limit)) : 100;
+  return c.json({
+    summary: costSummary(),
+    entries: costTail(clamped),
+  });
 });
 
 /**
