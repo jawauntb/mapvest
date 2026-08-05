@@ -31,8 +31,8 @@ underlying.get("/", (c) => {
       deferred_to: "v0.2",
     });
     return c.json({
-      linkOut: "https://github.com/jawauntb/the-underlying-analyzer-reboot",
-      note: "underlying-analyzer link-out — v0.2 will proxy to a running instance",
+      linkOut: "https://underlying-terminal-production.up.railway.app/",
+      note: "underlying-analyzer link-out — live sibling instance",
       brand,
       sector,
     });
