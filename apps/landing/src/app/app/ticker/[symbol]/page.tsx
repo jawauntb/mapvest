@@ -17,7 +17,7 @@ import {
   type AnalysisSnapshot,
   type ChartImage,
 } from "@/lib/mapvest-api";
-import { ResearchPanel } from "../ResearchPanel";
+import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
 type Quote = NonNullable<Awaited<ReturnType<typeof getQuote>>["quote"]>;
