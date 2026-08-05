@@ -55,12 +55,29 @@ export const Comparable = z.object({
 });
 export type Comparable = z.infer<typeof Comparable>;
 
+/**
+ * Delayed market quote — Yahoo v7 chart endpoint, cached in-process. Attached
+ * best-effort by /v1/identify; consumers must treat it as optional and must
+ * surface the `disclaimer` text verbatim (Yahoo TOS: 15-min delay).
+ */
+export const Quote = z.object({
+  symbol: z.string(),
+  price: z.number(),
+  change: z.number(),
+  changePct: z.number(),
+  currency: z.string(),
+  ts: z.string(), // ISO
+  disclaimer: z.string(),
+});
+export type Quote = z.infer<typeof Quote>;
+
 export const Investable = z.object({
   brand: Brand,
   comparables: z.array(Comparable).default([]),
   etfs: z.array(EtfExposure).default([]),
   confidence: Confidence,
   sources: z.array(Source),
+  quote: Quote.optional(),
 });
 export type Investable = z.infer<typeof Investable>;
 

@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import type { IdentifyResponse, Investable, PhotoIdentification, Source } from "@mapvest/core";
 import { identifyFromImageWithUsage } from "@mapvest/vision";
-import { resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
+import {
+  getQuote,
+  resolveComparable,
+  resolveEtfExposure,
+  resolveTicker,
+} from "@mapvest/finance";
+import type { Quote } from "@mapvest/core";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { recordCost } from "../lib/costTelemetry.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
@@ -22,6 +28,22 @@ identify.use("*", identifyGuards);
  * entry — this is our prompt-injection guardrail: nothing the model
  * produces is echoed back verbatim.
  */
+/**
+ * Best-effort quote fetch bounded by `timeoutMs`. Wraps getQuote() in a race
+ * so a slow Yahoo response can't blow up identify latency. Returns null on
+ * timeout, upstream failure, or any thrown error.
+ */
+async function bestEffortQuote(symbol: string, timeoutMs = 500): Promise<Quote | null> {
+  try {
+    return await Promise.race<Promise<Quote | null>>([
+      getQuote(symbol),
+      new Promise<Quote | null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeIdentification(id: PhotoIdentification): PhotoIdentification {
   return {
     ...id,
@@ -125,12 +147,16 @@ identify.post("/", async (c) => {
       ];
 
       if (brand.isPublic) {
+        // Best-effort: attach a delayed quote for public brands. Bounded to
+        // 500 ms so identify latency stays flat even if Yahoo is slow.
+        const q = brand.ticker?.symbol ? await bestEffortQuote(brand.ticker.symbol) : null;
         investables.push({
           brand,
           comparables: [],
           etfs: [],
           confidence: d.confidence,
           sources: publicSources,
+          ...(q ? { quote: q } : {}),
         });
       } else {
         const [comparables, etfs] = await Promise.all([
