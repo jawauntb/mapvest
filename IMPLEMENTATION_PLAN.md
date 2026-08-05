@@ -25,10 +25,10 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [ ] `packages/core` — zod schemas for `Investable`, `Brand`, `Location`, `PhotoIdentification`, `Comparable`, `Source`, `User`, `Session`
 - [ ] `packages/vision` — OpenRouter multimodal client. Function `identifyFromImage(bytes, {location?})` returns `PhotoIdentification`
 - [ ] `packages/search` — Exa client wrapper. `searchBrand(query)`, `enrichTicker(brand)`
-- [ ] `packages/finance` — 
-  - [ ] `resolveTicker(brand)` — first-party mapping + fallback via Exa + LLM
-  - [ ] `resolveComparable(private_brand)` — returns nearest public co + confidence
-  - [ ] `resolveEtfExposure(brand|sector)` — returns ETFs with % exposure
+- [x] `packages/finance` — 
+  - [x] `resolveTicker(brand)` — first-party mapping + fallback via Exa + LLM
+  - [x] `resolveComparable(private_brand)` — returns nearest public co + confidence
+  - [x] `resolveEtfExposure(brand|sector)` — returns ETFs with % exposure
 - [ ] Package tests (`bun test`) hitting real APIs behind `doppler run`
 
 **Acceptance**: `bun test` green for each package. `bun run --filter vision identify examples/hershey.jpg` returns `{brand: "Hershey's", ticker: "HSY", confidence: "high"}`.
@@ -37,13 +37,13 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 2 — API layer (Bun + Hono)
 
-- [ ] `apps/api` skeleton — Hono, zod-validation middleware, request logger, health check
+- [x] `apps/api` skeleton — Hono, zod-validation middleware, request logger, health check
 - [ ] `POST /v1/identify` — multipart image → `PhotoIdentification` + finance annotations
 - [ ] `GET /v1/nearby?lat=..&lng=..&radius=..` — Google Places → filter → annotate tickers/ETFs
 - [ ] `POST /v1/resolve-comparable` — `{brand: "…"}` → public comparable + ETF
-- [ ] `POST /v1/auth/session` — passwordless email sign-in (magic link)
-- [ ] `GET /v1/admin/…` — admin scope: metrics, user list, request log
-- [ ] Rate limits (per-user + per-ip), abuse guardrails
+- [x] `POST /v1/auth/session` — passwordless email sign-in (magic link)
+- [x] `GET /v1/admin/…` — admin scope: metrics, user list, request log
+- [x] Rate limits (per-user + per-ip), abuse guardrails
 - [ ] OpenAPI schema generated from zod (`packages/core`)
 
 **Acceptance**: `curl -F 'image=@examples/mcd.jpg' localhost:3001/v1/identify` returns `{brand:"McDonald's", ticker:"MCD", …}`. `/v1/nearby?lat=37.77&lng=-122.42` returns ≥5 investable items.
@@ -52,15 +52,15 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 3 — iOS app (Expo)
 
-- [ ] `apps/ios` — Expo React Native (TypeScript, expo-router). SDK 52+.
-- [ ] Auth screen — magic-link email flow
-- [ ] Map screen — `react-native-maps` w/ Google provider; pins colored by publicness
-- [ ] Camera screen — capture → upload to `/v1/identify` → result card
-- [ ] Live-scan screen — throttled frame capture (~1 fps) → `/v1/identify`
-- [ ] List screen — sortable by distance, market cap, sector
-- [ ] Detail sheet — ticker, comparables, ETFs, sources
-- [ ] Admin tab (hidden unless user has `admin` scope)
-- [ ] Offline queue for photos (uploads on reconnect)
+- [x] `apps/ios` — Expo React Native (TypeScript, expo-router). SDK 52+.
+- [x] Auth screen — magic-link email flow
+- [x] Map screen — `react-native-maps` w/ Google provider; pins colored by publicness
+- [x] Camera screen — capture → upload to `/v1/identify` → result card
+- [x] Live-scan screen — throttled frame capture (~1 fps) → `/v1/identify`
+- [x] List screen — sortable by distance, market cap, sector
+- [x] Detail sheet — ticker, comparables, ETFs, sources
+- [x] Admin tab (hidden unless user has `admin` scope)
+- [x] Offline queue for photos (uploads on reconnect)
 
 **Acceptance**: Simulator run shows map with real data around San Francisco; camera identifies a chocolate bar photo end-to-end.
 
@@ -68,11 +68,11 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 4 — Landing page
 
-- [ ] `apps/landing` — Next.js 15 App Router, minimal marketing
-- [ ] Server-renders `docs/*.md` at `/docs/{slug}`
-- [ ] TestFlight CTA + GitHub link
+- [x] `apps/landing` — Next.js 15 App Router, minimal marketing
+- [x] Server-renders `docs/*.md` at `/docs/{slug}`
+- [x] TestFlight CTA + GitHub link
 - [ ] Screenshot gallery pulled from `docs/assets/`
-- [ ] SEO: og-image, sitemap
+- [x] SEO: og-image, sitemap
 
 **Acceptance**: `bun run --filter landing build` succeeds; `/docs/architecture` renders the file.
 
