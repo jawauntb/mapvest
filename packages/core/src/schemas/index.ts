@@ -147,6 +147,35 @@ export const ResolveComparableResponse = z.object({
 });
 export type ResolveComparableResponse = z.infer<typeof ResolveComparableResponse>;
 
+// -------- sibling link-outs (v0.1 scaffold, see docs/SYSTEM_DESIGN.md D10) --------
+
+/**
+ * v0.1 scaffold response shared by every sibling-repo link-out endpoint
+ * (`/v1/options`, `/v1/underlying`, and any future ones). In v0.1 the API
+ * returns `{ linkOut, note }` plus whatever request params were echoed;
+ * in v0.2 these endpoints will proxy to the deployed sibling service and
+ * return the sibling's real payload instead.
+ *
+ * Keeping this in `packages/core` so the iOS client, the landing page, and
+ * the API all agree on the wire shape without redeclaring it inline.
+ */
+export const LinkOut = z.object({
+  linkOut: z.string().url(),
+  note: z.string(),
+});
+export type LinkOut = z.infer<typeof LinkOut>;
+
+export const OptionsLinkOut = LinkOut.extend({
+  ticker: z.string(),
+});
+export type OptionsLinkOut = z.infer<typeof OptionsLinkOut>;
+
+export const UnderlyingLinkOut = LinkOut.extend({
+  brand: z.string().optional(),
+  sector: z.string().optional(),
+});
+export type UnderlyingLinkOut = z.infer<typeof UnderlyingLinkOut>;
+
 // -------- auth --------
 
 export const User = z.object({

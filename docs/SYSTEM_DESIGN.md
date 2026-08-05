@@ -101,6 +101,32 @@ budget is comfortable — target < 400ms p95 including the proxy.
 `apps/api/src/routes/**` and reads the sibling's base URL from a Doppler
 env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
+## D11 — Load test at v0.1.0 measures the guardrail, not capacity
+
+**Decision**: The Phase 7 load test (`scripts/loadtest.ts`, results in `docs/loadtest-v0.1.0.md`) is treated as **passing on the application path and failing on the ingress path**, and the ingress finding is a known issue we ship with rather than a regression.
+
+**Context**:
+
+- The deployed API's abuse guardrail (`apps/api/src/middleware/rateLimit.ts`) is a fixed **60 rpm per IP**, in-memory `Map`. It's exactly what D3/Phase 7's "rate limits + abuse guardrails" asked for.
+- A single-source load test at 50 rps for 30 s (or 200 rps for 15 s) fills that bucket in under a second and every subsequent request returns `HTTP 429`. Empirically that's 88 % / 100 % of the two phases returning 429.
+- The 58 requests on `/v1/resolve-comparable` that landed *before* the bucket saturated posted **p95 = 180 ms, p99 = 193 ms** for the full finance path (Bun/Hono → seed-table lookup → Exa ETF query → JSON serialization). That's inside the 2000 ms budget by an order of magnitude.
+- Railway's edge rewrites client-supplied `X-Forwarded-For`, so IP rotation from the outside doesn't spread requests across buckets. This was verified by observing that three distinct spoofed XFF values consumed a single shared bucket.
+
+**Why we accept it for v0.1.0**:
+
+- The guardrail is doing its stated job — protecting the API and the OpenRouter/Exa spend from a single misbehaving client. Weakening it to make a load test pass would defeat its purpose.
+- The application path's p95/p99 numbers from the 58 successful resolve requests are well inside budget, so the API is not the bottleneck the guardrail is protecting.
+- The v0.1 launch surface is a small TestFlight cohort. Real distributed traffic is unlikely to trip the per-IP limit before we ship v0.2.
+
+**Follow-ups (v0.2 or sooner if needed)**:
+
+1. **Bypass token**: add an `X-Loadtest-Key` header (validated against a Doppler secret) that skips the rate-limit middleware. Rerun `scripts/loadtest.ts` with the header set and record `docs/loadtest-v0.1.1.md`.
+2. **Multi-source runner**: run the same script from a GitHub Actions matrix (≥3 workers) or `k6 cloud` so per-IP buckets aren't a single-node bottleneck.
+3. **Redis-backed limiter**: when we scale beyond one API replica, migrate `buckets` from the in-process `Map` to Redis / Upstash so a per-user token isn't reset by a bounce.
+4. **Higher default for authenticated users**: `RateLimitOpts.limit` is already parameterizable — bump it to 300 rpm on user-scoped routes once we tune it against real usage.
+
+**Trade-off accepted**: Load-test numbers for v0.1.0 report application-path latencies from a small (n = 58) sample. We are not claiming a distributed-throughput ceiling from this run — see `docs/loadtest-v0.1.0.md` for the honest bounds.
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

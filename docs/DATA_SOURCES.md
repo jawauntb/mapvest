@@ -60,7 +60,7 @@ Each candidate carries a score in `[0, 1]` and a `reasoning` string. Never retur
 | Repo | What it will provide in v0.2 | v0.1 surface | Ownership |
 | --- | --- | --- | --- |
 | [`option_derivation`](https://github.com/jawauntb/option_derivation) | Options-chain derivation — implied vol surface, greeks, expected-move bands for a given ticker. Consumed by the iOS detail sheet when a public ticker is resolved. | `GET /v1/options?ticker=XYZ` returns `{ linkOut, note }` and the iOS detail sheet renders an "Options →" badge that opens the linkOut in `expo-web-browser`. | jawauntb (sibling repo, separate service) |
-| [`The Underlying Analyzer Reboot`](https://github.com/jawauntb/the-underlying-analyzer-reboot) | Private-company sector proxies — richer sector/sub-industry tables and comparable ranking, replacing the seed lookup in `packages/finance` for private brands. | Not yet exposed via HTTP; when wired it will land at `GET /v1/underlying?brand=…` with the same link-out shape as options. | jawauntb (sibling repo, separate service) |
+| [`The Underlying Analyzer Reboot`](https://github.com/jawauntb/the-underlying-analyzer-reboot) | Private-company sector proxies — richer sector/sub-industry tables and comparable ranking, replacing the seed lookup in `packages/finance` for private brands. | `GET /v1/underlying?brand=XYZ&sector=abc` returns `{ linkOut, note, brand, sector }` and the iOS detail sheet renders an "Underlying analyzer →" badge (shown only when the investable is private / has no ticker) that opens the linkOut in `expo-web-browser`. | jawauntb (sibling repo, separate service) |
 
 Both siblings are expected to run as their own Railway (or equivalent)
 services. Mapvest is only responsible for:

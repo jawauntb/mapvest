@@ -16,6 +16,12 @@ import { useSession } from "@/auth/session";
 import { API_URL } from "@/util/env";
 
 type OptionsLink = { ticker: string; linkOut: string; note: string };
+type UnderlyingLink = {
+  brand?: string;
+  sector?: string;
+  linkOut: string;
+  note: string;
+};
 
 /**
  * v0.1 link-out fetcher. Kept inline here (not in `@/api/client`) because
@@ -34,6 +40,28 @@ async function fetchOptionsLink(
   );
   if (!res.ok) throw new Error(`options ${res.status}`);
   return (await res.json()) as OptionsLink;
+}
+
+/**
+ * v0.1 link-out fetcher for the sibling `the-underlying-analyzer-reboot`
+ * repo. Same shape/rationale as `fetchOptionsLink` — inline until v0.2
+ * promotes it into `@/api/client`. See docs/SYSTEM_DESIGN.md D10.
+ */
+async function fetchUnderlyingLink(
+  brand: string,
+  sector: string | undefined,
+  token?: string,
+): Promise<UnderlyingLink> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const qs = new URLSearchParams({ brand });
+  if (sector) qs.set("sector", sector);
+  const res = await fetch(`${API_URL}/v1/underlying?${qs.toString()}`, {
+    method: "GET",
+    headers,
+  });
+  if (!res.ok) throw new Error(`underlying ${res.status}`);
+  return (await res.json()) as UnderlyingLink;
 }
 
 export default function DetailSheet() {
@@ -84,7 +112,15 @@ export default function DetailSheet() {
           <View style={styles.badgeRow}>
             <OptionsBadge ticker={ticker} token={session?.token} />
           </View>
-        ) : null}
+        ) : (
+          <View style={styles.badgeRow}>
+            <UnderlyingBadge
+              brand={data.brand.name}
+              sector={data.brand.sector}
+              token={session?.token}
+            />
+          </View>
+        )}
       </View>
 
       <Section title="Comparables">
@@ -155,6 +191,59 @@ function OptionsBadge({ ticker, token }: { ticker: string; token?: string }) {
     >
       <Text style={styles.badgeText}>
         {opt.isLoading ? "Options …" : `Options ${ticker} →`}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * v0.1 link-out to the sibling `the-underlying-analyzer-reboot` repo. Only
+ * rendered when the investable is private (no ticker resolved). Hits
+ * GET /v1/underlying?brand=…&sector=… which today returns `{ linkOut, note }`;
+ * v0.2 will proxy to the deployed sibling. See docs/SYSTEM_DESIGN.md D10.
+ */
+function UnderlyingBadge({
+  brand,
+  sector,
+  token,
+}: {
+  brand: string;
+  sector?: string;
+  token?: string;
+}) {
+  const link = useQuery({
+    queryKey: ["underlying-link", brand, sector ?? ""],
+    queryFn: () => fetchUnderlyingLink(brand, sector, token),
+    staleTime: 60 * 60_000,
+  });
+
+  const onPress = async () => {
+    const url = link.data?.linkOut;
+    if (!url) return;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      // Fallback to system browser if the in-app browser is unavailable.
+      Linking.openURL(url).catch(() => {});
+    }
+  };
+
+  const ready = !!link.data?.linkOut;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!ready}
+      accessibilityRole="link"
+      accessibilityLabel={`Underlying analyzer for ${brand}`}
+      style={({ pressed }) => [
+        styles.badge,
+        !ready && styles.badgeDisabled,
+        pressed && ready && styles.badgePressed,
+      ]}
+    >
+      <Text style={styles.badgeText}>
+        {link.isLoading ? "Underlying analyzer …" : "Underlying analyzer →"}
       </Text>
     </Pressable>
   );
