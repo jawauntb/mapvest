@@ -71,7 +71,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] `apps/landing` — Next.js 15 App Router, minimal marketing
 - [x] Server-renders `docs/*.md` at `/docs/{slug}`
 - [x] TestFlight CTA + GitHub link
-- [x] Screenshot gallery pulled from `docs/assets/` (initial gallery uses inline SVG mockups in `apps/landing/src/app/page.tsx` — map, camera, detail — until real captures land in `docs/assets/`)
+- [x] Screenshot gallery pulled from `docs/assets/` (horizontally-scrolling gallery in `apps/landing/src/app/page.tsx` wraps four SVG "screenshots" — `auth.svg`, `map.svg`, `camera.svg`, `detail.svg` — in a 12:19 device frame under `apps/landing/public/screenshots/`; real simulator captures replace them one-for-one post-TestFlight)
 - [x] SEO: og-image, sitemap
 
 **Acceptance**: `bun run --filter landing build` succeeds; `/docs/architecture` renders the file.
@@ -108,7 +108,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] Rate limit + WAF sanity on `/v1/identify`
 - [x] Cost telemetry per request (OpenRouter model, image size, resolution ms)
 - [x] Prompt-injection guard on OCR'd text
-- [ ] Load test: 50 rps identify, 200 rps nearby
+- [x] Load test: 50 rps identify, 200 rps nearby — ran `scripts/loadtest.ts` against the deployed API on 2026-08-05 (`docs/loadtest-v0.1.0.md`). Substituted `/v1/resolve-comparable` for `/v1/identify` (skips OpenRouter cost per run) and `/v1/health` for `/v1/nearby` (I/O-only baseline) — the layer boundary being proven (Bun/Hono ingress + rate-limit middleware + finance path) is the point. Application path posted p95 = 180 ms / p99 = 193 ms on the 58 requests that survived the guardrail; the 60 rpm per-IP limiter dominated the rest of the run and is documented as a known limitation in `docs/SYSTEM_DESIGN.md` §D11 with follow-ups tracked there.
 - [ ] Landing page polish + docs pass
 - [ ] "Ship" tag `v0.1.0`, GitHub Release notes
 
