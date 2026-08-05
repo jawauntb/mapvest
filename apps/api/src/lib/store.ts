@@ -65,6 +65,33 @@ export function getUserById(id: string): User | undefined {
   return users.get(id);
 }
 
+/**
+ * Rehydrate a user after in-memory store wipe (API restart) when the JWT still
+ * carries a stable `sub` + `email`. Keeps Save/watchlist working across deploys.
+ */
+export function ensureUser(id: string, emailRaw: string): User {
+  notePostgresIfSet();
+  const email = emailRaw.toLowerCase().trim();
+  const existing = users.get(id);
+  if (existing) return existing;
+  // Prefer existing email→id mapping if somehow out of sync.
+  const byMail = byEmail.get(email);
+  if (byMail) {
+    const u = users.get(byMail);
+    if (u) return u;
+  }
+  const user: User = {
+    id,
+    email,
+    createdAt: new Date().toISOString(),
+    scopes: scopesFor(email),
+  };
+  users.set(id, user);
+  byEmail.set(email, id);
+  if (isDev()) console.log(`[auth] rehydrated user ${id} <${email}>`);
+  return user;
+}
+
 export function listUsers(): User[] {
   return [...users.values()].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 }

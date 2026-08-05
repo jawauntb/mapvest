@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, User } from "@/api/types";
-import { getMe } from "@/api/client";
+import { ApiError, getMe } from "@/api/client";
 
 const KEY = "mapvest.session.v1";
 
@@ -34,12 +34,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!cancelled) setState(parsed);
-        // opportunistic refresh of user profile
+        // Refresh profile; clear stale JWT after API restarts ("unknown user").
         try {
           const { user } = await getMe(parsed.session.token);
           if (!cancelled) setState({ session: parsed.session, user });
-        } catch {
-          // network error is fine; keep cached user
+        } catch (e) {
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+            await SecureStore.deleteItemAsync(KEY);
+            if (!cancelled) setState(null);
+          }
         }
       } finally {
         if (!cancelled) setReady(true);

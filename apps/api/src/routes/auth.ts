@@ -97,6 +97,7 @@ auth.post("/verify", async (c) => {
   const sessionPayload = {
     purpose: "session" as const,
     sub: user.id,
+    email: user.email,
     iat: nowSec,
     exp: nowSec + SESSION_TTL_SEC,
   };
@@ -192,6 +193,7 @@ auth.post("/session/verify", async (c) => {
     {
       purpose: "session" as const,
       sub: user.id,
+      email: user.email,
       iat: nowSec,
       exp: nowSec + SESSION_TTL_SEC,
     },

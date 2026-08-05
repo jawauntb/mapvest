@@ -6,18 +6,22 @@ import {
   type NearbyItem,
   type User,
   type WatchEntry,
+  ApiError,
   addToWatchlist,
+  agentChat,
+  clearRobinhoodMcp,
   clearSession,
   fetchAlerts,
   fetchCockpit,
   fetchNearby,
+  fetchSettings,
   generateMemo,
   getAgentThread,
+  getMe,
   getQuote,
   getToken,
   getUser,
   identifyImage,
-  agentChat,
   listAgentThreads,
   listWatchlist,
   type AgentThread,
@@ -25,6 +29,7 @@ import {
   removeFromWatchlist,
   requestCode,
   saveMemoToWatchlist,
+  saveRobinhoodMcp,
   setSession as saveSession,
   verifyCode,
 } from "@/lib/mapvest-api";
@@ -36,8 +41,32 @@ export default function AppPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setUser(getUser());
-    setReady(true);
+    const cached = getUser();
+    const token = getToken();
+    if (!cached || !token) {
+      setReady(true);
+      return;
+    }
+    setUser(cached);
+    void getMe()
+      .then((r) => {
+        setUser(r.user);
+        const sessionRaw = window.localStorage.getItem("mapvest.session.token");
+        if (sessionRaw) {
+          // refresh user blob; keep existing session token
+          window.localStorage.setItem("mapvest.session.user", JSON.stringify(r.user));
+        }
+      })
+      .catch((e) => {
+        if (
+          (e instanceof ApiError && (e.status === 401 || e.status === 403)) ||
+          (e instanceof Error && /unknown user|invalid token|not signed/i.test(e.message))
+        ) {
+          clearSession();
+          setUser(null);
+        }
+      })
+      .finally(() => setReady(true));
   }, []);
 
   if (!ready) return <div className="app-loading">…</div>;
@@ -145,16 +174,19 @@ function SignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
 
 /* -------------------------------------------------------------------------- */
 
-type Tab = "nearby" | "identify" | "research" | "saved";
+type Tab = "home" | "nearby" | "identify" | "research" | "saved";
 
 function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>("nearby");
+  const [tab, setTab] = useState<Tab>("home");
 
   return (
     <div className="app-root">
       <header className="app-header">
         <div className="app-brand">Mapvest</div>
         <nav className="app-tabs">
+          <TabBtn active={tab === "home"} onClick={() => setTab("home")}>
+            Home
+          </TabBtn>
           <TabBtn active={tab === "nearby"} onClick={() => setTab("nearby")}>
             Nearby
           </TabBtn>
@@ -173,12 +205,115 @@ function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
         </button>
       </header>
       <main className="app-main">
+        {tab === "home" ? <HomeSettingsTab user={user} onSignOut={onSignOut} /> : null}
         {tab === "nearby" ? <NearbyTab /> : null}
         {tab === "identify" ? <IdentifyTab /> : null}
         {tab === "research" ? <ResearchChatTab /> : null}
         {tab === "saved" ? <SavedTab /> : null}
       </main>
     </div>
+  );
+}
+
+function HomeSettingsTab({
+  user,
+  onSignOut,
+}: {
+  user: User;
+  onSignOut: () => void;
+}) {
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [rh, setRh] = useState<Awaited<ReturnType<typeof fetchSettings>>["robinhoodMcp"] | null>(
+    null,
+  );
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void fetchSettings()
+      .then((s) => {
+        setRh(s.robinhoodMcp);
+        setNote(s.note ?? null);
+      })
+      .catch((e) => setStatus(e instanceof Error ? e.message : "settings failed"));
+  }, []);
+
+  async function save() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const r = await saveRobinhoodMcp(token.trim());
+      setRh(r.robinhoodMcp);
+      setToken("");
+      setStatus("Robinhood MCP key saved (masked on server)");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    setBusy(true);
+    try {
+      const r = await clearRobinhoodMcp();
+      setRh(r.robinhoodMcp);
+      setStatus("Robinhood MCP key cleared");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "clear failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="app-panel" style={{ display: "grid", gap: 16 }}>
+      <div>
+        <h2>Home</h2>
+        <p className="app-sub">Account · settings · Robinhood MCP</p>
+      </div>
+      <div>
+        <div className="app-muted">Signed in</div>
+        <div>{user.email}</div>
+        <div className="app-muted">{user.id}</div>
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        <h3>Robinhood MCP</h3>
+        <p className="app-muted">
+          {note ??
+            "Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Stored server-side; only fingerprint is shown."}
+        </p>
+        {rh?.configured ? (
+          <p>
+            Configured · …{rh.last4} · fp {rh.fingerprint}
+          </p>
+        ) : (
+          <p className="app-muted">Not configured</p>
+        )}
+        <input
+          className="app-input"
+          type="password"
+          placeholder="Paste Robinhood MCP token"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="app-btn" disabled={!token.trim() || busy} onClick={() => void save()}>
+            Save key
+          </button>
+          {rh?.configured ? (
+            <button className="app-btn secondary" disabled={busy} onClick={() => void clear()}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {status ? <p className="app-muted">{status}</p> : null}
+      <button className="app-btn secondary" onClick={onSignOut}>
+        Sign out
+      </button>
+    </section>
   );
 }
 

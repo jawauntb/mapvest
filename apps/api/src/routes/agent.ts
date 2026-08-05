@@ -1,4 +1,9 @@
 import { Hono } from "hono";
+import {
+  DERIVATION_URL,
+  derivationMutateHeaders,
+  derivationReadHeaders,
+} from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 /**
@@ -6,12 +11,9 @@ import { safeExecuteWithSpan } from "../lib/logfire.js";
  * Product IA: context-bound from ticker detail; history under Saved → Briefs.
  * Never expose Factory/Experiments/Jobs UI. Broker orders permanently off upstream.
  *
- * Prefer Railway host (not workers.dev) so Cloudflare Access does not block the API.
+ * Upstream requires Cloudflare front-door host attestation + service tokens
+ * (see option_derivation research-console request-guard).
  */
-
-const DERIVATION_URL =
-  process.env.DERIVATION_URL ??
-  "https://derivation-research-console-production.up.railway.app";
 
 const agent = new Hono();
 
@@ -193,7 +195,7 @@ agent.get("/threads", async (c) => {
   return safeExecuteWithSpan("http.agent.threads", async (span) => {
     span.setAttributes({ upstream: DERIVATION_URL });
     const res = await fetch(`${DERIVATION_URL}/api/idea-chats`, {
-      headers: { Accept: "application/json" },
+      headers: derivationReadHeaders(),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
@@ -212,7 +214,7 @@ agent.get("/threads/:id", async (c) => {
     const id = c.req.param("id");
     span.setAttributes({ thread_id: id });
     const res = await fetch(`${DERIVATION_URL}/api/idea-chats`, {
-      headers: { Accept: "application/json" },
+      headers: derivationReadHeaders(),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
@@ -256,12 +258,10 @@ agent.post("/chat", async (c) => {
     const started = performance.now();
     const res = await fetch(`${DERIVATION_URL}/api/idea-chats/stream`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
+      headers: derivationMutateHeaders(),
       body: JSON.stringify({
         message: prompt,
+        client_message_id: crypto.randomUUID(),
         ...(threadId ? { thread_id: threadId, threadId } : {}),
       }),
       signal: AbortSignal.timeout(90_000),

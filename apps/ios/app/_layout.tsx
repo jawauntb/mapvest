@@ -30,7 +30,11 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen
                 name="detail/[id]"
-                options={{ presentation: "modal", headerShown: true, title: "Investable" }}
+                options={{
+                  presentation: "modal",
+                  headerShown: true,
+                  title: "Investable",
+                }}
               />
             </Stack>
           </SessionProvider>

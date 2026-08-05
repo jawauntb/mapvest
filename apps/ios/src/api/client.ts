@@ -40,7 +40,14 @@ async function jsonFetch<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    let message = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim()) message = j.error;
+    } catch {
+      /* plain-text body */
+    }
+    throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;
 }
@@ -400,6 +407,37 @@ export function saveMemoToWatchlist(
     { method: "POST", body: JSON.stringify({ memo, provider }) },
     opts,
   );
+}
+
+// -------- settings --------
+
+export type SettingsResponse = {
+  user: { id: string; email: string; scopes: string[] };
+  robinhoodMcp:
+    | { configured: true; fingerprint: string; last4: string; updatedAt: string }
+    | { configured: false };
+  note?: string;
+};
+
+export function fetchSettings(opts: FetchOpts): Promise<SettingsResponse> {
+  return jsonFetch("/v1/settings", { method: "GET" }, opts);
+}
+
+export function saveRobinhoodMcp(
+  token: string,
+  opts: FetchOpts,
+): Promise<{ ok: true; robinhoodMcp: SettingsResponse["robinhoodMcp"] }> {
+  return jsonFetch(
+    "/v1/settings/robinhood-mcp",
+    { method: "POST", body: JSON.stringify({ token }) },
+    opts,
+  );
+}
+
+export function clearRobinhoodMcp(
+  opts: FetchOpts,
+): Promise<{ ok: true; robinhoodMcp: { configured: false } }> {
+  return jsonFetch("/v1/settings/robinhood-mcp", { method: "DELETE" }, opts);
 }
 
 // -------- admin --------

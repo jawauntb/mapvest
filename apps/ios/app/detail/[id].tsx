@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 // v0.1.1: use RN Linking (built-in) instead of expo-web-browser (native module,
 // needs pod install + rebuild). Same UX: taps open the URL in Safari.
 const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
@@ -14,9 +14,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import {
   addToWatchlist,
+  agentChat,
   fetchAnalysis,
   fetchChart,
   fetchQuote,
@@ -96,6 +96,7 @@ async function fetchUnderlyingLink(
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
   const { session } = useSession();
+  const router = useRouter();
   const brand = decodeURIComponent(params.id ?? "");
 
   const q = useQuery({
@@ -176,6 +177,21 @@ export default function DetailSheet() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
+      <Stack.Screen
+        options={{
+          title: "Investable",
+          headerLeft: () => (
+            <Pressable
+              onPress={() => router.push("/(tabs)/home")}
+              hitSlop={12}
+              style={{ paddingHorizontal: 8 }}
+              accessibilityLabel="Open home and settings"
+            >
+              <Text style={{ color: "#111", fontSize: 20, fontWeight: "700" }}>☰</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <View>
         <Text style={styles.h1}>{data.brand.name}</Text>
         <Text style={styles.sub}>
@@ -226,6 +242,10 @@ export default function DetailSheet() {
           {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
 
           {ticker ? (
+            <AgentOverviewBlock ticker={ticker} token={session?.token} />
+          ) : null}
+
+          {ticker ? (
             <View style={{ gap: 10 }}>
               <Pressable
                 onPress={() => setResearchOpen(true)}
@@ -235,7 +255,7 @@ export default function DetailSheet() {
                 ]}
               >
                 <Text style={styles.researchBtnText}>Research…</Text>
-                <Text style={styles.researchBtnSub}>article-style brief · agent tools</Text>
+                <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
               </Pressable>
               <WatchlistActions
                 ticker={ticker}
@@ -451,6 +471,35 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function ZoomableChartImage({
+  uri,
+  accessibilityLabel,
+}: {
+  uri: string;
+  accessibilityLabel: string;
+}) {
+  return (
+    <ScrollView
+      style={styles.chartZoom}
+      contentContainerStyle={styles.chartZoomContent}
+      maximumZoomScale={4}
+      minimumZoomScale={1}
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
+      centerContent
+      bouncesZoom
+      nestedScrollEnabled
+    >
+      <Image
+        source={{ uri }}
+        style={styles.chartImg}
+        resizeMode="contain"
+        accessibilityLabel={accessibilityLabel}
+      />
+    </ScrollView>
+  );
+}
+
 function ChartImageBlock({
   q,
   ticker,
@@ -468,10 +517,9 @@ function ChartImageBlock({
   if (!data?.image?.data) return <Text style={styles.muted}>No chart.</Text>;
   return (
     <View style={{ gap: 8 }}>
-      <Image
-        source={{ uri: `data:${data.image.mime};base64,${data.image.data}` }}
-        style={styles.chartImg}
-        resizeMode="contain"
+      <Text style={styles.chartHint}>Pinch to zoom</Text>
+      <ZoomableChartImage
+        uri={`data:${data.image.mime};base64,${data.image.data}`}
         accessibilityLabel={`${ticker} ${label} chart`}
       />
       {showLevels && data.levels ? (
@@ -482,6 +530,63 @@ function ChartImageBlock({
         </Text>
       ) : null}
     </View>
+  );
+}
+
+function AgentOverviewBlock({
+  ticker,
+  token,
+}: {
+  ticker: string;
+  token?: string;
+}) {
+  const overviewQ = useQuery({
+    queryKey: ["agent-overview", ticker, token ?? "anon"],
+    enabled: !!ticker,
+    staleTime: 30 * 60_000,
+    retry: 1,
+    queryFn: () =>
+      agentChat(
+        `Write a longer agentic research overview of $${ticker} before any memo. Structure: (1) lede / what's the story now, (2) business & competitive position, (3) recent catalysts and risks, (4) valuation / market context, (5) what to watch next. 400–700 words, article-style, cite tools/sources when used. Research-only; not advice; no trades.`,
+        { ticker },
+        { token },
+      ),
+  });
+
+  return (
+    <Section title={`Agent overview · $${ticker}`}>
+      {overviewQ.isLoading || overviewQ.isFetching ? (
+        <View style={{ gap: 8 }}>
+          <ActivityIndicator color="#9f9" />
+          <Text style={styles.muted}>Researching a longer brief…</Text>
+        </View>
+      ) : overviewQ.isError ? (
+        <View style={{ gap: 8 }}>
+          <Text style={styles.errInline}>
+            {(overviewQ.error as Error).message || "Overview failed"}
+          </Text>
+          <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
+            <Text style={styles.miniBtnText}>Retry overview</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={styles.overviewBody}>{overviewQ.data?.article.content}</Text>
+          {(overviewQ.data?.article.interesting?.length ?? 0) > 0 ? (
+            <View style={{ gap: 4 }}>
+              {overviewQ.data!.article.interesting.slice(0, 5).map((line) => (
+                <Text key={line} style={styles.muted}>
+                  · {line}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+          <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
+            <Text style={styles.miniBtnText}>Refresh overview</Text>
+          </Pressable>
+        </View>
+      )}
+    </Section>
   );
 }
 
@@ -905,12 +1010,32 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 12,
   },
-  chartImg: {
+  chartZoom: {
     width: "100%",
+    height: 260,
+    borderRadius: 8,
+    backgroundColor: "#0a0a0a",
+    overflow: "hidden",
+  },
+  chartZoomContent: { alignItems: "center", justifyContent: "center" },
+  chartImg: {
+    width: 360,
     height: 240,
     borderRadius: 8,
     backgroundColor: "#0a0a0a",
   },
+  chartHint: { color: "#666", fontSize: 11 },
+  overviewBody: { color: "#ddd", fontSize: 14, lineHeight: 21 },
+  errInline: { color: "#ff5a5a", fontSize: 13 },
+  miniBtn: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  miniBtnText: { color: "#9f9", fontSize: 12, fontWeight: "600" },
   row: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   rowTitle: { color: "#fff", fontWeight: "600" },
   rowSub: { color: "#999", fontSize: 12, marginTop: 2 },

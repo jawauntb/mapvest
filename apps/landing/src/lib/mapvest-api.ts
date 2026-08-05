@@ -344,6 +344,40 @@ export function agentChat(message: string, opts?: { ticker?: string; threadId?: 
   });
 }
 
+// ---- settings ----
+
+export type SettingsResponse = {
+  user: { id: string; email: string; scopes: string[] };
+  robinhoodMcp:
+    | { configured: true; fingerprint: string; last4: string; updatedAt: string }
+    | { configured: false };
+  note?: string;
+};
+
+export function fetchSettings() {
+  return req<SettingsResponse>("/v1/settings", {}, true);
+}
+
+export function saveRobinhoodMcp(token: string) {
+  return req<{ ok: true; robinhoodMcp: SettingsResponse["robinhoodMcp"] }>(
+    "/v1/settings/robinhood-mcp",
+    { method: "POST", body: JSON.stringify({ token }) },
+    true,
+  );
+}
+
+export function clearRobinhoodMcp() {
+  return req<{ ok: true; robinhoodMcp: { configured: false } }>(
+    "/v1/settings/robinhood-mcp",
+    { method: "DELETE" },
+    true,
+  );
+}
+
+export function getMe() {
+  return req<{ user: User }>("/v1/auth/me", {}, true);
+}
+
 // ---- identify ----
 
 export async function identifyImage(file: File, location?: { lat: number; lng: number }) {

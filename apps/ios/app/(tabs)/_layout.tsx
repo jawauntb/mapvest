@@ -25,6 +25,13 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="home"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color }) => <TabDot color={color} label="⌂" />,
+        }}
+      />
+      <Tabs.Screen
         name="map"
         options={{ title: "Map", tabBarIcon: ({ color }) => <TabDot color={color} label="M" /> }}
       />

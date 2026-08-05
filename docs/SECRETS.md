@@ -23,6 +23,16 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `POSTGRES_URL` | Railway plugin | `apps/api` |
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
+| `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |
+| `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Host attestation header for Derivation request-guard |
+| `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` | Derivation Doppler/Railway | Bearer for GET `/api/idea-chats` |
+| `RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE` | Derivation Doppler/Railway | Bearer for POST `/api/idea-chats/stream` |
+
+### Robinhood MCP (operator vs user)
+
+Derivation Research Console uses operator env `ROBINHOOD_MCP_URL` / `ROBINHOOD_MCP_TOKEN` (and optional credential JSON) on **its** Railway service — Mapvest Research chat proxies through that.
+
+Users can paste a personal Robinhood agent MCP bearer into Mapvest **Home → Robinhood MCP**. The API stores it server-side and only returns a SHA-256 fingerprint + last4 (`POST /v1/settings/robinhood-mcp`). Never put the raw token in the iOS bundle or landing localStorage.
 
 ## Why the iOS app never sees the raw Google key
 

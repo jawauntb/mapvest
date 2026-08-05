@@ -2,7 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import { verify } from "hono/jwt";
 import type { Session, User } from "@mapvest/core";
 import { sessionSigningKey } from "../lib/env.js";
-import { getUserById } from "../lib/store.js";
+import { ensureUser, getUserById } from "../lib/store.js";
 
 export type AuthEnv = {
   Variables: {
@@ -32,7 +32,9 @@ export const bearerAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   }
   const userId = typeof payload.sub === "string" ? payload.sub : undefined;
   if (!userId) return c.json({ error: "invalid token subject" }, 401);
-  const user = getUserById(userId);
+  const email = typeof payload.email === "string" ? payload.email : undefined;
+  // Rehydrate after in-memory store wipe (API restart) when JWT still carries email.
+  const user = getUserById(userId) ?? (email ? ensureUser(userId, email) : undefined);
   if (!user) return c.json({ error: "unknown user" }, 401);
 
   const expSec = typeof payload.exp === "number" ? payload.exp : 0;

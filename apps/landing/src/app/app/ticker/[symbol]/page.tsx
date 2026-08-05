@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addToWatchlist,
+  agentChat,
   generateMemo,
   getAnalysis,
   getChart,
@@ -16,6 +17,7 @@ import {
   saveMemoToWatchlist,
   type AnalysisSnapshot,
   type ChartImage,
+  type ResearchArticle,
 } from "@/lib/mapvest-api";
 import { ResearchPanel } from "../../ResearchPanel";
 
@@ -75,6 +77,9 @@ export default function TickerDetail() {
   const [busy, setBusy] = useState<"" | "memo" | "save" | "memoSave">("");
   const [tab, setTab] = useState<"overview" | "advanced">("overview");
   const [researchOpen, setResearchOpen] = useState(false);
+  const [overview, setOverview] = useState<ResearchArticle | null>(null);
+  const [overviewErr, setOverviewErr] = useState<string | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const authed = !!getToken();
 
@@ -124,6 +129,8 @@ export default function TickerDetail() {
     setData(null);
     setErr(null);
     setQuote(null);
+    setOverview(null);
+    setOverviewErr(null);
 
     const urlTicker = looksLikeTicker(symbolOrBrand);
 
@@ -140,6 +147,17 @@ export default function TickerDetail() {
           getAnalysis(t)
             .then(setAnalysis)
             .catch(() => {});
+          setOverviewLoading(true);
+          agentChat(
+            `Write a longer agentic research overview of $${t} before any memo. Structure: (1) lede / what's the story now, (2) business & competitive position, (3) recent catalysts and risks, (4) valuation / market context, (5) what to watch next. 400–700 words, article-style, cite tools/sources when used. Research-only; not advice; no trades.`,
+            { ticker: t },
+          )
+            .then((r) => {
+              setOverview(r.article);
+              setOverviewErr(null);
+            })
+            .catch((e) => setOverviewErr(e instanceof Error ? e.message : "overview failed"))
+            .finally(() => setOverviewLoading(false));
         }
       })
       .catch((e) => setErr(e.message));
@@ -325,11 +343,16 @@ export default function TickerDetail() {
             </h2>
             {chart && !chartLoading && chartType === "auction" && period === "1mo" ? (
               <>
-                <img
-                  className="app-chart-img"
-                  alt={`${chart.ticker} 1mo auction chart`}
-                  src={`data:${chart.image.mime};base64,${chart.image.data}`}
-                />
+                <p className="app-muted" style={{ marginBottom: 6 }}>
+                  Pinch / scroll-zoom the chart
+                </p>
+                <div className="app-chart-zoom">
+                  <img
+                    className="app-chart-img"
+                    alt={`${chart.ticker} 1mo auction chart`}
+                    src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                  />
+                </div>
                 {chart.levels ? (
                   <p className="app-muted">
                     POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
@@ -354,6 +377,21 @@ export default function TickerDetail() {
               </button>
             ) : null}
           </section>
+
+          {ticker ? (
+            <section className="app-panel">
+              <h2>Agent overview · ${ticker}</h2>
+              {overviewLoading ? (
+                <p className="app-muted">Researching a longer brief…</p>
+              ) : overviewErr ? (
+                <p className="app-err">{overviewErr}</p>
+              ) : overview ? (
+                <div className="app-overview-body">{overview.content}</div>
+              ) : (
+                <p className="app-muted">Overview unavailable.</p>
+              )}
+            </section>
+          ) : null}
 
           {analysis ? (
             <section className="app-panel">
