@@ -30,6 +30,7 @@ import {
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { API_URL } from "@/util/env";
+import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
   { id: "auction", label: "Auction" },
@@ -105,12 +106,16 @@ export default function DetailSheet() {
     staleTime: 5 * 60_000,
   });
 
+  const urlTicker = /^[A-Z][A-Z0-9.]{0,5}$/.test(brand.toUpperCase())
+    ? brand.toUpperCase()
+    : undefined;
+  // Prefer listed brand ticker, then typed URL symbol, then top comparable.
+  // Never let a comparable steal charts for a typed ticker like MCD.
   const ticker =
-    q.data?.brand.ticker?.symbol ??
-    q.data?.comparables?.[0]?.ticker ??
-    (/^[A-Z][A-Z0-9.]{0,5}$/.test(brand.toUpperCase()) ? brand.toUpperCase() : undefined);
+    q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
 
   const [tab, setTab] = useState<TabKey>("overview");
+  const [researchOpen, setResearchOpen] = useState(false);
   const [chartType, setChartType] =
     useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
@@ -220,13 +225,43 @@ export default function DetailSheet() {
 
           {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
 
-          {publicTicker ? (
-            <WatchlistActions
-              ticker={publicTicker}
-              name={data.brand.name}
-              sector={data.brand.sector}
-              token={session?.token}
-            />
+          {ticker ? (
+            <View style={{ gap: 10 }}>
+              <Pressable
+                onPress={() => setResearchOpen(true)}
+                style={({ pressed }) => [
+                  styles.researchBtn,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text style={styles.researchBtnText}>Research…</Text>
+                <Text style={styles.researchBtnSub}>article-style brief · agent tools</Text>
+              </Pressable>
+              <WatchlistActions
+                ticker={ticker}
+                name={data.brand.name}
+                sector={data.brand.sector}
+                token={session?.token}
+              />
+              {publicTicker ? (
+                <View style={styles.badgeRow}>
+                  <OptionsBadge ticker={publicTicker} token={session?.token} />
+                </View>
+              ) : (
+                <View style={styles.badgeRow}>
+                  <UnderlyingBadge
+                    brand={data.brand.name}
+                    sector={data.brand.sector}
+                    token={session?.token}
+                  />
+                </View>
+              )}
+              <ResearchSheet
+                ticker={ticker}
+                visible={researchOpen}
+                onClose={() => setResearchOpen(false)}
+              />
+            </View>
           ) : null}
 
           <Section title="Comparables">
@@ -883,6 +918,17 @@ const styles = StyleSheet.create({
   tabBtnOn: { backgroundColor: "#fff", borderColor: "#fff" },
   tabText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
   tabTextOn: { color: "#000" },
+  researchBtn: {
+    backgroundColor: "#101410",
+    borderColor: "#2a3d2a",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 2,
+  },
+  researchBtnText: { color: "#3ee68a", fontSize: 15, fontWeight: "700" },
+  researchBtnSub: { color: "#888", fontSize: 12 },
   finRow: {
     flexDirection: "row",
     justifyContent: "space-between",

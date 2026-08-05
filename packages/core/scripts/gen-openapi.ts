@@ -71,6 +71,10 @@ const S = {
   AnalysisSnapshot: component("AnalysisSnapshot", raw.AnalysisSnapshot),
   CockpitResponse: component("CockpitResponse", raw.CockpitResponse),
   AlertsResponse: component("AlertsResponse", raw.AlertsResponse),
+  AgentChatRequest: component("AgentChatRequest", raw.AgentChatRequest),
+  AgentChatResponse: component("AgentChatResponse", raw.AgentChatResponse),
+  AgentThreadSummary: component("AgentThreadSummary", raw.AgentThreadSummary),
+  ResearchArticle: component("ResearchArticle", raw.ResearchArticle),
   User: component("User", raw.User),
   Session: component("Session", raw.Session),
 };
@@ -319,6 +323,80 @@ registry.registerPath({
     200: {
       description: "Alerts digest.",
       content: { "application/json": { schema: S.AlertsResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/agent/chat",
+  summary: "Ticker-bound research brief (Derivation idea-chats)",
+  description:
+    "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off.",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: S.AgentChatRequest,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Research article + optional thread id.",
+      content: { "application/json": { schema: S.AgentChatResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/agent/threads",
+  summary: "List persisted research brief threads",
+  description: "Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs.",
+  tags: ["finance"],
+  responses: {
+    200: {
+      description: "Thread summaries.",
+      content: {
+        "application/json": {
+          schema: z.object({
+            threads: z.array(S.AgentThreadSummary),
+            count: z.number(),
+            sourceUrl: z.string().url().optional(),
+          }),
+        },
+      },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/agent/threads/{id}",
+  summary: "Get one research brief thread",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      id: z.string().openapi({
+        param: { name: "id", in: "path" },
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Full thread with messages.",
+      content: {
+        "application/json": {
+          schema: z.object({ thread: S.AgentThreadSummary }),
+        },
+      },
     },
     ...errorResponses,
   },

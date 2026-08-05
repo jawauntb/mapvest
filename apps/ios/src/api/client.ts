@@ -298,6 +298,64 @@ export function fetchAlerts(
   );
 }
 
+export type ResearchArticle = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  interesting: string[];
+  ideas: Array<{ title: string; thesis: string; disposition?: string }>;
+  toolsUsed: string[];
+  sources: Array<{ label: string; url?: string }>;
+  chartTickers: string[];
+};
+
+export type AgentThread = {
+  id: string;
+  title: string;
+  preview: string;
+  messages?: ResearchArticle[];
+};
+
+export function listAgentThreads(opts: FetchOpts = {}) {
+  return jsonFetch<{ threads: AgentThread[]; count: number }>(
+    "/v1/agent/threads",
+    { method: "GET" },
+    opts,
+  );
+}
+
+export function getAgentThread(id: string, opts: FetchOpts = {}) {
+  return jsonFetch<{ thread: AgentThread }>(
+    `/v1/agent/threads/${encodeURIComponent(id)}`,
+    { method: "GET" },
+    opts,
+  );
+}
+
+export function agentChat(
+  message: string,
+  args: { ticker?: string; threadId?: string } = {},
+  opts: FetchOpts = {},
+) {
+  return jsonFetch<{
+    threadId?: string;
+    article: ResearchArticle;
+    userMessage?: ResearchArticle;
+  }>(
+    "/v1/agent/chat",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        ticker: args.ticker,
+        threadId: args.threadId,
+      }),
+    },
+    opts,
+  );
+}
+
 export function secFilings(
   ticker: string,
   opts: FetchOpts = {},

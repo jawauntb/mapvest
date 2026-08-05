@@ -17,6 +17,7 @@ import {
   type AnalysisSnapshot,
   type ChartImage,
 } from "@/lib/mapvest-api";
+import { ResearchPanel } from "../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
 type Quote = NonNullable<Awaited<ReturnType<typeof getQuote>>["quote"]>;
@@ -72,6 +73,7 @@ export default function TickerDetail() {
   const [memoSaved, setMemoSaved] = useState(false);
   const [busy, setBusy] = useState<"" | "memo" | "save" | "memoSave">("");
   const [tab, setTab] = useState<"overview" | "advanced">("overview");
+  const [researchOpen, setResearchOpen] = useState(false);
 
   const authed = !!getToken();
 
@@ -301,60 +303,43 @@ export default function TickerDetail() {
         <>
           <section className="app-panel app-chart">
             <h2 className="app-chart-title">
-              {chipLabel} · ${chart?.ticker ?? chartTicker ?? "…"} · {period}
+              Auction · ${chart?.ticker ?? chartTicker ?? "…"} · 1mo
             </h2>
-            <div className="app-chart-chips" role="tablist">
-              {CHART_CHIPS.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={`app-chip ${chartType === c.id ? "app-chip-active" : ""}`}
-                  onClick={() => setChartType(c.id)}
-                  disabled={!chartTicker}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            <div className="app-period-row">
-              {PERIODS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={`app-period ${period === p ? "app-period-active" : ""}`}
-                  onClick={() => setPeriod(p)}
-                  disabled={!chartTicker}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            {chart && !chartLoading ? (
+            {chart && !chartLoading && chartType === "auction" && period === "1mo" ? (
               <>
                 <img
                   className="app-chart-img"
-                  alt={`${chart.ticker} ${period} ${chipLabel} chart`}
+                  alt={`${chart.ticker} 1mo auction chart`}
                   src={`data:${chart.image.mime};base64,${chart.image.data}`}
                 />
-                {chart.levels && chartType === "auction" ? (
+                {chart.levels ? (
                   <p className="app-muted">
                     POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
                     {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
                     {chart.levels.val?.toFixed?.(2) ?? "—"}
-                    {chart.provider ? ` · ${chart.provider}` : ""}
                   </p>
                 ) : null}
               </>
-            ) : chartErr ? (
+            ) : chartErr && chartType === "auction" ? (
               <p className="app-err">{chartErr}</p>
             ) : (
               <div className="app-chart-skel" aria-label="Loading chart" />
             )}
+            {chartTicker ? (
+              <button
+                type="button"
+                className="app-link"
+                style={{ marginTop: "0.5rem", padding: 0 }}
+                onClick={() => setTab("advanced")}
+              >
+                More charts →
+              </button>
+            ) : null}
           </section>
 
           {analysis ? (
             <section className="app-panel">
-              <h2>Snapshot</h2>
+              <h2>At a glance</h2>
               <dl className="app-snapshot">
                 {analysis.sector ? (
                   <div>
@@ -362,25 +347,10 @@ export default function TickerDetail() {
                     <dd>{analysis.sector}</dd>
                   </div>
                 ) : null}
-                {analysis.industry ? (
-                  <div>
-                    <dt>Industry</dt>
-                    <dd>{analysis.industry}</dd>
-                  </div>
-                ) : null}
                 {analysis.annualVolatility != null ? (
                   <div>
                     <dt>Ann. vol</dt>
                     <dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd>
-                  </div>
-                ) : null}
-                {analysis.fiftyTwoWeekLow != null || analysis.fiftyTwoWeekHigh != null ? (
-                  <div>
-                    <dt>52w</dt>
-                    <dd>
-                      {analysis.fiftyTwoWeekLow?.toFixed?.(2) ?? "—"} –{" "}
-                      {analysis.fiftyTwoWeekHigh?.toFixed?.(2) ?? "—"}
-                    </dd>
                   </div>
                 ) : null}
                 {analysis.trailingPe != null ? (
@@ -397,32 +367,44 @@ export default function TickerDetail() {
                 ) : null}
               </dl>
               {analysis.brief ? (
-                <pre className="app-memo-body" style={{ marginTop: "0.75rem" }}>
-                  {analysis.brief.slice(0, 1200)}
-                  {analysis.brief.length > 1200 ? "…" : ""}
-                </pre>
+                <p className="app-muted" style={{ marginTop: "0.75rem", lineHeight: 1.5 }}>
+                  {analysis.brief.slice(0, 280)}
+                  {analysis.brief.length > 280 ? "…" : ""}
+                </p>
               ) : null}
             </section>
           ) : null}
 
-          {ticker && authed ? (
+          {ticker ? (
             <div className="app-action-row">
               <button
-                className={`app-btn ${saved ? "app-btn-active" : ""}`}
-                onClick={onSave}
-                disabled={busy === "save"}
+                type="button"
+                className="app-btn app-btn-primary"
+                onClick={() => setResearchOpen(true)}
               >
-                {busy === "save" ? "…" : saved ? "★ Saved" : "☆ Save"}
+                Research…
               </button>
-              <button
-                className="app-btn"
-                onClick={onGenerateMemo}
-                disabled={busy === "memo"}
-              >
-                {busy === "memo" ? "Generating…" : memo ? "↻ Regenerate memo" : "📝 Generate memo"}
-              </button>
+              {authed ? (
+                <button
+                  className={`app-btn ${saved ? "app-btn-active" : ""}`}
+                  onClick={onSave}
+                  disabled={busy === "save"}
+                >
+                  {busy === "save" ? "…" : saved ? "★ Saved" : "☆ Save"}
+                </button>
+              ) : null}
+              {authed ? (
+                <button
+                  className="app-btn"
+                  onClick={onGenerateMemo}
+                  disabled={busy === "memo"}
+                >
+                  {busy === "memo" ? "…" : memo ? "↻ Memo" : "Memo"}
+                </button>
+              ) : null}
             </div>
           ) : null}
+
           {!authed ? (
             <p className="app-muted">
               <Link href="/app">Sign in</Link> to save this ticker or generate a memo.

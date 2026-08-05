@@ -293,6 +293,78 @@
             },
             "description": "Alert digest for up to 10 tickers via POST /api/watchlists/alerts."
           }
+        },
+        {
+          "name": "Ticker-bound research brief (Derivation idea-chats)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agent/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "agent",
+                "chat"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"\",\n  \"ticker\": \"\",\n  \"threadId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off."
+          }
+        },
+        {
+          "name": "List persisted research brief threads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agent/threads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "agent",
+                "threads"
+              ]
+            },
+            "description": "Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs."
+          }
+        },
+        {
+          "name": "Get one research brief thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agent/threads/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "agent",
+                "threads",
+                "{id}"
+              ]
+            }
+          }
         }
       ]
     },

@@ -1509,6 +1509,359 @@ components:
       required:
         - alerts
         - tickers
+    AgentChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        ticker:
+          type: string
+        threadId:
+          type: string
+      required:
+        - message
+    AgentChatResponse:
+      type: object
+      properties:
+        threadId:
+          type: string
+        ticker:
+          type: string
+        article:
+          type: object
+          properties:
+            id:
+              type: string
+            role:
+              type: string
+              enum:
+                - user
+                - assistant
+            content:
+              type: string
+            createdAt:
+              type: string
+            interesting:
+              type: array
+              items:
+                type: string
+              default: []
+            ideas:
+              type: array
+              items:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  thesis:
+                    type: string
+                  disposition:
+                    type: string
+                  findings:
+                    type: array
+                    items:
+                      type: string
+                    default: []
+                required:
+                  - title
+                  - thesis
+              default: []
+            toolsUsed:
+              type: array
+              items:
+                type: string
+              default: []
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  label:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+                required:
+                  - label
+              default: []
+            chartTickers:
+              type: array
+              items:
+                type: string
+              default: []
+            mode:
+              type: string
+            error:
+              type: string
+          required:
+            - id
+            - role
+            - content
+            - createdAt
+        userMessage:
+          type: object
+          properties:
+            id:
+              type: string
+            role:
+              type: string
+              enum:
+                - user
+                - assistant
+            content:
+              type: string
+            createdAt:
+              type: string
+            interesting:
+              type: array
+              items:
+                type: string
+              default: []
+            ideas:
+              type: array
+              items:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  thesis:
+                    type: string
+                  disposition:
+                    type: string
+                  findings:
+                    type: array
+                    items:
+                      type: string
+                    default: []
+                required:
+                  - title
+                  - thesis
+              default: []
+            toolsUsed:
+              type: array
+              items:
+                type: string
+              default: []
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  label:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+                required:
+                  - label
+              default: []
+            chartTickers:
+              type: array
+              items:
+                type: string
+              default: []
+            mode:
+              type: string
+            error:
+              type: string
+          required:
+            - id
+            - role
+            - content
+            - createdAt
+        safety:
+          type: object
+          properties:
+            liveTradingForbidden:
+              type: boolean
+            orderSubmissionAllowed:
+              type: boolean
+          required:
+            - liveTradingForbidden
+            - orderSubmissionAllowed
+        sourceUrl:
+          type: string
+          format: uri
+        provider:
+          type: string
+      required:
+        - article
+    AgentThreadSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        preview:
+          type: string
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                type: string
+              createdAt:
+                type: string
+              interesting:
+                type: array
+                items:
+                  type: string
+                default: []
+              ideas:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                    thesis:
+                      type: string
+                    disposition:
+                      type: string
+                    findings:
+                      type: array
+                      items:
+                        type: string
+                      default: []
+                  required:
+                    - title
+                    - thesis
+                default: []
+              toolsUsed:
+                type: array
+                items:
+                  type: string
+                default: []
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    label:
+                      type: string
+                    url:
+                      type: string
+                      format: uri
+                  required:
+                    - label
+                default: []
+              chartTickers:
+                type: array
+                items:
+                  type: string
+                default: []
+              mode:
+                type: string
+              error:
+                type: string
+            required:
+              - id
+              - role
+              - content
+              - createdAt
+        safety:
+          type: object
+          properties:
+            liveTradingForbidden:
+              type: boolean
+            orderSubmissionAllowed:
+              type: boolean
+          required:
+            - liveTradingForbidden
+            - orderSubmissionAllowed
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - id
+        - title
+        - preview
+    ResearchArticle:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+        content:
+          type: string
+        createdAt:
+          type: string
+        interesting:
+          type: array
+          items:
+            type: string
+          default: []
+        ideas:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              thesis:
+                type: string
+              disposition:
+                type: string
+              findings:
+                type: array
+                items:
+                  type: string
+                default: []
+            required:
+              - title
+              - thesis
+          default: []
+        toolsUsed:
+          type: array
+          items:
+            type: string
+          default: []
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              url:
+                type: string
+                format: uri
+            required:
+              - label
+          default: []
+        chartTickers:
+          type: array
+          items:
+            type: string
+          default: []
+        mode:
+          type: string
+        error:
+          type: string
+      required:
+        - id
+        - role
+        - content
+        - createdAt
     User:
       type: object
       properties:
@@ -1939,6 +2292,146 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AlertsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/chat:
+    post:
+      summary: Ticker-bound research brief (Derivation idea-chats)
+      description: "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off."
+      tags:
+        - finance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentChatRequest"
+      responses:
+        "200":
+          description: Research article + optional thread id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentChatResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/threads:
+    get:
+      summary: List persisted research brief threads
+      description: Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs.
+      tags:
+        - finance
+      responses:
+        "200":
+          description: Thread summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentThreadSummary"
+                  count:
+                    type: number
+                  sourceUrl:
+                    type: string
+                    format: uri
+                required:
+                  - threads
+                  - count
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/threads/{id}:
+    get:
+      summary: Get one research brief thread
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Full thread with messages.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thread:
+                    $ref: "#/components/schemas/AgentThreadSummary"
+                required:
+                  - thread
         "400":
           description: Bad request — validation failed against the zod schema.
           content:

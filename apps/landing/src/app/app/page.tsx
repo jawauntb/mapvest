@@ -12,11 +12,14 @@ import {
   fetchCockpit,
   fetchNearby,
   generateMemo,
+  getAgentThread,
   getQuote,
   getToken,
   getUser,
   identifyImage,
+  listAgentThreads,
   listWatchlist,
+  type AgentThread,
   removeFromWatchlist,
   requestCode,
   saveMemoToWatchlist,
@@ -471,8 +474,11 @@ function IdentifyTab() {
 /* -------------------------- Saved --------------------------- */
 
 function SavedTab() {
+  const [segment, setSegment] = useState<"watchlist" | "briefs">("watchlist");
   const [items, setItems] = useState<WatchEntry[] | null>(null);
   const [quotes, setQuotes] = useState<Record<string, QuoteSnap>>({});
+  const [briefs, setBriefs] = useState<AgentThread[] | null>(null);
+  const [openBrief, setOpenBrief] = useState<AgentThread | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cockpit, setCockpit] = useState<CockpitRow[] | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
@@ -512,6 +518,14 @@ function SavedTab() {
     refresh();
   }, []);
 
+  useEffect(() => {
+    if (segment !== "briefs") return;
+    setBriefs(null);
+    listAgentThreads()
+      .then((r) => setBriefs(r.threads))
+      .catch((e) => setErr(e instanceof Error ? e.message : "briefs failed"));
+  }, [segment]);
+
   async function onCockpit() {
     if (!items?.length) return;
     setPanelBusy("cockpit");
@@ -542,22 +556,104 @@ function SavedTab() {
     }
   }
 
-  if (err) return <p className="app-err">{err}</p>;
-  if (!items) return <p className="app-muted">Loading…</p>;
-  if (items.length === 0) {
-    return (
-      <div className="app-empty">
-        <h2>Nothing saved yet.</h2>
-        <p>
-          Open any ticker detail and tap ☆ Save. Generate a memo with 📝 and hit Save memo to keep
-          it.
-        </p>
-      </div>
-    );
-  }
+  if (err && segment === "watchlist") return <p className="app-err">{err}</p>;
+  if (segment === "watchlist" && !items) return <p className="app-muted">Loading…</p>;
 
   return (
     <div className="app-list">
+      <div className="app-segment" role="tablist">
+        <button
+          type="button"
+          className={segment === "watchlist" ? "app-segment-on" : ""}
+          onClick={() => {
+            setSegment("watchlist");
+            setOpenBrief(null);
+          }}
+        >
+          Watchlist
+        </button>
+        <button
+          type="button"
+          className={segment === "briefs" ? "app-segment-on" : ""}
+          onClick={() => setSegment("briefs")}
+        >
+          Briefs
+        </button>
+      </div>
+
+      {segment === "briefs" ? (
+        openBrief ? (
+          <div className="app-panel">
+            <button
+              type="button"
+              className="app-link"
+              style={{ textAlign: "left", padding: 0, marginBottom: "0.75rem" }}
+              onClick={() => setOpenBrief(null)}
+            >
+              ← all briefs
+            </button>
+            <h2 style={{ textTransform: "none", letterSpacing: 0, color: "var(--fg)", fontSize: "1.1rem" }}>
+              {openBrief.title}
+            </h2>
+            {(openBrief.messages ?? []).map((m) => (
+              <div key={m.id} style={{ marginTop: "1rem" }}>
+                {m.role === "user" ? (
+                  <p className="app-research-q">{m.content}</p>
+                ) : (
+                  <article className="app-article">
+                    <p className="app-article-lede">{m.content}</p>
+                    {m.interesting?.slice(0, 4).map((x, i) => (
+                      <p key={i} className="app-muted">
+                        · {x}
+                      </p>
+                    ))}
+                  </article>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : !briefs ? (
+          <p className="app-muted">Loading briefs…</p>
+        ) : briefs.length === 0 ? (
+          <div className="app-empty">
+            <h2>No research briefs yet.</h2>
+            <p>Open a ticker and tap Research… — threads show up here.</p>
+          </div>
+        ) : (
+          briefs.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              className="app-row app-row-public"
+              style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+              onClick={() => {
+                getAgentThread(b.id)
+                  .then((r) => setOpenBrief(r.thread))
+                  .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div className="app-row-title">{b.title}</div>
+                <div className="app-row-sub">{b.preview || "—"}</div>
+              </div>
+              <span className="app-chevron">›</span>
+            </button>
+          ))
+        )
+      ) : null}
+
+      {segment === "watchlist" && items && items.length === 0 ? (
+        <div className="app-empty">
+          <h2>Nothing saved yet.</h2>
+          <p>
+            Open any ticker detail and tap ☆ Save. Use Research… for article-style briefs (see
+            Briefs).
+          </p>
+        </div>
+      ) : null}
+
+      {segment === "watchlist" && items && items.length > 0 ? (
+        <>
       <div className="app-action-row" style={{ marginBottom: "0.75rem" }}>
         <button
           type="button"
@@ -576,7 +672,7 @@ function SavedTab() {
           {panelBusy === "alerts" ? "Alerts…" : "Alerts"}
         </button>
         <span className="app-muted" style={{ alignSelf: "center" }}>
-          up to 10 tickers · Underlying Analyzer
+          up to 10 · on demand
         </span>
       </div>
       {panelErr ? <p className="app-err">{panelErr}</p> : null}
@@ -675,6 +771,8 @@ function SavedTab() {
           </Link>
         );
       })}
+        </>
+      ) : null}
     </div>
   );
 }

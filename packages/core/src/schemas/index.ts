@@ -233,6 +233,73 @@ export const AlertsResponse = z.object({
 });
 export type AlertsResponse = z.infer<typeof AlertsResponse>;
 
+export const AgentChatRequest = z.object({
+  message: z.string().min(1).max(4000),
+  ticker: z.string().optional(),
+  threadId: z.string().optional(),
+});
+export type AgentChatRequest = z.infer<typeof AgentChatRequest>;
+
+/** Normalized research turn — article-shaped, not a chat bubble. */
+export const ResearchArticle = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string(),
+  interesting: z.array(z.string()).default([]),
+  ideas: z
+    .array(
+      z.object({
+        title: z.string(),
+        thesis: z.string(),
+        disposition: z.string().optional(),
+        findings: z.array(z.string()).default([]),
+      }),
+    )
+    .default([]),
+  toolsUsed: z.array(z.string()).default([]),
+  sources: z
+    .array(z.object({ label: z.string(), url: z.string().url().optional() }))
+    .default([]),
+  chartTickers: z.array(z.string()).default([]),
+  mode: z.string().optional(),
+  error: z.string().optional(),
+});
+export type ResearchArticle = z.infer<typeof ResearchArticle>;
+
+export const AgentChatResponse = z.object({
+  threadId: z.string().optional(),
+  ticker: z.string().optional(),
+  article: ResearchArticle,
+  userMessage: ResearchArticle.optional(),
+  safety: z
+    .object({
+      liveTradingForbidden: z.boolean(),
+      orderSubmissionAllowed: z.boolean(),
+    })
+    .optional(),
+  sourceUrl: z.string().url().optional(),
+  provider: z.string().optional(),
+});
+export type AgentChatResponse = z.infer<typeof AgentChatResponse>;
+
+export const AgentThreadSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  preview: z.string(),
+  messages: z.array(ResearchArticle).optional(),
+  safety: z
+    .object({
+      liveTradingForbidden: z.boolean(),
+      orderSubmissionAllowed: z.boolean(),
+    })
+    .optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type AgentThreadSummary = z.infer<typeof AgentThreadSummary>;
+
 // -------- sibling link-outs (v0.1 scaffold, see docs/SYSTEM_DESIGN.md D10) --------
 
 /**

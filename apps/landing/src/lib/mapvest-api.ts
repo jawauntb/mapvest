@@ -289,6 +289,61 @@ export function fetchAlerts(tickers: string[]) {
   );
 }
 
+export type ResearchArticle = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  interesting: string[];
+  ideas: Array<{
+    title: string;
+    thesis: string;
+    disposition?: string;
+    findings: string[];
+  }>;
+  toolsUsed: string[];
+  sources: Array<{ label: string; url?: string }>;
+  chartTickers: string[];
+  mode?: string;
+  error?: string;
+};
+
+export type AgentThread = {
+  id: string;
+  title: string;
+  preview: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages?: ResearchArticle[];
+};
+
+export function listAgentThreads() {
+  return req<{ threads: AgentThread[]; count: number }>("/v1/agent/threads");
+}
+
+export function getAgentThread(id: string) {
+  return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`);
+}
+
+/** Context-bound research brief (Derivation idea-chats under the hood). */
+export function agentChat(message: string, opts?: { ticker?: string; threadId?: string }) {
+  return req<{
+    threadId?: string;
+    ticker?: string;
+    article: ResearchArticle;
+    userMessage?: ResearchArticle;
+    provider?: string;
+    sourceUrl?: string;
+  }>("/v1/agent/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      message,
+      ticker: opts?.ticker,
+      threadId: opts?.threadId,
+    }),
+  });
+}
+
 // ---- identify ----
 
 export async function identifyImage(file: File, location?: { lat: number; lng: number }) {

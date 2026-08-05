@@ -1375,6 +1375,125 @@ blockquote {
   padding: 0.6rem 0.9rem;
   font-size: 0.9rem;
 }
+/* ---- Research brief (ticker-bound, not a top-level Chat tab) ---- */
+.app-research {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #101410 0%, #0c0c0c 100%);
+  padding: 1rem 1.15rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.app-research-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.app-research-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.app-research-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: min(70vh, 720px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+.app-research-q {
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+  border-left: 2px solid var(--border-strong);
+  padding-left: 0.75rem;
+}
+.app-research-composer {
+  display: flex;
+  gap: 0.5rem;
+}
+.app-research-composer .app-input { flex: 1; }
+.app-article {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.app-article-lede {
+  color: var(--fg);
+  font-size: 1.15rem;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  margin: 0;
+}
+.app-article-body {
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin: 0;
+}
+.app-article-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.app-article-chart-cap {
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+.app-article-bullets {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.app-article-ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.app-article-idea {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.9rem;
+}
+.app-article-idea p { margin: 0.35rem 0 0; }
+.app-article-tools {
+  font-size: 0.7rem;
+  color: var(--fg-dim);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.app-segment {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+.app-segment button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.app-segment button.app-segment-on {
+  border-color: var(--border-strong);
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+
 .app-score {
   color: var(--muted);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
