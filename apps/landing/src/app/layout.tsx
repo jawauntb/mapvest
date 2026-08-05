@@ -79,6 +79,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               mapvest
             </a>
             <nav className="nav" aria-label="Primary">
+              <a href="/app">Open app</a>
               <a href="/docs">Docs</a>
               <a
                 href="https://github.com/jawauntb/mapvest"

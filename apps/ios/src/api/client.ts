@@ -136,6 +136,75 @@ export function resolveComparable(
   );
 }
 
+// -------- memo + watchlist --------
+
+export type WatchEntry = {
+  ticker: string;
+  name?: string;
+  sector?: string;
+  source: "camera" | "map" | "list" | "manual" | "detail";
+  memo?: string;
+  memoProvider?: string;
+  createdAt: string;
+};
+
+export function generateMemo(
+  ticker: string,
+  opts: FetchOpts = {},
+): Promise<{ ticker: string; provider: string; memo: string }> {
+  return jsonFetch(
+    "/v1/memo",
+    { method: "POST", body: JSON.stringify({ ticker }) },
+    opts,
+  );
+}
+
+export function secFilings(
+  ticker: string,
+  opts: FetchOpts = {},
+): Promise<{ CIK: string; Citations: Array<{ Form: string; Label: string; URL: string }> }> {
+  return jsonFetch(`/v1/memo/sec/${ticker}`, { method: "GET" }, opts);
+}
+
+export function listWatchlist(opts: FetchOpts): Promise<{ items: WatchEntry[] }> {
+  return jsonFetch("/v1/watchlist", { method: "GET" }, opts);
+}
+
+export function addToWatchlist(
+  entry: Partial<WatchEntry> & { ticker: string },
+  opts: FetchOpts,
+): Promise<{ entry: WatchEntry }> {
+  return jsonFetch(
+    "/v1/watchlist/add",
+    { method: "POST", body: JSON.stringify(entry) },
+    opts,
+  );
+}
+
+export function removeFromWatchlist(
+  ticker: string,
+  opts: FetchOpts,
+): Promise<{ ok: true; removed: boolean }> {
+  return jsonFetch(
+    `/v1/watchlist/${ticker}`,
+    { method: "DELETE" },
+    opts,
+  );
+}
+
+export function saveMemoToWatchlist(
+  ticker: string,
+  memo: string,
+  provider: string | undefined,
+  opts: FetchOpts,
+): Promise<{ entry: WatchEntry }> {
+  return jsonFetch(
+    `/v1/watchlist/${ticker}/memo`,
+    { method: "POST", body: JSON.stringify({ memo, provider }) },
+    opts,
+  );
+}
+
 // -------- admin --------
 
 export function adminMetrics(opts: FetchOpts): Promise<{

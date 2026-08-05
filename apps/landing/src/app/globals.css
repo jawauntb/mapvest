@@ -879,3 +879,302 @@ blockquote {
   font-size: inherit;
   white-space: pre;
 }
+
+/* ============================================================================
+ * /app — client-side web app: sign-in, nearby, identify, saved, ticker detail
+ * ============================================================================ */
+
+.app-loading {
+  color: var(--fg);
+  padding: 4rem;
+  text-align: center;
+}
+
+.app-signin {
+  max-width: 380px;
+  margin: 6rem auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.app-signin h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+.app-sub {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  margin: 0;
+}
+.app-input {
+  background: #141414;
+  border: 1px solid #262626;
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font: inherit;
+  font-size: 1rem;
+}
+.app-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.app-btn {
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.app-btn:hover { background: #1c1c1c; }
+.app-btn:disabled { opacity: 0.5; cursor: default; }
+.app-btn-primary { background: #fff; color: #000; border-color: #fff; }
+.app-btn-primary:hover { background: #e6e6e6; }
+.app-btn-active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+.app-btn-active:hover { background: #33d178; }
+.app-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+.app-devcode {
+  background: transparent;
+  border: 1px dashed #2a2a2a;
+  color: var(--accent);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  cursor: pointer;
+  text-align: left;
+}
+.app-err {
+  color: #ff5a5a;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+.app-muted { color: var(--muted); }
+
+/* ---- App shell ---- */
+.app-root {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem 4rem;
+}
+.app-header {
+  padding: 1.5rem 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  border-bottom: 1px solid #1a1a1a;
+}
+.app-brand {
+  font-weight: 800;
+  font-size: 1.25rem;
+  flex: 0 0 auto;
+}
+.app-tabs {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+}
+.app-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.app-tab-active {
+  background: #141414;
+  border-color: #262626;
+  color: var(--fg);
+}
+.app-signout {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.app-main {
+  padding: 1.25rem 0;
+}
+
+/* ---- Rows ---- */
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.app-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  text-decoration: none;
+  color: var(--fg);
+  transition: background 120ms;
+}
+.app-row:hover { background: #141414; }
+.app-row-public { border-left: 3px solid var(--accent); }
+.app-row-private { border-left: 3px solid #666; }
+.app-row-title { font-weight: 600; }
+.app-row-sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }
+.app-ticker {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--accent);
+  font-weight: 700;
+}
+.app-memo-badge { color: var(--accent); }
+.app-chevron { color: #444; font-size: 1.5rem; margin-left: auto; }
+
+/* ---- Identify ---- */
+.app-identify {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.app-upload {
+  display: block;
+  background: #141414;
+  border: 1px dashed #2a2a2a;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.app-upload input { display: none; }
+.app-preview {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #0a0a0a;
+}
+
+.app-empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+.app-empty h2 { color: var(--fg); margin: 0 0 0.5rem; }
+
+/* ---- Detail ---- */
+.app-detail {
+  padding: 1rem 0 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.app-back {
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+  align-self: flex-start;
+}
+.app-back:hover { color: var(--accent); }
+.app-detail h1 { margin: 0; font-size: 2rem; }
+.app-detail h2 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+.app-ticker-big {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1em;
+}
+.app-quote {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+}
+.app-quote-price {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.app-quote-change {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.95rem;
+}
+.app-quote-up { color: var(--accent); }
+.app-quote-down { color: #ff5a5a; }
+.app-quote-disc { color: var(--muted); font-size: 0.75rem; }
+.app-action-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.app-memo {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+.app-memo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+.app-memo-provider {
+  color: var(--accent);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.app-memo-body {
+  color: #e6e6e6;
+  white-space: pre-wrap;
+  font-family: ui-serif, Georgia, serif;
+  line-height: 1.55;
+  font-size: 0.95rem;
+  margin: 0;
+}
+.app-simple-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.app-simple-list li {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+}
+.app-score {
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  margin-left: 0.5rem;
+}

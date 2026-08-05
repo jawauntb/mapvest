@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 // v0.1.1: use RN Linking (built-in) instead of expo-web-browser (native module,
 // needs pod install + rebuild). Same UX: taps open the URL in Safari.
 const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
+import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -12,7 +13,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { resolveComparable } from "@/api/client";
+import {
+  addToWatchlist,
+  generateMemo,
+  listWatchlist,
+  removeFromWatchlist,
+  resolveComparable,
+  saveMemoToWatchlist,
+} from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { API_URL } from "@/util/env";
@@ -124,6 +132,15 @@ export default function DetailSheet() {
           </View>
         )}
       </View>
+
+      {ticker ? (
+        <WatchlistActions
+          ticker={ticker}
+          name={data.brand.name}
+          sector={data.brand.sector}
+          token={session?.token}
+        />
+      ) : null}
 
       <Section title="Comparables">
         {data.comparables.length === 0 ? (
@@ -308,6 +325,140 @@ function SourceList({ sources }: { sources: Source[] }) {
   );
 }
 
+/**
+ * Save-to-watchlist + generate-memo actions. Sits under the ticker header on
+ * the detail sheet whenever the brand resolved to a public ticker.
+ */
+function WatchlistActions({
+  ticker,
+  name,
+  sector,
+  token,
+}: {
+  ticker: string;
+  name: string;
+  sector?: string;
+  token?: string;
+}) {
+  const qc = useQueryClient();
+  const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
+  const [memoSaved, setMemoSaved] = useState(false);
+
+  // Poll the watchlist to know if this ticker is already saved.
+  const wl = useQuery({
+    queryKey: ["watchlist", token],
+    queryFn: () => (token ? listWatchlist({ token }) : Promise.resolve({ items: [] })),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+  const isSaved = wl.data?.items.some((e) => e.ticker === ticker) ?? false;
+
+  const saveM = useMutation({
+    mutationFn: () =>
+      addToWatchlist(
+        { ticker, name, sector, source: "detail" },
+        { token: token! },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", token] }),
+  });
+
+  const removeM = useMutation({
+    mutationFn: () => removeFromWatchlist(ticker, { token: token! }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", token] }),
+  });
+
+  const memoM = useMutation({
+    mutationFn: () => generateMemo(ticker, { token }),
+    onSuccess: (r) => setMemo({ provider: r.provider, text: r.memo }),
+  });
+
+  const saveMemoM = useMutation({
+    mutationFn: () => {
+      if (!memo || !token) throw new Error("no memo / not signed in");
+      // Ensure the ticker is in the list first (add is idempotent server-side).
+      return addToWatchlist(
+        { ticker, name, sector, source: "detail" },
+        { token },
+      ).then(() =>
+        saveMemoToWatchlist(ticker, memo.text, memo.provider, { token }),
+      );
+    },
+    onSuccess: () => {
+      setMemoSaved(true);
+      qc.invalidateQueries({ queryKey: ["watchlist", token] });
+    },
+  });
+
+  if (!token) return null;
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pressable
+          onPress={() => (isSaved ? removeM.mutate() : saveM.mutate())}
+          disabled={saveM.isPending || removeM.isPending}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            isSaved ? styles.actionBtnActive : null,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={[styles.actionBtnText, isSaved && { color: "#000" }]}>
+            {saveM.isPending || removeM.isPending
+              ? "…"
+              : isSaved
+                ? "★ Saved"
+                : "☆ Save"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => memoM.mutate()}
+          disabled={memoM.isPending}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.actionBtnText}>
+            {memoM.isPending ? "Generating…" : memo ? "↻ Regenerate memo" : "📝 Generate memo"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {memoM.isError ? (
+        <Text style={styles.err}>{(memoM.error as Error).message}</Text>
+      ) : null}
+
+      {memo ? (
+        <View style={styles.memoCard}>
+          <Text style={styles.memoProvider}>{memo.provider} · investment brief</Text>
+          <Text style={styles.memoText}>{memo.text}</Text>
+          <Pressable
+            onPress={() => saveMemoM.mutate()}
+            disabled={saveMemoM.isPending || memoSaved}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              memoSaved && styles.actionBtnActive,
+              pressed && { opacity: 0.7 },
+              { alignSelf: "flex-start" },
+            ]}
+          >
+            <Text
+              style={[styles.actionBtnText, memoSaved && { color: "#000" }]}
+            >
+              {saveMemoM.isPending
+                ? "Saving…"
+                : memoSaved
+                  ? "✓ Memo saved"
+                  : "💾 Save memo to watchlist"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function dedupeSources(list: Source[]): Source[] {
   const seen = new Set<string>();
   const out: Source[] = [];
@@ -363,4 +514,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.3,
   },
+  actionBtn: {
+    backgroundColor: "#141414",
+    borderColor: "#2a2a2a",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flex: 1,
+    alignItems: "center",
+  },
+  actionBtnActive: {
+    backgroundColor: "#3ee68a",
+    borderColor: "#3ee68a",
+  },
+  actionBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  memoCard: {
+    backgroundColor: "#0e0e0e",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+  },
+  memoProvider: {
+    color: "#3ee68a",
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  memoText: { color: "#e6e6e6", fontSize: 14, lineHeight: 21 },
 });
