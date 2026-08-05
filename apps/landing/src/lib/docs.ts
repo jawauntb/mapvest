@@ -24,6 +24,14 @@ const TOP_LEVEL: Record<string, string> = {
   readme: path.join(REPO_ROOT, "README.md"),
 };
 
+/**
+ * Slugs the landing page must NEVER surface, even though the file exists in
+ * /docs. Kept short + explicit — an allowlist would be nicer long term.
+ * `secrets` lists the exact env-var NAMES we depend on (no values) but even
+ * that is oversharing for a public marketing site.
+ */
+const HIDDEN_SLUGS = new Set<string>(["secrets"]);
+
 export type DocMeta = {
   slug: string;
   title: string;
@@ -90,6 +98,7 @@ export function listDocs(): DocMeta[] {
         .filter((f) => f.toLowerCase().endsWith(".md"));
       for (const f of files) {
         const slug = filenameToSlug(f);
+        if (HIDDEN_SLUGS.has(slug)) continue;
         const content = safeRead(path.join(DOCS_DIR, f));
         out.push({
           slug,
@@ -131,6 +140,10 @@ export function listDocs(): DocMeta[] {
  */
 export function readDoc(slug: string): Doc | null {
   const normalized = slug.toLowerCase();
+
+  // Hidden slugs — treat as if the doc doesn't exist for the landing page,
+  // even if the .md file is present in the repo (agents still use it).
+  if (HIDDEN_SLUGS.has(normalized)) return null;
 
   // Top-level match first
   const topLevelPath = TOP_LEVEL[normalized];
