@@ -1,15 +1,19 @@
 import type { Comparable, Source } from "@mapvest/core";
 import { searchBrand, toSource } from "@mapvest/search";
+import { extractListedTicker } from "./tickerSymbol.js";
 
 /**
  * Given a private brand name, return public comparables ranked by score.
  * Sector inference lives in a follow-up patch; v0 uses Exa hits + a coarse heuristic.
+ *
+ * Only emits symbols that look like real exchange citations ($MCD, NYSE: MCD).
+ * Never invents tickers from title abbreviations (NYP, MOUNT, MSHS).
  */
 export async function resolveComparable(brand: string, hintSector?: string): Promise<Comparable[]> {
   let hits: Awaited<ReturnType<typeof searchBrand>> = [];
   try {
     hits = await searchBrand(
-      `${brand} closest public competitor ${hintSector ?? ""} stock ticker`,
+      `${brand} closest public competitor ${hintSector ?? ""} stock ticker NYSE NASDAQ`,
     );
   } catch {
     return [];
@@ -19,8 +23,7 @@ export async function resolveComparable(brand: string, hintSector?: string): Pro
   const candidates: Comparable[] = [];
   for (let i = 0; i < hits.length; i++) {
     const h = hits[i]!;
-    const ticker = extractTicker(h.title + " " + (h.snippet ?? ""));
-    // Filter junk: no ticker at all, or a duplicate of one we already surfaced.
+    const ticker = extractListedTicker(`${h.title} ${h.snippet ?? ""}`);
     if (!ticker) continue;
     if (seenTickers.has(ticker)) continue;
     seenTickers.add(ticker);
@@ -35,13 +38,4 @@ export async function resolveComparable(brand: string, hintSector?: string): Pro
     if (candidates.length >= 3) break;
   }
   return candidates;
-}
-
-function extractTicker(text: string): string | null {
-  const m = text.match(/\b\(?([A-Z]{1,5})(?::[A-Z]+)?\)?\b/);
-  if (!m) return null;
-  const sym = m[1];
-  // filter obvious noise
-  if (["THE", "AND", "FOR", "USA", "CEO"].includes(sym)) return null;
-  return sym;
 }

@@ -9,7 +9,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **OpenRouter** | Multimodal LLM (image → brand + text extraction). Prefer `google/gemini-2.5-pro`, fall back to `anthropic/claude-5-sonnet` or `openai/gpt-4o` per cost/latency budget. | `OPENROUTER_API_KEY` (Doppler `cofounder/dev`) |
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
-| **Google Places** | Nearby POI enumeration for the map view (primary). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
+| **Google Places** | Nearby POI enumeration for the map view (primary). Multi-type queries (`restaurant`, `cafe`, `store`, `bank`, …) merged + de-noised (no hospitals/doctors/parks). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
 
 ## Secondary / free-tier
 
@@ -73,7 +73,12 @@ services. Mapvest is only responsible for:
 3. Never claiming the sibling's output as its own; the source in `sources[]`
    must name the sibling repo/service so `docs/DATA_SOURCES.md` stays honest.
 
+## Ticker honesty
+
+Comparables / ETF hits from Exa only emit a symbol when the page cites it as a listed ticker (`$MCD`, `NYSE: MCD`, `ticker: PLNT`). Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are rejected — see `packages/finance/src/tickerSymbol.ts`.
+
 ## What we do NOT use
 
 - Paid market-data feeds (Polygon paid tier, IEX Cloud paid tier) — not until unit economics justify.
 - Any user-content scraper. If we need training data, it comes from provider APIs, not scraping.
+- Fabricated tickers from abbreviations or GuideStar / 401k plan names.

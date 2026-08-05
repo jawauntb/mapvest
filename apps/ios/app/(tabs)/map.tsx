@@ -44,7 +44,7 @@ export default function MapScreen() {
     queryKey: ["nearby", region.latitude.toFixed(3), region.longitude.toFixed(3)],
     queryFn: () =>
       fetchNearby(
-        { lat: region.latitude, lng: region.longitude, radius: 800, limit: 40 },
+        { lat: region.latitude, lng: region.longitude, radius: 1500, limit: 50 },
         { token: session?.token },
       ),
     staleTime: 60_000,
@@ -70,7 +70,7 @@ export default function MapScreen() {
               latitude: item.place.location.lat,
               longitude: item.place.location.lng,
             }}
-            title={item.place.name}
+            title={markerTitle(item)}
             description={describeItem(item)}
             pinColor={pinColor(item)}
             onCalloutPress={() => {
@@ -95,11 +95,25 @@ export default function MapScreen() {
   );
 }
 
+/** Tap a green pin → callout shows `$MCD · McDonald's`. */
+function markerTitle(item: NearbyItem): string {
+  const t = item.investable?.brand.ticker?.symbol;
+  if (t && item.investable?.brand.isPublic) return `$${t} · ${item.place.name}`;
+  const comp = item.investable?.comparables?.[0]?.ticker;
+  if (comp) return `≈$${comp} · ${item.place.name}`;
+  return item.place.name;
+}
+
 function describeItem(item: NearbyItem): string {
   const inv = item.investable;
-  if (!inv) return item.place.types.join(", ");
-  const t = inv.brand.ticker?.symbol;
-  return t ? `${inv.brand.name} · ${t}` : inv.brand.name;
+  if (!inv) return item.place.types.slice(0, 3).join(", ") || "unlisted";
+  if (inv.brand.isPublic) {
+    return `${inv.brand.sector ?? "public"} · tap for detail`;
+  }
+  if (inv.comparables.length > 0) {
+    return `private · comps ${inv.comparables.map((c) => c.ticker).join(", ")}`;
+  }
+  return "private · no validated ticker";
 }
 
 function pinColor(item: NearbyItem): string {

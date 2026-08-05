@@ -38,4 +38,13 @@ describe("resolveTicker (seed hits)", () => {
     const res = await resolveTicker("  MCDONALDS  ");
     expect(res.brand.ticker?.symbol).toBe("MCD");
   });
+
+  test("substring-matches long Places display names", async () => {
+    const hotel = await resolveTicker("Super 8 by Wyndham Long Island City LGA Hotel");
+    expect(hotel.brand.isPublic).toBe(true);
+    expect(hotel.brand.ticker?.symbol).toBe("WH");
+
+    const mcd = await resolveTicker("McDonald's");
+    expect(mcd.brand.ticker?.symbol).toBe("MCD");
+  });
 });

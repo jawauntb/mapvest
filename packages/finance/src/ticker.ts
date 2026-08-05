@@ -23,14 +23,34 @@ function toResolution(brandInput: string, seed: SeedEntry): TickerResolution {
 }
 
 /**
+ * Longest seed-key substring match — so Places names like
+ * "Super 8 by Wyndham Long Island City LGA Hotel" still hit `super 8` / `wyndham`.
+ * Keys shorter than 4 chars are skipped to avoid spurious hits ("gap", "bp").
+ */
+function matchSeedSubstring(normalized: string): SeedEntry | undefined {
+  let bestKey = "";
+  let best: SeedEntry | undefined;
+  for (const [key, entry] of Object.entries(seedBrands)) {
+    if (key.length < 4) continue;
+    if (!normalized.includes(key)) continue;
+    if (key.length > bestKey.length) {
+      bestKey = key;
+      best = entry;
+    }
+  }
+  return best;
+}
+
+/**
  * Resolve a brand string to a Brand+Ticker (or a private Brand with no ticker).
  * Cascade:
  *   1. Direct seed-key lookup (fast path — matches brand short-forms).
- *   2. Parent-name fallback — when Gemini returns "The Hershey Company"
+ *   2. Substring seed match for long Places display names.
+ *   3. Parent-name fallback — when Gemini returns "The Hershey Company"
  *      instead of "Hershey's", scan seed values for a parent whose
  *      `normalizeParent` form matches the input's. Seed key still wins
  *      when both would match, so brand-short-forms are preferred.
- *   3. Exa search + LLM extraction (deferred to caller if needed).
+ *   4. Exa search + LLM extraction (deferred to caller if needed).
  */
 export async function resolveTicker(brandInput: string): Promise<TickerResolution> {
   // (1) direct seed-key match
@@ -38,7 +58,11 @@ export async function resolveTicker(brandInput: string): Promise<TickerResolutio
   const seed = seedBrands[key];
   if (seed) return toResolution(brandInput, seed);
 
-  // (2) parent-name fallback — only reached when the direct lookup missed.
+  // (2) substring seed match (Places "Brand + location" titles)
+  const sub = matchSeedSubstring(key);
+  if (sub) return toResolution(brandInput, sub);
+
+  // (3) parent-name fallback — only reached when the direct lookup missed.
   // We compare parent-normalized forms so "The Hershey Company", "Hershey Co",
   // and "Hershey, Inc." all resolve to the same row Gemini's brand short-form
   // would have hit. Empty normalization (e.g. input was just "The") is skipped
@@ -52,7 +76,7 @@ export async function resolveTicker(brandInput: string): Promise<TickerResolutio
     }
   }
 
-  // (3) Runtime lookup via Exa. LLM extraction is deferred to the API layer,
+  // (4) Runtime lookup via Exa. LLM extraction is deferred to the API layer,
   // which already holds the OpenRouter client. This function returns the raw
   // hits; callers decide whether to promote to a ticker.
   let hits: Awaited<ReturnType<typeof searchBrand>> = [];

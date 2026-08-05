@@ -4,6 +4,56 @@ import type { NearbyResponse } from "@mapvest/core";
 import { resolveTicker } from "@mapvest/finance";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
+/** Google Nearby allows one `type` per request — race these consumer/brand types. */
+const GOOGLE_PLACE_TYPES = [
+  "restaurant",
+  "cafe",
+  "bakery",
+  "meal_takeaway",
+  "bar",
+  "store",
+  "supermarket",
+  "convenience_store",
+  "clothing_store",
+  "department_store",
+  "pharmacy",
+  "bank",
+  "gas_station",
+  "gym",
+  "lodging",
+  "shopping_mall",
+  "electronics_store",
+  "movie_theater",
+] as const;
+
+/** Drop geo/admin/professional noise that crowds out investable brands. */
+const DROP_PLACE_TYPES = new Set([
+  "locality",
+  "political",
+  "sublocality",
+  "sublocality_level_1",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "route",
+  "neighborhood",
+  "doctor",
+  "hospital",
+  "dentist",
+  "veterinary_care",
+  "cemetery",
+  "church",
+  "place_of_worship",
+  "school",
+  "primary_school",
+  "secondary_school",
+  "university",
+  "city_hall",
+  "embassy",
+  "museum",
+  "park",
+  "tourist_attraction",
+]);
+
 const nearby = new Hono();
 
 type PlacesResult = {
@@ -263,10 +313,75 @@ async function queryPhoton(
   }
 }
 
+function isDroppedPlace(p: PlacesResult): boolean {
+  return (p.types ?? []).some((t) => DROP_PLACE_TYPES.has(t));
+}
+
+function placeFromResult(p: PlacesResult): NearbyResponse["items"][number]["place"] {
+  return {
+    id: p.place_id,
+    name: p.name,
+    location: { lat: p.geometry.location.lat, lng: p.geometry.location.lng },
+    types: p.types ?? [],
+  };
+}
+
+/** Prefer chains / food / retail over one-off contractors when ranking. */
+function prioritizeBrandish(results: PlacesResult[]): PlacesResult[] {
+  const rank = (p: PlacesResult): number => {
+    const types = new Set(p.types ?? []);
+    let score = 0;
+    if (types.has("restaurant") || types.has("cafe") || types.has("meal_takeaway")) score += 3;
+    if (types.has("store") || types.has("supermarket") || types.has("pharmacy")) score += 2;
+    if (types.has("bank") || types.has("gas_station") || types.has("gym") || types.has("lodging"))
+      score += 2;
+    if (/\b(mcdonald|starbucks|dunkin|subway|chipotle|walmart|target|cvs|walgreens|chase)\b/i.test(p.name))
+      score += 5;
+    return score;
+  };
+  return [...results].sort((a, b) => rank(b) - rank(a));
+}
+
+async function queryGooglePlacesMulti(
+  key: string,
+  lat: number,
+  lng: number,
+  radius: number,
+): Promise<PlacesPayload> {
+  const settled = await Promise.all(
+    GOOGLE_PLACE_TYPES.map(async (type) => {
+      const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+      url.searchParams.set("location", `${lat},${lng}`);
+      url.searchParams.set("radius", String(radius));
+      url.searchParams.set("type", type);
+      url.searchParams.set("key", key);
+      const res = await fetch(url);
+      if (!res.ok) return [] as PlacesResult[];
+      const raw = (await res.json()) as PlacesPayload & { status?: string };
+      if (raw.status !== "OK" && raw.status !== "ZERO_RESULTS") return [] as PlacesResult[];
+      return raw.results ?? [];
+    }),
+  );
+
+  const seen = new Set<string>();
+  const results: PlacesResult[] = [];
+  for (const batch of settled) {
+    for (const p of batch) {
+      if (!p?.place_id || seen.has(p.place_id)) continue;
+      seen.add(p.place_id);
+      results.push(p);
+    }
+  }
+  if (results.length === 0) {
+    throw new Error("google places returned no brand-relevant results");
+  }
+  return { results };
+}
+
 /**
  * GET /v1/nearby?lat=&lng=&radius=&limit=
- * Cascade: Google Places (if key + billing) → Overpass (OSM mirrors, raced)
- * → Photon brand search. Joins with brand→ticker resolver.
+ * Cascade: Google Places (multi-type) → Overpass → Photon.
+ * Joins with brand→ticker resolver (+ validated comparables for private).
  *
  * If MOCK_PLACES is set (and NODE_ENV !== "production") we read the fixture
  * from that path instead of calling Google. This lets unit tests run without
@@ -314,33 +429,20 @@ nearby.get("/", async (c) => {
         return c.json({ error: `MOCK_PLACES load failed: ${(err as Error).message}` }, 500);
       }
     } else {
-      // Cascade: Google Places (if key + billing) → Overpass → Photon.
-      // Never fail the request until every free path is exhausted.
+      // Cascade: Google Places (multi-type) → Overpass → Photon.
       const key = process.env.GOOGLE_MAPS_API_KEY;
       let googleOk = false;
       if (key) {
         try {
-          const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-          url.searchParams.set("location", `${lat},${lng}`);
-          url.searchParams.set("radius", String(radius));
-          url.searchParams.set("key", key);
-          const res = await fetch(url);
-          if (res.ok) {
-            const raw = (await res.json()) as PlacesPayload;
-            const status = (raw as unknown as { status?: string }).status;
-            if (status === "OK" || status === "ZERO_RESULTS") {
-              data = raw;
-              googleOk = true;
-              span.setAttribute("places_source", "google");
-            } else {
-              span.setAttributes({
-                places_source: "google_failed",
-                places_google_status: status ?? "unknown",
-              });
-            }
-          }
+          data = await queryGooglePlacesMulti(key, lat, lng, radius);
+          googleOk = true;
+          span.setAttribute("places_source", "google");
+          span.setAttribute("places_google_count", data.results.length);
         } catch (err) {
-          span.setAttribute("places_google_error", (err as Error).message);
+          span.setAttributes({
+            places_source: "google_failed",
+            places_google_error: (err as Error).message,
+          });
         }
       }
       if (!googleOk) {
@@ -368,26 +470,31 @@ nearby.get("/", async (c) => {
       }
     }
 
-    const trimmed = data.results.slice(0, limit);
+    const filtered = data.results.filter((p) => !isDroppedPlace(p));
+    const trimmed = prioritizeBrandish(filtered).slice(0, limit);
     const items: NearbyResponse["items"] = [];
     for (const p of trimmed) {
-      const { brand } = await resolveTicker(p.name);
+      // Seed / substring resolve only on the list path — Exa comparables run
+      // on the detail sheet so /nearby stays fast and never invents tickers.
+      const { brand, sources } = await resolveTicker(p.name);
       items.push({
-        place: {
-          id: p.place_id,
-          name: p.name,
-          location: { lat: p.geometry.location.lat, lng: p.geometry.location.lng },
-          types: p.types ?? [],
-        },
+        place: placeFromResult(p),
         investable: brand.isPublic
           ? {
               brand,
               comparables: [],
               etfs: [],
               confidence: "high",
-              sources: [
-                { provider: "manual", fetchedAt: new Date().toISOString(), confidence: "high" },
-              ],
+              sources:
+                sources.length > 0
+                  ? sources
+                  : [
+                      {
+                        provider: "manual",
+                        fetchedAt: new Date().toISOString(),
+                        confidence: "high",
+                      },
+                    ],
             }
           : undefined,
       });

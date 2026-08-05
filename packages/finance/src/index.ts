@@ -1,6 +1,7 @@
 export { resolveTicker } from "./ticker.js";
 export { resolveComparable } from "./comparable.js";
 export { resolveEtfExposure } from "./etf.js";
+export { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 export { getQuote, parseYahooChart, QUOTE_DISCLAIMER, _clearQuoteCache } from "./quote.js";
 export type { Quote } from "./quote.js";
 export { seedBrands, normalizeBrand } from "./seed.js";

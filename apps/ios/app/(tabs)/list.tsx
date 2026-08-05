@@ -109,7 +109,7 @@ export default function ListScreen() {
               }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.place.name}</Text>
+                <Text style={styles.name}>{listTitle(item)}</Text>
                 <Text style={styles.sub}>
                   {formatItem(item)} ·{" "}
                   {formatDistance(haversine(origin, item.place.location))}
@@ -128,12 +128,23 @@ export default function ListScreen() {
   );
 }
 
+function listTitle(i: NearbyItem): string {
+  const t = i.investable?.brand.ticker?.symbol;
+  if (t && i.investable?.brand.isPublic) return `$${t}  ${i.place.name}`;
+  const comp = i.investable?.comparables?.[0]?.ticker;
+  if (comp) return `≈$${comp}  ${i.place.name}`;
+  return i.place.name;
+}
+
 function formatItem(i: NearbyItem): string {
   const inv = i.investable;
   if (!inv) return i.place.types[0] ?? "unlisted";
   if (inv.brand.isPublic)
     return `${inv.brand.ticker?.symbol ?? "public"} · ${inv.brand.sector ?? ""}`;
-  return `private · ${inv.comparables.length} comps · ${inv.etfs.length} ETFs`;
+  if (inv.comparables.length > 0) {
+    return `private · ≈ ${inv.comparables.map((c) => c.ticker).join(", ")}`;
+  }
+  return `private · ${inv.etfs.length} ETFs`;
 }
 
 function pinColor(i: NearbyItem): string {
