@@ -73,7 +73,14 @@ async function req<T>(
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    let message = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim()) message = j.error;
+    } catch {
+      /* plain-text body */
+    }
+    throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;
 }
@@ -183,7 +190,17 @@ export async function identifyImage(file: File, location?: { lat: number; lng: n
     body: form,
     headers,
   });
-  if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => res.statusText));
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    let message = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim()) message = j.error;
+    } catch {
+      /* plain-text body */
+    }
+    throw new ApiError(res.status, message);
+  }
   return (await res.json()) as {
     identification: {
       visibleText: string[];
@@ -202,6 +219,7 @@ export async function identifyImage(file: File, location?: { lat: number; lng: n
         ticker?: { symbol: string; exchange?: string };
         sector?: string;
       };
+      comparables?: Array<{ ticker: string; name?: string; score?: number }>;
       confidence: "high" | "medium" | "low";
     }>;
   };

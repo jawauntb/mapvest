@@ -377,22 +377,37 @@ function IdentifyTab() {
       {err ? <p className="app-err">{err}</p> : null}
       {result?.investables.map((inv, i) => {
         const ticker = inv.brand.ticker?.symbol;
+        const comps = (inv.comparables ?? [])
+          .map((c) => c.ticker)
+          .filter(Boolean)
+          .slice(0, 3);
+        const hrefTicker = ticker ?? comps[0] ?? inv.brand.name;
         return (
           <Link
             key={i}
-            href={`/app/ticker/${encodeURIComponent(ticker ?? inv.brand.name)}`}
-            className="app-row app-row-public"
+            href={`/app/ticker/${encodeURIComponent(hrefTicker)}`}
+            className={`app-row ${ticker || comps.length ? "app-row-public" : "app-row-private"}`}
           >
             <div>
               <div className="app-row-title">{inv.brand.name}</div>
               <div className="app-row-sub">
                 {ticker ? (
                   <>
-                    <span className="app-ticker">{ticker}</span> · {inv.brand.sector ?? "—"} ·
+                    <span className="app-ticker">${ticker}</span> · {inv.brand.sector ?? "—"} ·
                     confidence {inv.confidence}
                   </>
+                ) : comps.length > 0 ? (
+                  <>
+                    private · comps{" "}
+                    {comps.map((t, idx) => (
+                      <span key={t}>
+                        {idx > 0 ? ", " : ""}
+                        <span className="app-ticker">≈${t}</span>
+                      </span>
+                    ))}
+                  </>
                 ) : (
-                  "no ticker · confidence " + inv.confidence
+                  "no public ticker · confidence " + inv.confidence
                 )}
               </div>
             </div>
