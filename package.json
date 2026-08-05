@@ -3,10 +3,15 @@
   "version": "0.1.0-alpha.0",
   "private": true,
   "description": "Google-Maps/Zillow-style investable-brand explorer.",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "apps/api",
+      "apps/landing"
+    ],
+    "nohoist": []
+  },
+  "//workspaces-note": "apps/ios is intentionally NOT a workspace member. Expo's Metro resolver breaks against Bun's hoisted .bun/ symlink layout. Local dev: `cd apps/ios && npm install && npx expo start --ios`. See apps/ios/README.md.",
   "bin": {
     "mapvest": "./packages/cli/src/index.ts"
   },

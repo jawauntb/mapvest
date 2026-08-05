@@ -5,17 +5,20 @@ TestFlight-buildable via EAS.
 
 ## Quickstart
 
-```
-bun install
-bun run ios     # requires Xcode + iOS Simulator
-```
-
-By default the app talks to `http://localhost:3001` (the local `apps/api`
-service). Override at runtime with `EXPO_PUBLIC_API_URL`:
+> **iOS is NOT part of the Bun workspace.** Expo's Metro resolver breaks
+> against Bun's hoisted `.bun/` symlink layout, so this app is installed
+> and run from its own `apps/ios/node_modules`. Use `npm` here, not `bun`.
 
 ```
-EXPO_PUBLIC_API_URL=https://mapvest-api.up.railway.app bun run ios
+brew install watchman            # Metro's file watcher (one-time)
+cd apps/ios
+npm install --no-workspaces      # -- writes apps/ios/node_modules
+EXPO_PUBLIC_API_URL=https://api-production-4b27.up.railway.app npx expo start --ios
 ```
+
+By default (when `EXPO_PUBLIC_API_URL` is unset) the app talks to
+`http://localhost:3001` — the local `apps/api` service. In dev you almost
+always want the deployed API instead, as shown above.
 
 The EAS `preview` and `production` profiles pin their own `EXPO_PUBLIC_API_URL`
 in `eas.json`.

@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
@@ -56,7 +58,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Mapvest to use your location to show nearby investable brands."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "router": {
