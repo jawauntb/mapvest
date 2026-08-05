@@ -9,7 +9,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **OpenRouter** | Multimodal LLM (image → brand + text extraction). Prefer `google/gemini-2.5-pro`, fall back to `anthropic/claude-5-sonnet` or `openai/gpt-4o` per cost/latency budget. | `OPENROUTER_API_KEY` (Doppler `cofounder/dev`) |
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
-| **Google Places** | Nearby POI enumeration for the map view (preferred when billing is enabled). | `GOOGLE_MAPS_API_KEY` |
+| **Google Places** | Nearby POI enumeration for the map view (primary). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
 
 ## Secondary / free-tier
 
