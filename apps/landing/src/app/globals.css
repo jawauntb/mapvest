@@ -1,21 +1,6 @@
-:root {
-  --bg: #0a0a0a;
-  --bg-elev: #131313;
-  --fg: #ffffff;
-  --fg-muted: #a1a1a1;
-  --fg-dim: #6b6b6b;
-  --muted: #a1a1a1;
-  --accent: #3ee68a;
-  --accent-dim: #2fb56a;
-  --border: #1f1f1f;
-  --border-strong: #2a2a2a;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-}
+@import "../../../../packages/design/src/tokens.css";
+
+/* Atlas Signal — see @mapvest/design. Legacy aliases live in tokens.css. */
 
 * {
   box-sizing: border-box;
@@ -25,7 +10,10 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(31, 107, 74, 0.22), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(22, 26, 31, 0.9), transparent 50%),
+    var(--mv-bg);
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -51,8 +39,9 @@ h4,
 h5,
 h6 {
   color: var(--fg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
   margin: 0;
 }
 
@@ -138,8 +127,8 @@ blockquote {
 
 .site-header {
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 10, 10, 0.85);
-  backdrop-filter: saturate(140%) blur(8px);
+  background: rgba(12, 14, 16, 0.82);
+  backdrop-filter: saturate(140%) blur(10px);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -153,20 +142,25 @@ blockquote {
 }
 
 .brand {
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
   color: var(--fg);
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  font-size: 18px;
+  letter-spacing: -0.04em;
+}
+
+.brand__mark {
+  width: 28px;
+  height: 28px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .brand__dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  border-radius: 2px;
-  margin-right: 8px;
-  vertical-align: middle;
+  display: none;
 }
 
 .nav {
@@ -219,12 +213,13 @@ blockquote {
 }
 
 .btn--primary {
-  background: var(--accent);
-  color: #04120a;
+  background: var(--mv-accent);
+  color: var(--mv-accent-ink);
+  border-color: var(--mv-accent);
 }
 .btn--primary:hover {
-  background: #62ffab;
-  color: #04120a;
+  background: var(--mv-accent-hover);
+  color: var(--mv-accent-ink);
   transform: translateY(-1px);
 }
 
@@ -242,29 +237,44 @@ blockquote {
 /* ---------- hero ---------- */
 
 .hero {
-  padding: 96px 0 64px;
+  padding: 72px 0 56px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero__brand {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 10vw, 96px);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  color: var(--fg);
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.hero__brand img {
+  width: clamp(48px, 8vw, 72px);
+  height: clamp(48px, 8vw, 72px);
 }
 
 .hero__eyebrow {
-  display: inline-block;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--accent);
-  padding: 6px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  margin-bottom: 28px;
+  display: none; /* brand is the hero signal — no pill cluster */
 }
 
 .hero__title {
-  font-size: clamp(36px, 6vw, 64px);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  font-weight: 700;
-  max-width: 20ch;
-  margin: 0 auto 20px;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 3.4vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  max-width: 28ch;
+  margin: 0 auto 16px;
+  color: var(--fg-muted);
 }
 
 .hero__title .accent {
@@ -903,6 +913,11 @@ blockquote {
   font-size: 2rem;
   margin: 0;
 }
+.app-signin-embedded {
+  max-width: 380px;
+  margin: 0;
+  padding: 0;
+}
 .app-sub {
   color: var(--muted);
   font-size: 0.95rem;
@@ -935,7 +950,14 @@ blockquote {
 }
 .app-btn:hover { background: #1c1c1c; }
 .app-btn:disabled { opacity: 0.5; cursor: default; }
-.app-btn-primary { background: #fff; color: #000; border-color: #fff; }
+.app-btn-primary {
+  background: var(--mv-accent);
+  color: var(--mv-accent-ink);
+  border-color: var(--mv-accent);
+}
+.app-btn-primary:hover {
+  background: var(--mv-accent-hover);
+}
 .app-btn-primary:hover { background: #e6e6e6; }
 .app-btn-robinhood {
   background: #0d2818;
@@ -1122,7 +1144,7 @@ blockquote {
   max-height: 320px;
   border-radius: 12px;
   object-fit: contain;
-  background: #0a0a0a;
+  background: var(--mv-bg-sunken);
 }
 
 .app-empty {

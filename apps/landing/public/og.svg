@@ -1,134 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Mapvest — Point at a place. See what is investable.">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#0C0E10"/>
+  <rect x="0" y="0" width="1200" height="630" fill="url(#g)" opacity="0.35"/>
   <defs>
-    <radialGradient id="glow" cx="70%" cy="35%" r="55%">
-      <stop offset="0%" stop-color="#3ee68a" stop-opacity="0.22"/>
-      <stop offset="55%" stop-color="#3ee68a" stop-opacity="0.05"/>
-      <stop offset="100%" stop-color="#0a0a0a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="mapFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0a0a0a" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#0a0a0a" stop-opacity="0.9"/>
+    <linearGradient id="g" x1="0" y1="0" x2="1200" y2="630">
+      <stop offset="0%" stop-color="#1F6B4A"/>
+      <stop offset="55%" stop-color="#0C0E10"/>
+      <stop offset="100%" stop-color="#161A1F"/>
     </linearGradient>
-    <pattern id="grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2a1e" stroke-width="1"/>
-    </pattern>
-    <clipPath id="mapClip">
-      <rect x="720" y="90" width="420" height="450" rx="18" ry="18"/>
-    </clipPath>
-    <filter id="pinShadow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
-      <feOffset dx="0" dy="4" result="off"/>
-      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
-
-  <!-- background -->
-  <rect width="1200" height="630" fill="#0a0a0a"/>
-  <rect width="1200" height="630" fill="url(#glow)"/>
-
-  <!-- top-left brand dot + wordmark row -->
-  <g transform="translate(80,110)">
-    <rect x="0" y="-14" width="14" height="14" rx="3" fill="#3ee68a"/>
-    <text x="26" y="-2" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="600" fill="#ffffff" letter-spacing="-0.5">mapvest</text>
+  <g transform="translate(80,160)">
+    <rect width="120" height="120" rx="28" fill="#161A1F" stroke="#242A32"/>
+    <path d="M60 18c-15.5 0-28 12.1-28 27.1 0 19.1 23.1 45.4 26.5 49.2a2.1 2.1 0 0 0 3 0C65 90.5 88 64.2 88 45.1 88 30.1 75.5 18 60 18z" fill="#3ECF8E"/>
+    <circle cx="60" cy="45" r="11" fill="#0C0E10"/>
+    <path d="M24 98h8l11-16 12 10 16-24 9 8 16-22" stroke="#F2F4F5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-
-  <!-- eyebrow -->
-  <g transform="translate(80,180)">
-    <rect x="0" y="0" width="230" height="30" rx="15" fill="none" stroke="#2a2a2a" stroke-width="1"/>
-    <text x="16" y="20" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#3ee68a" letter-spacing="2">ALPHA · iOS · TESTFLIGHT</text>
-  </g>
-
-  <!-- headline wordmark -->
-  <g transform="translate(80,285)">
-    <text font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="88" font-weight="700" fill="#ffffff" letter-spacing="-3">
-      <tspan x="0" y="0">Mapvest</tspan>
-    </text>
-  </g>
-
-  <!-- tagline (accent) -->
-  <g transform="translate(80,360)">
-    <text font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="34" font-weight="600" fill="#3ee68a" letter-spacing="-1">
-      <tspan x="0" y="0">Point at a place.</tspan>
-      <tspan x="0" y="46">See what’s investable.</tspan>
-    </text>
-  </g>
-
-  <!-- supporting line -->
-  <g transform="translate(80,510)">
-    <text font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="18" fill="#a1a1a1">
-      <tspan x="0" y="0">Storefronts, shelves, and street corners</tspan>
-      <tspan x="0" y="26">become tickers, comparables, and ETFs.</tspan>
-    </text>
-  </g>
-
-  <!-- URL footer -->
-  <g transform="translate(80,595)">
-    <text font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" fill="#6b6b6b">mapvest.app</text>
-  </g>
-
-  <!-- ===== right side: map + pin motif ===== -->
-  <g>
-    <!-- card -->
-    <rect x="720" y="90" width="420" height="450" rx="18" ry="18" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
-
-    <g clip-path="url(#mapClip)">
-      <!-- water base -->
-      <rect x="720" y="90" width="420" height="450" fill="#0f1a14"/>
-      <!-- grid graticule -->
-      <rect x="720" y="90" width="420" height="450" fill="url(#grid)"/>
-
-      <!-- stylized landmasses (abstract, not any real geography) -->
-      <path d="M 730 240 Q 780 210 840 230 T 940 220 T 1050 250 T 1130 240 L 1130 340 Q 1080 360 1020 340 T 900 350 T 820 320 T 730 340 Z"
-            fill="#1f3a2a" stroke="#2a5540" stroke-width="1"/>
-      <path d="M 750 400 Q 820 380 900 405 T 1060 400 T 1140 420 L 1140 500 L 750 500 Z"
-            fill="#1f3a2a" stroke="#2a5540" stroke-width="1"/>
-      <path d="M 770 130 Q 830 110 900 135 T 1020 130 T 1130 150 L 1130 195 Q 1050 210 970 195 T 850 200 T 770 185 Z"
-            fill="#1a2f22" stroke="#264a37" stroke-width="1"/>
-
-      <!-- roads -->
-      <path d="M 720 320 Q 850 300 970 340 T 1140 360" fill="none" stroke="#3ee68a" stroke-width="1.2" stroke-opacity="0.55"/>
-      <path d="M 780 90 Q 800 240 900 380 T 1000 540" fill="none" stroke="#3ee68a" stroke-width="1" stroke-opacity="0.35"/>
-      <path d="M 720 460 Q 900 440 1140 470" fill="none" stroke="#3ee68a" stroke-width="1" stroke-opacity="0.35"/>
-
-      <!-- secondary pins (small) -->
-      <g fill="#3ee68a" fill-opacity="0.55">
-        <circle cx="815" cy="205" r="4"/>
-        <circle cx="1010" cy="285" r="4"/>
-        <circle cx="1075" cy="430" r="4"/>
-        <circle cx="795" cy="405" r="4"/>
-        <circle cx="960" cy="465" r="4"/>
-      </g>
-
-      <!-- fade to bottom -->
-      <rect x="720" y="90" width="420" height="450" fill="url(#mapFade)"/>
-    </g>
-
-    <!-- pulse rings behind primary pin -->
-    <g transform="translate(930,300)" opacity="0.9">
-      <circle r="42" fill="none" stroke="#3ee68a" stroke-opacity="0.15" stroke-width="2"/>
-      <circle r="26" fill="none" stroke="#3ee68a" stroke-opacity="0.35" stroke-width="2"/>
-      <circle r="14" fill="#3ee68a" fill-opacity="0.15"/>
-    </g>
-
-    <!-- primary map pin -->
-    <g transform="translate(930,300)" filter="url(#pinShadow)">
-      <path d="M 0 -34 C -18 -34 -30 -22 -30 -6 C -30 12 -12 26 0 44 C 12 26 30 12 30 -6 C 30 -22 18 -34 0 -34 Z"
-            fill="#3ee68a" stroke="#0a0a0a" stroke-width="2"/>
-      <circle cx="0" cy="-6" r="8" fill="#0a0a0a"/>
-    </g>
-
-    <!-- ticker chip callout attached to pin -->
-    <g transform="translate(972,262)">
-      <rect x="0" y="0" width="128" height="34" rx="6" fill="#0a0a0a" stroke="#3ee68a" stroke-width="1"/>
-      <text x="14" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="700" fill="#3ee68a">$TICKER</text>
-      <text x="82" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" fill="#a1a1a1">+2.4%</text>
-    </g>
-  </g>
-
-  <!-- subtle bottom-right label -->
-  <g transform="translate(1120,595)" text-anchor="end">
-    <text font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" fill="#6b6b6b">v0.1.0 · alpha</text>
-  </g>
+  <text x="240" y="230" fill="#F2F4F5" font-family="Syne, Avenir Next, Segoe UI, sans-serif" font-size="92" font-weight="700" letter-spacing="-0.04em">mapvest</text>
+  <text x="240" y="300" fill="#8B939C" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="36">Point at a place. See what’s investable.</text>
+  <text x="240" y="420" fill="#3ECF8E" font-family="IBM Plex Mono, Menlo, monospace" font-size="22">MAP · CAMERA · RESEARCH · TICKERS</text>
 </svg>

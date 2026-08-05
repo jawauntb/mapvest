@@ -1,0 +1,48 @@
+/**
+ * Atlas Signal CSS variables — import from landing.
+ * Keep in sync with tokens.ts (source of truth for TS consumers).
+ */
+:root {
+  --mv-bg: #0c0e10;
+  --mv-bg-elev: #161a1f;
+  --mv-bg-sunken: #08090b;
+  --mv-fg: #f2f4f5;
+  --mv-fg-muted: #8b939c;
+  --mv-fg-dim: #5c6570;
+  --mv-accent: #3ecf8e;
+  --mv-accent-hover: #52d99c;
+  --mv-accent-muted: #1f6b4a;
+  --mv-accent-ink: #0a1f14;
+  --mv-warn: #e8a054;
+  --mv-danger: #e85d5d;
+  --mv-border: #242a32;
+  --mv-border-strong: #323a45;
+  --mv-focus: rgba(62, 207, 142, 0.45);
+  --mv-font-display: "Syne", "Avenir Next", "Segoe UI", sans-serif;
+  --mv-font-sans: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mv-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mv-radius-sm: 6px;
+  --mv-radius-md: 10px;
+  --mv-radius-lg: 16px;
+  --mv-radius-xl: 22px;
+  --mv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mv-fast: 140ms;
+  --mv-base: 220ms;
+
+  /* Back-compat aliases used by existing landing CSS */
+  --bg: var(--mv-bg);
+  --bg-elev: var(--mv-bg-elev);
+  --fg: var(--mv-fg);
+  --fg-muted: var(--mv-fg-muted);
+  --fg-dim: var(--mv-fg-dim);
+  --muted: var(--mv-fg-muted);
+  --accent: var(--mv-accent);
+  --accent-dim: var(--mv-accent-muted);
+  --border: var(--mv-border);
+  --border-strong: var(--mv-border-strong);
+  --radius: var(--mv-radius-md);
+  --radius-lg: var(--mv-radius-lg);
+  --font-sans: var(--mv-font-sans);
+  --font-mono: var(--mv-font-mono);
+  --font-display: var(--mv-font-display);
+}

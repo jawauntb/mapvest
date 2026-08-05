@@ -1,13 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Mapvest">
-  <rect width="64" height="64" rx="14" ry="14" fill="#0a0a0a"/>
-  <!-- M strokes -->
-  <path d="M 12 48 L 12 18 L 22 18 L 30 34 L 38 18 L 48 18 L 48 48"
-        fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- pin overlaying the right leg of the M -->
-  <g transform="translate(46,20)">
-    <path d="M 0 -8 C -8 -8 -13 -3 -13 4 C -13 12 -5 18 0 26 C 5 18 13 12 13 4 C 13 -3 8 -8 0 -8 Z"
-          fill="#3ee68a" stroke="#0a0a0a" stroke-width="2"/>
-    <circle cx="0" cy="4" r="4" fill="#0a0a0a"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#0C0E10"/>
+  <path d="M16 4C11.3 4 7.5 7.6 7.5 12.1c0 5.8 7 13.8 8 15a.7.7 0 0 0 1 0c1-1.2 8-9.2 8-15C24.5 7.6 20.7 4 16 4z" fill="#3ECF8E"/>
+  <circle cx="16" cy="12" r="3" fill="#0C0E10"/>
+  <path d="M6 26h2.2l2.6-4 3 2.5 4-6 2.4 2 3.8-5" stroke="#F2F4F5" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

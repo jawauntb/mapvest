@@ -1,27 +1,42 @@
-import { Redirect, Tabs } from "expo-router";
-import { ActivityIndicator, Text, View } from "react-native";
 import { useSession } from "@/auth/session";
+import { colors } from "@/theme/tokens";
+import { Tabs } from "expo-router";
+import { ActivityIndicator, Text, View } from "react-native";
 
+/**
+ * Guests can use the whole tab tree (map/camera/live/list/research) without
+ * signing in — Phase 8 Slice B. Sign-in is only required for Save/watchlist
+ * and Home → Robinhood MCP settings, each of which prompts inline.
+ */
 export default function TabsLayout() {
-  const { ready, session, isAdmin } = useSession();
+  const { ready, isAdmin } = useSession();
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}>
-        <ActivityIndicator color="#fff" />
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.bg,
+        }}
+      >
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
-  if (!session) return <Redirect href="/auth" />;
 
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: "#000" },
-        headerTintColor: "#fff",
-        tabBarStyle: { backgroundColor: "#000", borderTopColor: "#222" },
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "#666",
+        headerStyle: { backgroundColor: colors.bg },
+        headerTintColor: colors.fg,
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopColor: colors.border,
+        },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.fgDim,
         // Keep tab trees alive when switching — Camera/Live keep their last result.
         lazy: true,
         unmountOnBlur: false,

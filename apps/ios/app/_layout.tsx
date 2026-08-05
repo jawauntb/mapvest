@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { enableFreeze } from "react-native-screens";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SessionProvider } from "@/auth/session";
+import { colors } from "@/theme/tokens";
 
 enableFreeze(true);
 
@@ -53,7 +54,12 @@ export default function RootLayout() {
         >
           <SessionProvider>
             <StatusBar style="light" />
-            <Stack screenOptions={{ headerShown: false }}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.bg },
+              }}
+            >
               <Stack.Screen name="index" />
               <Stack.Screen name="auth" />
               <Stack.Screen name="(tabs)" />
@@ -62,7 +68,11 @@ export default function RootLayout() {
                 options={{
                   presentation: "modal",
                   headerShown: true,
-                  title: "Investable",
+                  title: "Mapvest",
+                  headerStyle: { backgroundColor: colors.bgElevated },
+                  headerTintColor: colors.fg,
+                  headerTitleStyle: { fontWeight: "700" },
+                  contentStyle: { backgroundColor: colors.bg },
                 }}
               />
             </Stack>

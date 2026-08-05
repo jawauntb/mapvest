@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Mapvest">
+  <rect width="64" height="64" rx="14" fill="#0C0E10"/>
+  <!-- pin -->
+  <path d="M32 10c-8.3 0-15 6.5-15 14.5 0 10.2 12.4 24.3 14.4 26.5a.9.9 0 0 0 1.2 0C34.6 48.8 47 34.7 47 24.5 47 16.5 40.3 10 32 10z" fill="#3ECF8E"/>
+  <circle cx="32" cy="24" r="5.5" fill="#0C0E10"/>
+  <!-- ascending signal -->
+  <path d="M14 50h4l5-8 6 5 8-12 5 4 8-11" stroke="#F2F4F5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

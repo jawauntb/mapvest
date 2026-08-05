@@ -10,8 +10,6 @@ export const metadata: Metadata = {
 // unchanged, but the href intentionally does NOT go to the placeholder
 // join URL — anyone who clicks lands back on the page with a #coming-soon
 // anchor instead of a broken TestFlight join screen.
-const TESTFLIGHT_HREF = '#testflight-coming-soon';
-const GITHUB_URL = 'https://github.com/jawauntb/mapvest';
 const API_BASE_URL = 'https://api-production-4b27.up.railway.app';
 const API_DOCS_URL = '/docs';
 
@@ -107,47 +105,32 @@ export default async function HomePage() {
     <>
       <section className="hero" id="testflight-coming-soon">
         <div className="container">
-          <span className="hero__eyebrow">alpha · iOS · TestFlight</span>
-          <h1 className="hero__title">
-            Point at a place.
-            <br />
-            See what’s <span className="accent">investable</span>.
+          <h1 className="hero__brand">
+            <img src="/brand/mark.svg" alt="" width={72} height={72} />
+            mapvest
           </h1>
+          <p className="hero__title">
+            Point at a place. See what’s <span className="accent">investable</span>.
+          </p>
           <p className="hero__sub">
-            Mapvest turns the real world into a portfolio surface. Storefronts,
-            shelves, and street corners become tickers, comparables, and ETF
-            exposure — with sources, right in your pocket.
+            Storefronts and shelves become tickers, comparables, and ETF exposure —
+            with sources — on map, camera, and research.
           </p>
           <div className="hero__ctas">
-            <a
-              className="btn btn--primary btn--disabled"
-              href={TESTFLIGHT_HREF}
-              aria-disabled="true"
-              role="link"
-            >
-              Join TestFlight (coming soon)
+            <a className="btn btn--primary" href="/app">
+              Open app
             </a>
-            <span className="cta-with-badge">
-              <a className="btn btn--ghost" href={API_DOCS_URL}>
-                Try the API
-              </a>
-              <span
-                className={`status-badge status-badge--${apiState}`}
-                aria-label={apiBadgeLabel}
-                title={`Last checked ${status.checkedAt}`}
-              >
-                <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
-                {apiBadgeLabel}
-              </span>
+            <a className="btn btn--ghost" href={API_DOCS_URL}>
+              Docs
+            </a>
+            <span
+              className={`status-badge status-badge--${apiState}`}
+              aria-label={apiBadgeLabel}
+              title={`Last checked ${status.checkedAt}`}
+            >
+              <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
+              {apiBadgeLabel}
             </span>
-            <a
-              className="btn btn--ghost"
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              View on GitHub
-            </a>
           </div>
         </div>
       </section>

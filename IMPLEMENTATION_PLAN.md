@@ -126,6 +126,16 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ---
 
+## Phase 8.5 — Atlas Signal design system
+
+- [x] Morphospace of 4 directions; ship **Atlas Signal** (Maps + RH green + Chat clarity + X density)
+- [x] `packages/design` tokens + CSS vars; iOS `src/theme/tokens.ts`
+- [x] Logo mark / wordmark / favicon / apple-touch / OG / app icon
+- [x] Landing fonts: Syne (display) + IBM Plex Sans/Mono; brand-first hero
+- [x] iOS chrome colors + splash/icon
+
+---
+
 ## Phase 8 — Performance, continuity, freemium, billing
 
 Ship as small slices; each slice merges to `main` and redeploys Railway (API + landing). iOS picks up via Expo reload / next EAS build.
@@ -159,18 +169,18 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 
 ### Slice C — Anonymous 50-generation meter
 
-- [ ] `X-Device-Id` (UUID in SecureStore / localStorage) on billable calls
-- [ ] Postgres `usage_events` + `GET /v1/entitlements`
-- [ ] Gate identify / agent/chat / memo at 50 for anon + unpaid users
+- [x] `X-Device-Id` (UUID in SecureStore / localStorage) on billable calls
+- [x] Postgres `usage_events` + `GET /v1/entitlements`
+- [x] Gate identify / agent/chat / memo at 50 for anon + unpaid users
 - [ ] Clients show remaining count + soft paywall CTA
 
 **Acceptance**: 51st identify without login returns `402`/`403` with `{ code: "quota_exceeded" }`.
 
 ### Slice D — Entitlements (jawaun + admin free)
 
-- [ ] User columns / table: `plan` = `free_forever | free_trial | subscribed | none`, `free_forever_reason`
-- [ ] Auto-set free_forever when email matches `jawaun`
-- [ ] Admin POST `/v1/admin/users/:id/entitlement` `{ freeForever: boolean }`
+- [x] User columns / table: `plan` = `free_forever | free_trial | subscribed | none`, `free_forever_reason`
+- [x] Auto-set free_forever when email matches `jawaun`
+- [x] Admin POST `/v1/admin/users/:id/entitlement` `{ freeForever: boolean }`
 - [ ] Admin UI to toggle free
 
 **Acceptance**: `jawaun@…` never hits quota; admin can free another email.
