@@ -61,8 +61,15 @@ nearby.get("/", async (c) => {
       user_id: user?.id,
     });
 
+    // v0.1: allow MOCK_PLACES even in production if MOCK_PLACES_ALLOW_PROD=1
+    // — this is how the deployed demo keeps working before GOOGLE_MAPS_API_KEY
+    // is provisioned. Never enabled implicitly; the flag has to be set on the
+    // service explicitly.
     const mockPath = process.env.MOCK_PLACES;
-    const useMock = mockPath && process.env.NODE_ENV !== "production";
+    const useMock =
+      mockPath &&
+      (process.env.NODE_ENV !== "production" ||
+        process.env.MOCK_PLACES_ALLOW_PROD === "1");
 
     let data: PlacesPayload;
     const started = performance.now();
