@@ -1,5 +1,5 @@
 /**
- * Postgres persistence for users + Robinhood MCP credentials.
+ * Postgres persistence: users, Robinhood MCP, nearby geo tiles, brand→ticker.
  * When POSTGRES_URL is unset (local tests), callers fall back to in-memory.
  */
 import { SQL } from "bun";
@@ -21,7 +21,7 @@ export async function initDb(): Promise<void> {
   initPromise = (async () => {
     const url = postgresUrl();
     if (!url) {
-      console.log("[db] POSTGRES_URL unset — using in-memory auth/settings store");
+      console.log("[db] POSTGRES_URL unset — using in-memory stores");
       return;
     }
     sql = new SQL(url);
@@ -42,7 +42,31 @@ export async function initDb(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL
       )
     `;
-    console.log("[db] postgres ready (users + user_robinhood_mcp)");
+    await sql`
+      CREATE TABLE IF NOT EXISTS nearby_cache (
+        cache_key TEXT PRIMARY KEY,
+        geohash TEXT NOT NULL,
+        lat_center DOUBLE PRECISION NOT NULL,
+        lng_center DOUBLE PRECISION NOT NULL,
+        radius_m INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS nearby_cache_expires_idx ON nearby_cache (expires_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS nearby_cache_geohash_idx ON nearby_cache (geohash)`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS brand_ticker_cache (
+        brand_key TEXT PRIMARY KEY,
+        payload JSONB NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS brand_ticker_cache_expires_idx ON brand_ticker_cache (expires_at)`;
+    console.log("[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache)");
   })();
   return initPromise;
 }

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -16,16 +17,36 @@ import { useSession } from "@/auth/session";
 import { sectorColor } from "@/util/sectors";
 
 const FRAME_INTERVAL_MS = 1400;
+const LIVE_CACHE_KEY = ["tab-state", "live"] as const;
+
+type LiveCache = {
+  latest: IdentifyResponse | null;
+  err: string | null;
+  frames: number;
+  savedNote: string | null;
+};
 
 /** Live scan stops when you leave the tab or hit Stop — camera does not run forever. */
 export default function LiveScanScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const [perm, requestPerm] = useCameraPermissions();
+  const cached = qc.getQueryData<LiveCache>(LIVE_CACHE_KEY);
   const [running, setRunning] = useState(false);
-  const [latest, setLatest] = useState<IdentifyResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [frames, setFrames] = useState(0);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [latest, setLatest] = useState<IdentifyResponse | null>(cached?.latest ?? null);
+  const [err, setErr] = useState<string | null>(cached?.err ?? null);
+  const [frames, setFrames] = useState(cached?.frames ?? 0);
+  const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+
+  function persistLive(next: Partial<LiveCache>) {
+    const prev = qc.getQueryData<LiveCache>(LIVE_CACHE_KEY) ?? {
+      latest: null,
+      err: null,
+      frames: 0,
+      savedNote: null,
+    };
+    qc.setQueryData<LiveCache>(LIVE_CACHE_KEY, { ...prev, ...next });
+  }
   const cameraRef = useRef<CameraView | null>(null);
   const inFlight = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -82,13 +103,18 @@ export default function LiveScanScreen() {
         skipProcessing: true,
       });
       if (!photo?.uri) return;
-      setFrames((n) => n + 1);
+      setFrames((n) => {
+        const next = n + 1;
+        persistLive({ frames: next });
+        return next;
+      });
       const resp = await identifyPhoto(
         { imageUri: photo.uri, location: locationRef.current },
         { token: session?.token },
       );
       setLatest(resp);
       setErr(null);
+      persistLive({ latest: resp, err: null });
       // Auto-pause after a high-confidence public hit so user can Save / open.
       const hit = resp.investables[0];
       if (
@@ -99,7 +125,9 @@ export default function LiveScanScreen() {
         setRunning(false);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(msg);
+      persistLive({ err: msg });
     } finally {
       inFlight.current = false;
     }

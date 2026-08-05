@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
@@ -18,19 +19,42 @@ import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { sectorColor } from "@/util/sectors";
 
+type CameraCache = {
+  frozenUri: string | null;
+  result: IdentifyResponse | null;
+  err: string | null;
+  queuedNote: string | null;
+  savedNote: string | null;
+};
+
+const CAMERA_CACHE_KEY = ["tab-state", "camera"] as const;
+
 /** Capture freezes the frame with the ticker — camera does not stay live. */
 export default function CameraScreen() {
   const [perm, requestPerm] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
   const { online, pending } = useNetworkSync({ token: session?.token });
+  const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
-  const [frozenUri, setFrozenUri] = useState<string | null>(null);
-  const [result, setResult] = useState<IdentifyResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [queuedNote, setQueuedNote] = useState<string | null>(null);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [frozenUri, setFrozenUri] = useState<string | null>(cached?.frozenUri ?? null);
+  const [result, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
+  const [err, setErr] = useState<string | null>(cached?.err ?? null);
+  const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
+  const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+
+  function persistCamera(next: Partial<CameraCache>) {
+    const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
+      frozenUri: null,
+      result: null,
+      err: null,
+      queuedNote: null,
+      savedNote: null,
+    };
+    qc.setQueryData<CameraCache>(CAMERA_CACHE_KEY, { ...prev, ...next });
+  }
 
   if (!perm) {
     return (
@@ -78,11 +102,14 @@ export default function CameraScreen() {
       if (!photo?.uri) throw new Error("No photo captured.");
       // Freeze immediately so the camera does not stay live.
       setFrozenUri(photo.uri);
+      persistCamera({ frozenUri: photo.uri, result: null, err: null, queuedNote: null });
       const location = await currentLocation();
 
       if (!online) {
         await enqueuePhoto({ imageUri: photo.uri, location });
-        setQueuedNote("Offline — queued. Will upload when back online.");
+        const note = "Offline — queued. Will upload when back online.";
+        setQueuedNote(note);
+        persistCamera({ queuedNote: note });
         return;
       }
 
@@ -92,13 +119,18 @@ export default function CameraScreen() {
           { token: session?.token },
         );
         setResult(resp);
+        persistCamera({ result: resp, err: null });
       } catch (e) {
         await enqueuePhoto({ imageUri: photo.uri, location });
+        const msg = e instanceof Error ? e.message : String(e);
         setQueuedNote("Upload failed — queued for retry.");
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(msg);
+        persistCamera({ queuedNote: "Upload failed — queued for retry.", err: msg });
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(msg);
+      persistCamera({ err: msg });
     } finally {
       setBusy(false);
     }
@@ -110,6 +142,13 @@ export default function CameraScreen() {
     setErr(null);
     setQueuedNote(null);
     setSavedNote(null);
+    persistCamera({
+      frozenUri: null,
+      result: null,
+      err: null,
+      queuedNote: null,
+      savedNote: null,
+    });
   }
 
   const top = result?.investables[0];

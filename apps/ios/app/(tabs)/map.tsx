@@ -1,10 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
-import { fetchNearby } from "@/api/client";
+import { fetchChart, fetchNearby } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 const FALLBACK_REGION: Region = {
@@ -16,12 +16,15 @@ const FALLBACK_REGION: Region = {
 
 export default function MapScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
-  const [region, setRegion] = useState<Region>(FALLBACK_REGION);
+  const cachedRegion = qc.getQueryData<Region>(["tab-state", "map-region"]);
+  const [region, setRegion] = useState<Region>(cachedRegion ?? FALLBACK_REGION);
   const [permErr, setPermErr] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      if (cachedRegion) return; // keep continuity; don't jump map on every visit
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setPermErr("Location permission denied. Showing San Francisco.");
@@ -30,14 +33,16 @@ export default function MapScreen() {
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setRegion({
+      const next = {
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
         latitudeDelta: 0.02,
         longitudeDelta: 0.02,
-      });
+      };
+      setRegion(next);
+      qc.setQueryData(["tab-state", "map-region"], next);
     })();
-  }, []);
+  }, [cachedRegion, qc]);
 
   const nearbyQuery = useQuery({
     queryKey: ["nearby", region.latitude.toFixed(3), region.longitude.toFixed(3)],
@@ -46,10 +51,25 @@ export default function MapScreen() {
         { lat: region.latitude, lng: region.longitude, radius: 1500, limit: 50 },
         { token: session?.token },
       ),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
   });
 
   const items = useMemo(() => nearbyQuery.data?.items ?? [], [nearbyQuery.data]);
+
+  // Warm auction charts for top public tickers so detail opens faster.
+  useEffect(() => {
+    const tickers = items
+      .map((i) => i.investable?.brand.ticker?.symbol)
+      .filter((t): t is string => !!t)
+      .slice(0, 4);
+    for (const t of tickers) {
+      void qc.prefetchQuery({
+        queryKey: ["chart", t, "auction", "1mo"],
+        queryFn: () => fetchChart("auction", t, "1mo", { token: session?.token }),
+        staleTime: 10 * 60_000,
+      });
+    }
+  }, [items, qc, session?.token]);
 
   function openItem(item: NearbyItem) {
     const ticker = item.investable?.brand.ticker?.symbol;
@@ -65,7 +85,10 @@ export default function MapScreen() {
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         region={region}
-        onRegionChangeComplete={setRegion}
+        onRegionChangeComplete={(r) => {
+          setRegion(r);
+          qc.setQueryData(["tab-state", "map-region"], r);
+        }}
         showsUserLocation
         showsMyLocationButton
       >

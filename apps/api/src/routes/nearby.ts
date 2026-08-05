@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import type { NearbyResponse } from "@mapvest/core";
 import { resolveTicker } from "@mapvest/finance";
+import { readBrandTickerCache, writeBrandTickerCache } from "../lib/brand-ticker-cache.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { readNearbyPlacesCache, writeNearbyPlacesCache } from "../lib/nearby-cache.js";
 
 /** Google Nearby allows one `type` per request — race these consumer/brand types. */
 const GOOGLE_PLACE_TYPES = [
@@ -421,62 +423,92 @@ nearby.get("/", async (c) => {
 
     let data: PlacesPayload;
     const started = performance.now();
+    let placesSource = "unknown";
+
     if (useMock) {
       try {
         data = await loadMockPlaces(mockPath as string);
+        placesSource = "mock";
         span.setAttribute("places_source", "mock");
       } catch (err) {
         return c.json({ error: `MOCK_PLACES load failed: ${(err as Error).message}` }, 500);
       }
     } else {
-      // Cascade: Google Places (multi-type) → Overpass → Photon.
-      const key = process.env.GOOGLE_MAPS_API_KEY;
-      let googleOk = false;
-      if (key) {
-        try {
-          data = await queryGooglePlacesMulti(key, lat, lng, radius);
-          googleOk = true;
-          span.setAttribute("places_source", "google");
-          span.setAttribute("places_google_count", data.results.length);
-        } catch (err) {
-          span.setAttributes({
-            places_source: "google_failed",
-            places_google_error: (err as Error).message,
-          });
-        }
-      }
-      if (!googleOk) {
-        try {
-          data = await queryOverpass(lat, lng, radius);
-          span.setAttribute("places_source", "overpass");
-        } catch (overpassErr) {
-          span.setAttributes({
-            places_source: "overpass_failed",
-            places_overpass_error: (overpassErr as Error).message,
-          });
+      const cached = await readNearbyPlacesCache(lat, lng, radius);
+      if (cached) {
+        data = cached.payload as PlacesPayload;
+        placesSource = `cache:${cached.source}`;
+        span.setAttributes({
+          places_source: placesSource,
+          places_cache_hit: true,
+          places_cache_key: cached.cacheKey,
+        });
+      } else {
+        // Cascade: Google Places (multi-type) → Overpass → Photon.
+        const key = process.env.GOOGLE_MAPS_API_KEY;
+        let googleOk = false;
+        if (key) {
           try {
-            data = await queryPhoton(lat, lng, radius);
-            span.setAttribute("places_source", "photon");
-          } catch (photonErr) {
-            span.setAttribute("places_photon_error", (photonErr as Error).message);
-            return c.json(
-              {
-                error: `places lookup failed: ${(overpassErr as Error).message}; photon: ${(photonErr as Error).message}`,
-              },
-              502,
-            );
+            data = await queryGooglePlacesMulti(key, lat, lng, radius);
+            googleOk = true;
+            placesSource = "google";
+            span.setAttribute("places_source", "google");
+            span.setAttribute("places_google_count", data.results.length);
+          } catch (err) {
+            span.setAttributes({
+              places_source: "google_failed",
+              places_google_error: (err as Error).message,
+            });
           }
+        }
+        if (!googleOk) {
+          try {
+            data = await queryOverpass(lat, lng, radius);
+            placesSource = "overpass";
+            span.setAttribute("places_source", "overpass");
+          } catch (overpassErr) {
+            span.setAttributes({
+              places_source: "overpass_failed",
+              places_overpass_error: (overpassErr as Error).message,
+            });
+            try {
+              data = await queryPhoton(lat, lng, radius);
+              placesSource = "photon";
+              span.setAttribute("places_source", "photon");
+            } catch (photonErr) {
+              span.setAttribute("places_photon_error", (photonErr as Error).message);
+              return c.json(
+                {
+                  error: `places lookup failed: ${(overpassErr as Error).message}; photon: ${(photonErr as Error).message}`,
+                },
+                502,
+              );
+            }
+          }
+        }
+        // Persist places tile (not ticker join) for this geohash+radius.
+        if (placesSource !== "unknown" && data!.results?.length) {
+          void writeNearbyPlacesCache({
+            lat,
+            lng,
+            radius,
+            source: placesSource,
+            payload: data!,
+          }).catch((err) => console.warn("[nearby-cache] write failed", err));
         }
       }
     }
 
-    const filtered = data.results.filter((p) => !isDroppedPlace(p));
+    const filtered = data!.results.filter((p) => !isDroppedPlace(p));
     const trimmed = prioritizeBrandish(filtered).slice(0, limit);
     const items: NearbyResponse["items"] = [];
     for (const p of trimmed) {
-      // Seed / substring resolve only on the list path — Exa comparables run
-      // on the detail sheet so /nearby stays fast and never invents tickers.
-      const { brand, sources } = await resolveTicker(p.name);
+      // Seed / substring / Exa resolve — brand→ticker cached in Postgres 7d.
+      const cachedBrand = await readBrandTickerCache(p.name);
+      const { brand, sources } = cachedBrand ?? (await resolveTicker(p.name));
+      if (!cachedBrand) {
+        void writeBrandTickerCache(p.name, brand, sources).catch(() => {});
+      }
       items.push({
         place: placeFromResult(p),
         investable: brand.isPublic

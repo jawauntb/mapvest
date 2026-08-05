@@ -20,7 +20,10 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |
-| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | `apps/api` users + encrypted Robinhood MCP tokens |
+| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, nearby_cache, brand_ticker_cache, usage/entitlements |
+| `STRIPE_SECRET_KEY` | Stripe | Checkout + portal (Phase 8 Slice E) |
+| `STRIPE_WEBHOOK_SECRET` | Stripe | Subscription webhooks |
+| `STRIPE_PRICE_ID_MONTHLY` | Stripe Price ($20/mo) | Checkout line item |
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
 | `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |

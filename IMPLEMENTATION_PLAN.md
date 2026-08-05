@@ -123,3 +123,71 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - Underlying-Analyzer integration (private-firm sector proxies)
 - Watchlist sync (per-user portfolios)
 - Push notifications when a nearby brand hits an earnings window
+
+---
+
+## Phase 8 — Performance, continuity, freemium, billing
+
+Ship as small slices; each slice merges to `main` and redeploys Railway (API + landing). iOS picks up via Expo reload / next EAS build.
+
+### Product rules (source of truth)
+
+1. **Browse free without account** — open app/web, use map/list/nearby/identify/research up to **50 generations** (billable: identify, agent chat, memo).
+2. **Signup required to persist** — Save/watchlist, Robinhood MCP, memos-on-watchlist need a session.
+3. **After 50 gens** — must subscribe **$20/month** (Stripe) unless entitled free.
+4. **Forever-free entitlements**
+   - Auto: email contains `jawaun` (case-insensitive) → free forever.
+   - Admin: grant/revoke free on `/v1/admin/users` (and Admin UI).
+5. **Login sticks** until explicit logout (web localStorage + iOS SecureStore; users in Postgres; session JWT long-lived / refreshable).
+6. **Home/settings** — login, logout, account, plan status, Robinhood MCP, manage subscription.
+
+### Slice A — Geo cache + tab continuity *(ship first)*
+
+- [ ] Postgres `nearby_cache` (geohash6 + radius, 12h TTL) + `brand_ticker_cache` (7d)
+- [ ] iOS: `freezeOnBlur` / `unmountOnBlur: false`, PersistQueryClient → AsyncStorage
+- [ ] Camera/Live last result in React Query cache; map nearby longer staleTime + chart prefetch for top tickers
+
+**Acceptance**: Second `/v1/nearby` same tile is cache hit; switch Camera→Home→Camera keeps frozen result.
+
+### Slice B — Durable session + settings auth UX
+
+- [ ] Session refresh on `/v1/auth/me` (extend expiry); 90d TTL
+- [ ] Guest mode: tabs usable without Redirect-to-auth; auth only for save/settings actions
+- [ ] Home shows plan + Sign in / Sign out; web Home same
+
+**Acceptance**: Kill app / refresh web → still signed in; Sign out clears both surfaces’ tokens.
+
+### Slice C — Anonymous 50-generation meter
+
+- [ ] `X-Device-Id` (UUID in SecureStore / localStorage) on billable calls
+- [ ] Postgres `usage_events` + `GET /v1/entitlements`
+- [ ] Gate identify / agent/chat / memo at 50 for anon + unpaid users
+- [ ] Clients show remaining count + soft paywall CTA
+
+**Acceptance**: 51st identify without login returns `402`/`403` with `{ code: "quota_exceeded" }`.
+
+### Slice D — Entitlements (jawaun + admin free)
+
+- [ ] User columns / table: `plan` = `free_forever | free_trial | subscribed | none`, `free_forever_reason`
+- [ ] Auto-set free_forever when email matches `jawaun`
+- [ ] Admin POST `/v1/admin/users/:id/entitlement` `{ freeForever: boolean }`
+- [ ] Admin UI to toggle free
+
+**Acceptance**: `jawaun@…` never hits quota; admin can free another email.
+
+### Slice E — Stripe $20/mo
+
+- [ ] Doppler/Railway: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_MONTHLY`
+- [ ] `POST /v1/billing/checkout` → Stripe Checkout Session
+- [ ] `POST /v1/billing/portal` → customer portal
+- [ ] Webhook `customer.subscription.*` → set `subscribed`
+- [ ] Web + iOS “Subscribe $20/mo” (iOS may open Stripe Checkout in browser for v1; App Store IAP later)
+
+**Acceptance**: Test-mode checkout flips user to subscribed; quota lifts.
+
+### Slice F — Docs + OpenAPI regen
+
+- [ ] `docs/SECRETS.md`, `DATA_SOURCES.md`, OpenAPI/Postman for entitlements/billing
+- [ ] Tick this phase’s checkboxes as each slice lands
+
+**Acceptance**: Docs match live env vars; `bun run openapi && bun run postman` clean.

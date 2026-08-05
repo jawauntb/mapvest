@@ -22,6 +22,10 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: "#000", borderTopColor: "#222" },
         tabBarActiveTintColor: "#fff",
         tabBarInactiveTintColor: "#666",
+        // Keep tab trees alive when switching — Camera/Live keep their last result.
+        lazy: true,
+        unmountOnBlur: false,
+        freezeOnBlur: true,
       }}
     >
       <Tabs.Screen
