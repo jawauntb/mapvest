@@ -96,6 +96,15 @@ nearby.get("/", async (c) => {
       });
       if (!res.ok) return c.json({ error: `places ${res.status}` }, 502);
       data = (await res.json()) as PlacesPayload;
+      // Places returns 200 even when the request was rejected (billing off,
+      // key restrictions mismatched, quota, etc). Surface those instead of
+      // silently returning empty items.
+      const status = (data as unknown as { status?: string }).status;
+      const errMsg = (data as unknown as { error_message?: string }).error_message;
+      if (status && status !== "OK" && status !== "ZERO_RESULTS") {
+        span.setAttributes({ places_google_status: status });
+        return c.json({ error: `places ${status}: ${errMsg ?? ""}` }, 502);
+      }
     }
 
     const trimmed = data.results.slice(0, limit);
