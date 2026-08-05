@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+// v0.1.1: use RN Linking (built-in) instead of expo-web-browser (native module,
+// needs pod install + rebuild). Same UX: taps open the URL in Safari.
+const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
 import {
   ActivityIndicator,
   Linking,
