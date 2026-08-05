@@ -674,53 +674,92 @@ function WatchlistActions({
   token?: string;
 }) {
   const qc = useQueryClient();
+  const sym = ticker.trim().toUpperCase();
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
   const [memoSaved, setMemoSaved] = useState(false);
+  /** Optimistic override so ★ fills immediately on tap. */
+  const [optimisticSaved, setOptimisticSaved] = useState<boolean | null>(null);
+  const [statusLine, setStatusLine] = useState<string | null>(null);
 
-  // Poll the watchlist to know if this ticker is already saved.
   const wl = useQuery({
     queryKey: ["watchlist", token],
     queryFn: () => (token ? listWatchlist({ token }) : Promise.resolve({ items: [] })),
     enabled: !!token,
     staleTime: 30_000,
   });
-  const isSaved = wl.data?.items.some((e) => e.ticker === ticker) ?? false;
+  const serverSaved =
+    wl.data?.items.some((e) => e.ticker.toUpperCase() === sym) ?? false;
+  const isSaved = optimisticSaved ?? serverSaved;
 
   const saveM = useMutation({
     mutationFn: () =>
       addToWatchlist(
-        { ticker, name, sector, source: "detail" },
+        { ticker: sym, name, sector, source: "detail" },
         { token: token! },
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", token] }),
+    onMutate: () => {
+      setOptimisticSaved(true);
+      setStatusLine("Saving…");
+    },
+    onSuccess: () => {
+      setStatusLine("★ Saved to watchlist");
+      void qc.invalidateQueries({ queryKey: ["watchlist", token] });
+    },
+    onError: (e) => {
+      setOptimisticSaved(false);
+      setStatusLine((e as Error).message || "Save failed");
+    },
   });
 
   const removeM = useMutation({
-    mutationFn: () => removeFromWatchlist(ticker, { token: token! }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", token] }),
+    mutationFn: () => removeFromWatchlist(sym, { token: token! }),
+    onMutate: () => {
+      setOptimisticSaved(false);
+      setStatusLine("Removing…");
+    },
+    onSuccess: () => {
+      setStatusLine("Removed from watchlist");
+      void qc.invalidateQueries({ queryKey: ["watchlist", token] });
+    },
+    onError: (e) => {
+      setOptimisticSaved(true);
+      setStatusLine((e as Error).message || "Remove failed");
+    },
   });
 
   const memoM = useMutation({
-    mutationFn: () => generateMemo(ticker, { token }),
-    onSuccess: (r) => setMemo({ provider: r.provider, text: r.memo }),
+    mutationFn: () => generateMemo(sym, { token }),
+    onMutate: () => setStatusLine("Generating memo…"),
+    onSuccess: (r) => {
+      setMemo({ provider: r.provider, text: r.memo });
+      setStatusLine("Memo ready");
+    },
+    onError: (e) => setStatusLine((e as Error).message || "Memo failed"),
   });
 
   const saveMemoM = useMutation({
     mutationFn: () => {
       if (!memo || !token) throw new Error("no memo / not signed in");
-      // Ensure the ticker is in the list first (add is idempotent server-side).
       return addToWatchlist(
-        { ticker, name, sector, source: "detail" },
+        { ticker: sym, name, sector, source: "detail" },
         { token },
       ).then(() =>
-        saveMemoToWatchlist(ticker, memo.text, memo.provider, { token }),
+        saveMemoToWatchlist(sym, memo.text, memo.provider, { token }),
       );
+    },
+    onMutate: () => {
+      setOptimisticSaved(true);
+      setStatusLine("Saving memo…");
     },
     onSuccess: () => {
       setMemoSaved(true);
-      qc.invalidateQueries({ queryKey: ["watchlist", token] });
+      setStatusLine("✓ Memo saved");
+      void qc.invalidateQueries({ queryKey: ["watchlist", token] });
     },
+    onError: (e) => setStatusLine((e as Error).message || "Memo save failed"),
   });
+
+  const saving = saveM.isPending || removeM.isPending;
 
   if (!token) {
     return (
@@ -737,6 +776,7 @@ function WatchlistActions({
             {memoM.isPending ? "Generating…" : "📝 Generate memo"}
           </Text>
         </Pressable>
+        {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
         {memo ? (
           <View style={styles.memoCard}>
             <Text style={styles.memoProvider}>{memo.provider}</Text>
@@ -752,34 +792,52 @@ function WatchlistActions({
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Pressable
           onPress={() => (isSaved ? removeM.mutate() : saveM.mutate())}
-          disabled={saveM.isPending || removeM.isPending}
+          disabled={saving}
+          accessibilityState={{ selected: isSaved, busy: saving }}
           style={({ pressed }) => [
             styles.actionBtn,
             isSaved ? styles.actionBtnActive : null,
+            saving && { opacity: 0.7 },
             pressed && { opacity: 0.7 },
           ]}
         >
-          <Text style={[styles.actionBtnText, isSaved && { color: "#000" }]}>
-            {saveM.isPending || removeM.isPending
-              ? "…"
-              : isSaved
-                ? "★ Saved"
-                : "☆ Save"}
-          </Text>
+          {saving ? (
+            <ActivityIndicator color={isSaved ? "#000" : "#fff"} />
+          ) : (
+            <Text style={[styles.actionBtnText, isSaved && { color: "#000" }]}>
+              {isSaved ? "★ Saved" : "☆ Save"}
+            </Text>
+          )}
         </Pressable>
         <Pressable
           onPress={() => memoM.mutate()}
           disabled={memoM.isPending}
           style={({ pressed }) => [
             styles.actionBtn,
+            memoM.isPending && { opacity: 0.7 },
             pressed && { opacity: 0.7 },
           ]}
         >
-          <Text style={styles.actionBtnText}>
-            {memoM.isPending ? "Generating…" : memo ? "↻ Regenerate memo" : "📝 Generate memo"}
-          </Text>
+          {memoM.isPending ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.actionBtnText}>
+              {memo ? "↻ Regenerate memo" : "📝 Memo"}
+            </Text>
+          )}
         </Pressable>
       </View>
+
+      {statusLine ? (
+        <Text
+          style={[
+            styles.statusLine,
+            (saveM.isError || removeM.isError || memoM.isError) && styles.err,
+          ]}
+        >
+          {statusLine}
+        </Text>
+      ) : null}
 
       {memoM.isError ? (
         <Text style={styles.err}>{(memoM.error as Error).message}</Text>
@@ -891,6 +949,7 @@ const styles = StyleSheet.create({
     borderColor: "#3ee68a",
   },
   actionBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  statusLine: { color: "#3ee68a", fontSize: 13, fontWeight: "600" },
   memoCard: {
     backgroundColor: "#0e0e0e",
     borderColor: "#222",

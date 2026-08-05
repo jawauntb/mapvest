@@ -68,6 +68,7 @@ export default function TickerDetail() {
   const chartReqRef = useRef(0);
   const [analysis, setAnalysis] = useState<AnalysisSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
   const [memoSaved, setMemoSaved] = useState(false);
@@ -196,19 +197,27 @@ export default function TickerDetail() {
   async function onSave() {
     if (!ticker) return;
     setBusy("save");
+    setErr(null);
+    setStatus(saved ? "Removing…" : "Saving…");
+    const prev = saved;
+    setSaved(!saved); // optimistic
     try {
-      if (saved) {
+      if (prev) {
         await removeFromWatchlist(ticker);
-        setSaved(false);
+        setStatus("Removed from watchlist");
       } else {
         await addToWatchlist({
           ticker,
           name: brand.name,
           sector: brand.sector,
-          source: "web",
+          source: "detail",
         });
-        setSaved(true);
+        setStatus("★ Saved to watchlist");
       }
+    } catch (e) {
+      setSaved(prev);
+      setErr(e instanceof Error ? e.message : "save failed");
+      setStatus(null);
     } finally {
       setBusy("");
     }
@@ -217,11 +226,15 @@ export default function TickerDetail() {
   async function onGenerateMemo() {
     if (!ticker) return;
     setBusy("memo");
+    setErr(null);
+    setStatus("Generating memo…");
     try {
       const r = await generateMemo(ticker);
       setMemo({ provider: r.provider, text: r.memo });
+      setStatus("Memo ready");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "memo failed");
+      setStatus(null);
     } finally {
       setBusy("");
     }
@@ -230,16 +243,21 @@ export default function TickerDetail() {
   async function onSaveMemo() {
     if (!ticker || !memo) return;
     setBusy("memoSave");
+    setStatus("Saving memo…");
     try {
       await addToWatchlist({
         ticker,
         name: brand.name,
         sector: brand.sector,
-        source: "web",
+        source: "detail",
       });
       await saveMemoToWatchlist(ticker, memo.text, memo.provider);
       setSaved(true);
       setMemoSaved(true);
+      setStatus("✓ Memo saved");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "memo save failed");
+      setStatus(null);
     } finally {
       setBusy("");
     }
@@ -389,8 +407,10 @@ export default function TickerDetail() {
                   className={`app-btn ${saved ? "app-btn-active" : ""}`}
                   onClick={onSave}
                   disabled={busy === "save"}
+                  aria-busy={busy === "save"}
+                  aria-pressed={saved}
                 >
-                  {busy === "save" ? "…" : saved ? "★ Saved" : "☆ Save"}
+                  {busy === "save" ? "Saving…" : saved ? "★ Saved" : "☆ Save"}
                 </button>
               ) : null}
               {authed ? (
@@ -404,6 +424,13 @@ export default function TickerDetail() {
               ) : null}
             </div>
           ) : null}
+
+          {status ? (
+            <p className="app-status" role="status" aria-live="polite">
+              {status}
+            </p>
+          ) : null}
+          {err ? <p className="app-err">{err}</p> : null}
 
           {!authed ? (
             <p className="app-muted">

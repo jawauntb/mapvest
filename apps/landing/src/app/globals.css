@@ -1375,6 +1375,17 @@ blockquote {
   padding: 0.6rem 0.9rem;
   font-size: 0.9rem;
 }
+.app-status {
+  color: var(--accent, #3ee68a);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.35rem 0 0;
+}
+.app-btn-active {
+  background: #fff !important;
+  color: #000 !important;
+  border-color: #fff !important;
+}
 /* ---- Research chat tab (web) ---- */
 .app-chat {
   display: flex;
