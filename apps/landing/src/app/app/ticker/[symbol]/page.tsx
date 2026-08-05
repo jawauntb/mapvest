@@ -38,6 +38,20 @@ function cacheKey(type: string, ticker: string, period: string) {
   return `${ticker}|${type}|${period}`;
 }
 
+function looksLikeTicker(s: string): string | null {
+  const u = s.trim().toUpperCase();
+  return /^[A-Z][A-Z0-9.]{0,5}$/.test(u) ? u : null;
+}
+
+function hostLabel(url?: string): string {
+  if (!url) return "source";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "source";
+  }
+}
+
 export default function TickerDetail() {
   const params = useParams<{ symbol: string }>();
   const symbolOrBrand = decodeURIComponent(params.symbol ?? "");
@@ -50,54 +64,73 @@ export default function TickerDetail() {
   const [chartErr, setChartErr] = useState<string | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const cacheRef = useRef<ChartCache>({});
+  const chartReqRef = useRef(0);
   const [analysis, setAnalysis] = useState<AnalysisSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
   const [memoSaved, setMemoSaved] = useState(false);
   const [busy, setBusy] = useState<"" | "memo" | "save" | "memoSave">("");
+  const [tab, setTab] = useState<"overview" | "advanced">("overview");
 
   const authed = !!getToken();
 
   const loadChart = useCallback(async (ticker: string, type: string, per: string) => {
     const key = cacheKey(type, ticker, per);
     const hit = cacheRef.current[key];
-    if (hit) {
+    if (hit && hit.ticker === ticker) {
       setChart(hit);
       setChartErr(null);
+      setChartLoading(false);
       return;
     }
+    const reqId = ++chartReqRef.current;
     setChartLoading(true);
     setChartErr(null);
     try {
       const r = await getChart(type, ticker, { period: per });
+      if (reqId !== chartReqRef.current) return;
+      if (r.ticker && r.ticker !== ticker) {
+        setChart(null);
+        setChartErr(`Chart returned ${r.ticker}, expected ${ticker}`);
+        return;
+      }
       cacheRef.current[key] = r;
       setChart(r);
     } catch (e) {
+      if (reqId !== chartReqRef.current) return;
       setChart(null);
       setChartErr(e instanceof Error ? e.message : "chart failed");
     } finally {
-      setChartLoading(false);
+      if (reqId === chartReqRef.current) setChartLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (!symbolOrBrand) return;
     cacheRef.current = {};
+    chartReqRef.current += 1;
     setChart(null);
     setChartErr(null);
     setChartType("auction");
     setPeriod("1mo");
     setAnalysis(null);
+    setMemo(null);
+    setMemoSaved(false);
+    setTab("overview");
+    setData(null);
+    setErr(null);
+    setQuote(null);
+
+    const urlTicker = looksLikeTicker(symbolOrBrand);
+
     resolveComparable(symbolOrBrand)
       .then((r) => {
         setData(r);
+        // Prefer listed brand ticker, then URL symbol, then top comparable.
+        // Never let a comparable steal charts for a typed ticker like MCD.
         const t =
-          r.brand.ticker?.symbol ??
-          r.comparables[0]?.ticker ??
-          (/^[A-Z][A-Z0-9.]{0,5}$/.test(symbolOrBrand.toUpperCase())
-            ? symbolOrBrand.toUpperCase()
-            : null);
+          r.brand.ticker?.symbol ?? urlTicker ?? r.comparables[0]?.ticker ?? null;
         setChartTicker(t);
         if (t) {
           void loadChart(t, "auction", "1mo");
@@ -107,16 +140,17 @@ export default function TickerDetail() {
         }
       })
       .catch((e) => setErr(e.message));
+
     getQuote(symbolOrBrand)
       .then((r) => r.quote && setQuote(r.quote))
       .catch(() => {});
+
     if (authed) {
       listWatchlist()
-        .then((wl) =>
-          setSaved(
-            wl.items.some((it) => it.ticker.toUpperCase() === symbolOrBrand.toUpperCase()),
-          ),
-        )
+        .then((wl) => {
+          const key = (urlTicker ?? symbolOrBrand).toUpperCase();
+          setSaved(wl.items.some((it) => it.ticker.toUpperCase() === key));
+        })
         .catch(() => {});
     }
   }, [symbolOrBrand, authed, loadChart]);
@@ -126,16 +160,36 @@ export default function TickerDetail() {
     void loadChart(chartTicker, chartType, period);
   }, [chartTicker, chartType, period, loadChart]);
 
-  if (err) return <div className="app-err">{err}</div>;
-  if (!data) return <div className="app-muted">Loading…</div>;
+  if (err) return <div className="app-detail"><p className="app-err">{err}</p></div>;
+  if (!data) return <div className="app-detail"><p className="app-muted">Loading…</p></div>;
 
-  const brand = data.brand as unknown as {
-    name: string;
-    isPublic: boolean;
-    ticker?: { symbol: string; exchange?: string };
-    sector?: string;
-  };
-  const ticker = brand.ticker?.symbol;
+  const brand = data.brand;
+  const ticker = brand.ticker?.symbol ?? chartTicker;
+  const chipLabel = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
+
+  const sources = [
+    ...data.comparables.flatMap((c) =>
+      (c.sources ?? []).map((s) => ({
+        ...s,
+        label: `$${c.ticker}`,
+      })),
+    ),
+    ...data.etfs.map((e) => ({
+      provider: e.source?.provider ?? "manual",
+      url: e.source?.url,
+      confidence: "medium",
+      label: e.ticker,
+    })),
+    ...(analysis?.sourceUrl
+      ? [{ provider: "underlying", url: analysis.sourceUrl, confidence: "high", label: "analysis" }]
+      : []),
+    ...(chart?.sourceUrl
+      ? [{ provider: "underlying", url: chart.sourceUrl, confidence: "high", label: "chart" }]
+      : []),
+  ].filter((s, i, arr) => {
+    const k = `${s.provider}|${s.url ?? ""}|${s.label}`;
+    return arr.findIndex((x) => `${x.provider}|${x.url ?? ""}|${x.label}` === k) === i;
+  });
 
   async function onSave() {
     if (!ticker) return;
@@ -189,25 +243,27 @@ export default function TickerDetail() {
     }
   }
 
-  const chipLabel = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
-
   return (
     <div className="app-detail">
       <Link href="/app" className="app-back">
-        ← back
+        ← Back to app
       </Link>
-      <h1>{brand.name}</h1>
-      <p className="app-sub">
-        {ticker ? (
-          <>
-            <span className="app-ticker-big">{ticker}</span>
-            {brand.ticker?.exchange ? ` · ${brand.ticker.exchange}` : ""}
-          </>
-        ) : (
-          "private"
-        )}
-        {brand.sector ? ` · ${brand.sector}` : ""}
-      </p>
+
+      <header className="app-detail-hero">
+        <h1>{brand.name}</h1>
+        <p className="app-sub">
+          {ticker ? (
+            <>
+              <span className="app-ticker-big">${ticker}</span>
+              {brand.ticker?.exchange ? ` · ${brand.ticker.exchange}` : ""}
+              {!brand.isPublic ? " · private brand · chart via ticker" : ""}
+            </>
+          ) : (
+            "private · no listed ticker"
+          )}
+          {brand.sector ? ` · ${brand.sector}` : ""}
+        </p>
+      </header>
 
       {quote ? (
         <div className="app-quote">
@@ -224,191 +280,301 @@ export default function TickerDetail() {
         </div>
       ) : null}
 
-      <section className="app-chart">
-        <h2>
-          {chipLabel} · {chart?.ticker ?? chartTicker ?? "…"} · {period}
-        </h2>
-        <div className="app-chart-chips" role="tablist">
-          {CHART_CHIPS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`app-chip ${chartType === c.id ? "app-chip-active" : ""}`}
-              onClick={() => setChartType(c.id)}
-              disabled={!chartTicker}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div className="app-period-row">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`app-period ${period === p ? "app-period-active" : ""}`}
-              onClick={() => setPeriod(p)}
-              disabled={!chartTicker}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        {chart && !chartLoading ? (
-          <>
-            <img
-              className="app-chart-img"
-              alt={`${chart.ticker} ${period} ${chipLabel} chart`}
-              src={`data:${chart.image.mime};base64,${chart.image.data}`}
-            />
-            {chart.levels && chartType === "auction" ? (
-              <p className="app-muted">
-                POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
-                {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
-                {chart.levels.val?.toFixed?.(2) ?? "—"}
-                {chart.provider ? ` · ${chart.provider}` : ""}
-              </p>
-            ) : null}
-          </>
-        ) : chartErr ? (
-          <p className="app-err">{chartErr}</p>
-        ) : (
-          <p className="app-muted">Loading {chipLabel.toLowerCase()} chart…</p>
-        )}
-      </section>
+      <div className="app-detail-tabs" role="tablist">
+        <button
+          type="button"
+          className={`app-detail-tab ${tab === "overview" ? "app-detail-tab-active" : ""}`}
+          onClick={() => setTab("overview")}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          className={`app-detail-tab ${tab === "advanced" ? "app-detail-tab-active" : ""}`}
+          onClick={() => setTab("advanced")}
+        >
+          Advanced
+        </button>
+      </div>
 
-      {analysis ? (
-        <section>
-          <h2>Analysis snapshot</h2>
-          <dl className="app-snapshot">
-            {analysis.sector ? (
+      {tab === "overview" ? (
+        <>
+          <section className="app-panel app-chart">
+            <h2 className="app-chart-title">
+              {chipLabel} · ${chart?.ticker ?? chartTicker ?? "…"} · {period}
+            </h2>
+            <div className="app-chart-chips" role="tablist">
+              {CHART_CHIPS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`app-chip ${chartType === c.id ? "app-chip-active" : ""}`}
+                  onClick={() => setChartType(c.id)}
+                  disabled={!chartTicker}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <div className="app-period-row">
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`app-period ${period === p ? "app-period-active" : ""}`}
+                  onClick={() => setPeriod(p)}
+                  disabled={!chartTicker}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            {chart && !chartLoading ? (
               <>
-                <div>
-                  <dt>Sector</dt>
-                  <dd>{analysis.sector}</dd>
-                </div>
+                <img
+                  className="app-chart-img"
+                  alt={`${chart.ticker} ${period} ${chipLabel} chart`}
+                  src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                />
+                {chart.levels && chartType === "auction" ? (
+                  <p className="app-muted">
+                    POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
+                    {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
+                    {chart.levels.val?.toFixed?.(2) ?? "—"}
+                    {chart.provider ? ` · ${chart.provider}` : ""}
+                  </p>
+                ) : null}
               </>
-            ) : null}
-            {analysis.industry ? (
+            ) : chartErr ? (
+              <p className="app-err">{chartErr}</p>
+            ) : (
+              <div className="app-chart-skel" aria-label="Loading chart" />
+            )}
+          </section>
+
+          {analysis ? (
+            <section className="app-panel">
+              <h2>Snapshot</h2>
+              <dl className="app-snapshot">
+                {analysis.sector ? (
+                  <div>
+                    <dt>Sector</dt>
+                    <dd>{analysis.sector}</dd>
+                  </div>
+                ) : null}
+                {analysis.industry ? (
+                  <div>
+                    <dt>Industry</dt>
+                    <dd>{analysis.industry}</dd>
+                  </div>
+                ) : null}
+                {analysis.annualVolatility != null ? (
+                  <div>
+                    <dt>Ann. vol</dt>
+                    <dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd>
+                  </div>
+                ) : null}
+                {analysis.fiftyTwoWeekLow != null || analysis.fiftyTwoWeekHigh != null ? (
+                  <div>
+                    <dt>52w</dt>
+                    <dd>
+                      {analysis.fiftyTwoWeekLow?.toFixed?.(2) ?? "—"} –{" "}
+                      {analysis.fiftyTwoWeekHigh?.toFixed?.(2) ?? "—"}
+                    </dd>
+                  </div>
+                ) : null}
+                {analysis.trailingPe != null ? (
+                  <div>
+                    <dt>P/E</dt>
+                    <dd>{analysis.trailingPe}</dd>
+                  </div>
+                ) : null}
+                {analysis.marketCap != null ? (
+                  <div>
+                    <dt>Mkt cap</dt>
+                    <dd>{String(analysis.marketCap)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {analysis.brief ? (
+                <pre className="app-memo-body" style={{ marginTop: "0.75rem" }}>
+                  {analysis.brief.slice(0, 1200)}
+                  {analysis.brief.length > 1200 ? "…" : ""}
+                </pre>
+              ) : null}
+            </section>
+          ) : null}
+
+          {ticker && authed ? (
+            <div className="app-action-row">
+              <button
+                className={`app-btn ${saved ? "app-btn-active" : ""}`}
+                onClick={onSave}
+                disabled={busy === "save"}
+              >
+                {busy === "save" ? "…" : saved ? "★ Saved" : "☆ Save"}
+              </button>
+              <button
+                className="app-btn"
+                onClick={onGenerateMemo}
+                disabled={busy === "memo"}
+              >
+                {busy === "memo" ? "Generating…" : memo ? "↻ Regenerate memo" : "📝 Generate memo"}
+              </button>
+            </div>
+          ) : null}
+          {!authed ? (
+            <p className="app-muted">
+              <Link href="/app">Sign in</Link> to save this ticker or generate a memo.
+            </p>
+          ) : null}
+
+          {memo ? (
+            <section className="app-memo">
+              <div className="app-memo-header">
+                <span className="app-memo-provider">{memo.provider} · investment brief</span>
+                <button
+                  className={`app-btn ${memoSaved ? "app-btn-active" : ""}`}
+                  onClick={onSaveMemo}
+                  disabled={busy === "memoSave" || memoSaved}
+                >
+                  {busy === "memoSave"
+                    ? "Saving…"
+                    : memoSaved
+                      ? "✓ Memo saved"
+                      : "💾 Save memo"}
+                </button>
+              </div>
+              <pre className="app-memo-body">{memo.text}</pre>
+            </section>
+          ) : null}
+
+          <section className="app-panel">
+            <h2>Comparables</h2>
+            {data.comparables.length === 0 ? (
+              <p className="app-muted">No public comparables resolved.</p>
+            ) : (
+              <ul className="app-simple-list">
+                {data.comparables.map((c, i) => (
+                  <li key={`${c.ticker}-${i}`}>
+                    <Link href={`/app/ticker/${encodeURIComponent(c.ticker)}`}>
+                      <span className="app-ticker">${c.ticker}</span>
+                    </Link>{" "}
+                    · {c.name}{" "}
+                    <span className="app-score">{Math.round(c.score * 100)}%</span>
+                    {c.sources?.length ? (
+                      <div className="app-source-links">
+                        {c.sources.slice(0, 3).map((s, j) =>
+                          s.url ? (
+                            <a
+                              key={j}
+                              className="app-source-chip"
+                              href={s.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {hostLabel(s.url)}
+                            </a>
+                          ) : null,
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="app-panel">
+            <h2>ETF exposure</h2>
+            {data.etfs.length === 0 ? (
+              <p className="app-muted">No ETFs matched.</p>
+            ) : (
+              <ul className="app-simple-list">
+                {data.etfs.map((e, i) => (
+                  <li key={`${e.ticker}-${i}`}>
+                    <Link href={`/app/ticker/${encodeURIComponent(e.ticker)}`}>
+                      <span className="app-ticker">{e.ticker}</span>
+                    </Link>{" "}
+                    · {e.name}
+                    {e.weight > 0 ? (
+                      <span className="app-score"> · {(e.weight * 100).toFixed(2)}%</span>
+                    ) : null}
+                    {e.source?.url ? (
+                      <div className="app-source-links">
+                        <a
+                          className="app-source-chip"
+                          href={e.source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {hostLabel(e.source.url)}
+                        </a>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      ) : (
+        <section className="app-panel">
+          <h2>Advanced</h2>
+          <dl className="app-snapshot">
+            <div>
+              <dt>Resolved brand</dt>
+              <dd>{brand.name}</dd>
+            </div>
+            <div>
+              <dt>Public</dt>
+              <dd>{brand.isPublic ? "yes" : "no"}</dd>
+            </div>
+            <div>
+              <dt>Chart ticker</dt>
+              <dd>{chartTicker ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Chart type / period</dt>
+              <dd>
+                {chartType} · {period}
+              </dd>
+            </div>
+            {analysis?.briefProvider ? (
               <div>
-                <dt>Industry</dt>
-                <dd>{analysis.industry}</dd>
+                <dt>Brief provider</dt>
+                <dd>{analysis.briefProvider}</dd>
               </div>
             ) : null}
-            {analysis.annualVolatility != null ? (
+            {chart?.provider ? (
               <div>
-                <dt>Ann. vol</dt>
-                <dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd>
-              </div>
-            ) : null}
-            {analysis.fiftyTwoWeekLow != null || analysis.fiftyTwoWeekHigh != null ? (
-              <div>
-                <dt>52w</dt>
-                <dd>
-                  {analysis.fiftyTwoWeekLow?.toFixed?.(2) ?? "—"} –{" "}
-                  {analysis.fiftyTwoWeekHigh?.toFixed?.(2) ?? "—"}
-                </dd>
-              </div>
-            ) : null}
-            {analysis.trailingPe != null ? (
-              <div>
-                <dt>P/E</dt>
-                <dd>{analysis.trailingPe}</dd>
-              </div>
-            ) : null}
-            {analysis.marketCap != null ? (
-              <div>
-                <dt>Mkt cap</dt>
-                <dd>{String(analysis.marketCap)}</dd>
+                <dt>Chart provider</dt>
+                <dd>{chart.provider}</dd>
               </div>
             ) : null}
           </dl>
-          {analysis.brief ? (
-            <pre className="app-memo-body" style={{ marginTop: "0.75rem" }}>
-              {analysis.brief.slice(0, 1200)}
-              {analysis.brief.length > 1200 ? "…" : ""}
-            </pre>
-          ) : null}
+          <h2 style={{ marginTop: "1.25rem" }}>Sources</h2>
+          {sources.length === 0 ? (
+            <p className="app-muted">No cited sources yet.</p>
+          ) : (
+            <ul className="app-simple-list">
+              {sources.map((s, i) => (
+                <li key={i}>
+                  <span className="app-ticker">{s.label}</span> · {s.provider}
+                  {s.url ? (
+                    <>
+                      {" · "}
+                      <a href={s.url} target="_blank" rel="noreferrer">
+                        {hostLabel(s.url)}
+                      </a>
+                    </>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
-      ) : null}
-
-      {ticker && authed ? (
-        <div className="app-action-row">
-          <button
-            className={`app-btn ${saved ? "app-btn-active" : ""}`}
-            onClick={onSave}
-            disabled={busy === "save"}
-          >
-            {busy === "save" ? "…" : saved ? "★ Saved" : "☆ Save"}
-          </button>
-          <button
-            className="app-btn"
-            onClick={onGenerateMemo}
-            disabled={busy === "memo"}
-          >
-            {busy === "memo" ? "Generating…" : memo ? "↻ Regenerate memo" : "📝 Generate memo"}
-          </button>
-        </div>
-      ) : null}
-      {!authed ? (
-        <p className="app-muted">
-          <Link href="/app">Sign in</Link> to save this ticker or generate a memo.
-        </p>
-      ) : null}
-
-      {memo ? (
-        <section className="app-memo">
-          <div className="app-memo-header">
-            <span className="app-memo-provider">{memo.provider} · investment brief</span>
-            <button
-              className={`app-btn ${memoSaved ? "app-btn-active" : ""}`}
-              onClick={onSaveMemo}
-              disabled={busy === "memoSave" || memoSaved}
-            >
-              {busy === "memoSave"
-                ? "Saving…"
-                : memoSaved
-                  ? "✓ Memo saved"
-                  : "💾 Save memo"}
-            </button>
-          </div>
-          <pre className="app-memo-body">{memo.text}</pre>
-        </section>
-      ) : null}
-
-      <section>
-        <h2>Comparables</h2>
-        {data.comparables.length === 0 ? (
-          <p className="app-muted">No public comparables resolved.</p>
-        ) : (
-          <ul className="app-simple-list">
-            {data.comparables.map((c, i) => (
-              <li key={`${c.ticker}-${i}`}>
-                <Link href={`/app/ticker/${encodeURIComponent(c.ticker)}`}>
-                  <span className="app-ticker">${c.ticker}</span>
-                </Link>{" "}
-                · {c.name}{" "}
-                <span className="app-score">{Math.round(c.score * 100)}%</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2>ETF exposure</h2>
-        {data.etfs.length === 0 ? (
-          <p className="app-muted">No ETFs matched.</p>
-        ) : (
-          <ul className="app-simple-list">
-            {data.etfs.map((e, i) => (
-              <li key={`${e.ticker}-${i}`}>
-                <span className="app-ticker">{e.ticker}</span> · {e.name}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
     </div>
   );
 }

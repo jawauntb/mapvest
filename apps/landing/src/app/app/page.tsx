@@ -12,6 +12,7 @@ import {
   fetchCockpit,
   fetchNearby,
   generateMemo,
+  getQuote,
   getToken,
   getUser,
   identifyImage,
@@ -226,8 +227,11 @@ function locateOnce(): Promise<{ lat: number; lng: number }> {
   });
 }
 
+type QuoteSnap = { price: number; change: number; changePct: number };
+
 function NearbyTab() {
   const [items, setItems] = useState<NearbyItem[] | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, QuoteSnap>>({});
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(true);
@@ -266,8 +270,34 @@ function NearbyTab() {
     if (!coords) return;
     setBusy(true);
     setErr(null);
-    fetchNearby(coords.lat, coords.lng, 500, 25)
-      .then((r) => setItems(r.items))
+    setQuotes({});
+    fetchNearby(coords.lat, coords.lng, 1200, 25)
+      .then(async (r) => {
+        setItems(r.items);
+        const tickers = r.items
+          .map((it) => it.investable?.brand.ticker?.symbol)
+          .filter((t): t is string => !!t)
+          .slice(0, 12);
+        const entries = await Promise.all(
+          tickers.map(async (t) => {
+            try {
+              const q = await getQuote(t);
+              return q.quote
+                ? ([t, {
+                    price: q.quote.price,
+                    change: q.quote.change,
+                    changePct: q.quote.changePct,
+                  }] as const)
+                : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const map: Record<string, QuoteSnap> = {};
+        for (const e of entries) if (e) map[e[0]] = e[1];
+        setQuotes(map);
+      })
       .catch((e) => setErr(e instanceof Error ? e.message : "nearby failed"))
       .finally(() => setBusy(false));
   }, [coords]);
@@ -318,18 +348,19 @@ function NearbyTab() {
       </p>
       {items.map((it) => {
         const ticker = it.investable?.brand.ticker?.symbol;
+        const q = ticker ? quotes[ticker] : undefined;
         return (
           <Link
             key={it.place.id}
             href={`/app/ticker/${encodeURIComponent(ticker ?? it.place.name)}`}
             className={`app-row ${ticker ? "app-row-public" : "app-row-private"}`}
           >
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="app-row-title">{it.place.name}</div>
               <div className="app-row-sub">
                 {ticker ? (
                   <>
-                    <span className="app-ticker">{ticker}</span> ·{" "}
+                    <span className="app-ticker">${ticker}</span> ·{" "}
                     {it.investable?.brand.sector ?? "—"}
                   </>
                 ) : (
@@ -337,7 +368,21 @@ function NearbyTab() {
                 )}
               </div>
             </div>
-            <span className="app-chevron">›</span>
+            {q ? (
+              <div className="app-row-price">
+                <div className="app-row-price-val">${q.price.toFixed(2)}</div>
+                <div
+                  className={`app-row-price-chg ${
+                    q.change >= 0 ? "app-quote-up" : "app-quote-down"
+                  }`}
+                >
+                  {q.change >= 0 ? "+" : ""}
+                  {q.changePct.toFixed(2)}%
+                </div>
+              </div>
+            ) : (
+              <span className="app-chevron">›</span>
+            )}
           </Link>
         );
       })}
@@ -427,6 +472,7 @@ function IdentifyTab() {
 
 function SavedTab() {
   const [items, setItems] = useState<WatchEntry[] | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, QuoteSnap>>({});
   const [err, setErr] = useState<string | null>(null);
   const [cockpit, setCockpit] = useState<CockpitRow[] | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
@@ -438,6 +484,25 @@ function SavedTab() {
     try {
       const r = await listWatchlist();
       setItems(r.items);
+      const entries = await Promise.all(
+        r.items.slice(0, 15).map(async (it) => {
+          try {
+            const q = await getQuote(it.ticker);
+            return q.quote
+              ? ([it.ticker, {
+                  price: q.quote.price,
+                  change: q.quote.change,
+                  changePct: q.quote.changePct,
+                }] as const)
+              : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const map: Record<string, QuoteSnap> = {};
+      for (const e of entries) if (e) map[e[0]] = e[1];
+      setQuotes(map);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "load failed");
     }
@@ -570,29 +635,46 @@ function SavedTab() {
           )}
         </section>
       ) : null}
-      {items.map((e) => (
-        <Link
-          key={e.ticker}
-          href={`/app/ticker/${encodeURIComponent(e.ticker)}`}
-          className="app-row app-row-public"
-        >
-          <div>
-            <div className="app-row-title">
-              <span className="app-ticker">{e.ticker}</span> {e.name ? `· ${e.name}` : ""}
+      {items.map((e) => {
+        const q = quotes[e.ticker];
+        return (
+          <Link
+            key={e.ticker}
+            href={`/app/ticker/${encodeURIComponent(e.ticker)}`}
+            className="app-row app-row-public"
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="app-row-title">
+                <span className="app-ticker">${e.ticker}</span> {e.name ? `· ${e.name}` : ""}
+              </div>
+              <div className="app-row-sub">
+                {e.sector ?? "—"}
+                {e.memo ? (
+                  <span className="app-memo-badge">
+                    {" "}
+                    · 📝 {e.memoProvider ?? "memo"} · {e.memo.length} chars
+                  </span>
+                ) : null}
+              </div>
             </div>
-            <div className="app-row-sub">
-              {e.sector ?? "—"}
-              {e.memo ? (
-                <span className="app-memo-badge">
-                  {" "}
-                  · 📝 {e.memoProvider ?? "memo"} · {e.memo.length} chars
-                </span>
-              ) : null}
-            </div>
-          </div>
-          <span className="app-chevron">›</span>
-        </Link>
-      ))}
+            {q ? (
+              <div className="app-row-price">
+                <div className="app-row-price-val">${q.price.toFixed(2)}</div>
+                <div
+                  className={`app-row-price-chg ${
+                    q.change >= 0 ? "app-quote-up" : "app-quote-down"
+                  }`}
+                >
+                  {q.change >= 0 ? "+" : ""}
+                  {q.changePct.toFixed(2)}%
+                </div>
+              </div>
+            ) : (
+              <span className="app-chevron">›</span>
+            )}
+          </Link>
+        );
+      })}
     </div>
   );
 }
