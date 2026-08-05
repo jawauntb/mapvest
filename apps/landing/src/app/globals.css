@@ -347,21 +347,53 @@ blockquote {
   padding: 48px 0 24px;
 }
 
-.shots__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
+/* Horizontally-scrolling gallery. The scroller spans the viewport so
+   cards can bleed past the .container gutters and hint at overflow;
+   the track re-adds the gutter inside so the first card lines up. */
+.shots__scroller {
   margin-top: 32px;
-  align-items: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  padding: 12px 0 24px;
+  /* Mask the trailing edge so it reads as "more to the right". */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 48px),
+    transparent 100%
+  );
+          mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 48px),
+    transparent 100%
+  );
 }
 
-@media (max-width: 900px) {
-  .shots__grid {
-    grid-template-columns: 1fr;
-    max-width: 360px;
-    margin-left: auto;
-    margin-right: auto;
-  }
+.shots__scroller:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+
+.shots__scroller::-webkit-scrollbar {
+  height: 8px;
+}
+.shots__scroller::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.shots__track {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  padding: 0 max(24px, calc((100vw - 960px) / 2 + 24px)) 4px;
+  width: max-content;
 }
 
 .shot {
@@ -369,13 +401,17 @@ blockquote {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
+  flex: 0 0 auto;
+  width: 240px;
+  scroll-snap-align: start;
 }
 
+/* Device frame: simple rounded rectangle at 12:19 (iPhone-ish). */
 .phone {
   position: relative;
-  width: 260px;
-  aspect-ratio: 320 / 640;
+  width: 240px;
+  aspect-ratio: 12 / 19;
   background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
   border: 1px solid #2a2a2a;
   border-radius: 34px;
@@ -419,15 +455,17 @@ blockquote {
   border: 1px solid #1a1a1a;
 }
 
-.phone__screen svg {
+.phone__screen svg,
+.phone__screen img {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: cover;
 }
 
 .shot__caption {
   text-align: center;
-  max-width: 30ch;
+  max-width: 26ch;
 }
 
 .shot__label {
@@ -443,6 +481,14 @@ blockquote {
   font-size: 13.5px;
   color: var(--fg-muted);
   line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone,
+  .phone:hover {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* ---------- section ---------- */

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 506" role="img" aria-label="Mapvest camera view identifying Hershey's with an HSY ticker card">
+  <defs>
+    <linearGradient id="camViewfinder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#181818"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <linearGradient id="hersheyWrap" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3a1c12"/>
+      <stop offset="50%" stop-color="#7a2f1a"/>
+      <stop offset="100%" stop-color="#3a1c12"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="320" height="506" fill="#0a0a0a"/>
+
+  <!-- status bar -->
+  <g fill="#ffffff">
+    <text x="20" y="26" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">9:41</text>
+    <rect x="270" y="18" width="18" height="10" rx="2" fill="none" stroke="#ffffff" stroke-width="1"/>
+    <rect x="272" y="20" width="12" height="6" rx="1"/>
+  </g>
+
+  <!-- viewfinder -->
+  <rect x="0" y="44" width="320" height="392" fill="url(#camViewfinder)"/>
+
+  <!-- shelf -->
+  <rect x="0" y="284" width="320" height="152" fill="#141414"/>
+  <rect x="0" y="284" width="320" height="2" fill="#2a2a2a"/>
+  <rect x="0" y="368" width="320" height="2" fill="#2a2a2a"/>
+
+  <!-- side products -->
+  <g>
+    <rect x="18" y="292" width="46" height="70" rx="3" fill="#3a2018"/>
+    <rect x="20" y="302" width="42" height="14" fill="#5a2f22"/>
+    <rect x="72" y="292" width="46" height="70" rx="3" fill="#2a1a12"/>
+    <rect x="74" y="302" width="42" height="14" fill="#4a2418"/>
+
+    <!-- focused Hershey's -->
+    <g>
+      <rect x="130" y="282" width="60" height="80" rx="4" fill="url(#hersheyWrap)" stroke="#3ee68a" stroke-width="2"/>
+      <text x="160" y="318" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#f4d9a8" letter-spacing="1">HERSHEY&#8217;S</text>
+      <text x="160" y="332" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="7" fill="#f4d9a8">MILK CHOCOLATE</text>
+      <rect x="140" y="342" width="40" height="10" rx="1" fill="#f4d9a8" opacity="0.18"/>
+    </g>
+
+    <rect x="200" y="292" width="46" height="70" rx="3" fill="#2a1a12"/>
+    <rect x="202" y="302" width="42" height="14" fill="#4a2418"/>
+    <rect x="254" y="292" width="46" height="70" rx="3" fill="#3a2018"/>
+    <rect x="256" y="302" width="42" height="14" fill="#5a2f22"/>
+  </g>
+
+  <!-- reticle corners around the focused bar -->
+  <g stroke="#3ee68a" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M 110 266 L 110 278 M 110 278 L 122 278"/>
+    <path d="M 210 266 L 210 278 M 210 278 L 198 278"/>
+    <path d="M 110 378 L 110 366 M 110 366 L 122 366"/>
+    <path d="M 210 378 L 210 366 M 210 366 L 198 366"/>
+  </g>
+
+  <!-- identification pill -->
+  <g transform="translate(28,80)">
+    <rect x="0" y="0" width="264" height="60" rx="12" fill="#131313" stroke="#3ee68a" stroke-width="1"/>
+    <g transform="translate(14,14)">
+      <rect x="0" y="0" width="32" height="32" rx="6" fill="rgba(62,230,138,0.14)"/>
+      <text x="16" y="22" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#3ee68a">H</text>
+    </g>
+    <text x="58" y="26" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="#ffffff">Identified: Hershey&#8217;s</text>
+    <text x="58" y="42" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Confidence 0.94 &#183; 4 sources cited</text>
+    <g transform="translate(232,20)">
+      <circle r="8" fill="none" stroke="#3ee68a" stroke-width="1.5"/>
+      <path d="M -3 0 L -1 2 L 3 -2" stroke="#3ee68a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- HSY result card (main ticker card as spec'd) -->
+  <g transform="translate(64,160)">
+    <rect x="0" y="0" width="192" height="72" rx="14" fill="#0a0a0a" stroke="#3ee68a" stroke-width="1.5"/>
+    <text x="14" y="20" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#3ee68a" letter-spacing="1.5">PUBLIC &#183; NYSE</text>
+    <text x="14" y="46" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700" fill="#ffffff">HSY</text>
+    <text x="60" y="46" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" fill="#3ee68a">$179.04</text>
+    <text x="14" y="62" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">The Hershey Company</text>
+    <text x="178" y="62" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#3ee68a">+0.77%</text>
+  </g>
+
+  <!-- shutter row -->
+  <g transform="translate(0,436)">
+    <rect x="0" y="0" width="320" height="70" fill="#0a0a0a"/>
+    <circle cx="160" cy="35" r="26" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="160" cy="35" r="20" fill="#ffffff"/>
+    <rect x="36" y="24" width="22" height="22" rx="4" fill="none" stroke="#a1a1a1" stroke-width="1.5"/>
+    <path d="M 258 35 L 270 35 M 264 29 L 264 41" stroke="#a1a1a1" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="264" cy="35" r="12" fill="none" stroke="#a1a1a1" stroke-width="1.5"/>
+  </g>
+</svg>

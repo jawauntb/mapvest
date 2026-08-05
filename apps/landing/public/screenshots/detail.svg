@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 506" role="img" aria-label="Hershey Company detail sheet with three comparables, four ETFs, and source citations">
+  <rect width="320" height="506" fill="#0a0a0a"/>
+
+  <!-- status bar -->
+  <g fill="#ffffff">
+    <text x="20" y="26" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">9:41</text>
+    <rect x="270" y="18" width="18" height="10" rx="2" fill="none" stroke="#ffffff" stroke-width="1"/>
+    <rect x="272" y="20" width="12" height="6" rx="1"/>
+  </g>
+
+  <!-- top nav -->
+  <g transform="translate(16,50)">
+    <text x="0" y="14" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12" fill="#a1a1a1">&#8592; Back to map</text>
+    <text x="288" y="14" text-anchor="end" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12" fill="#3ee68a">Save</text>
+  </g>
+
+  <!-- header -->
+  <g transform="translate(16,76)">
+    <text x="0" y="12" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#3ee68a" letter-spacing="1.5">PUBLIC &#183; NYSE &#183; CONSUMER STAPLES &#183; CONFECTIONERY</text>
+    <text x="0" y="36" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="#ffffff">The Hershey Company</text>
+    <text x="0" y="56" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#a1a1a1">$HSY &#183; $179.04</text>
+    <text x="288" y="56" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#3ee68a">+0.77%</text>
+  </g>
+
+  <!-- sparkline -->
+  <g transform="translate(16,142)">
+    <rect x="0" y="0" width="288" height="50" rx="10" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+    <path d="M 12 38 L 40 32 L 60 34 L 88 24 L 112 28 L 140 20 L 168 24 L 196 16 L 224 18 L 252 12 L 276 14"
+          fill="none" stroke="#3ee68a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 12 38 L 40 32 L 60 34 L 88 24 L 112 28 L 140 20 L 168 24 L 196 16 L 224 18 L 252 12 L 276 14 L 276 44 L 12 44 Z"
+          fill="rgba(62,230,138,0.10)"/>
+    <text x="12" y="14" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" fill="#6b6b6b">1M &#183; closes</text>
+  </g>
+
+  <!-- Comparables section -->
+  <g transform="translate(16,206)">
+    <text x="0" y="12" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#a1a1a1" letter-spacing="1.5">COMPARABLES &#183; 3</text>
+
+    <g transform="translate(0,20)">
+      <rect x="0" y="0" width="288" height="26" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="12" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#ffffff">MDLZ</text>
+      <text x="60" y="17" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Mondelez &#183; snacks &amp; chocolate</text>
+      <text x="276" y="17" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#3ee68a">0.88</text>
+    </g>
+    <g transform="translate(0,50)">
+      <rect x="0" y="0" width="288" height="26" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="12" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#ffffff">NSRGY</text>
+      <text x="60" y="17" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Nestl&#233; &#183; food &amp; beverage</text>
+      <text x="276" y="17" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#3ee68a">0.82</text>
+    </g>
+    <g transform="translate(0,80)">
+      <rect x="0" y="0" width="288" height="26" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="12" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#ffffff">LISN.SW</text>
+      <text x="70" y="17" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Lindt &amp; Spr&#252;ngli &#183; premium</text>
+      <text x="276" y="17" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#3ee68a">0.79</text>
+    </g>
+  </g>
+
+  <!-- ETF exposure -->
+  <g transform="translate(16,324)">
+    <text x="0" y="12" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#a1a1a1" letter-spacing="1.5">ETF EXPOSURE &#183; 4</text>
+
+    <g transform="translate(0,20)">
+      <rect x="0" y="0" width="140" height="24" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="10" y="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" font-weight="700" fill="#ffffff">PBJ</text>
+      <text x="40" y="16" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" fill="#a1a1a1">Food &amp; Bev &#183; 3.2%</text>
+    </g>
+    <g transform="translate(148,20)">
+      <rect x="0" y="0" width="140" height="24" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="10" y="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" font-weight="700" fill="#ffffff">XLP</text>
+      <text x="40" y="16" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" fill="#a1a1a1">Staples SPDR &#183; 1.1%</text>
+    </g>
+    <g transform="translate(0,50)">
+      <rect x="0" y="0" width="140" height="24" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="10" y="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" font-weight="700" fill="#ffffff">VDC</text>
+      <text x="40" y="16" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" fill="#a1a1a1">Vanguard Staples &#183; 0.9%</text>
+    </g>
+    <g transform="translate(148,50)">
+      <rect x="0" y="0" width="140" height="24" rx="6" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
+      <text x="10" y="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" font-weight="700" fill="#ffffff">FTXG</text>
+      <text x="40" y="16" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="9" fill="#a1a1a1">Nasdaq Food &#183; 2.4%</text>
+    </g>
+  </g>
+
+  <!-- Sources -->
+  <g transform="translate(16,410)">
+    <text x="0" y="12" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#a1a1a1" letter-spacing="1.5">SOURCES</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9" fill="#6b6b6b">
+      <text x="0" y="28">&#8226; sec.gov &#8212; HSY 10-K (FY2024)</text>
+      <text x="0" y="42">&#8226; polygon.io &#8212; HSY EOD close 2026-08-04</text>
+      <text x="0" y="56">&#8226; etf.com &#8212; PBJ / XLP / VDC / FTXG holdings</text>
+      <text x="0" y="70">&#8226; hersheys.com &#8212; investor profile</text>
+    </g>
+  </g>
+
+  <!-- home indicator -->
+  <rect x="112" y="486" width="96" height="4" rx="2" fill="#2a2a2a"/>
+</svg>
