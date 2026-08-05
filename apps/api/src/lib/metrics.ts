@@ -12,6 +12,12 @@ export type RequestRecord = {
   ms: number;
   userId?: string;
   ip?: string;
+  /**
+   * Free-form tag for out-of-band events surfaced in the admin log.
+   * Currently used by the identify-guard middleware to flag
+   * "suspected_abuse" entries.
+   */
+  tag?: string;
 };
 
 const CAPACITY = 500;
