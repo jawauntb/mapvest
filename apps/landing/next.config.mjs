@@ -2,11 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: {
-    // Docs are read from ../../docs at build time via fs; Next needs to know
-    // that filesystem access is intended.
-    outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
-  },
+  // Docs are read from ../../docs at build time via fs; Next needs to know
+  // that filesystem access is intended (moved out of `experimental` in
+  // Next 15.x).
+  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
 };
 
 export default nextConfig;

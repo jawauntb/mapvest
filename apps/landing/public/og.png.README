@@ -1,0 +1,31 @@
+og.png is intentionally NOT a file in this repo.
+
+Mapvest's Open Graph image is a procedurally-generated SVG at:
+
+  apps/landing/public/og.svg
+
+For sites that only accept `.png` in the URL, the Next.js route at:
+
+  apps/landing/src/app/og/route.ts
+
+serves the exact same SVG bytes with `Content-Type: image/svg+xml` and
+long-lived caching headers. That means all of these URLs resolve to the
+same OG image:
+
+  https://mapvest.app/og.svg    (static, served by Next from /public)
+  https://mapvest.app/og        (route handler, also image/svg+xml)
+
+The `<meta property="og:image">` and `<meta name="twitter:image">` tags
+in `apps/landing/src/app/layout.tsx` point at `/og.svg`.
+
+Why SVG and not PNG?
+- No binary blob in git; the image is text and diffable.
+- No external font or image fetches — the SVG uses a system font stack
+  and inline vector shapes only, so it renders identically anywhere.
+- 1200x630, matches the OG spec.
+
+If a specific consumer (rare, mostly some legacy chat previews) refuses
+SVG OG images and you need a PNG, render one from `og.svg` at build time
+with something like `resvg-js` or `sharp` and drop it in this same
+directory as `og.png`. Do not commit the PNG; leave it as a build
+artifact ignored by git.

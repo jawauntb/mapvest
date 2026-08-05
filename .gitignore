@@ -24,5 +24,6 @@ android/app/build/
 coverage/
 .cache/
 tmp/
+*.tsbuildinfo
 .railway/
 eas-*.log

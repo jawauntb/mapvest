@@ -1,9 +1,21 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdownImport from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { listDocs, readDoc } from '../../../lib/docs';
+
+// react-markdown's return type is `ReactElement`, which does not satisfy
+// React 19's `ReactNode` constraint (missing `children` on `ReactPortal`).
+// Cast to a plain function component so the JSX call type-checks; runtime
+// behavior is unchanged.
+// biome-ignore lint/suspicious/noExplicitAny: minimal shim for the fields we use
+const ReactMarkdown = ReactMarkdownImport as unknown as (props: {
+  // biome-ignore lint/suspicious/noExplicitAny: pass-through
+  remarkPlugins?: any[];
+  children: string;
+  // biome-ignore lint/suspicious/noExplicitAny: return type erased for compat
+}) => any;
 
 export const dynamic = 'force-static';
 

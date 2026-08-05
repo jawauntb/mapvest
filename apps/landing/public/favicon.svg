@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Mapvest">
+  <rect width="64" height="64" rx="14" ry="14" fill="#0a0a0a"/>
+  <!-- M strokes -->
+  <path d="M 12 48 L 12 18 L 22 18 L 30 34 L 38 18 L 48 18 L 48 48"
+        fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- pin overlaying the right leg of the M -->
+  <g transform="translate(46,20)">
+    <path d="M 0 -8 C -8 -8 -13 -3 -13 4 C -13 12 -5 18 0 26 C 5 18 13 12 13 4 C 13 -3 8 -8 0 -8 Z"
+          fill="#3ee68a" stroke="#0a0a0a" stroke-width="2"/>
+    <circle cx="0" cy="4" r="4" fill="#0a0a0a"/>
+  </g>
+</svg>

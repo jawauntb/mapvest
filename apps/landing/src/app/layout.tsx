@@ -34,9 +34,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: '/og.png',
+        url: '/og.svg',
         width: 1200,
         height: 630,
+        type: 'image/svg+xml',
         alt: SITE_NAME,
       },
     ],
@@ -45,10 +46,14 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: `${SITE_NAME} — Point at a place. See what’s investable.`,
     description: SITE_DESCRIPTION,
-    images: ['/og.png'],
+    images: ['/og.svg'],
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
   },
   robots: {
     index: true,
