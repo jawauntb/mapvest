@@ -37,6 +37,7 @@ export default function ResearchChatScreen() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -75,6 +76,7 @@ export default function ResearchChatScreen() {
     if (!msg || busy) return;
     setBusy(true);
     setErr(null);
+    setStatus("Researching… tools running");
     const optimistic: ResearchArticle = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -93,8 +95,13 @@ export default function ResearchChatScreen() {
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
       if (title === "New research") setTitle(msg.slice(0, 48));
+      const tools = r.article.toolsUsed?.length
+        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+        : "";
+      setStatus(`Brief ready${tools}`);
     } catch (e) {
       setErr((e as Error).message);
+      setStatus(null);
     } finally {
       setBusy(false);
     }
@@ -205,7 +212,14 @@ export default function ResearchChatScreen() {
               </View>
             ),
           )}
-          {busy ? <ActivityIndicator color="#fff" style={{ marginTop: 12 }} /> : null}
+          {busy ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <ActivityIndicator color="#3ee68a" />
+              <Text style={styles.statusText}>{status ?? "Researching…"}</Text>
+            </View>
+          ) : status ? (
+            <Text style={styles.statusText}>{status}</Text>
+          ) : null}
           {err ? <Text style={styles.err}>{err}</Text> : null}
         </ScrollView>
 
@@ -307,6 +321,7 @@ const styles = StyleSheet.create({
   },
   tickerChipText: { color: "#3ee68a", fontWeight: "700", fontSize: 13 },
   tools: { color: "#555", fontSize: 11 },
+  statusText: { color: "#3ee68a", fontSize: 13, fontWeight: "600", marginTop: 8 },
   err: { color: "#ff6b6b", marginTop: 8 },
   composer: {
     flexDirection: "row",

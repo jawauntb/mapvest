@@ -121,6 +121,7 @@ export default function CameraScreen() {
 
   async function onSave() {
     if (!ticker || !session?.token || !top) return;
+    setSavedNote(`Saving $${ticker}…`);
     try {
       await addToWatchlist(
         {
@@ -133,6 +134,7 @@ export default function CameraScreen() {
       );
       setSavedNote(`★ Saved $${ticker}`);
     } catch (e) {
+      setSavedNote(null);
       setErr(e instanceof Error ? e.message : "save failed");
     }
   }

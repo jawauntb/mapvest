@@ -28,12 +28,14 @@ export function ResearchSheet({
   const [input, setInput] = useState(`What’s the story on $${ticker}?`);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
     setBusy(true);
     setErr(null);
+    setStatus("Researching… tools running");
     setTurns((t) => [
       ...t,
       {
@@ -53,8 +55,13 @@ export function ResearchSheet({
       const r = await agentChat(msg, { ticker, threadId }, { token: session?.token });
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
+      const tools = r.article.toolsUsed?.length
+        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+        : "";
+      setStatus(`Brief ready${tools}`);
     } catch (e) {
       setErr((e as Error).message);
+      setStatus(null);
     } finally {
       setBusy(false);
     }
@@ -102,7 +109,14 @@ export function ResearchSheet({
               </View>
             ),
           )}
-          {busy ? <ActivityIndicator color="#fff" style={{ marginTop: 12 }} /> : null}
+          {busy ? (
+            <View style={styles.statusRow}>
+              <ActivityIndicator color="#3ee68a" />
+              <Text style={styles.statusText}>{status ?? "Researching…"}</Text>
+            </View>
+          ) : status ? (
+            <Text style={styles.statusText}>{status}</Text>
+          ) : null}
           {err ? <Text style={styles.err}>{err}</Text> : null}
         </ScrollView>
 
@@ -169,6 +183,8 @@ const styles = StyleSheet.create({
   },
   ideaTitle: { color: "#fff", fontWeight: "600", fontSize: 14 },
   tools: { color: "#555", fontSize: 11, marginTop: 4 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
+  statusText: { color: "#3ee68a", fontSize: 13, fontWeight: "600", marginTop: 8 },
   err: { color: "#ff6b6b", marginTop: 8 },
   composer: {
     flexDirection: "row",

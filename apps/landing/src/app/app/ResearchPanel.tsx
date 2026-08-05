@@ -31,6 +31,7 @@ export function ResearchPanel({
   const [input, setInput] = useState(`What’s the story on $${ticker}?`);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [charts, setCharts] = useState<Record<string, ChartImage>>({});
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export function ResearchPanel({
     if (!msg || busy) return;
     setBusy(true);
     setErr(null);
+    setStatus("Researching… tools running");
     const optimistic: ResearchArticle = {
       id: `local-${Date.now()}`,
       role: "user",
@@ -85,8 +87,13 @@ export function ResearchPanel({
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
       void ensureCharts(r.article.chartTickers.length ? r.article.chartTickers : [ticker]);
+      const tools = r.article.toolsUsed?.length
+        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+        : "";
+      setStatus(`Brief ready${tools}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "research failed");
+      setStatus(null);
     } finally {
       setBusy(false);
     }
@@ -124,6 +131,15 @@ export function ResearchPanel({
             <Article key={t.id} article={t} charts={charts} />
           ),
         )}
+        {busy ? (
+          <p className="app-status" role="status" aria-live="polite">
+            {status ?? "Researching…"}
+          </p>
+        ) : status ? (
+          <p className="app-status" role="status">
+            {status}
+          </p>
+        ) : null}
         {busy ? <div className="app-chart-skel" aria-label="Researching…" /> : null}
         {err ? <p className="app-err">{err}</p> : null}
       </div>
