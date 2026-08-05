@@ -39,12 +39,12 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 - [x] `apps/api` skeleton — Hono, zod-validation middleware, request logger, health check
 - [ ] `POST /v1/identify` — multipart image → `PhotoIdentification` + finance annotations
-- [ ] `GET /v1/nearby?lat=..&lng=..&radius=..` — Google Places → filter → annotate tickers/ETFs
+- [x] `GET /v1/nearby?lat=..&lng=..&radius=..` — Google Places → filter → annotate tickers/ETFs
 - [ ] `POST /v1/resolve-comparable` — `{brand: "…"}` → public comparable + ETF
 - [x] `POST /v1/auth/session` — passwordless email sign-in (magic link)
 - [x] `GET /v1/admin/…` — admin scope: metrics, user list, request log
 - [x] Rate limits (per-user + per-ip), abuse guardrails
-- [ ] OpenAPI schema generated from zod (`packages/core`)
+- [x] OpenAPI schema generated from zod (`packages/core`) — `bun run openapi` writes `openapi.yaml`; `bun run postman` writes `postman.json`
 
 **Acceptance**: `curl -F 'image=@examples/mcd.jpg' localhost:3001/v1/identify` returns `{brand:"McDonald's", ticker:"MCD", …}`. `/v1/nearby?lat=37.77&lng=-122.42` returns ≥5 investable items.
 
@@ -71,7 +71,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] `apps/landing` — Next.js 15 App Router, minimal marketing
 - [x] Server-renders `docs/*.md` at `/docs/{slug}`
 - [x] TestFlight CTA + GitHub link
-- [ ] Screenshot gallery pulled from `docs/assets/`
+- [x] Screenshot gallery pulled from `docs/assets/` (initial gallery uses inline SVG mockups in `apps/landing/src/app/page.tsx` — map, camera, detail — until real captures land in `docs/assets/`)
 - [x] SEO: og-image, sitemap
 
 **Acceptance**: `bun run --filter landing build` succeeds; `/docs/architecture` renders the file.
@@ -105,9 +105,9 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 7 — Polish + guardrails
 
-- [ ] Rate limit + WAF sanity on `/v1/identify`
-- [ ] Cost telemetry per request (OpenRouter model, image size, resolution ms)
-- [ ] Prompt-injection guard on OCR'd text
+- [x] Rate limit + WAF sanity on `/v1/identify`
+- [x] Cost telemetry per request (OpenRouter model, image size, resolution ms)
+- [x] Prompt-injection guard on OCR'd text
 - [ ] Load test: 50 rps identify, 200 rps nearby
 - [ ] Landing page polish + docs pass
 - [ ] "Ship" tag `v0.1.0`, GitHub Release notes

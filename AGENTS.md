@@ -55,7 +55,7 @@ For iOS, the maps SDK key is delivered via a **Railway‑signed short‑lived to
 
 ## 6. Data source contract
 
-Every finance answer must attach a `sources: Source[]` array:
+Every finance answer must attach a `sources: Source[]` array. The canonical shape lives as a zod schema in `packages/core/src/schemas` and is projected into the OpenAPI 3.1 document at the repo root (`openapi.yaml`) — see the `Source` component there for the authoritative field list. For reference:
 
 ```ts
 type Source = {
@@ -67,6 +67,15 @@ type Source = {
 ```
 
 If you cannot cite a source, return an empty `sources: []` and set overall `confidence: "low"` — do not fabricate.
+
+**API contract artifacts.** `openapi.yaml` and `postman.json` at the repo root are **generated files** — never hand-edit. Regenerate whenever a schema in `packages/core` changes:
+
+```
+bun run openapi   # zod → openapi.yaml
+bun run postman   # openapi.yaml → postman.json
+```
+
+Downstream clients (iOS, landing, external integrators) consume `openapi.yaml` as the wire contract; the zod schemas remain the source of truth for the API implementation itself.
 
 ## 7. How to run and test
 

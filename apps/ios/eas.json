@@ -22,7 +22,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mapvest-api-stg.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://api-production-4b27.up.railway.app"
       }
     },
     "production": {
@@ -31,7 +31,7 @@
         "bundleIdentifier": "com.mapvest.app"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mapvest-api.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://api-production-4b27.up.railway.app"
       }
     }
   },
