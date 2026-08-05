@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import {
   ActivityIndicator,
   Linking,
@@ -12,6 +13,28 @@ import {
 import { resolveComparable } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { API_URL } from "@/util/env";
+
+type OptionsLink = { ticker: string; linkOut: string; note: string };
+
+/**
+ * v0.1 link-out fetcher. Kept inline here (not in `@/api/client`) because
+ * this endpoint is a scaffold for v0.2 and hasn't earned a top-level client
+ * helper yet. See docs/SYSTEM_DESIGN.md D10.
+ */
+async function fetchOptionsLink(
+  ticker: string,
+  token?: string,
+): Promise<OptionsLink> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(
+    `${API_URL}/v1/options?ticker=${encodeURIComponent(ticker)}`,
+    { method: "GET", headers },
+  );
+  if (!res.ok) throw new Error(`options ${res.status}`);
+  return (await res.json()) as OptionsLink;
+}
 
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -43,6 +66,8 @@ export default function DetailSheet() {
   const data = q.data;
   if (!data) return null;
 
+  const ticker = data.brand.ticker?.symbol;
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
       <View>
@@ -55,6 +80,11 @@ export default function DetailSheet() {
             : "private"}
           {data.brand.sector ? ` · ${data.brand.sector}` : ""}
         </Text>
+        {ticker ? (
+          <View style={styles.badgeRow}>
+            <OptionsBadge ticker={ticker} token={session?.token} />
+          </View>
+        ) : null}
       </View>
 
       <Section title="Comparables">
@@ -82,6 +112,51 @@ export default function DetailSheet() {
         />
       </Section>
     </ScrollView>
+  );
+}
+
+/**
+ * v0.1 link-out to the sibling `option_derivation` repo. Hits
+ * GET /v1/options?ticker=… which today returns a `linkOut` URL and a note;
+ * v0.2 will proxy to the deployed sibling service. See
+ * docs/SYSTEM_DESIGN.md D10 for the boundary decision.
+ */
+function OptionsBadge({ ticker, token }: { ticker: string; token?: string }) {
+  const opt = useQuery({
+    queryKey: ["options-link", ticker],
+    queryFn: () => fetchOptionsLink(ticker, token),
+    staleTime: 60 * 60_000,
+  });
+
+  const onPress = async () => {
+    const url = opt.data?.linkOut;
+    if (!url) return;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      // Fallback to system browser if the in-app browser is unavailable.
+      Linking.openURL(url).catch(() => {});
+    }
+  };
+
+  const ready = !!opt.data?.linkOut;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!ready}
+      accessibilityRole="link"
+      accessibilityLabel={`Options for ${ticker}`}
+      style={({ pressed }) => [
+        styles.badge,
+        !ready && styles.badgeDisabled,
+        pressed && ready && styles.badgePressed,
+      ]}
+    >
+      <Text style={styles.badgeText}>
+        {opt.isLoading ? "Options …" : `Options ${ticker} →`}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -178,4 +253,21 @@ const styles = StyleSheet.create({
   score: { color: "#7aa2ff", fontWeight: "700" },
   link: { color: "#7aa2ff", fontSize: 12 },
   err: { color: "#ff5a5a", padding: 16, textAlign: "center" },
+  badgeRow: { flexDirection: "row", marginTop: 12 },
+  badge: {
+    backgroundColor: "#1a2440",
+    borderColor: "#2b3d6e",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  badgeDisabled: { opacity: 0.5 },
+  badgePressed: { backgroundColor: "#22305a" },
+  badgeText: {
+    color: "#7aa2ff",
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
 });

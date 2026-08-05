@@ -50,8 +50,26 @@ Each candidate carries a score in `[0, 1]` and a `reasoning` string. Never retur
 
 ## Related sibling repos
 
-- `~/option_derivation` — options-chain derivation. Deferred to v0.2; expose via `/v1/options?ticker=…` proxy.
-- `~/The Underlying Analyzer Reboot` — private-company sector proxies. Same v0.2 plan; borrow the sector-mapping tables.
+> **Callout — sibling repos are link-outs, not dependencies (v0.1).**
+> Mapvest does not vendor code from these projects and does not import their
+> modules. The API exposes each sibling behind a stable `/v1/*` scaffold that
+> today returns a `linkOut` URL and a `note`, and in v0.2 will proxy to a
+> deployed instance of the sibling. See `docs/SYSTEM_DESIGN.md` **D10** for
+> the boundary decision.
+
+| Repo | What it will provide in v0.2 | v0.1 surface | Ownership |
+| --- | --- | --- | --- |
+| [`option_derivation`](https://github.com/jawauntb/option_derivation) | Options-chain derivation — implied vol surface, greeks, expected-move bands for a given ticker. Consumed by the iOS detail sheet when a public ticker is resolved. | `GET /v1/options?ticker=XYZ` returns `{ linkOut, note }` and the iOS detail sheet renders an "Options →" badge that opens the linkOut in `expo-web-browser`. | jawauntb (sibling repo, separate service) |
+| [`The Underlying Analyzer Reboot`](https://github.com/jawauntb/the-underlying-analyzer-reboot) | Private-company sector proxies — richer sector/sub-industry tables and comparable ranking, replacing the seed lookup in `packages/finance` for private brands. | Not yet exposed via HTTP; when wired it will land at `GET /v1/underlying?brand=…` with the same link-out shape as options. | jawauntb (sibling repo, separate service) |
+
+Both siblings are expected to run as their own Railway (or equivalent)
+services. Mapvest is only responsible for:
+
+1. Publishing a stable request shape (`ticker`, `brand`, `hintSector`).
+2. Rendering whatever the sibling returns behind a "not investment advice"
+   disclaimer.
+3. Never claiming the sibling's output as its own; the source in `sources[]`
+   must name the sibling repo/service so `docs/DATA_SOURCES.md` stays honest.
 
 ## What we do NOT use
 

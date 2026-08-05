@@ -64,6 +64,43 @@ Design decisions and the reasoning behind them. Update this file when a decision
 
 **Why**: Single source of truth, no separate LaunchDarkly. Iteration speed > flag sophistication.
 
+## D10 — Sibling repo boundary
+
+**Decision**: The sibling repos `option_derivation` and
+`The Underlying Analyzer Reboot` are treated as external services accessed
+by URL. Mapvest does not vendor their source, does not import their
+modules as `packages/*`, and does not run their code in-process.
+
+For v0.1 the boundary is a stub: `GET /v1/options?ticker=…` returns
+`{ linkOut, note }` and the iOS detail sheet renders a badge that opens
+the linkOut in `expo-web-browser`. For v0.2 the same endpoint proxies to
+a deployed instance of the sibling (Railway service or equivalent),
+preserving the response shape so clients do not have to change.
+
+**Why**:
+
+- **Independent release cadence.** Options-derivation math is a research
+  project with its own iteration loop. Coupling deployments would slow
+  both repos down.
+- **Clear licensing / attribution.** If a sibling ships under a different
+  license or gets spun out, a URL boundary is trivially removable; a
+  vendored `packages/options/*` is not.
+- **Blast-radius containment.** A crash or dependency-hell moment in
+  `option_derivation` cannot take down `/v1/nearby` or `/v1/identify`.
+  The worst case is that `/v1/options` returns the v0.1 link-out payload.
+- **Honest sources.** Anything the sibling returns is cited with the
+  sibling's own `provider` name in `sources[]`, so `docs/DATA_SOURCES.md`
+  stays truthful about where the numbers come from.
+
+**Trade-off**: One extra network hop per options request in v0.2. Given
+options data is a detail-sheet action (not a hot map path), the latency
+budget is comfortable — target < 400ms p95 including the proxy.
+
+**Enforcement**: `apps/api/src/routes/options.ts` must not import from
+`~/option_derivation`. Any future proxy code lives in
+`apps/api/src/routes/**` and reads the sibling's base URL from a Doppler
+env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

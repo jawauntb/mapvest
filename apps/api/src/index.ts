@@ -10,6 +10,7 @@ import auth from "./routes/auth.js";
 import sessionRoutes from "./routes/session.js";
 import proxy from "./routes/proxy.js";
 import admin from "./routes/admin.js";
+import options from "./routes/options.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 
@@ -28,6 +29,7 @@ app.route("/v1/auth", auth);
 app.route("/v1/session", sessionRoutes);
 app.route("/v1/proxy", proxy);
 app.route("/v1/admin", admin);
+app.route("/v1/options", options);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
