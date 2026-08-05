@@ -1,0 +1,19 @@
+{
+  "name": "@mapvest/cli",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Local CLI for the Mapvest API — demos + power users.",
+  "bin": {
+    "mapvest": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "build": "echo 'no build for bun'",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@mapvest/core": "workspace:*"
+  }
+}

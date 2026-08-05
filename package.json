@@ -7,6 +7,9 @@
     "apps/*",
     "packages/*"
   ],
+  "bin": {
+    "mapvest": "./packages/cli/src/index.ts"
+  },
   "scripts": {
     "dev": "bun run --filter '*' dev",
     "build": "bun run --filter '*' build",
@@ -14,7 +17,8 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "openapi": "bun run packages/core/scripts/gen-openapi.ts",
-    "postman": "bun run packages/core/scripts/gen-postman.ts"
+    "postman": "bun run packages/core/scripts/gen-postman.ts",
+    "mapvest": "bun run packages/cli/src/index.ts"
   },
   "packageManager": "bun@1.3.13",
   "engines": {

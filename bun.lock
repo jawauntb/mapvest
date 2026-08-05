@@ -73,6 +73,16 @@
         "@types/react": "^19.0.0",
       },
     },
+    "packages/cli": {
+      "name": "@mapvest/cli",
+      "version": "0.1.0-alpha.0",
+      "bin": {
+        "mapvest": "./src/index.ts",
+      },
+      "dependencies": {
+        "@mapvest/core": "workspace:*",
+      },
+    },
     "packages/core": {
       "name": "@mapvest/core",
       "version": "0.1.0-alpha.0",
@@ -526,6 +536,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@mapvest/api": ["@mapvest/api@workspace:apps/api"],
+
+    "@mapvest/cli": ["@mapvest/cli@workspace:packages/cli"],
 
     "@mapvest/core": ["@mapvest/core@workspace:packages/core"],
 
