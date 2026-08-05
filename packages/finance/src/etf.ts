@@ -1,16 +1,21 @@
-import type { EtfExposure } from "@mapvest/core";
+import type { EtfExposure, Source } from "@mapvest/core";
 import { enrichTicker, toSource } from "@mapvest/search";
+import { fallbackEtfsForSector } from "./etf-map.js";
+import { normalizeBrand, seedBrands } from "./seed.js";
 
 /**
  * Best-effort ETF exposure discovery for a brand or sector.
- * v0: search open web for constituent tables. v0.2 will use a dedicated data feed.
+ * v0 order:
+ *   1. Exa open-web hits for ETF constituent tables (best when available).
+ *   2. Fallback: seed-brand sector lookup -> hand-curated sector ETF map.
+ * v0.2 will use a dedicated data feed and populate real weights.
  */
 export async function resolveEtfExposure(query: string): Promise<EtfExposure[]> {
   let hits: Awaited<ReturnType<typeof enrichTicker>> = [];
   try {
     hits = await enrichTicker(`ETF holdings ${query} constituent weight`);
   } catch {
-    return [];
+    hits = [];
   }
 
   const out: EtfExposure[] = [];
@@ -24,5 +29,23 @@ export async function resolveEtfExposure(query: string): Promise<EtfExposure[]> 
       source: toSource(h, "low"),
     });
   }
-  return out;
+  if (out.length > 0) return out;
+
+  // ---- Fallback: seed brand -> sector -> hand-curated ETF map. ----------
+  const seed = seedBrands[normalizeBrand(query)];
+  const sector = seed?.sector ?? query; // caller may pass a sector name directly
+  const fb = fallbackEtfsForSector(sector);
+  if (fb.length === 0) return [];
+
+  const manual: Source = {
+    provider: "manual",
+    fetchedAt: new Date().toISOString(),
+    confidence: "medium",
+  };
+  return fb.map((e) => ({
+    ticker: e.ticker,
+    name: e.name,
+    weight: 0,
+    source: manual,
+  }));
 }
