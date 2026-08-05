@@ -9,6 +9,11 @@
 
 import brandsData from "../data/brands.json" with { type: "json" };
 
+// `normalizeBrand` lives in ./normalize.ts alongside `normalizeParent` so
+// the two share one place to reason about string folding. Re-exported
+// here for back-compat with existing importers of "@mapvest/finance/seed".
+export { normalizeBrand } from "./normalize.js";
+
 export type SeedEntry = {
   ticker: string;
   exchange: string;
@@ -22,17 +27,3 @@ export const seedBrands: Record<string, SeedEntry> = brandsData as unknown as Re
   string,
   SeedEntry
 >;
-
-/** Normalize a brand string to the seed key form.
- *  - trims outer whitespace
- *  - lowercases
- *  - normalizes curly apostrophes (', ') to straight (')
- *  - collapses runs of internal whitespace to a single space
- */
-export function normalizeBrand(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[‘’ʼ]/g, "'")
-    .replace(/\s+/g, " ");
-}
