@@ -1,0 +1,140 @@
+{
+  "html_attributions": [],
+  "status": "OK",
+  "results": [
+    {
+      "place_id": "ChIJmock_mcdonalds_sf",
+      "name": "McDonald's",
+      "vicinity": "701 3rd St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7787, "lng": -122.3956 }
+      },
+      "types": ["restaurant", "food", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.5,
+      "user_ratings_total": 812,
+      "price_level": 1
+    },
+    {
+      "place_id": "ChIJmock_starbucks_sf",
+      "name": "Starbucks",
+      "vicinity": "333 Market St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7929, "lng": -122.3971 }
+      },
+      "types": ["cafe", "food", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 4.1,
+      "user_ratings_total": 1240,
+      "price_level": 2
+    },
+    {
+      "place_id": "ChIJmock_chevron_sf",
+      "name": "Chevron",
+      "vicinity": "1298 Howard St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7729, "lng": -122.4126 }
+      },
+      "types": ["gas_station", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.7,
+      "user_ratings_total": 210
+    },
+    {
+      "place_id": "ChIJmock_bofa_sf",
+      "name": "Bank of America",
+      "vicinity": "555 California St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7924, "lng": -122.4038 }
+      },
+      "types": ["bank", "finance", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.2,
+      "user_ratings_total": 94
+    },
+    {
+      "place_id": "ChIJmock_chase_sf",
+      "name": "Chase Bank",
+      "vicinity": "560 Mission St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7889, "lng": -122.3971 }
+      },
+      "types": ["bank", "atm", "finance", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.4,
+      "user_ratings_total": 165
+    },
+    {
+      "place_id": "ChIJmock_target_sf",
+      "name": "Target",
+      "vicinity": "789 Mission St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7842, "lng": -122.4053 }
+      },
+      "types": [
+        "department_store",
+        "clothing_store",
+        "electronics_store",
+        "point_of_interest",
+        "establishment"
+      ],
+      "business_status": "OPERATIONAL",
+      "rating": 4.0,
+      "user_ratings_total": 3480
+    },
+    {
+      "place_id": "ChIJmock_walmart_sf",
+      "name": "Walmart",
+      "vicinity": "1919 Balboa St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7757, "lng": -122.481 }
+      },
+      "types": ["department_store", "grocery_or_supermarket", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.6,
+      "user_ratings_total": 1220
+    },
+    {
+      "place_id": "ChIJmock_homedepot_sf",
+      "name": "Home Depot",
+      "vicinity": "303 Bayshore Blvd, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7452, "lng": -122.4046 }
+      },
+      "types": [
+        "home_goods_store",
+        "hardware_store",
+        "furniture_store",
+        "point_of_interest",
+        "establishment"
+      ],
+      "business_status": "OPERATIONAL",
+      "rating": 4.2,
+      "user_ratings_total": 4102
+    },
+    {
+      "place_id": "ChIJmock_cvs_sf",
+      "name": "CVS",
+      "vicinity": "731 Market St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7862, "lng": -122.4046 }
+      },
+      "types": ["pharmacy", "convenience_store", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.8,
+      "user_ratings_total": 421
+    },
+    {
+      "place_id": "ChIJmock_wellsfargo_sf",
+      "name": "Wells Fargo",
+      "vicinity": "464 California St, San Francisco",
+      "geometry": {
+        "location": { "lat": 37.7935, "lng": -122.4028 }
+      },
+      "types": ["bank", "atm", "finance", "point_of_interest", "establishment"],
+      "business_status": "OPERATIONAL",
+      "rating": 3.3,
+      "user_ratings_total": 138
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Third-party image fixtures — see README.md.
+# We ship the manifest (urls.json) but not the images themselves.
+*.jpg
+*.jpeg
+*.png
+*.webp
+!stubs/*.png
+stubs/

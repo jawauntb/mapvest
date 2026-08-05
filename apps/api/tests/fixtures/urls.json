@@ -1,0 +1,78 @@
+{
+  "$schema": "./urls.schema.json",
+  "description": "Hand-curated fixtures for the vision-identify integration test. See README.md.",
+  "fixtures": [
+    {
+      "id": "mcdonalds-storefront",
+      "filename": "mcdonalds-storefront.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/McDonald%27s_Golden_Arches.svg/512px-McDonald%27s_Golden_Arches.svg.png",
+      "license": "Public domain (trademark; below threshold of originality) — Wikimedia Commons",
+      "expected": {
+        "brand": "McDonald's",
+        "ticker": "MCD",
+        "sector": "Consumer Discretionary"
+      },
+      "notes": "Golden Arches logo, unambiguous storefront proxy."
+    },
+    {
+      "id": "hersheys-bar",
+      "filename": "hersheys-bar.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Hershey%27s_Chocolate_Bar_wrapper.jpg/512px-Hershey%27s_Chocolate_Bar_wrapper.jpg",
+      "license": "CC BY-SA 4.0 — Wikimedia Commons",
+      "expected": {
+        "brand": "Hershey's",
+        "ticker": "HSY",
+        "sector": "Consumer Staples"
+      },
+      "notes": "Wrapper photograph — matches Phase 1 acceptance test example."
+    },
+    {
+      "id": "starbucks-cup",
+      "filename": "starbucks-cup.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Starbucks_Corporation_Logo_2011.svg/512px-Starbucks_Corporation_Logo_2011.svg.png",
+      "license": "Public domain (trademark; below threshold of originality) — Wikimedia Commons",
+      "expected": {
+        "brand": "Starbucks",
+        "ticker": "SBUX",
+        "sector": "Consumer Discretionary"
+      },
+      "notes": "Siren logo — same visual the model would see on a real cup."
+    },
+    {
+      "id": "walmart-aisle-sign",
+      "filename": "walmart-aisle-sign.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Walmart_logo.svg/512px-Walmart_logo.svg.png",
+      "license": "Public domain (trademark; below threshold of originality) — Wikimedia Commons",
+      "expected": {
+        "brand": "Walmart",
+        "ticker": "WMT",
+        "sector": "Consumer Staples"
+      },
+      "notes": "Spark + wordmark; used as an aisle-sign stand-in."
+    },
+    {
+      "id": "nike-shoe",
+      "filename": "nike-shoe.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Logo_NIKE.svg/512px-Logo_NIKE.svg.png",
+      "license": "Public domain (trademark; below threshold of originality) — Wikimedia Commons",
+      "expected": {
+        "brand": "Nike",
+        "ticker": "NKE",
+        "sector": "Consumer Discretionary"
+      },
+      "notes": "Swoosh — visible on nearly every Nike product."
+    },
+    {
+      "id": "chevron-pump",
+      "filename": "chevron-pump.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Chevron_Logo.svg/512px-Chevron_Logo.svg.png",
+      "license": "Public domain (trademark; below threshold of originality) — Wikimedia Commons",
+      "expected": {
+        "brand": "Chevron",
+        "ticker": "CVX",
+        "sector": "Energy"
+      },
+      "notes": "Chevron hallmark logo — shown on every pump canopy."
+    }
+  ]
+}
