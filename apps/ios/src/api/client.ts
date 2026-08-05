@@ -159,8 +159,53 @@ export function generateMemo(
   );
 }
 
-export type AuctionChart = {
+export type Quote = {
+  symbol: string;
+  price: number;
+  change: number;
+  changePct: number;
+  currency: string;
+  ts: string;
+  disclaimer: string;
+};
+
+export function fetchQuote(
+  symbol: string,
+  opts: FetchOpts = {},
+): Promise<{ quote?: Quote; error?: string }> {
+  return jsonFetch(
+    `/v1/quote?symbol=${encodeURIComponent(symbol)}`,
+    { method: "GET" },
+    opts,
+  );
+}
+
+/** Best-effort parallel quotes for list/saved rows (cap 10). */
+export async function fetchQuotesMap(
+  symbols: string[],
+  opts: FetchOpts = {},
+): Promise<Record<string, Quote>> {
+  const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 10);
+  const entries = await Promise.all(
+    uniq.map(async (sym) => {
+      try {
+        const r = await fetchQuote(sym, opts);
+        return r.quote ? ([sym, r.quote] as const) : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const out: Record<string, Quote> = {};
+  for (const e of entries) {
+    if (e) out[e[0]] = e[1];
+  }
+  return out;
+}
+
+export type ChartImage = {
   ticker: string;
+  type?: string;
   period: string;
   image: { mime: string; data: string; filename?: string };
   levels?: { poc?: number; vah?: number; val?: number };
@@ -168,14 +213,89 @@ export type AuctionChart = {
   sourceUrl?: string;
 };
 
-/** 1m auction chart proxied from underlying-analyzer. */
+/** @deprecated alias */
+export type AuctionChart = ChartImage;
+
+/** Chart PNG via Underlying Analyzer proxy. Default period 1mo. */
+export function fetchChart(
+  type: string,
+  ticker: string,
+  period = "1mo",
+  opts: FetchOpts = {},
+): Promise<ChartImage> {
+  const qs = new URLSearchParams({ ticker, period });
+  return jsonFetch(
+    `/v1/chart/${encodeURIComponent(type)}?${qs.toString()}`,
+    { method: "GET" },
+    opts,
+  );
+}
+
 export function fetchAuctionChart(
   ticker: string,
-  period = "1m",
+  period = "1mo",
   opts: FetchOpts = {},
-): Promise<AuctionChart> {
-  const qs = new URLSearchParams({ ticker, period });
-  return jsonFetch(`/v1/chart/auction?${qs.toString()}`, { method: "GET" }, opts);
+): Promise<ChartImage> {
+  return fetchChart("auction", ticker, period, opts);
+}
+
+export type AnalysisSnapshot = {
+  ticker: string;
+  name?: string;
+  sector?: string;
+  industry?: string;
+  price?: number;
+  annualVolatility?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  trailingPe?: string | number;
+  marketCap?: string | number;
+  brief?: string;
+  briefProvider?: string;
+};
+
+export function fetchAnalysis(ticker: string, opts: FetchOpts = {}): Promise<AnalysisSnapshot> {
+  return jsonFetch(`/v1/analysis/${encodeURIComponent(ticker)}`, { method: "GET" }, opts);
+}
+
+export type CockpitRow = {
+  rank?: number;
+  ticker: string;
+  score?: number;
+  lane?: string;
+  ridge?: string | number;
+  flow?: string | number;
+  auction?: string | number;
+};
+
+export function fetchCockpit(
+  tickers: string[],
+  opts: FetchOpts = {},
+): Promise<{ rows: CockpitRow[]; tickers: string[] }> {
+  return jsonFetch(
+    "/v1/cockpit",
+    { method: "POST", body: JSON.stringify({ tickers: tickers.slice(0, 10) }) },
+    opts,
+  );
+}
+
+export type AlertItem = {
+  ticker?: string;
+  title?: string;
+  severity?: string | number;
+  summary?: string;
+  message?: string;
+};
+
+export function fetchAlerts(
+  tickers: string[],
+  opts: FetchOpts = {},
+): Promise<{ alerts: AlertItem[]; tickers: string[] }> {
+  return jsonFetch(
+    "/v1/alerts",
+    { method: "POST", body: JSON.stringify({ tickers: tickers.slice(0, 10) }) },
+    opts,
+  );
 }
 
 export function secFilings(

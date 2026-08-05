@@ -67,6 +67,10 @@ const S = {
     "ResolveComparableResponse",
     raw.ResolveComparableResponse,
   ),
+  ChartResponse: component("ChartResponse", raw.ChartResponse),
+  AnalysisSnapshot: component("AnalysisSnapshot", raw.AnalysisSnapshot),
+  CockpitResponse: component("CockpitResponse", raw.CockpitResponse),
+  AlertsResponse: component("AlertsResponse", raw.AlertsResponse),
   User: component("User", raw.User),
   Session: component("Session", raw.Session),
 };
@@ -206,6 +210,115 @@ registry.registerPath({
       content: {
         "application/json": { schema: S.ResolveComparableResponse },
       },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/chart/{type}",
+  summary: "Underlying Analyzer chart image",
+  description:
+    "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      type: z
+        .string()
+        .openapi({
+          param: { name: "type", in: "path" },
+          example: "auction",
+        }),
+    }),
+    query: z.object({
+      ticker: z.string().openapi({ example: "MCD" }),
+      period: z.string().optional().openapi({ example: "1mo" }),
+      month: z.coerce.number().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Chart PNG as base64 plus optional auction levels.",
+      content: { "application/json": { schema: S.ChartResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/analysis/{ticker}",
+  summary: "Underlying Analyzer snapshot",
+  description: "Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      ticker: z.string().openapi({
+        param: { name: "ticker", in: "path" },
+        example: "MCD",
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Analysis snapshot.",
+      content: { "application/json": { schema: S.AnalysisSnapshot } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/cockpit",
+  summary: "Watchlist cockpit (Underlying Analyzer)",
+  description: "Batch rank for up to 10 tickers via POST /api/watchlists/cockpit.",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({
+            tickers: z.array(z.string()).min(1).max(10),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Ranked cockpit rows.",
+      content: { "application/json": { schema: S.CockpitResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/alerts",
+  summary: "Watchlist alerts digest (Underlying Analyzer)",
+  description: "Alert digest for up to 10 tickers via POST /api/watchlists/alerts.",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({
+            tickers: z.array(z.string()).min(1).max(10),
+            maxAlerts: z.number().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Alerts digest.",
+      content: { "application/json": { schema: S.AlertsResponse } },
     },
     ...errorResponses,
   },

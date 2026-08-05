@@ -175,6 +175,124 @@
               ]
             }
           }
+        },
+        {
+          "name": "Underlying Analyzer chart image",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chart/{type}?ticker=MCD&period=1mo&month=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chart",
+                "{type}"
+              ],
+              "query": [
+                {
+                  "key": "ticker",
+                  "value": "MCD"
+                },
+                {
+                  "key": "period",
+                  "value": "1mo"
+                },
+                {
+                  "key": "month",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`."
+          }
+        },
+        {
+          "name": "Underlying Analyzer snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/analysis/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "analysis",
+                "{ticker}"
+              ]
+            },
+            "description": "Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo."
+          }
+        },
+        {
+          "name": "Watchlist cockpit (Underlying Analyzer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/cockpit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "cockpit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tickers\": [\n    \"\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Batch rank for up to 10 tickers via POST /api/watchlists/cockpit."
+          }
+        },
+        {
+          "name": "Watchlist alerts digest (Underlying Analyzer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/alerts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "alerts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tickers\": [\n    \"\"\n  ],\n  \"maxAlerts\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Alert digest for up to 10 tickers via POST /api/watchlists/alerts."
+          }
         }
       ]
     },

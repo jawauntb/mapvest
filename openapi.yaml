@@ -1349,6 +1349,166 @@ components:
         - brand
         - comparables
         - etfs
+    ChartResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        type:
+          type: string
+        period:
+          type: string
+        image:
+          type: object
+          properties:
+            mime:
+              type: string
+            data:
+              type: string
+            filename:
+              type: string
+          required:
+            - mime
+            - data
+        levels:
+          type: object
+          properties:
+            poc:
+              type: number
+            vah:
+              type: number
+            val:
+              type: number
+        meta:
+          type: object
+          additionalProperties: {}
+        provider:
+          type: string
+        providerNote:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - ticker
+        - period
+        - image
+    AnalysisSnapshot:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        sector:
+          type: string
+        industry:
+          type: string
+        price:
+          type: number
+        change:
+          type: number
+        changePercent:
+          type: number
+        marketCap:
+          anyOf:
+            - type: string
+            - type: number
+        trailingPe:
+          anyOf:
+            - type: string
+            - type: number
+        annualVolatility:
+          type: number
+        fiftyTwoWeekHigh:
+          type: number
+        fiftyTwoWeekLow:
+          type: number
+        brief:
+          type: string
+        briefProvider:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - ticker
+    CockpitResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              rank:
+                type: number
+              ticker:
+                type: string
+              score:
+                type: number
+              lane:
+                type: string
+              ridge:
+                anyOf:
+                  - type: string
+                  - type: number
+              flow:
+                anyOf:
+                  - type: string
+                  - type: number
+              auction:
+                anyOf:
+                  - type: string
+                  - type: number
+            required:
+              - ticker
+        tickers:
+          type: array
+          items:
+            type: string
+        meta:
+          type: object
+          additionalProperties: {}
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - rows
+        - tickers
+    AlertsResponse:
+      type: object
+      properties:
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              title:
+                type: string
+              severity:
+                anyOf:
+                  - type: string
+                  - type: number
+              summary:
+                type: string
+              message:
+                type: string
+        tickers:
+          type: array
+          items:
+            type: string
+        meta:
+          type: object
+          additionalProperties: {}
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - alerts
+        - tickers
     User:
       type: object
       properties:
@@ -1566,6 +1726,219 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolveComparableResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/chart/{type}:
+    get:
+      summary: Underlying Analyzer chart image
+      description: Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: auction
+          required: true
+          name: type
+          in: path
+        - schema:
+            type: string
+            example: MCD
+          required: true
+          name: ticker
+          in: query
+        - schema:
+            type: string
+            example: 1mo
+          required: false
+          name: period
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+          required: false
+          name: month
+          in: query
+      responses:
+        "200":
+          description: Chart PNG as base64 plus optional auction levels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/analysis/{ticker}:
+    get:
+      summary: Underlying Analyzer snapshot
+      description: Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: MCD
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Analysis snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSnapshot"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/cockpit:
+    post:
+      summary: Watchlist cockpit (Underlying Analyzer)
+      description: Batch rank for up to 10 tickers via POST /api/watchlists/cockpit.
+      tags:
+        - finance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickers:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 10
+              required:
+                - tickers
+      responses:
+        "200":
+          description: Ranked cockpit rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CockpitResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/alerts:
+    post:
+      summary: Watchlist alerts digest (Underlying Analyzer)
+      description: Alert digest for up to 10 tickers via POST /api/watchlists/alerts.
+      tags:
+        - finance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickers:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 10
+                maxAlerts:
+                  type: number
+              required:
+                - tickers
+      responses:
+        "200":
+          description: Alerts digest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertsResponse"
         "400":
           description: Bad request — validation failed against the zod schema.
           content:

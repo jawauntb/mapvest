@@ -2,30 +2,55 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addToWatchlist,
   generateMemo,
-  getAuctionChart,
+  getAnalysis,
+  getChart,
   getQuote,
   getToken,
   listWatchlist,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
-  type AuctionChart,
+  type AnalysisSnapshot,
+  type ChartImage,
 } from "@/lib/mapvest-api";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
 type Quote = NonNullable<Awaited<ReturnType<typeof getQuote>>["quote"]>;
+
+const CHART_CHIPS = [
+  { id: "auction", label: "Auction" },
+  { id: "performance", label: "Seasonality" },
+  { id: "regression", label: "Regression" },
+  { id: "ridge-growth", label: "Ridge" },
+  { id: "flow-compass", label: "Flow" },
+  { id: "torque", label: "Torque" },
+] as const;
+
+const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
+
+type ChartCache = Record<string, ChartImage>;
+
+function cacheKey(type: string, ticker: string, period: string) {
+  return `${ticker}|${type}|${period}`;
+}
 
 export default function TickerDetail() {
   const params = useParams<{ symbol: string }>();
   const symbolOrBrand = decodeURIComponent(params.symbol ?? "");
   const [data, setData] = useState<Resolved | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [chart, setChart] = useState<AuctionChart | null>(null);
+  const [chartTicker, setChartTicker] = useState<string | null>(null);
+  const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
+  const [chart, setChart] = useState<ChartImage | null>(null);
   const [chartErr, setChartErr] = useState<string | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const cacheRef = useRef<ChartCache>({});
+  const [analysis, setAnalysis] = useState<AnalysisSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
@@ -34,35 +59,72 @@ export default function TickerDetail() {
 
   const authed = !!getToken();
 
+  const loadChart = useCallback(async (ticker: string, type: string, per: string) => {
+    const key = cacheKey(type, ticker, per);
+    const hit = cacheRef.current[key];
+    if (hit) {
+      setChart(hit);
+      setChartErr(null);
+      return;
+    }
+    setChartLoading(true);
+    setChartErr(null);
+    try {
+      const r = await getChart(type, ticker, { period: per });
+      cacheRef.current[key] = r;
+      setChart(r);
+    } catch (e) {
+      setChart(null);
+      setChartErr(e instanceof Error ? e.message : "chart failed");
+    } finally {
+      setChartLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!symbolOrBrand) return;
+    cacheRef.current = {};
     setChart(null);
     setChartErr(null);
+    setChartType("auction");
+    setPeriod("1mo");
+    setAnalysis(null);
     resolveComparable(symbolOrBrand)
       .then((r) => {
         setData(r);
-        const chartTicker =
+        const t =
           r.brand.ticker?.symbol ??
           r.comparables[0]?.ticker ??
           (/^[A-Z][A-Z0-9.]{0,5}$/.test(symbolOrBrand.toUpperCase())
             ? symbolOrBrand.toUpperCase()
             : null);
-        if (chartTicker) {
-          getAuctionChart(chartTicker, "1m")
-            .then(setChart)
-            .catch((e) => setChartErr(e instanceof Error ? e.message : "chart failed"));
+        setChartTicker(t);
+        if (t) {
+          void loadChart(t, "auction", "1mo");
+          getAnalysis(t)
+            .then(setAnalysis)
+            .catch(() => {});
         }
       })
       .catch((e) => setErr(e.message));
     getQuote(symbolOrBrand)
       .then((r) => r.quote && setQuote(r.quote))
-      .catch(() => {}); // quote is best-effort
+      .catch(() => {});
     if (authed) {
       listWatchlist()
-        .then((wl) => setSaved(wl.items.some((it) => it.ticker.toUpperCase() === symbolOrBrand.toUpperCase())))
+        .then((wl) =>
+          setSaved(
+            wl.items.some((it) => it.ticker.toUpperCase() === symbolOrBrand.toUpperCase()),
+          ),
+        )
         .catch(() => {});
     }
-  }, [symbolOrBrand, authed]);
+  }, [symbolOrBrand, authed, loadChart]);
+
+  useEffect(() => {
+    if (!chartTicker) return;
+    void loadChart(chartTicker, chartType, period);
+  }, [chartTicker, chartType, period, loadChart]);
 
   if (err) return <div className="app-err">{err}</div>;
   if (!data) return <div className="app-muted">Loading…</div>;
@@ -113,7 +175,6 @@ export default function TickerDetail() {
     if (!ticker || !memo) return;
     setBusy("memoSave");
     try {
-      // ensure ticker is in the watchlist first (add is idempotent)
       await addToWatchlist({
         ticker,
         name: brand.name,
@@ -127,6 +188,8 @@ export default function TickerDetail() {
       setBusy("");
     }
   }
+
+  const chipLabel = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
 
   return (
     <div className="app-detail">
@@ -163,16 +226,42 @@ export default function TickerDetail() {
 
       <section className="app-chart">
         <h2>
-          Auction chart · {chart?.ticker ?? ticker ?? "…"} · {chart?.period ?? "1m"}
+          {chipLabel} · {chart?.ticker ?? chartTicker ?? "…"} · {period}
         </h2>
-        {chart ? (
+        <div className="app-chart-chips" role="tablist">
+          {CHART_CHIPS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`app-chip ${chartType === c.id ? "app-chip-active" : ""}`}
+              onClick={() => setChartType(c.id)}
+              disabled={!chartTicker}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <div className="app-period-row">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`app-period ${period === p ? "app-period-active" : ""}`}
+              onClick={() => setPeriod(p)}
+              disabled={!chartTicker}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        {chart && !chartLoading ? (
           <>
             <img
               className="app-chart-img"
-              alt={`${chart.ticker} 1m auction chart`}
+              alt={`${chart.ticker} ${period} ${chipLabel} chart`}
               src={`data:${chart.image.mime};base64,${chart.image.data}`}
             />
-            {chart.levels ? (
+            {chart.levels && chartType === "auction" ? (
               <p className="app-muted">
                 POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
                 {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
@@ -184,9 +273,64 @@ export default function TickerDetail() {
         ) : chartErr ? (
           <p className="app-err">{chartErr}</p>
         ) : (
-          <p className="app-muted">Loading 1m auction chart…</p>
+          <p className="app-muted">Loading {chipLabel.toLowerCase()} chart…</p>
         )}
       </section>
+
+      {analysis ? (
+        <section>
+          <h2>Analysis snapshot</h2>
+          <dl className="app-snapshot">
+            {analysis.sector ? (
+              <>
+                <div>
+                  <dt>Sector</dt>
+                  <dd>{analysis.sector}</dd>
+                </div>
+              </>
+            ) : null}
+            {analysis.industry ? (
+              <div>
+                <dt>Industry</dt>
+                <dd>{analysis.industry}</dd>
+              </div>
+            ) : null}
+            {analysis.annualVolatility != null ? (
+              <div>
+                <dt>Ann. vol</dt>
+                <dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd>
+              </div>
+            ) : null}
+            {analysis.fiftyTwoWeekLow != null || analysis.fiftyTwoWeekHigh != null ? (
+              <div>
+                <dt>52w</dt>
+                <dd>
+                  {analysis.fiftyTwoWeekLow?.toFixed?.(2) ?? "—"} –{" "}
+                  {analysis.fiftyTwoWeekHigh?.toFixed?.(2) ?? "—"}
+                </dd>
+              </div>
+            ) : null}
+            {analysis.trailingPe != null ? (
+              <div>
+                <dt>P/E</dt>
+                <dd>{analysis.trailingPe}</dd>
+              </div>
+            ) : null}
+            {analysis.marketCap != null ? (
+              <div>
+                <dt>Mkt cap</dt>
+                <dd>{String(analysis.marketCap)}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {analysis.brief ? (
+            <pre className="app-memo-body" style={{ marginTop: "0.75rem" }}>
+              {analysis.brief.slice(0, 1200)}
+              {analysis.brief.length > 1200 ? "…" : ""}
+            </pre>
+          ) : null}
+        </section>
+      ) : null}
 
       {ticker && authed ? (
         <div className="app-action-row">

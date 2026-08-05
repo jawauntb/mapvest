@@ -1,16 +1,30 @@
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import {
+  UNDERLYING_URL,
+  isTicker,
+  normalizePeriod,
+  upstreamFetch,
+} from "../lib/underlying.js";
 
 /**
- * Chart proxies over the sibling `underlying-analyzer-reboot` service.
- * Default surface: 1-month auction chart whenever a ticker is opened.
+ * Chart proxies → underlying-analyzer-reboot `POST /api/charts/<type>`.
  *
- * Upstream: POST /api/charts/auction { ticker, period }
- * Docs: The Underlying Analyzer Reboot / docs/api.md
+ * GET /v1/chart/:type?ticker=MCD&period=1mo&month=1
  */
 
-const UNDERLYING_URL =
-  process.env.UNDERLYING_URL ?? "https://underlying-terminal-production.up.railway.app";
+const CHART_TYPES = new Set([
+  "auction",
+  "performance",
+  "regression",
+  "ridge-growth",
+  "ridge_growth",
+  "flow-compass",
+  "flow_compass",
+  "torque",
+  "portfolio",
+  "volatility",
+]);
 
 const chart = new Hono();
 
@@ -19,28 +33,47 @@ type UpstreamChart = {
   images?: UpstreamImage[];
   provider?: string;
   provider_note?: string;
-  meta?: { poc?: number; vah?: number; val?: number };
+  meta?: Record<string, unknown>;
   error?: string;
 };
 
-/**
- * GET /v1/chart/auction?ticker=MCD&period=1m
- * → { ticker, period, image: { mime, data, filename? }, levels?, provider? }
- */
-chart.get("/auction", async (c) => {
-  return safeExecuteWithSpan("http.chart.auction", async (span) => {
+function normalizeType(raw: string): string {
+  return raw.trim().toLowerCase().replace(/_/g, "-");
+}
+
+chart.get("/:type", async (c) => {
+  return safeExecuteWithSpan("http.chart", async (span) => {
+    const type = normalizeType(c.req.param("type") ?? "");
+    if (!CHART_TYPES.has(type) && !CHART_TYPES.has(type.replace(/-/g, "_"))) {
+      return c.json(
+        {
+          error: `unsupported chart type (use auction|performance|regression|ridge-growth|flow-compass|torque)`,
+        },
+        400,
+      );
+    }
     const ticker = (c.req.query("ticker") ?? "").trim().toUpperCase();
-    const period = (c.req.query("period") ?? "1m").trim() || "1m";
-    if (!ticker || !/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker)) {
+    if (!isTicker(ticker)) {
       return c.json({ error: "ticker required (e.g. MCD)" }, 400);
     }
-    span.setAttributes({ ticker, period, upstream: UNDERLYING_URL });
+    const defaultPeriod = type === "auction" ? "1mo" : type === "torque" ? "2y" : "1y";
+    const period = normalizePeriod(c.req.query("period") ?? undefined, defaultPeriod);
+    const monthRaw = c.req.query("month");
+    const month = monthRaw ? Number(monthRaw) : undefined;
+
+    span.setAttributes({ chart_type: type, ticker, period, upstream: UNDERLYING_URL });
+
+    const body: Record<string, unknown> = { ticker, period };
+    if (type === "performance" && Number.isFinite(month) && month! >= 1 && month! <= 12) {
+      body.month = month;
+    }
 
     const started = performance.now();
-    const res = await fetch(`${UNDERLYING_URL}/api/charts/auction`, {
+    const res = await upstreamFetch(`/api/charts/${type}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ ticker, period }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      timeoutMs: 45_000,
     });
     span.setAttributes({
       upstream_status: res.status,
@@ -49,7 +82,7 @@ chart.get("/auction", async (c) => {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return c.json(
-        { error: `underlying auction chart ${res.status}`, detail: text.slice(0, 300) },
+        { error: `underlying chart ${type} ${res.status}`, detail: text.slice(0, 300) },
         502,
       );
     }
@@ -57,21 +90,30 @@ chart.get("/auction", async (c) => {
     const j = (await res.json()) as UpstreamChart;
     const img = j.images?.[0];
     if (!img?.data) {
-      return c.json({ error: j.error ?? "no auction chart image returned" }, 502);
+      return c.json({ error: j.error ?? "no chart image returned" }, 502);
     }
+
+    const meta = j.meta ?? {};
+    const levels =
+      typeof meta.poc === "number" || typeof meta.vah === "number" || typeof meta.val === "number"
+        ? {
+            poc: typeof meta.poc === "number" ? meta.poc : undefined,
+            vah: typeof meta.vah === "number" ? meta.vah : undefined,
+            val: typeof meta.val === "number" ? meta.val : undefined,
+          }
+        : undefined;
 
     return c.json({
       ticker,
+      type,
       period,
       image: {
         mime: img.mime ?? "image/png",
         data: img.data,
         filename: img.filename,
       },
-      levels:
-        j.meta && (j.meta.poc != null || j.meta.vah != null || j.meta.val != null)
-          ? { poc: j.meta.poc, vah: j.meta.vah, val: j.meta.val }
-          : undefined,
+      levels,
+      meta,
       provider: j.provider,
       providerNote: j.provider_note,
       sourceUrl: `${UNDERLYING_URL}/`,

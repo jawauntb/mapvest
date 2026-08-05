@@ -1,11 +1,15 @@
 "use client";
 
 import {
+  type AlertItem,
+  type CockpitRow,
   type NearbyItem,
   type User,
   type WatchEntry,
   addToWatchlist,
   clearSession,
+  fetchAlerts,
+  fetchCockpit,
   fetchNearby,
   generateMemo,
   getToken,
@@ -424,6 +428,10 @@ function IdentifyTab() {
 function SavedTab() {
   const [items, setItems] = useState<WatchEntry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [cockpit, setCockpit] = useState<CockpitRow[] | null>(null);
+  const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
+  const [panelBusy, setPanelBusy] = useState<"" | "cockpit" | "alerts">("");
+  const [panelErr, setPanelErr] = useState<string | null>(null);
 
   async function refresh() {
     setErr(null);
@@ -438,6 +446,36 @@ function SavedTab() {
   useEffect(() => {
     refresh();
   }, []);
+
+  async function onCockpit() {
+    if (!items?.length) return;
+    setPanelBusy("cockpit");
+    setPanelErr(null);
+    try {
+      const r = await fetchCockpit(items.map((i) => i.ticker));
+      setCockpit(r.rows);
+      setAlerts(null);
+    } catch (e) {
+      setPanelErr(e instanceof Error ? e.message : "cockpit failed");
+    } finally {
+      setPanelBusy("");
+    }
+  }
+
+  async function onAlerts() {
+    if (!items?.length) return;
+    setPanelBusy("alerts");
+    setPanelErr(null);
+    try {
+      const r = await fetchAlerts(items.map((i) => i.ticker));
+      setAlerts(r.alerts);
+      setCockpit(null);
+    } catch (e) {
+      setPanelErr(e instanceof Error ? e.message : "alerts failed");
+    } finally {
+      setPanelBusy("");
+    }
+  }
 
   if (err) return <p className="app-err">{err}</p>;
   if (!items) return <p className="app-muted">Loading…</p>;
@@ -455,6 +493,83 @@ function SavedTab() {
 
   return (
     <div className="app-list">
+      <div className="app-action-row" style={{ marginBottom: "0.75rem" }}>
+        <button
+          type="button"
+          className="app-btn"
+          onClick={onCockpit}
+          disabled={panelBusy === "cockpit"}
+        >
+          {panelBusy === "cockpit" ? "Cockpit…" : "Cockpit"}
+        </button>
+        <button
+          type="button"
+          className="app-btn"
+          onClick={onAlerts}
+          disabled={panelBusy === "alerts"}
+        >
+          {panelBusy === "alerts" ? "Alerts…" : "Alerts"}
+        </button>
+        <span className="app-muted" style={{ alignSelf: "center" }}>
+          up to 10 tickers · Underlying Analyzer
+        </span>
+      </div>
+      {panelErr ? <p className="app-err">{panelErr}</p> : null}
+      {cockpit ? (
+        <section style={{ marginBottom: "1rem" }}>
+          <h2>Cockpit</h2>
+          <table className="app-cockpit-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Ticker</th>
+                <th>Lane</th>
+                <th>Score</th>
+                <th>Ridge</th>
+                <th>Flow</th>
+                <th>Auction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cockpit.map((r, i) => (
+                <tr key={`${r.ticker}-${i}`}>
+                  <td>{r.rank ?? i + 1}</td>
+                  <td>
+                    <Link href={`/app/ticker/${encodeURIComponent(r.ticker)}`}>
+                      <span className="app-ticker">${r.ticker}</span>
+                    </Link>
+                  </td>
+                  <td>{r.lane ?? "—"}</td>
+                  <td>{r.score != null ? r.score.toFixed?.(2) ?? r.score : "—"}</td>
+                  <td>{r.ridge ?? "—"}</td>
+                  <td>{r.flow ?? "—"}</td>
+                  <td>{r.auction ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+      {alerts ? (
+        <section style={{ marginBottom: "1rem" }}>
+          <h2>Alerts</h2>
+          {alerts.length === 0 ? (
+            <p className="app-muted">No alerts for this set.</p>
+          ) : (
+            <ul className="app-alert-list">
+              {alerts.map((a, i) => (
+                <li key={i}>
+                  <strong>
+                    {a.ticker ? `$${a.ticker}` : "—"}
+                    {a.title ? ` · ${a.title}` : ""}
+                  </strong>
+                  <div className="app-muted">{a.summary ?? a.message ?? ""}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
       {items.map((e) => (
         <Link
           key={e.ticker}

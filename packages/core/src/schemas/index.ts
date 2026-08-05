@@ -148,11 +148,12 @@ export const ResolveComparableResponse = z.object({
 export type ResolveComparableResponse = z.infer<typeof ResolveComparableResponse>;
 
 /**
- * Auction chart proxied from underlying-analyzer-reboot
- * (`POST /api/charts/auction`). `image.data` is raw base64 (no data: prefix).
+ * Chart image proxied from underlying-analyzer-reboot
+ * (`POST /api/charts/<type>`). `image.data` is raw base64 (no data: prefix).
  */
-export const AuctionChartResponse = z.object({
+export const ChartResponse = z.object({
   ticker: z.string(),
+  type: z.string().optional(),
   period: z.string(),
   image: z.object({
     mime: z.string(),
@@ -166,11 +167,71 @@ export const AuctionChartResponse = z.object({
       val: z.number().optional(),
     })
     .optional(),
+  meta: z.record(z.unknown()).optional(),
   provider: z.string().optional(),
   providerNote: z.string().optional(),
   sourceUrl: z.string().url().optional(),
 });
-export type AuctionChartResponse = z.infer<typeof AuctionChartResponse>;
+export type ChartResponse = z.infer<typeof ChartResponse>;
+
+/** @deprecated alias — prefer ChartResponse */
+export const AuctionChartResponse = ChartResponse;
+export type AuctionChartResponse = ChartResponse;
+
+export const AnalysisSnapshot = z.object({
+  ticker: z.string(),
+  name: z.string().optional(),
+  sector: z.string().optional(),
+  industry: z.string().optional(),
+  price: z.number().optional(),
+  change: z.number().optional(),
+  changePercent: z.number().optional(),
+  marketCap: z.union([z.string(), z.number()]).optional(),
+  trailingPe: z.union([z.string(), z.number()]).optional(),
+  annualVolatility: z.number().optional(),
+  fiftyTwoWeekHigh: z.number().optional(),
+  fiftyTwoWeekLow: z.number().optional(),
+  brief: z.string().optional(),
+  briefProvider: z.string().optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type AnalysisSnapshot = z.infer<typeof AnalysisSnapshot>;
+
+export const CockpitRow = z.object({
+  rank: z.number().optional(),
+  ticker: z.string(),
+  score: z.number().optional(),
+  lane: z.string().optional(),
+  ridge: z.union([z.string(), z.number()]).optional(),
+  flow: z.union([z.string(), z.number()]).optional(),
+  auction: z.union([z.string(), z.number()]).optional(),
+}).passthrough();
+export type CockpitRow = z.infer<typeof CockpitRow>;
+
+export const CockpitResponse = z.object({
+  rows: z.array(CockpitRow),
+  tickers: z.array(z.string()),
+  meta: z.record(z.unknown()).optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type CockpitResponse = z.infer<typeof CockpitResponse>;
+
+export const AlertItem = z.object({
+  ticker: z.string().optional(),
+  title: z.string().optional(),
+  severity: z.union([z.string(), z.number()]).optional(),
+  summary: z.string().optional(),
+  message: z.string().optional(),
+}).passthrough();
+export type AlertItem = z.infer<typeof AlertItem>;
+
+export const AlertsResponse = z.object({
+  alerts: z.array(AlertItem),
+  tickers: z.array(z.string()),
+  meta: z.record(z.unknown()).optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type AlertsResponse = z.infer<typeof AlertsResponse>;
 
 // -------- sibling link-outs (v0.1 scaffold, see docs/SYSTEM_DESIGN.md D10) --------
 

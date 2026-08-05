@@ -137,9 +137,16 @@ export function fetchNearby(lat: number, lng: number, radius = 500, limit = 25) 
   );
 }
 
+export type ResolvedBrand = {
+  name: string;
+  isPublic: boolean;
+  ticker?: { symbol: string; exchange?: string };
+  sector?: string;
+};
+
 export function resolveComparable(brand: string, hintSector?: string) {
   return req<{
-    brand: NearbyItem["investable"] extends { brand: infer B } ? B : never;
+    brand: ResolvedBrand;
     comparables: Array<{
       ticker: string;
       name: string;
@@ -159,22 +166,45 @@ export function resolveComparable(brand: string, hintSector?: string) {
   });
 }
 
+export type Quote = {
+  symbol: string;
+  price: number;
+  change: number;
+  changePct: number;
+  currency: string;
+  ts: string;
+  disclaimer: string;
+};
+
 export function getQuote(symbol: string) {
-  return req<{
-    quote?: {
-      symbol: string;
-      price: number;
-      change: number;
-      changePct: number;
-      currency: string;
-      ts: string;
-      disclaimer: string;
-    };
-  }>(`/v1/quote?symbol=${encodeURIComponent(symbol)}`);
+  return req<{ quote?: Quote; error?: string }>(
+    `/v1/quote?symbol=${encodeURIComponent(symbol)}`,
+  );
 }
 
-export type AuctionChart = {
+/** Best-effort parallel quotes for list/saved (cap 10). */
+export async function getQuotesMap(symbols: string[]): Promise<Record<string, Quote>> {
+  const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 10);
+  const entries = await Promise.all(
+    uniq.map(async (sym) => {
+      try {
+        const r = await getQuote(sym);
+        return r.quote ? ([sym, r.quote] as const) : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const out: Record<string, Quote> = {};
+  for (const e of entries) {
+    if (e) out[e[0]] = e[1];
+  }
+  return out;
+}
+
+export type ChartImage = {
   ticker: string;
+  type?: string;
   period: string;
   image: { mime: string; data: string; filename?: string };
   levels?: { poc?: number; vah?: number; val?: number };
@@ -182,10 +212,81 @@ export type AuctionChart = {
   sourceUrl?: string;
 };
 
-/** 1m auction chart via underlying-analyzer (proxied). */
-export function getAuctionChart(ticker: string, period = "1m") {
-  const qs = new URLSearchParams({ ticker, period });
-  return req<AuctionChart>(`/v1/chart/auction?${qs.toString()}`);
+/** @deprecated alias */
+export type AuctionChart = ChartImage;
+
+/** Chart PNG via Underlying Analyzer (proxied). Default period 1mo. */
+export function getChart(
+  type: string,
+  ticker: string,
+  opts: { period?: string; month?: number } = {},
+) {
+  const qs = new URLSearchParams({
+    ticker,
+    period: opts.period ?? "1mo",
+  });
+  if (opts.month != null) qs.set("month", String(opts.month));
+  return req<ChartImage>(`/v1/chart/${encodeURIComponent(type)}?${qs.toString()}`);
+}
+
+export function getAuctionChart(ticker: string, period = "1mo") {
+  return getChart("auction", ticker, { period });
+}
+
+export type AnalysisSnapshot = {
+  ticker: string;
+  name?: string;
+  sector?: string;
+  industry?: string;
+  price?: number;
+  change?: number;
+  changePercent?: number;
+  marketCap?: string | number;
+  trailingPe?: string | number;
+  annualVolatility?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  brief?: string;
+  briefProvider?: string;
+  sourceUrl?: string;
+};
+
+export function getAnalysis(ticker: string) {
+  return req<AnalysisSnapshot>(`/v1/analysis/${encodeURIComponent(ticker)}`);
+}
+
+export type CockpitRow = {
+  rank?: number;
+  ticker: string;
+  score?: number;
+  lane?: string;
+  ridge?: string | number;
+  flow?: string | number;
+  auction?: string | number;
+};
+
+export function fetchCockpit(tickers: string[]) {
+  return req<{ rows: CockpitRow[]; tickers: string[]; sourceUrl?: string }>(
+    "/v1/cockpit",
+    { method: "POST", body: JSON.stringify({ tickers: tickers.slice(0, 10) }) },
+    true,
+  );
+}
+
+export type AlertItem = {
+  ticker?: string;
+  title?: string;
+  severity?: string | number;
+  summary?: string;
+  message?: string;
+};
+
+export function fetchAlerts(tickers: string[]) {
+  return req<{ alerts: AlertItem[]; tickers: string[]; sourceUrl?: string }>(
+    "/v1/alerts",
+    { method: "POST", body: JSON.stringify({ tickers: tickers.slice(0, 10) }) },
+    true,
+  );
 }
 
 // ---- identify ----

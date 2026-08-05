@@ -17,16 +17,31 @@ import {
 import { useRouter } from "expo-router";
 import {
   addToWatchlist,
-  fetchAuctionChart,
+  fetchAnalysis,
+  fetchChart,
+  fetchQuote,
   generateMemo,
   listWatchlist,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
+  secFilings,
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { API_URL } from "@/util/env";
+
+const CHART_CHIPS = [
+  { id: "auction", label: "Auction" },
+  { id: "performance", label: "Seasonality" },
+  { id: "regression", label: "Regression" },
+  { id: "ridge-growth", label: "Ridge" },
+  { id: "flow-compass", label: "Flow" },
+  { id: "torque", label: "Torque" },
+] as const;
+
+const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
+type TabKey = "overview" | "advanced";
 
 type OptionsLink = { ticker: string; linkOut: string; note: string };
 type UnderlyingLink = {
@@ -95,11 +110,42 @@ export default function DetailSheet() {
     q.data?.comparables?.[0]?.ticker ??
     (/^[A-Z][A-Z0-9.]{0,5}$/.test(brand.toUpperCase()) ? brand.toUpperCase() : undefined);
 
-  const chartQ = useQuery({
-    queryKey: ["auction-chart", ticker, "1m"],
+  const [tab, setTab] = useState<TabKey>("overview");
+  const [chartType, setChartType] =
+    useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
+
+  // Overview always loads auction 1mo; Advanced loads selected chip/period.
+  const activeType = tab === "overview" ? "auction" : chartType;
+  const activePeriod = tab === "overview" ? "1mo" : period;
+
+  const quoteQ = useQuery({
+    queryKey: ["quote", ticker],
     enabled: !!ticker,
-    queryFn: () => fetchAuctionChart(ticker!, "1m", { token: session?.token }),
+    queryFn: () => fetchQuote(ticker!, { token: session?.token }),
+    staleTime: 60_000,
+  });
+
+  const chartQ = useQuery({
+    queryKey: ["chart", ticker, activeType, activePeriod],
+    enabled: !!ticker,
+    queryFn: () =>
+      fetchChart(activeType, ticker!, activePeriod, { token: session?.token }),
     staleTime: 5 * 60_000,
+  });
+
+  const analysisQ = useQuery({
+    queryKey: ["analysis", ticker],
+    enabled: !!ticker,
+    queryFn: () => fetchAnalysis(ticker!, { token: session?.token }),
+    staleTime: 5 * 60_000,
+  });
+
+  const secQ = useQuery({
+    queryKey: ["sec", ticker],
+    enabled: !!ticker && tab === "advanced",
+    queryFn: () => secFilings(ticker!, { token: session?.token }),
+    staleTime: 30 * 60_000,
   });
 
   if (q.isLoading) {
@@ -121,6 +167,8 @@ export default function DetailSheet() {
 
   const publicTicker = data.brand.ticker?.symbol;
 
+  const quote = quoteQ.data?.quote;
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
       <View>
@@ -133,58 +181,130 @@ export default function DetailSheet() {
             : "private"}
           {data.brand.sector ? ` · ${data.brand.sector}` : ""}
         </Text>
-        {publicTicker ? (
-          <View style={styles.badgeRow}>
-            <OptionsBadge ticker={publicTicker} token={session?.token} />
+        {quote ? (
+          <View style={styles.quoteRow}>
+            <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
+            <Text
+              style={[
+                styles.quoteChange,
+                { color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b" },
+              ]}
+            >
+              {quote.change >= 0 ? "+" : ""}
+              {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+            </Text>
           </View>
-        ) : (
-          <View style={styles.badgeRow}>
-            <UnderlyingBadge
-              brand={data.brand.name}
+        ) : null}
+        <View style={styles.tabRow}>
+          {(["overview", "advanced"] as TabKey[]).map((t) => (
+            <Pressable
+              key={t}
+              onPress={() => setTab(t)}
+              style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
+            >
+              <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
+                {t === "overview" ? "Overview" : "Advanced"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {tab === "overview" ? (
+        <>
+          {ticker ? (
+            <Section title={`Auction · $${ticker} · 1mo`}>
+              <ChartImageBlock q={chartQ} ticker={ticker} label="Auction" showLevels />
+            </Section>
+          ) : null}
+
+          {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
+
+          {publicTicker ? (
+            <WatchlistActions
+              ticker={publicTicker}
+              name={data.brand.name}
               sector={data.brand.sector}
               token={session?.token}
             />
-          </View>
-        )}
-      </View>
+          ) : null}
 
-      {ticker ? <AuctionChartBlock q={chartQ} ticker={ticker} /> : null}
+          <Section title="Comparables">
+            {data.comparables.length === 0 ? (
+              <Text style={styles.muted}>No public comparables resolved.</Text>
+            ) : (
+              data.comparables.map((c, i) => (
+                <ComparableRow key={`${c.ticker}-${i}`} c={c} />
+              ))
+            )}
+          </Section>
 
-      {publicTicker ? (
-        <WatchlistActions
-          ticker={publicTicker}
-          name={data.brand.name}
-          sector={data.brand.sector}
-          token={session?.token}
-        />
-      ) : null}
+          <Section title="ETF exposure">
+            {data.etfs.length === 0 ? (
+              <Text style={styles.muted}>No ETFs matched.</Text>
+            ) : (
+              data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
+            )}
+          </Section>
 
-      <Section title="Comparables">
-        {data.comparables.length === 0 ? (
-          <Text style={styles.muted}>No public comparables resolved.</Text>
-        ) : (
-          data.comparables.map((c, i) => (
-            <ComparableRow key={`${c.ticker}-${i}`} c={c} />
-          ))
-        )}
-      </Section>
+          <Section title="Sources">
+            <SourceList
+              sources={dedupeSources([
+                ...data.comparables.flatMap((c) => c.sources),
+                ...data.etfs.map((e) => e.source),
+              ])}
+            />
+          </Section>
+        </>
+      ) : (
+        <>
+          {ticker ? (
+            <ChartStrip
+              q={chartQ}
+              ticker={ticker}
+              chartType={chartType}
+              period={period}
+              onType={setChartType}
+              onPeriod={setPeriod}
+            />
+          ) : null}
 
-      <Section title="ETF exposure">
-        {data.etfs.length === 0 ? (
-          <Text style={styles.muted}>No ETFs matched.</Text>
-        ) : (
-          data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
-        )}
-      </Section>
+          {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
 
-      <Section title="Sources">
-        <SourceList
-          sources={dedupeSources([
-            ...data.comparables.flatMap((c) => c.sources),
-            ...data.etfs.map((e) => e.source),
-          ])}
-        />
-      </Section>
+          {ticker ? (
+            <Section title="SEC filings">
+              {secQ.isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : secQ.isError ? (
+                <Text style={styles.muted}>SEC pack unavailable.</Text>
+              ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
+                secQ.data!.Citations.slice(0, 8).map((c, i) => (
+                  <Pressable
+                    key={`${c.URL}-${i}`}
+                    onPress={() => Linking.openURL(c.URL)}
+                    style={styles.row}
+                  >
+                    <Text style={styles.link}>
+                      {c.Form} · {c.Label}
+                    </Text>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.muted}>No filings returned.</Text>
+              )}
+            </Section>
+          ) : null}
+
+          <Section title="Sources">
+            <SourceList
+              sources={dedupeSources([
+                ...data.comparables.flatMap((c) => c.sources),
+                ...data.etfs.map((e) => e.source),
+              ])}
+            />
+          </Section>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -296,39 +416,155 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function AuctionChartBlock({
+function ChartImageBlock({
   q,
   ticker,
+  label,
+  showLevels,
 }: {
   q: ReturnType<typeof useQuery>;
   ticker: string;
+  label: string;
+  showLevels?: boolean;
 }) {
-  const data = q.data as Awaited<ReturnType<typeof fetchAuctionChart>> | undefined;
+  const data = q.data as Awaited<ReturnType<typeof fetchChart>> | undefined;
+  if (q.isLoading || q.isFetching) return <ActivityIndicator color="#fff" />;
+  if (q.isError) return <Text style={styles.err}>{(q.error as Error).message}</Text>;
+  if (!data?.image?.data) return <Text style={styles.muted}>No chart.</Text>;
   return (
-    <Section title={`Auction · $${ticker} · 1m`}>
-      {q.isLoading ? (
-        <ActivityIndicator color="#fff" />
-      ) : q.isError ? (
-        <Text style={styles.err}>{(q.error as Error).message}</Text>
-      ) : data?.image?.data ? (
-        <View style={{ gap: 8 }}>
-          <Image
-            source={{ uri: `data:${data.image.mime};base64,${data.image.data}` }}
-            style={styles.chartImg}
-            resizeMode="contain"
-            accessibilityLabel={`${ticker} 1 month auction chart`}
-          />
-          {data.levels ? (
-            <Text style={styles.muted}>
-              POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
-              {fmtLvl(data.levels.val)}
-              {data.provider ? ` · ${data.provider}` : ""}
-            </Text>
-          ) : null}
+    <View style={{ gap: 8 }}>
+      <Image
+        source={{ uri: `data:${data.image.mime};base64,${data.image.data}` }}
+        style={styles.chartImg}
+        resizeMode="contain"
+        accessibilityLabel={`${ticker} ${label} chart`}
+      />
+      {showLevels && data.levels ? (
+        <Text style={styles.muted}>
+          POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
+          {fmtLvl(data.levels.val)}
+          {data.provider ? ` · ${data.provider}` : ""}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function ChartStrip({
+  q,
+  ticker,
+  chartType,
+  period,
+  onType,
+  onPeriod,
+}: {
+  q: ReturnType<typeof useQuery>;
+  ticker: string;
+  chartType: (typeof CHART_CHIPS)[number]["id"];
+  period: (typeof PERIODS)[number];
+  onType: (t: (typeof CHART_CHIPS)[number]["id"]) => void;
+  onPeriod: (p: (typeof PERIODS)[number]) => void;
+}) {
+  const label = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
+  return (
+    <Section title={`${label} · $${ticker} · ${period}`}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {CHART_CHIPS.map((c) => (
+            <Pressable
+              key={c.id}
+              onPress={() => onType(c.id)}
+              style={[styles.chip, chartType === c.id && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, chartType === c.id && styles.chipTextActive]}>
+                {c.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
-      ) : (
-        <Text style={styles.muted}>No chart.</Text>
-      )}
+      </ScrollView>
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
+        {PERIODS.map((p) => (
+          <Pressable
+            key={p}
+            onPress={() => onPeriod(p)}
+            style={[styles.periodBtn, period === p && styles.periodBtnActive]}
+          >
+            <Text style={[styles.periodText, period === p && styles.periodTextActive]}>{p}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <ChartImageBlock
+        q={q}
+        ticker={ticker}
+        label={label}
+        showLevels={chartType === "auction"}
+      />
+    </Section>
+  );
+}
+
+function AnalysisSnapshotBlock({
+  data,
+}: {
+  data: Awaited<ReturnType<typeof fetchAnalysis>>;
+}) {
+  return (
+    <Section title="Summary">
+      <Text style={styles.muted}>
+        {[
+          data.sector,
+          data.industry,
+          data.annualVolatility != null
+            ? `vol ${(data.annualVolatility * 100).toFixed(1)}%`
+            : null,
+          data.fiftyTwoWeekLow != null || data.fiftyTwoWeekHigh != null
+            ? `52w ${fmtLvl(data.fiftyTwoWeekLow)}–${fmtLvl(data.fiftyTwoWeekHigh)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "—"}
+      </Text>
+      {data.brief ? (
+        <Text style={[styles.muted, { marginTop: 8 }]} numberOfLines={6}>
+          {data.brief}
+        </Text>
+      ) : null}
+    </Section>
+  );
+}
+
+function AnalysisAdvancedBlock({
+  data,
+}: {
+  data: Awaited<ReturnType<typeof fetchAnalysis>>;
+}) {
+  const rows: [string, string][] = [
+    ["Sector", data.sector ?? "—"],
+    ["Industry", data.industry ?? "—"],
+    ["Price", data.price != null ? `$${data.price.toFixed(2)}` : "—"],
+    [
+      "Ann. vol",
+      data.annualVolatility != null
+        ? `${(data.annualVolatility * 100).toFixed(1)}%`
+        : "—",
+    ],
+    ["52w low", fmtLvl(data.fiftyTwoWeekLow)],
+    ["52w high", fmtLvl(data.fiftyTwoWeekHigh)],
+    ["P/E", data.trailingPe != null ? String(data.trailingPe) : "—"],
+    ["Mkt cap", data.marketCap != null ? String(data.marketCap) : "—"],
+  ];
+  return (
+    <Section title="Financials">
+      {rows.map(([k, v]) => (
+        <View key={k} style={styles.finRow}>
+          <Text style={styles.finKey}>{k}</Text>
+          <Text style={styles.finVal}>{v}</Text>
+        </View>
+      ))}
+      {data.brief ? (
+        <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text>
+      ) : null}
     </Section>
   );
 }
@@ -612,4 +848,48 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   memoText: { color: "#e6e6e6", fontSize: 14, lineHeight: 21 },
+  chip: {
+    backgroundColor: "#141414",
+    borderColor: "#2a2a2a",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  chipActive: { backgroundColor: "#3ee68a", borderColor: "#3ee68a" },
+  chipText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  chipTextActive: { color: "#000" },
+  periodBtn: {
+    borderColor: "#333",
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  periodBtnActive: { borderColor: "#3ee68a" },
+  periodText: { color: "#888", fontSize: 11 },
+  periodTextActive: { color: "#3ee68a" },
+  quoteRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
+  quotePrice: { color: "#fff", fontSize: 28, fontWeight: "700" },
+  quoteChange: { fontSize: 15, fontWeight: "600" },
+  tabRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+  tabBtn: {
+    borderColor: "#2a2a2a",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  tabBtnOn: { backgroundColor: "#fff", borderColor: "#fff" },
+  tabText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
+  tabTextOn: { color: "#000" },
+  finRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#222",
+  },
+  finKey: { color: "#888", fontSize: 13 },
+  finVal: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });

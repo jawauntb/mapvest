@@ -14,6 +14,8 @@ import options from "./routes/options.js";
 import underlying from "./routes/underlying.js";
 import memo from "./routes/memo.js";
 import chart from "./routes/chart.js";
+import analysis from "./routes/analysis.js";
+import cockpit, { alerts } from "./routes/cockpit.js";
 import watchlist from "./routes/watchlist.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { rateLimit } from "./middleware/rateLimit.js";
@@ -37,6 +39,9 @@ app.route("/v1/options", options);
 app.route("/v1/underlying", underlying);
 app.route("/v1/memo", memo);
 app.route("/v1/chart", chart);
+app.route("/v1/analysis", analysis);
+app.route("/v1/cockpit", cockpit);
+app.route("/v1/alerts", alerts);
 app.route("/v1/watchlist", watchlist);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
