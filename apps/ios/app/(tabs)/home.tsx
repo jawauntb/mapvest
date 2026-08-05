@@ -68,9 +68,9 @@ export default function HomeSettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.label}>Robinhood MCP</Text>
         <Text style={styles.muted}>
-          Paste the bearer token from your Robinhood agent / ChatGPT MCP connector. Mapvest
-          stores it server-side and only shows a fingerprint — never the raw key. Research
-          chat currently uses Derivation’s operator MCP; this is for your account settings.
+          Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved,
+          ticker pages show Open in Robinhood so you can buy or place orders in Robinhood.
+          Mapvest never submits broker orders. Key is stored server-side (fingerprint only).
         </Text>
         {settingsQ.isLoading ? (
           <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />

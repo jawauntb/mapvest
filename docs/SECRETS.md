@@ -34,6 +34,8 @@ Derivation Research Console uses operator env `ROBINHOOD_MCP_URL` / `ROBINHOOD_M
 
 Users can paste a personal Robinhood agent MCP bearer into Mapvest **Home → Robinhood MCP**. The API stores it server-side and only returns a SHA-256 fingerprint + last4 (`POST /v1/settings/robinhood-mcp`). Never put the raw token in the iOS bundle or landing localStorage.
 
+When configured, ticker detail shows **Open in Robinhood** (`GET /v1/robinhood?ticker=` → `https://robinhood.com/us/en/stocks/{TICKER}/`). That opens Robinhood so the user can buy or place an order there (app / agentic trading). Mapvest never calls Robinhood `place_*` tools and never submits broker orders.
+
 ## Why the iOS app never sees the raw Google key
 
 Shipping the raw `GOOGLE_MAPS_API_KEY` in the app binary is trivially extractable. Instead:

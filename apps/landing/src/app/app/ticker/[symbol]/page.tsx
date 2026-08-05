@@ -12,6 +12,7 @@ import {
   getQuote,
   getToken,
   listWatchlist,
+  openInRobinhood,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
@@ -80,6 +81,7 @@ export default function TickerDetail() {
   const [overview, setOverview] = useState<ResearchArticle | null>(null);
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [rhLink, setRhLink] = useState<string | null>(null);
 
   const authed = !!getToken();
 
@@ -131,6 +133,7 @@ export default function TickerDetail() {
     setQuote(null);
     setOverview(null);
     setOverviewErr(null);
+    setRhLink(null);
 
     const urlTicker = looksLikeTicker(symbolOrBrand);
 
@@ -158,6 +161,11 @@ export default function TickerDetail() {
             })
             .catch((e) => setOverviewErr(e instanceof Error ? e.message : "overview failed"))
             .finally(() => setOverviewLoading(false));
+          if (authed) {
+            openInRobinhood(t)
+              .then((r) => setRhLink(r.linkOut))
+              .catch(() => setRhLink(null));
+          }
         }
       })
       .catch((e) => setErr(e.message));
@@ -459,6 +467,16 @@ export default function TickerDetail() {
                 >
                   {busy === "memo" ? "…" : memo ? "↻ Memo" : "Memo"}
                 </button>
+              ) : null}
+              {rhLink ? (
+                <a
+                  className="app-btn app-btn-robinhood"
+                  href={rhLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open in Robinhood →
+                </a>
               ) : null}
             </div>
           ) : null}

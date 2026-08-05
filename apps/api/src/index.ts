@@ -19,6 +19,7 @@ import cockpit, { alerts } from "./routes/cockpit.js";
 import agent from "./routes/agent.js";
 import watchlist from "./routes/watchlist.js";
 import settings from "./routes/settings.js";
+import robinhood from "./routes/robinhood.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 
@@ -54,6 +55,7 @@ app.route("/v1/alerts", alerts);
 app.route("/v1/agent", agent);
 app.route("/v1/watchlist", watchlist);
 app.route("/v1/settings", settings);
+app.route("/v1/robinhood", robinhood);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {

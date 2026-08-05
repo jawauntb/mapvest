@@ -22,6 +22,7 @@ import {
   fetchQuote,
   generateMemo,
   listWatchlist,
+  openInRobinhood,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
@@ -263,19 +264,20 @@ export default function DetailSheet() {
                 sector={data.brand.sector}
                 token={session?.token}
               />
-              {publicTicker ? (
-                <View style={styles.badgeRow}>
+              <View style={styles.badgeRow}>
+                {session?.token ? (
+                  <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+                ) : null}
+                {publicTicker ? (
                   <OptionsBadge ticker={publicTicker} token={session?.token} />
-                </View>
-              ) : (
-                <View style={styles.badgeRow}>
+                ) : (
                   <UnderlyingBadge
                     brand={data.brand.name}
                     sector={data.brand.sector}
                     token={session?.token}
                   />
-                </View>
-              )}
+                )}
+              </View>
               <ResearchSheet
                 ticker={ticker}
                 visible={researchOpen}
@@ -361,6 +363,49 @@ export default function DetailSheet() {
         </>
       )}
     </ScrollView>
+  );
+}
+
+/**
+ * Shown only when the signed-in user has a Robinhood MCP key under Home.
+ * Opens the Robinhood stock page so they can buy / place orders there.
+ * Mapvest never submits broker orders.
+ */
+function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }) {
+  const rh = useQuery({
+    queryKey: ["robinhood-open", ticker, token],
+    queryFn: () => openInRobinhood(ticker, { token }),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  if (rh.isError || !rh.data?.linkOut) {
+    // Not configured (403) or unavailable — hide quietly.
+    return null;
+  }
+
+  const onPress = async () => {
+    const url = rh.data.linkOut;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      Linking.openURL(url).catch(() => {});
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={`Open ${ticker} in Robinhood`}
+      style={({ pressed }) => [
+        styles.badge,
+        styles.robinhoodBadge,
+        pressed && styles.badgePressed,
+      ]}
+    >
+      <Text style={styles.badgeText}>Open in Robinhood →</Text>
+    </Pressable>
   );
 }
 
@@ -1042,7 +1087,7 @@ const styles = StyleSheet.create({
   score: { color: "#7aa2ff", fontWeight: "700" },
   link: { color: "#7aa2ff", fontSize: 12 },
   err: { color: "#ff5a5a", padding: 16, textAlign: "center" },
-  badgeRow: { flexDirection: "row", marginTop: 12 },
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   badge: {
     backgroundColor: "#1a2440",
     borderColor: "#2b3d6e",
@@ -1050,6 +1095,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 6,
     paddingHorizontal: 12,
+  },
+  robinhoodBadge: {
+    backgroundColor: "#0d2818",
+    borderColor: "#2a6b45",
   },
   badgeDisabled: { opacity: 0.5 },
   badgePressed: { backgroundColor: "#22305a" },

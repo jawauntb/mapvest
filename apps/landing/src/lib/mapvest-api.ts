@@ -378,6 +378,16 @@ export function getMe() {
   return req<{ user: User }>("/v1/auth/me", {}, true);
 }
 
+/** Deep-link to Robinhood stock page when user MCP key is configured. */
+export function openInRobinhood(ticker: string) {
+  return req<{
+    ticker: string;
+    configured: true;
+    linkOut: string;
+    note?: string;
+  }>(`/v1/robinhood?ticker=${encodeURIComponent(ticker)}`, {}, true);
+}
+
 // ---- identify ----
 
 export async function identifyImage(file: File, location?: { lat: number; lng: number }) {

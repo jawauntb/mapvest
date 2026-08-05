@@ -440,6 +440,22 @@ export function clearRobinhoodMcp(
   return jsonFetch("/v1/settings/robinhood-mcp", { method: "DELETE" }, opts);
 }
 
+export function openInRobinhood(
+  ticker: string,
+  opts: FetchOpts,
+): Promise<{
+  ticker: string;
+  configured: true;
+  linkOut: string;
+  note?: string;
+}> {
+  return jsonFetch(
+    `/v1/robinhood?ticker=${encodeURIComponent(ticker)}`,
+    { method: "GET" },
+    opts,
+  );
+}
+
 // -------- admin --------
 
 export function adminMetrics(opts: FetchOpts): Promise<{

@@ -1,26 +1,18 @@
-import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import {
+  clearRobinhoodMcp,
+  getRobinhoodMcp,
+  setRobinhoodMcp,
+} from "../lib/robinhood-mcp.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 /**
  * Per-user settings. Robinhood MCP credentials are stored server-side only
- * (never returned raw). Research chat still uses Derivation's operator MCP
- * unless/until we wire per-user credential forwarding upstream.
+ * (never returned raw). Research chat still uses Derivation's operator MCP;
+ * personal tokens gate "Open in Robinhood" deep-links — Mapvest does not
+ * submit broker orders.
  */
-
-type RobinhoodMcpSettings = {
-  fingerprint: string;
-  last4: string;
-  updatedAt: string;
-  hasCredential: true;
-};
-
-const robinhoodByUser = new Map<string, { token: string; meta: RobinhoodMcpSettings }>();
-
-function fingerprintToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex").slice(0, 16);
-}
 
 const settings = new Hono<AuthEnv>();
 settings.use("*", bearerAuth);
@@ -29,7 +21,7 @@ settings.use("*", bearerAuth);
 settings.get("/", (c) => {
   return safeExecuteWithSpan("http.settings.get", (span) => {
     const user = c.get("user");
-    const rh = robinhoodByUser.get(user.id)?.meta ?? null;
+    const rh = getRobinhoodMcp(user.id) ?? null;
     span.setAttributes({ user_id: user.id, has_robinhood_mcp: !!rh });
     return c.json({
       user: { id: user.id, email: user.email, scopes: user.scopes },
@@ -42,7 +34,7 @@ settings.get("/", (c) => {
           }
         : { configured: false as const },
       note:
-        "Research chat uses Derivation Research Console server credentials by default. A personal Robinhood MCP token is stored masked for future per-user routing — never returned in full.",
+        "Paste your Robinhood agent MCP bearer under Home to unlock Open in Robinhood on ticker pages. Mapvest opens Robinhood for you to place orders there — we never submit broker orders. Research chat still uses Derivation’s operator MCP.",
     });
   });
 });
@@ -59,13 +51,7 @@ settings.post("/robinhood-mcp", async (c) => {
     if (token.length < 20 || token.length > 8000) {
       return c.json({ error: "token required (20–8000 chars)" }, 400);
     }
-    const meta: RobinhoodMcpSettings = {
-      fingerprint: fingerprintToken(token),
-      last4: token.slice(-4),
-      updatedAt: new Date().toISOString(),
-      hasCredential: true,
-    };
-    robinhoodByUser.set(user.id, { token, meta });
+    const meta = setRobinhoodMcp(user.id, token);
     span.setAttributes({ user_id: user.id, fingerprint: meta.fingerprint });
     return c.json({
       ok: true,
@@ -83,7 +69,7 @@ settings.post("/robinhood-mcp", async (c) => {
 settings.delete("/robinhood-mcp", (c) => {
   return safeExecuteWithSpan("http.settings.robinhood_mcp_clear", (span) => {
     const user = c.get("user");
-    robinhoodByUser.delete(user.id);
+    clearRobinhoodMcp(user.id);
     span.setAttributes({ user_id: user.id });
     return c.json({ ok: true, robinhoodMcp: { configured: false as const } });
   });

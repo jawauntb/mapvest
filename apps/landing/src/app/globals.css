@@ -937,6 +937,16 @@ blockquote {
 .app-btn:disabled { opacity: 0.5; cursor: default; }
 .app-btn-primary { background: #fff; color: #000; border-color: #fff; }
 .app-btn-primary:hover { background: #e6e6e6; }
+.app-btn-robinhood {
+  background: #0d2818;
+  color: #c8f5c8;
+  border-color: #2a6b45;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.app-btn-robinhood:hover { background: #143522; }
 .app-btn-active {
   background: var(--accent);
   color: #000;
