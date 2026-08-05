@@ -15,16 +15,26 @@ export async function resolveComparable(brand: string, hintSector?: string): Pro
     return [];
   }
 
-  return hits.slice(0, 5).map((h, i) => {
+  const seenTickers = new Set<string>();
+  const candidates: Comparable[] = [];
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i]!;
+    const ticker = extractTicker(h.title + " " + (h.snippet ?? ""));
+    // Filter junk: no ticker at all, or a duplicate of one we already surfaced.
+    if (!ticker) continue;
+    if (seenTickers.has(ticker)) continue;
+    seenTickers.add(ticker);
     const source: Source = toSource(h, i === 0 ? "medium" : "low");
-    return {
-      ticker: extractTicker(h.title + " " + (h.snippet ?? "")) ?? "UNKNOWN",
+    candidates.push({
+      ticker,
       name: h.title,
-      score: Math.max(0.2, 0.9 - i * 0.15),
-      reasoning: h.snippet ?? "Exa snippet not available",
+      score: Math.max(0.3, 0.9 - candidates.length * 0.15),
+      reasoning: (h.snippet ?? "").trim() || `Cited via ${h.url}`,
       sources: [source],
-    } satisfies Comparable;
-  });
+    });
+    if (candidates.length >= 3) break;
+  }
+  return candidates;
 }
 
 function extractTicker(text: string): string | null {

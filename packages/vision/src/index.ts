@@ -107,8 +107,28 @@ async function callOpenRouter(
     });
     if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
     const j = (await res.json()) as OpenRouterResponse;
-    const content = j.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content);
+    const rawContent = j.choices?.[0]?.message?.content ?? "{}";
+    // Some models ignore response_format: json_object and wrap the object in
+    // markdown code fences (```json ... ```) or add prose above/below.
+    // Strip fences, then grab the first {...} balanced block.
+    const stripped = rawContent
+      .replace(/^\s*```(?:json|JSON)?\s*/, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+    const firstBrace = stripped.indexOf("{");
+    const lastBrace = stripped.lastIndexOf("}");
+    const jsonSlice =
+      firstBrace !== -1 && lastBrace > firstBrace
+        ? stripped.slice(firstBrace, lastBrace + 1)
+        : stripped;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonSlice);
+    } catch {
+      // Model returned unparseable garbage — surface an empty detection
+      // rather than crashing the whole /v1/identify call.
+      parsed = { detected: [], visibleText: [] };
+    }
     const identification = { ...parsed, modelUsed: model } as PhotoIdentification;
     const latencyMs = Math.round(performance.now() - started);
     const promptTokens = j.usage?.prompt_tokens ?? 0;

@@ -32,6 +32,74 @@ async function loadMockPlaces(path: string): Promise<PlacesPayload> {
 }
 
 /**
+ * OpenStreetMap Overpass API — free, no key, no billing. Returns POIs that
+ * have a `brand`, `name`, or `shop` tag inside a radius. We map to the
+ * Google Places shape so the rest of the handler doesn't care about source.
+ *
+ * Docs: https://wiki.openstreetmap.org/wiki/Overpass_API
+ */
+type OverpassElement = {
+  type: "node" | "way" | "relation";
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+};
+type OverpassResponse = { elements: OverpassElement[] };
+
+async function queryOverpass(
+  lat: number,
+  lng: number,
+  radius: number,
+): Promise<PlacesPayload> {
+  // Prefer commercial POIs — nodes with a brand tag or common shop/amenity.
+  const q = `
+    [out:json][timeout:8];
+    (
+      node["brand"](around:${radius},${lat},${lng});
+      node["shop"](around:${radius},${lat},${lng});
+      node["amenity"~"^(restaurant|cafe|fast_food|bank|pharmacy|fuel|cinema|gym)$"](around:${radius},${lat},${lng});
+    );
+    out center 40;
+  `;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(q)}`,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`overpass ${res.status}`);
+    const j = (await res.json()) as OverpassResponse;
+    const seen = new Set<string>();
+    const results: PlacesResult[] = [];
+    for (const el of j.elements ?? []) {
+      const name = el.tags?.brand ?? el.tags?.name;
+      if (!name) continue;
+      const lat2 = el.lat ?? el.center?.lat;
+      const lng2 = el.lon ?? el.center?.lon;
+      if (typeof lat2 !== "number" || typeof lng2 !== "number") continue;
+      // dedupe on (name, ~100m grid) so we don't return five McDonald's for one storefront
+      const key = `${name.toLowerCase()}@${lat2.toFixed(3)},${lng2.toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({
+        place_id: `osm:${el.type}:${el.id}`,
+        name,
+        geometry: { location: { lat: lat2, lng: lng2 } },
+        types: [el.tags?.amenity ?? el.tags?.shop ?? "point_of_interest"],
+      });
+    }
+    return { results };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
  * GET /v1/nearby?lat=&lng=&radius=&limit=
  * Calls Google Places, joins with brand→ticker resolver.
  *
@@ -81,29 +149,46 @@ nearby.get("/", async (c) => {
         return c.json({ error: `MOCK_PLACES load failed: ${(err as Error).message}` }, 500);
       }
     } else {
+      // Cascade: Google Places (if key + billing) → Overpass (OSM, always free).
+      // Never fail the request — swallow provider errors and fall through.
       const key = process.env.GOOGLE_MAPS_API_KEY;
-      if (!key) return c.json({ error: "server: GOOGLE_MAPS_API_KEY missing" }, 500);
-
-      const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-      url.searchParams.set("location", `${lat},${lng}`);
-      url.searchParams.set("radius", String(radius));
-      url.searchParams.set("key", key);
-      const res = await fetch(url);
-      span.setAttributes({
-        places_source: "google",
-        places_status: res.status,
-        places_latency_ms: Math.round(performance.now() - started),
-      });
-      if (!res.ok) return c.json({ error: `places ${res.status}` }, 502);
-      data = (await res.json()) as PlacesPayload;
-      // Places returns 200 even when the request was rejected (billing off,
-      // key restrictions mismatched, quota, etc). Surface those instead of
-      // silently returning empty items.
-      const status = (data as unknown as { status?: string }).status;
-      const errMsg = (data as unknown as { error_message?: string }).error_message;
-      if (status && status !== "OK" && status !== "ZERO_RESULTS") {
-        span.setAttributes({ places_google_status: status });
-        return c.json({ error: `places ${status}: ${errMsg ?? ""}` }, 502);
+      let googleOk = false;
+      if (key) {
+        try {
+          const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+          url.searchParams.set("location", `${lat},${lng}`);
+          url.searchParams.set("radius", String(radius));
+          url.searchParams.set("key", key);
+          const res = await fetch(url);
+          if (res.ok) {
+            const raw = (await res.json()) as PlacesPayload;
+            const status = (raw as unknown as { status?: string }).status;
+            if (status === "OK" || status === "ZERO_RESULTS") {
+              data = raw;
+              googleOk = true;
+              span.setAttribute("places_source", "google");
+            } else {
+              span.setAttributes({
+                places_source: "google_failed",
+                places_google_status: status ?? "unknown",
+              });
+            }
+          }
+        } catch (err) {
+          span.setAttribute("places_google_error", (err as Error).message);
+        }
+      }
+      if (!googleOk) {
+        try {
+          data = await queryOverpass(lat, lng, radius);
+          span.setAttribute("places_source", "overpass");
+        } catch (err) {
+          span.setAttributes({
+            places_source: "overpass_failed",
+            places_overpass_error: (err as Error).message,
+          });
+          return c.json({ error: `places lookup failed: ${(err as Error).message}` }, 502);
+        }
       }
     }
 

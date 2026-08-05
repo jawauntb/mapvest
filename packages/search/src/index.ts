@@ -9,9 +9,20 @@ const BASE = "https://api.exa.ai";
 export type SearchResult = {
   title: string;
   url: string;
+  /** Populated from Exa's `text` or `highlights` field (whichever came back). */
   snippet?: string;
+  text?: string;
+  highlights?: string[];
   publishedDate?: string;
 };
+
+/** Best short snippet we can pull from an Exa hit. */
+function bestSnippet(r: SearchResult): string | undefined {
+  if (r.highlights && r.highlights.length > 0) return r.highlights[0]?.slice(0, 240);
+  if (r.text) return r.text.slice(0, 240);
+  if (r.snippet) return r.snippet.slice(0, 240);
+  return undefined;
+}
 
 async function exa<T>(path: string, body: unknown): Promise<T> {
   const key = process.env.EXA_API_KEY;
@@ -33,9 +44,13 @@ export async function searchBrand(brand: string): Promise<SearchResult[]> {
     query: `${brand} parent company ticker stock symbol`,
     numResults: 8,
     useAutoprompt: true,
-    contents: { snippets: { numSnippets: 2 } },
+    // Modern Exa: `highlights` gives short snippets; `text` gives longer content.
+    contents: { highlights: { numSentences: 2, highlightsPerUrl: 1 } },
   });
-  return j.results ?? [];
+  const results = j.results ?? [];
+  // Normalize `snippet` from whichever field Exa populated.
+  for (const r of results) if (!r.snippet) r.snippet = bestSnippet(r);
+  return results;
 }
 
 export async function enrichTicker(query: string): Promise<SearchResult[]> {
@@ -43,9 +58,11 @@ export async function enrichTicker(query: string): Promise<SearchResult[]> {
     query,
     numResults: 5,
     useAutoprompt: true,
-    contents: { snippets: { numSnippets: 1 } },
+    contents: { highlights: { numSentences: 1, highlightsPerUrl: 1 } },
   });
-  return j.results ?? [];
+  const results = j.results ?? [];
+  for (const r of results) if (!r.snippet) r.snippet = bestSnippet(r);
+  return results;
 }
 
 export function toSource(r: SearchResult, confidence: "high" | "medium" | "low" = "medium"): Source {

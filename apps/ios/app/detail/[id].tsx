@@ -129,7 +129,9 @@ export default function DetailSheet() {
         {data.comparables.length === 0 ? (
           <Text style={styles.muted}>No public comparables resolved.</Text>
         ) : (
-          data.comparables.map((c) => <ComparableRow key={c.ticker} c={c} />)
+          data.comparables.map((c, i) => (
+            <ComparableRow key={`${c.ticker}-${i}`} c={c} />
+          ))
         )}
       </Section>
 
@@ -137,7 +139,7 @@ export default function DetailSheet() {
         {data.etfs.length === 0 ? (
           <Text style={styles.muted}>No ETFs matched.</Text>
         ) : (
-          data.etfs.map((e) => <EtfRow key={e.ticker} e={e} />)
+          data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
         )}
       </Section>
 
