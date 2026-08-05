@@ -1081,6 +1081,13 @@ blockquote {
   color: var(--muted);
 }
 .app-empty h2 { color: var(--fg); margin: 0 0 0.5rem; }
+.app-fallback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
 
 /* ---- Detail ---- */
 .app-detail {
