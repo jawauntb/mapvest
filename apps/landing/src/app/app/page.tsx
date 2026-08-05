@@ -17,9 +17,11 @@ import {
   getToken,
   getUser,
   identifyImage,
+  agentChat,
   listAgentThreads,
   listWatchlist,
   type AgentThread,
+  type ResearchArticle,
   removeFromWatchlist,
   requestCode,
   saveMemoToWatchlist,
@@ -143,7 +145,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
 
 /* -------------------------------------------------------------------------- */
 
-type Tab = "nearby" | "identify" | "saved";
+type Tab = "nearby" | "identify" | "research" | "saved";
 
 function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("nearby");
@@ -159,6 +161,9 @@ function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
           <TabBtn active={tab === "identify"} onClick={() => setTab("identify")}>
             Identify
           </TabBtn>
+          <TabBtn active={tab === "research"} onClick={() => setTab("research")}>
+            Research
+          </TabBtn>
           <TabBtn active={tab === "saved"} onClick={() => setTab("saved")}>
             ★ Saved
           </TabBtn>
@@ -170,6 +175,7 @@ function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
       <main className="app-main">
         {tab === "nearby" ? <NearbyTab /> : null}
         {tab === "identify" ? <IdentifyTab /> : null}
+        {tab === "research" ? <ResearchChatTab /> : null}
         {tab === "saved" ? <SavedTab /> : null}
       </main>
     </div>
@@ -467,6 +473,202 @@ function IdentifyTab() {
           </Link>
         );
       })}
+    </div>
+  );
+}
+
+/* -------------------------- Research chat --------------------------- */
+
+function ResearchChatTab() {
+  const [threads, setThreads] = useState<AgentThread[] | null>(null);
+  const [threadId, setThreadId] = useState<string | undefined>();
+  const [turns, setTurns] = useState<ResearchArticle[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "chat">("list");
+
+  useEffect(() => {
+    if (view !== "list") return;
+    listAgentThreads()
+      .then((r) => setThreads(r.threads))
+      .catch((e) => setErr(e instanceof Error ? e.message : "failed"));
+  }, [view]);
+
+  async function openThread(id: string, title: string) {
+    setView("chat");
+    setThreadId(id);
+    setErr(null);
+    try {
+      const r = await getAgentThread(id);
+      setTurns(r.thread.messages ?? []);
+      void title;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "load failed");
+      setTurns([]);
+    }
+  }
+
+  function newChat() {
+    setView("chat");
+    setThreadId(undefined);
+    setTurns([]);
+    setInput("");
+    setErr(null);
+  }
+
+  async function onSend() {
+    const msg = input.trim();
+    if (!msg || busy) return;
+    setBusy(true);
+    setErr(null);
+    setTurns((t) => [
+      ...t,
+      {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content: msg,
+        createdAt: new Date().toISOString(),
+        interesting: [],
+        ideas: [],
+        toolsUsed: [],
+        sources: [],
+        chartTickers: [],
+      },
+    ]);
+    setInput("");
+    try {
+      const r = await agentChat(msg, { threadId });
+      if (r.threadId) setThreadId(r.threadId);
+      setTurns((t) => [...t, r.article]);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "research failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (view === "list") {
+    return (
+      <div className="app-chat">
+        <div className="app-chat-head">
+          <div>
+            <h2 style={{ margin: 0, textTransform: "none", letterSpacing: 0, color: "var(--fg)" }}>
+              Research
+            </h2>
+            <p className="app-muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+              Article-style briefs · tools run in the background · not investment advice
+            </p>
+          </div>
+          <button type="button" className="app-btn app-btn-primary" onClick={newChat}>
+            + New
+          </button>
+        </div>
+        {err ? <p className="app-err">{err}</p> : null}
+        {!threads ? (
+          <p className="app-muted">Loading…</p>
+        ) : threads.length === 0 ? (
+          <div className="app-empty">
+            <h2>No briefs yet</h2>
+            <p>Start a chat, or open a ticker and tap Research…</p>
+            <button type="button" className="app-btn app-btn-primary" onClick={newChat}>
+              Start research
+            </button>
+          </div>
+        ) : (
+          threads.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              className="app-row app-row-public"
+              style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+              onClick={() => void openThread(b.id, b.title)}
+            >
+              <div style={{ flex: 1 }}>
+                <div className="app-row-title">{b.title}</div>
+                <div className="app-row-sub">{b.preview || "—"}</div>
+              </div>
+              <span className="app-chevron">›</span>
+            </button>
+          ))
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-chat app-chat-active">
+      <div className="app-chat-head">
+        <button
+          type="button"
+          className="app-link"
+          style={{ padding: 0 }}
+          onClick={() => setView("list")}
+        >
+          ← Chats
+        </button>
+        <button type="button" className="app-btn" onClick={newChat}>
+          New
+        </button>
+      </div>
+      <div className="app-research-stream" style={{ flex: 1, maxHeight: "min(60vh, 640px)" }}>
+        {turns.length === 0 ? (
+          <p className="app-muted">Ask about a ticker or theme. Lede first, then evidence.</p>
+        ) : null}
+        {turns.map((t) =>
+          t.role === "user" ? (
+            <div key={t.id} className="app-research-q">
+              {t.content}
+            </div>
+          ) : (
+            <article key={t.id} className="app-article">
+              <p className="app-article-lede">{t.content}</p>
+              {t.interesting.slice(0, 4).map((x, i) => (
+                <p key={i} className="app-muted">
+                  · {x}
+                </p>
+              ))}
+              {t.chartTickers.slice(0, 3).map((sym) => (
+                <Link
+                  key={sym}
+                  href={`/app/ticker/${encodeURIComponent(sym)}`}
+                  className="app-source-chip"
+                >
+                  ${sym}
+                </Link>
+              ))}
+              {t.toolsUsed.length ? (
+                <p className="app-article-tools">Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</p>
+              ) : null}
+            </article>
+          ),
+        )}
+        {busy ? <div className="app-chart-skel" aria-label="Researching…" /> : null}
+        {err ? <p className="app-err">{err}</p> : null}
+      </div>
+      <div className="app-research-composer">
+        <input
+          className="app-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void onSend();
+            }
+          }}
+          placeholder="Ask Mapvest…"
+          disabled={busy}
+        />
+        <button
+          type="button"
+          className="app-btn app-btn-primary"
+          onClick={() => void onSend()}
+          disabled={busy || !input.trim()}
+        >
+          {busy ? "…" : "Ask"}
+        </button>
+      </div>
     </div>
   );
 }

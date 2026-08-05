@@ -41,6 +41,13 @@ export default function TabsLayout() {
         options={{ title: "List", tabBarIcon: ({ color }) => <TabDot color={color} label="≡" /> }}
       />
       <Tabs.Screen
+        name="research"
+        options={{
+          title: "Research",
+          tabBarIcon: ({ color }) => <TabDot color={color} label="◎" />,
+        }}
+      />
+      <Tabs.Screen
         name="saved"
         options={{ title: "Saved", tabBarIcon: ({ color }) => <TabDot color={color} label="★" /> }}
       />

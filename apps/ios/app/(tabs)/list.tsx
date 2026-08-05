@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { investablePinColor, sectorColor } from "@/util/sectors";
 
 type SortKey = "distance" | "sector" | "public";
 
@@ -71,6 +72,25 @@ export default function ListScreen() {
     return decorated.map((x) => x.i);
   }, [q.data, sort, origin]);
 
+  const tickers = useMemo(() => {
+    const out: string[] = [];
+    for (const i of items) {
+      const t =
+        i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker;
+      if (t && !out.includes(t)) out.push(t);
+      if (out.length >= 20) break;
+    }
+    return out;
+  }, [items]);
+
+  const quotesQ = useQuery({
+    queryKey: ["list-quotes", tickers.join(",")],
+    queryFn: () => fetchQuotesMap(tickers, { token: session?.token }),
+    enabled: tickers.length > 0,
+    staleTime: 60_000,
+  });
+  const quotes: Record<string, Quote> = quotesQ.data ?? {};
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <View style={styles.sortRow}>
@@ -99,27 +119,51 @@ export default function ListScreen() {
         <FlatList
           data={items}
           keyExtractor={(i) => i.place.id}
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.row}
-              onPress={() => {
-                const t = item.investable?.brand.ticker?.symbol;
-                if (t) router.push(`/detail/${t}`);
-                else router.push(`/detail/${encodeURIComponent(item.place.name)}`);
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{listTitle(item)}</Text>
-                <Text style={styles.sub}>
-                  {formatItem(item)} ·{" "}
-                  {formatDistance(haversine(origin, item.place.location))}
-                </Text>
-              </View>
-              <View
-                style={[styles.dot, { backgroundColor: pinColor(item) }]}
-              />
-            </Pressable>
-          )}
+          renderItem={({ item }) => {
+            const t =
+              item.investable?.brand.ticker?.symbol ??
+              item.investable?.comparables?.[0]?.ticker;
+            const quote = t ? quotes[t.toUpperCase()] : undefined;
+            const accent = item.investable?.brand.isPublic
+              ? sectorColor(item.investable.brand.sector)
+              : pinColor(item);
+            return (
+              <Pressable
+                style={styles.row}
+                onPress={() => {
+                  if (t) router.push(`/detail/${t}`);
+                  else router.push(`/detail/${encodeURIComponent(item.place.name)}`);
+                }}
+              >
+                <View style={[styles.dot, { backgroundColor: accent }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{listTitle(item)}</Text>
+                  <Text style={styles.sub}>
+                    {formatItem(item)} ·{" "}
+                    {formatDistance(haversine(origin, item.place.location))}
+                  </Text>
+                </View>
+                <View style={styles.priceCol}>
+                  {quote ? (
+                    <>
+                      <Text style={styles.price}>${quote.price.toFixed(2)}</Text>
+                      <Text
+                        style={{
+                          color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b",
+                          fontSize: 12,
+                        }}
+                      >
+                        {quote.change >= 0 ? "+" : ""}
+                        {quote.changePct.toFixed(2)}%
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.chevron}>›</Text>
+                  )}
+                </View>
+              </Pressable>
+            );
+          }}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
@@ -140,7 +184,7 @@ function formatItem(i: NearbyItem): string {
   const inv = i.investable;
   if (!inv) return i.place.types[0] ?? "unlisted";
   if (inv.brand.isPublic)
-    return `${inv.brand.ticker?.symbol ?? "public"} · ${inv.brand.sector ?? ""}`;
+    return `${inv.brand.sector ?? "public"}`;
   if (inv.comparables.length > 0) {
     return `private · ≈ ${inv.comparables.map((c) => c.ticker).join(", ")}`;
   }
@@ -149,10 +193,11 @@ function formatItem(i: NearbyItem): string {
 
 function pinColor(i: NearbyItem): string {
   const inv = i.investable;
-  if (!inv) return "#666";
-  if (inv.brand.isPublic) return "#3ac47d";
-  if (inv.comparables.length || inv.etfs.length) return "#f5a524";
-  return "#ff5a5a";
+  return investablePinColor({
+    isPublic: inv?.brand.isPublic,
+    sector: inv?.brand.sector,
+    hasComps: !!(inv?.comparables.length || inv?.etfs.length),
+  });
 }
 
 function haversine(
@@ -200,6 +245,9 @@ const styles = StyleSheet.create({
   name: { color: "#fff", fontSize: 16, fontWeight: "600" },
   sub: { color: "#888", fontSize: 12, marginTop: 2 },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  priceCol: { alignItems: "flex-end", minWidth: 72 },
+  price: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  chevron: { color: "#666", fontSize: 22 },
   sep: { height: 1, backgroundColor: "#111" },
   err: { color: "#ff5a5a", padding: 16, textAlign: "center" },
 });

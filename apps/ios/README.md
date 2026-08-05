@@ -32,9 +32,11 @@ in `eas.json`.
   taps through to the detail sheet.
 - `/(tabs)/live-scan` — throttled ~1 fps frame capture piped through
   `/v1/identify`, with an in-flight guard so slow responses cannot backlog.
-- `/(tabs)/list` — sortable by distance, publicness, or sector.
+- `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
+- `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
+- `/(tabs)/saved` — watchlist + cockpit/alerts; ★ Save / memos from detail.
 - `/(tabs)/admin` — hidden unless the signed-in user has `admin` scope.
-- `/detail/[id]` — modal sheet with ticker, comparables, ETF exposure, sources.
+- `/detail/[id]` — Overview (auction chart, Research…, Save, memo) + Advanced charts/SEC.
 
 ## Offline photo queue
 

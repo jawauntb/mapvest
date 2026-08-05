@@ -1375,7 +1375,23 @@ blockquote {
   padding: 0.6rem 0.9rem;
   font-size: 0.9rem;
 }
-/* ---- Research brief (ticker-bound, not a top-level Chat tab) ---- */
+/* ---- Research chat tab (web) ---- */
+.app-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.app-chat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+.app-chat-active {
+  min-height: min(70vh, 720px);
+}
+/* ---- Research brief (ticker-bound panel) ---- */
 .app-research {
   border: 1px solid var(--border);
   border-radius: 16px;
