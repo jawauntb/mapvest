@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "bundleIdentifier": "com.mapvest.app",
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "bundleIdentifier": "com.mapvest.app",
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mapvest-api-stg.up.railway.app"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "ios": {
+        "bundleIdentifier": "com.mapvest.app"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mapvest-api.up.railway.app"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "bundleIdentifier": "com.mapvest.app"
+      }
+    }
+  }
+}
