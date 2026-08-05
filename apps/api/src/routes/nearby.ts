@@ -48,22 +48,22 @@ type OverpassElement = {
 };
 type OverpassResponse = { elements: OverpassElement[] };
 
-// Overpass mirrors — try in order, first success wins. Some are geo-blocked
-// or intermittently rate-limited, so we always try multiple. Docs:
-// https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances
+// Prefer mirrors that currently answer from Railway / US egress. de/kumi/jp
+// frequently time out or present expired certs; FR has been reliable.
+// Docs: https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances
 const OVERPASS_MIRRORS = [
+  "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
   "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.osm.jp/api/interpreter",
   "https://z.overpass-api.de/api/interpreter",
 ];
 
-async function queryOverpass(
-  lat: number,
-  lng: number,
-  radius: number,
-): Promise<PlacesPayload> {
-  const q = `
+const OVERPASS_TIMEOUT_MS = 7000;
+
+function overpassQuery(lat: number, lng: number, radius: number): string {
+  return `
     [out:json][timeout:8];
     (
       node["brand"](around:${radius},${lat},${lng});
@@ -72,58 +72,201 @@ async function queryOverpass(
     );
     out center 40;
   `;
+}
 
+function elementsToPlaces(elements: OverpassElement[]): PlacesResult[] {
+  const seen = new Set<string>();
+  const results: PlacesResult[] = [];
+  for (const el of elements) {
+    const name = el.tags?.brand ?? el.tags?.name;
+    if (!name) continue;
+    const lat2 = el.lat ?? el.center?.lat;
+    const lng2 = el.lon ?? el.center?.lon;
+    if (typeof lat2 !== "number" || typeof lng2 !== "number") continue;
+    // dedupe on (name, ~100m grid) — one McDonald's, not five copies.
+    const key = `${name.toLowerCase()}@${lat2.toFixed(3)},${lng2.toFixed(3)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      place_id: `osm:${el.type}:${el.id}`,
+      name,
+      geometry: { location: { lat: lat2, lng: lng2 } },
+      types: [el.tags?.amenity ?? el.tags?.shop ?? "point_of_interest"],
+    });
+  }
+  return results;
+}
+
+async function tryOverpassMirror(
+  mirror: string,
+  lat: number,
+  lng: number,
+  radius: number,
+): Promise<{ mirror: string; results: PlacesResult[] }> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
+  try {
+    const res = await fetch(mirror, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "mapvest/0.1 (support@mapvest.app)",
+      },
+      body: `data=${encodeURIComponent(overpassQuery(lat, lng, radius))}`,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`${res.status}`);
+    }
+    const j = (await res.json()) as OverpassResponse;
+    return { mirror, results: elementsToPlaces(j.elements ?? []) };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * Race all Overpass mirrors in parallel. First non-empty success wins;
+ * empty-but-OK responses are kept as a fallback so ZERO_RESULTS still works.
+ */
+async function queryOverpass(
+  lat: number,
+  lng: number,
+  radius: number,
+): Promise<PlacesPayload> {
   const errs: string[] = [];
-  for (const mirror of OVERPASS_MIRRORS) {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 6000);
-    try {
-      const res = await fetch(mirror, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "mapvest/0.1 (support@mapvest.app)",
-        },
-        body: `data=${encodeURIComponent(q)}`,
-        signal: controller.signal,
-      });
-      clearTimeout(t);
-      if (!res.ok) {
-        errs.push(`${mirror} → ${res.status}`);
-        continue;
+  let emptyOk: PlacesPayload | undefined;
+
+  const settled = await Promise.allSettled(
+    OVERPASS_MIRRORS.map((mirror) => tryOverpassMirror(mirror, lat, lng, radius)),
+  );
+
+  for (const outcome of settled) {
+    if (outcome.status === "fulfilled") {
+      if (outcome.value.results.length > 0) {
+        return { results: outcome.value.results };
       }
-      const j = (await res.json()) as OverpassResponse;
-      const seen = new Set<string>();
-      const results: PlacesResult[] = [];
-      for (const el of j.elements ?? []) {
-        const name = el.tags?.brand ?? el.tags?.name;
-        if (!name) continue;
-        const lat2 = el.lat ?? el.center?.lat;
-        const lng2 = el.lon ?? el.center?.lon;
-        if (typeof lat2 !== "number" || typeof lng2 !== "number") continue;
-        // dedupe on (name, ~100m grid) — one McDonald's, not five copies.
-        const key = `${name.toLowerCase()}@${lat2.toFixed(3)},${lng2.toFixed(3)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        results.push({
-          place_id: `osm:${el.type}:${el.id}`,
-          name,
-          geometry: { location: { lat: lat2, lng: lng2 } },
-          types: [el.tags?.amenity ?? el.tags?.shop ?? "point_of_interest"],
-        });
-      }
-      return { results };
-    } catch (err) {
-      clearTimeout(t);
-      errs.push(`${mirror} → ${(err as Error).message}`);
+      emptyOk ??= { results: [] };
+    } else {
+      const reason = outcome.reason as Error;
+      errs.push(`${reason?.message ?? "unknown"}`);
     }
   }
-  throw new Error(`all overpass mirrors failed: ${errs.join("; ")}`);
+
+  // Re-attach mirror URLs to errors for the 502 message (order matches settled).
+  const detailed: string[] = [];
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i]!;
+    const mirror = OVERPASS_MIRRORS[i]!;
+    if (outcome.status === "rejected") {
+      detailed.push(`${mirror} → ${(outcome.reason as Error).message}`);
+    }
+  }
+
+  if (emptyOk) return emptyOk;
+  throw new Error(`all overpass mirrors failed: ${detailed.join("; ") || errs.join("; ")}`);
+}
+
+/** Haversine distance in meters. */
+function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/**
+ * Photon (Komoot) last-resort: search a shortlist of well-known public brands
+ * near the user. Free, no key. Used only when Google + Overpass are both down.
+ * https://photon.komoot.io/
+ */
+const PHOTON_BRANDS = [
+  "Starbucks",
+  "McDonald's",
+  "Dunkin'",
+  "Chase",
+  "CVS",
+  "Walgreens",
+  "Target",
+  "Chipotle",
+  "Taco Bell",
+  "Subway",
+  "Bank of America",
+  "Wendy's",
+];
+
+type PhotonFeature = {
+  geometry?: { coordinates?: [number, number] };
+  properties?: { name?: string; osm_id?: number; osm_type?: string; type?: string };
+};
+
+async function queryPhoton(
+  lat: number,
+  lng: number,
+  radius: number,
+): Promise<PlacesPayload> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 8000);
+  try {
+    const hits = await Promise.all(
+      PHOTON_BRANDS.map(async (brand) => {
+        const url = new URL("https://photon.komoot.io/api/");
+        url.searchParams.set("q", brand);
+        url.searchParams.set("lat", String(lat));
+        url.searchParams.set("lon", String(lng));
+        url.searchParams.set("limit", "3");
+        const res = await fetch(url, {
+          headers: { "User-Agent": "mapvest/0.1 (support@mapvest.app)" },
+          signal: controller.signal,
+        });
+        if (!res.ok) return [] as PlacesResult[];
+        const j = (await res.json()) as { features?: PhotonFeature[] };
+        const out: PlacesResult[] = [];
+        for (const f of j.features ?? []) {
+          const coords = f.geometry?.coordinates;
+          const name = f.properties?.name;
+          if (!coords || !name) continue;
+          const [lon, plat] = coords;
+          if (typeof lon !== "number" || typeof plat !== "number") continue;
+          if (distanceM(lat, lng, plat, lon) > radius) continue;
+          out.push({
+            place_id: `photon:${f.properties?.osm_type ?? "n"}:${f.properties?.osm_id ?? name}`,
+            name,
+            geometry: { location: { lat: plat, lng: lon } },
+            types: [f.properties?.type ?? "point_of_interest"],
+          });
+        }
+        return out;
+      }),
+    );
+
+    const seen = new Set<string>();
+    const results: PlacesResult[] = [];
+    for (const group of hits) {
+      for (const p of group) {
+        const key = `${p.name.toLowerCase()}@${p.geometry.location.lat.toFixed(3)},${p.geometry.location.lng.toFixed(3)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(p);
+      }
+    }
+    if (results.length === 0) {
+      throw new Error("photon returned no nearby brands");
+    }
+    return { results };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /**
  * GET /v1/nearby?lat=&lng=&radius=&limit=
- * Calls Google Places, joins with brand→ticker resolver.
+ * Cascade: Google Places (if key + billing) → Overpass (OSM mirrors, raced)
+ * → Photon brand search. Joins with brand→ticker resolver.
  *
  * If MOCK_PLACES is set (and NODE_ENV !== "production") we read the fixture
  * from that path instead of calling Google. This lets unit tests run without
@@ -171,8 +314,8 @@ nearby.get("/", async (c) => {
         return c.json({ error: `MOCK_PLACES load failed: ${(err as Error).message}` }, 500);
       }
     } else {
-      // Cascade: Google Places (if key + billing) → Overpass (OSM, always free).
-      // Never fail the request — swallow provider errors and fall through.
+      // Cascade: Google Places (if key + billing) → Overpass → Photon.
+      // Never fail the request until every free path is exhausted.
       const key = process.env.GOOGLE_MAPS_API_KEY;
       let googleOk = false;
       if (key) {
@@ -204,12 +347,23 @@ nearby.get("/", async (c) => {
         try {
           data = await queryOverpass(lat, lng, radius);
           span.setAttribute("places_source", "overpass");
-        } catch (err) {
+        } catch (overpassErr) {
           span.setAttributes({
             places_source: "overpass_failed",
-            places_overpass_error: (err as Error).message,
+            places_overpass_error: (overpassErr as Error).message,
           });
-          return c.json({ error: `places lookup failed: ${(err as Error).message}` }, 502);
+          try {
+            data = await queryPhoton(lat, lng, radius);
+            span.setAttribute("places_source", "photon");
+          } catch (photonErr) {
+            span.setAttribute("places_photon_error", (photonErr as Error).message);
+            return c.json(
+              {
+                error: `places lookup failed: ${(overpassErr as Error).message}; photon: ${(photonErr as Error).message}`,
+              },
+              502,
+            );
+          }
         }
       }
     }

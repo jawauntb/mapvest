@@ -9,12 +9,14 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **OpenRouter** | Multimodal LLM (image → brand + text extraction). Prefer `google/gemini-2.5-pro`, fall back to `anthropic/claude-5-sonnet` or `openai/gpt-4o` per cost/latency budget. | `OPENROUTER_API_KEY` (Doppler `cofounder/dev`) |
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
-| **Google Places** | Nearby POI enumeration for the map view. | `GOOGLE_MAPS_API_KEY` |
+| **Google Places** | Nearby POI enumeration for the map view (preferred when billing is enabled). | `GOOGLE_MAPS_API_KEY` |
 
 ## Secondary / free-tier
 
 | Provider | Purpose | Notes |
 | --- | --- | --- |
+| **OpenStreetMap Overpass** | Nearby POI fallback when Google Places is denied/unavailable. Mirrors are raced in parallel; prefer `overpass.openstreetmap.fr`. | No key. Cite as OSM/Overpass. |
+| **Photon (Komoot)** | Last-resort nearby brand search if every Overpass mirror fails. | No key. Shortlist of common public brands only. |
 | **SEC EDGAR** | Parent-company resolution, subsidiary lookup, 10-K brand mentions. | No key, please rate-limit. |
 | **Yahoo Finance** (via `yfinance` server-side) | Realtime quote for a resolved ticker. | Best-effort, do not display live price without a disclaimer. |
 | **ETF.com** / **Nasdaq holdings** | ETF constituent + weight lookup. | Scraped via Exa (respect robots). |
