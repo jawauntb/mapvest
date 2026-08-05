@@ -1,0 +1,298 @@
+{
+  "info": {
+    "name": "Mapvest API — v0.1.0-alpha.0",
+    "description": "Mapvest turns places and objects into investable tickers. All request and response shapes are generated from zod schemas in `packages/core/src/schemas` — never hand-edit `openapi.yaml`.\n\nGenerated from openapi.yaml. Regenerate: `bun run openapi && bun run postman`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "system",
+      "description": "Health + system endpoints",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Liveness probe. Returns 200 while the API is accepting traffic."
+          }
+        }
+      ]
+    },
+    {
+      "name": "identify",
+      "description": "Photo → investable identification",
+      "item": [
+        {
+          "name": "Identify investable brands from a photo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/identify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "identify"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file"
+                },
+                {
+                  "key": "location",
+                  "type": "text",
+                  "value": "{\"lat\":-90,\"lng\":-180}"
+                }
+              ]
+            },
+            "description": "Accepts a multipart image plus optional location. Runs the vision pipeline and returns detected brands with ticker / comparable / ETF annotations. See `packages/vision`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "nearby",
+      "description": "Location-driven place lookup",
+      "item": [
+        {
+          "name": "Nearby investable places",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/nearby?lat=0&lng=0&radius=500&limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "nearby"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "0"
+                },
+                {
+                  "key": "lng",
+                  "value": "0"
+                },
+                {
+                  "key": "radius",
+                  "value": "500"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "Google Places lookup around a lat/lng, filtered and annotated with tickers/ETFs. Every finance answer includes a `sources: Source[]` array (see AGENTS.md §6).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "finance",
+      "description": "Ticker / comparable / ETF resolution",
+      "item": [
+        {
+          "name": "Resolve a private brand to a public comparable + ETF exposure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/resolve-comparable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "resolve-comparable"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brand\": \"\",\n  \"hintSector\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Given a brand name, returns the closest public comparable, ETF exposures, and cited sources. Confidence is `low` when the pipeline could not cite a source (do not fabricate).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "description": "Passwordless email sign-in",
+      "item": [
+        {
+          "name": "Passwordless email sign-in (magic link)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"code\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Starts or completes a magic-link session. On first call with `{email}`, an email is dispatched. On second call with `{email, code}`, a session token is returned."
+          }
+        }
+      ]
+    },
+    {
+      "name": "admin",
+      "description": "Requires the `admin` scope",
+      "item": [
+        {
+          "name": "Admin: request + cost metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "metrics"
+              ]
+            },
+            "description": "Requires the `admin` scope. Returns rolling counters for identify/nearby/resolve calls and OpenRouter cost telemetry.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: list users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users"
+              ]
+            },
+            "description": "Requires the `admin` scope. Returns registered users.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "sessionToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

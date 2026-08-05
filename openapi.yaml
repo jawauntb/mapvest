@@ -1,0 +1,1636 @@
+# GENERATED FILE — do not edit by hand.
+# Source: packages/core/src/schemas/*.ts
+# Regenerate: bun run openapi
+openapi: 3.1.0
+info:
+  title: Mapvest API
+  version: 0.1.0-alpha.0
+  description: Mapvest turns places and objects into investable tickers. All request and response shapes are generated from zod schemas in `packages/core/src/schemas` — never hand-edit `openapi.yaml`.
+  contact:
+    name: Mapvest
+    url: https://github.com/jawauntb/mapvest
+  license:
+    name: UNLICENSED
+servers:
+  - url: http://localhost:3001
+    description: Local dev
+  - url: https://mapvest-api.up.railway.app
+    description: Railway (staging/production)
+tags:
+  - name: system
+    description: Health + system endpoints
+  - name: identify
+    description: Photo → investable identification
+  - name: nearby
+    description: Location-driven place lookup
+  - name: finance
+    description: Ticker / comparable / ETF resolution
+  - name: auth
+    description: Passwordless email sign-in
+  - name: admin
+    description: Requires the `admin` scope
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Session token issued by `POST /v1/auth/session`. Attach as `Authorization: Bearer <token>`."
+  schemas:
+    Confidence:
+      type: string
+      enum:
+        - high
+        - medium
+        - low
+    Source:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+            - exa
+            - openrouter
+            - gemini
+            - yahoo
+            - polygon
+            - sec
+            - manual
+        url:
+          type: string
+          format: uri
+        fetchedAt:
+          type: string
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+      required:
+        - provider
+        - fetchedAt
+        - confidence
+    LatLng:
+      type: object
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+      required:
+        - lat
+        - lng
+    Ticker:
+      type: object
+      properties:
+        symbol:
+          type: string
+        exchange:
+          type: string
+        parent:
+          type: string
+      required:
+        - symbol
+    Brand:
+      type: object
+      properties:
+        name:
+          type: string
+        parent:
+          type: string
+        isPublic:
+          type: boolean
+        ticker:
+          type: object
+          properties:
+            symbol:
+              type: string
+            exchange:
+              type: string
+            parent:
+              type: string
+          required:
+            - symbol
+        sector:
+          type: string
+        logo:
+          type: string
+          format: uri
+      required:
+        - name
+        - isPublic
+    EtfExposure:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+          maximum: 1
+        source:
+          type: object
+          properties:
+            provider:
+              type: string
+              enum:
+                - exa
+                - openrouter
+                - gemini
+                - yahoo
+                - polygon
+                - sec
+                - manual
+            url:
+              type: string
+              format: uri
+            fetchedAt:
+              type: string
+            confidence:
+              type: string
+              enum:
+                - high
+                - medium
+                - low
+          required:
+            - provider
+            - fetchedAt
+            - confidence
+      required:
+        - ticker
+        - name
+        - weight
+        - source
+    Comparable:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - ticker
+        - name
+        - score
+        - reasoning
+        - sources
+    Investable:
+      type: object
+      properties:
+        brand:
+          type: object
+          properties:
+            name:
+              type: string
+            parent:
+              type: string
+            isPublic:
+              type: boolean
+            ticker:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                exchange:
+                  type: string
+                parent:
+                  type: string
+              required:
+                - symbol
+            sector:
+              type: string
+            logo:
+              type: string
+              format: uri
+          required:
+            - name
+            - isPublic
+        comparables:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              name:
+                type: string
+              score:
+                type: number
+                minimum: 0
+                maximum: 1
+              reasoning:
+                type: string
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      enum:
+                        - exa
+                        - openrouter
+                        - gemini
+                        - yahoo
+                        - polygon
+                        - sec
+                        - manual
+                    url:
+                      type: string
+                      format: uri
+                    fetchedAt:
+                      type: string
+                    confidence:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                  required:
+                    - provider
+                    - fetchedAt
+                    - confidence
+            required:
+              - ticker
+              - name
+              - score
+              - reasoning
+              - sources
+          default: []
+        etfs:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              name:
+                type: string
+              weight:
+                type: number
+                minimum: 0
+                maximum: 1
+              source:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                    enum:
+                      - exa
+                      - openrouter
+                      - gemini
+                      - yahoo
+                      - polygon
+                      - sec
+                      - manual
+                  url:
+                    type: string
+                    format: uri
+                  fetchedAt:
+                    type: string
+                  confidence:
+                    type: string
+                    enum:
+                      - high
+                      - medium
+                      - low
+                required:
+                  - provider
+                  - fetchedAt
+                  - confidence
+            required:
+              - ticker
+              - name
+              - weight
+              - source
+          default: []
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - brand
+        - confidence
+        - sources
+    PhotoIdentification:
+      type: object
+      properties:
+        visibleText:
+          type: array
+          items:
+            type: string
+          default: []
+        detected:
+          type: array
+          items:
+            type: object
+            properties:
+              brand:
+                type: string
+              product:
+                type: string
+              sector:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - confidence
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          required:
+            - lat
+            - lng
+        modelUsed:
+          type: string
+      required:
+        - detected
+        - modelUsed
+    IdentifyRequest:
+      type: object
+      properties:
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          required:
+            - lat
+            - lng
+    IdentifyResponse:
+      type: object
+      properties:
+        identification:
+          type: object
+          properties:
+            visibleText:
+              type: array
+              items:
+                type: string
+              default: []
+            detected:
+              type: array
+              items:
+                type: object
+                properties:
+                  brand:
+                    type: string
+                  product:
+                    type: string
+                  sector:
+                    type: string
+                  confidence:
+                    type: string
+                    enum:
+                      - high
+                      - medium
+                      - low
+                required:
+                  - confidence
+            location:
+              type: object
+              properties:
+                lat:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                lng:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+              required:
+                - lat
+                - lng
+            modelUsed:
+              type: string
+          required:
+            - detected
+            - modelUsed
+        investables:
+          type: array
+          items:
+            type: object
+            properties:
+              brand:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  parent:
+                    type: string
+                  isPublic:
+                    type: boolean
+                  ticker:
+                    type: object
+                    properties:
+                      symbol:
+                        type: string
+                      exchange:
+                        type: string
+                      parent:
+                        type: string
+                    required:
+                      - symbol
+                  sector:
+                    type: string
+                  logo:
+                    type: string
+                    format: uri
+                required:
+                  - name
+                  - isPublic
+              comparables:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ticker:
+                      type: string
+                    name:
+                      type: string
+                    score:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                    reasoning:
+                      type: string
+                    sources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          provider:
+                            type: string
+                            enum:
+                              - exa
+                              - openrouter
+                              - gemini
+                              - yahoo
+                              - polygon
+                              - sec
+                              - manual
+                          url:
+                            type: string
+                            format: uri
+                          fetchedAt:
+                            type: string
+                          confidence:
+                            type: string
+                            enum:
+                              - high
+                              - medium
+                              - low
+                        required:
+                          - provider
+                          - fetchedAt
+                          - confidence
+                  required:
+                    - ticker
+                    - name
+                    - score
+                    - reasoning
+                    - sources
+                default: []
+              etfs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ticker:
+                      type: string
+                    name:
+                      type: string
+                    weight:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                    source:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                          enum:
+                            - exa
+                            - openrouter
+                            - gemini
+                            - yahoo
+                            - polygon
+                            - sec
+                            - manual
+                        url:
+                          type: string
+                          format: uri
+                        fetchedAt:
+                          type: string
+                        confidence:
+                          type: string
+                          enum:
+                            - high
+                            - medium
+                            - low
+                      required:
+                        - provider
+                        - fetchedAt
+                        - confidence
+                  required:
+                    - ticker
+                    - name
+                    - weight
+                    - source
+                default: []
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      enum:
+                        - exa
+                        - openrouter
+                        - gemini
+                        - yahoo
+                        - polygon
+                        - sec
+                        - manual
+                    url:
+                      type: string
+                      format: uri
+                    fetchedAt:
+                      type: string
+                    confidence:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                  required:
+                    - provider
+                    - fetchedAt
+                    - confidence
+            required:
+              - brand
+              - confidence
+              - sources
+      required:
+        - identification
+        - investables
+    NearbyRequest:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        radius:
+          type: number
+          default: 500
+        limit:
+          type: number
+          default: 25
+      required:
+        - lat
+        - lng
+    NearbyItem:
+      type: object
+      properties:
+        place:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            location:
+              type: object
+              properties:
+                lat:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                lng:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+              required:
+                - lat
+                - lng
+            types:
+              type: array
+              items:
+                type: string
+              default: []
+          required:
+            - id
+            - name
+            - location
+        investable:
+          type: object
+          properties:
+            brand:
+              type: object
+              properties:
+                name:
+                  type: string
+                parent:
+                  type: string
+                isPublic:
+                  type: boolean
+                ticker:
+                  type: object
+                  properties:
+                    symbol:
+                      type: string
+                    exchange:
+                      type: string
+                    parent:
+                      type: string
+                  required:
+                    - symbol
+                sector:
+                  type: string
+                logo:
+                  type: string
+                  format: uri
+              required:
+                - name
+                - isPublic
+            comparables:
+              type: array
+              items:
+                type: object
+                properties:
+                  ticker:
+                    type: string
+                  name:
+                    type: string
+                  score:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  reasoning:
+                    type: string
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                          enum:
+                            - exa
+                            - openrouter
+                            - gemini
+                            - yahoo
+                            - polygon
+                            - sec
+                            - manual
+                        url:
+                          type: string
+                          format: uri
+                        fetchedAt:
+                          type: string
+                        confidence:
+                          type: string
+                          enum:
+                            - high
+                            - medium
+                            - low
+                      required:
+                        - provider
+                        - fetchedAt
+                        - confidence
+                required:
+                  - ticker
+                  - name
+                  - score
+                  - reasoning
+                  - sources
+              default: []
+            etfs:
+              type: array
+              items:
+                type: object
+                properties:
+                  ticker:
+                    type: string
+                  name:
+                    type: string
+                  weight:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  source:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                        enum:
+                          - exa
+                          - openrouter
+                          - gemini
+                          - yahoo
+                          - polygon
+                          - sec
+                          - manual
+                      url:
+                        type: string
+                        format: uri
+                      fetchedAt:
+                        type: string
+                      confidence:
+                        type: string
+                        enum:
+                          - high
+                          - medium
+                          - low
+                    required:
+                      - provider
+                      - fetchedAt
+                      - confidence
+                required:
+                  - ticker
+                  - name
+                  - weight
+                  - source
+              default: []
+            confidence:
+              type: string
+              enum:
+                - high
+                - medium
+                - low
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                    enum:
+                      - exa
+                      - openrouter
+                      - gemini
+                      - yahoo
+                      - polygon
+                      - sec
+                      - manual
+                  url:
+                    type: string
+                    format: uri
+                  fetchedAt:
+                    type: string
+                  confidence:
+                    type: string
+                    enum:
+                      - high
+                      - medium
+                      - low
+                required:
+                  - provider
+                  - fetchedAt
+                  - confidence
+          required:
+            - brand
+            - confidence
+            - sources
+      required:
+        - place
+    NearbyResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              place:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  location:
+                    type: object
+                    properties:
+                      lat:
+                        type: number
+                        minimum: -90
+                        maximum: 90
+                      lng:
+                        type: number
+                        minimum: -180
+                        maximum: 180
+                    required:
+                      - lat
+                      - lng
+                  types:
+                    type: array
+                    items:
+                      type: string
+                    default: []
+                required:
+                  - id
+                  - name
+                  - location
+              investable:
+                type: object
+                properties:
+                  brand:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      parent:
+                        type: string
+                      isPublic:
+                        type: boolean
+                      ticker:
+                        type: object
+                        properties:
+                          symbol:
+                            type: string
+                          exchange:
+                            type: string
+                          parent:
+                            type: string
+                        required:
+                          - symbol
+                      sector:
+                        type: string
+                      logo:
+                        type: string
+                        format: uri
+                    required:
+                      - name
+                      - isPublic
+                  comparables:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker:
+                          type: string
+                        name:
+                          type: string
+                        score:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                        reasoning:
+                          type: string
+                        sources:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              provider:
+                                type: string
+                                enum:
+                                  - exa
+                                  - openrouter
+                                  - gemini
+                                  - yahoo
+                                  - polygon
+                                  - sec
+                                  - manual
+                              url:
+                                type: string
+                                format: uri
+                              fetchedAt:
+                                type: string
+                              confidence:
+                                type: string
+                                enum:
+                                  - high
+                                  - medium
+                                  - low
+                            required:
+                              - provider
+                              - fetchedAt
+                              - confidence
+                      required:
+                        - ticker
+                        - name
+                        - score
+                        - reasoning
+                        - sources
+                    default: []
+                  etfs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker:
+                          type: string
+                        name:
+                          type: string
+                        weight:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                        source:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                              enum:
+                                - exa
+                                - openrouter
+                                - gemini
+                                - yahoo
+                                - polygon
+                                - sec
+                                - manual
+                            url:
+                              type: string
+                              format: uri
+                            fetchedAt:
+                              type: string
+                            confidence:
+                              type: string
+                              enum:
+                                - high
+                                - medium
+                                - low
+                          required:
+                            - provider
+                            - fetchedAt
+                            - confidence
+                      required:
+                        - ticker
+                        - name
+                        - weight
+                        - source
+                    default: []
+                  confidence:
+                    type: string
+                    enum:
+                      - high
+                      - medium
+                      - low
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                          enum:
+                            - exa
+                            - openrouter
+                            - gemini
+                            - yahoo
+                            - polygon
+                            - sec
+                            - manual
+                        url:
+                          type: string
+                          format: uri
+                        fetchedAt:
+                          type: string
+                        confidence:
+                          type: string
+                          enum:
+                            - high
+                            - medium
+                            - low
+                      required:
+                        - provider
+                        - fetchedAt
+                        - confidence
+                required:
+                  - brand
+                  - confidence
+                  - sources
+            required:
+              - place
+      required:
+        - items
+    ResolveComparableRequest:
+      type: object
+      properties:
+        brand:
+          type: string
+        hintSector:
+          type: string
+      required:
+        - brand
+    ResolveComparableResponse:
+      type: object
+      properties:
+        brand:
+          type: object
+          properties:
+            name:
+              type: string
+            parent:
+              type: string
+            isPublic:
+              type: boolean
+            ticker:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                exchange:
+                  type: string
+                parent:
+                  type: string
+              required:
+                - symbol
+            sector:
+              type: string
+            logo:
+              type: string
+              format: uri
+          required:
+            - name
+            - isPublic
+        comparables:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              name:
+                type: string
+              score:
+                type: number
+                minimum: 0
+                maximum: 1
+              reasoning:
+                type: string
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      enum:
+                        - exa
+                        - openrouter
+                        - gemini
+                        - yahoo
+                        - polygon
+                        - sec
+                        - manual
+                    url:
+                      type: string
+                      format: uri
+                    fetchedAt:
+                      type: string
+                    confidence:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                  required:
+                    - provider
+                    - fetchedAt
+                    - confidence
+            required:
+              - ticker
+              - name
+              - score
+              - reasoning
+              - sources
+        etfs:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              name:
+                type: string
+              weight:
+                type: number
+                minimum: 0
+                maximum: 1
+              source:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                    enum:
+                      - exa
+                      - openrouter
+                      - gemini
+                      - yahoo
+                      - polygon
+                      - sec
+                      - manual
+                  url:
+                    type: string
+                    format: uri
+                  fetchedAt:
+                    type: string
+                  confidence:
+                    type: string
+                    enum:
+                      - high
+                      - medium
+                      - low
+                required:
+                  - provider
+                  - fetchedAt
+                  - confidence
+            required:
+              - ticker
+              - name
+              - weight
+              - source
+      required:
+        - brand
+        - comparables
+        - etfs
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+              - user
+              - admin
+          default:
+            - user
+      required:
+        - id
+        - email
+        - createdAt
+    Session:
+      type: object
+      properties:
+        token:
+          type: string
+        userId:
+          type: string
+        expiresAt:
+          type: string
+      required:
+        - token
+        - userId
+        - expiresAt
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details: {}
+          required:
+            - code
+            - message
+      required:
+        - error
+  parameters: {}
+paths:
+  /v1/health:
+    get:
+      summary: Health check
+      description: Liveness probe. Returns 200 while the API is accepting traffic.
+      tags:
+        - system
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                  uptime:
+                    type: number
+                    description: Seconds since process start
+                required:
+                  - status
+                  - uptime
+  /v1/identify:
+    post:
+      summary: Identify investable brands from a photo
+      description: Accepts a multipart image plus optional location. Runs the vision pipeline and returns detected brands with ticker / comparable / ETF annotations. See `packages/vision`.
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  description: Photo bytes (JPEG or PNG).
+                  format: binary
+                location:
+                  allOf:
+                    - $ref: "#/components/schemas/LatLng"
+                    - description: Optional device location to bias identification.
+              required:
+                - image
+      responses:
+        "200":
+          description: Identification succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentifyResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/nearby:
+    get:
+      summary: Nearby investable places
+      description: "Google Places lookup around a lat/lng, filtered and annotated with tickers/ETFs. Every finance answer includes a `sources: Source[]` array (see AGENTS.md §6)."
+      tags:
+        - nearby
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: number
+          required: true
+          name: lat
+          in: query
+        - schema:
+            type: number
+          required: true
+          name: lng
+          in: query
+        - schema:
+            type: number
+            default: 500
+          required: false
+          name: radius
+          in: query
+        - schema:
+            type: number
+            default: 25
+          required: false
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Nearby items resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NearbyResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/resolve-comparable:
+    post:
+      summary: Resolve a private brand to a public comparable + ETF exposure
+      description: Given a brand name, returns the closest public comparable, ETF exposures, and cited sources. Confidence is `low` when the pipeline could not cite a source (do not fabricate).
+      tags:
+        - finance
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveComparableRequest"
+      responses:
+        "200":
+          description: Comparable resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveComparableResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/auth/session:
+    post:
+      summary: Passwordless email sign-in (magic link)
+      description: Starts or completes a magic-link session. On first call with `{email}`, an email is dispatched. On second call with `{email, code}`, a session token is returned.
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                code:
+                  type: string
+                  description: Magic-link code from the email. Omit on the first call to trigger send.
+              required:
+                - email
+      responses:
+        "200":
+          description: Session issued or magic-link dispatched.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      sent:
+                        type: boolean
+                        enum:
+                          - true
+                    required:
+                      - sent
+                  - type: object
+                    properties:
+                      session:
+                        $ref: "#/components/schemas/Session"
+                      user:
+                        $ref: "#/components/schemas/User"
+                    required:
+                      - session
+                      - user
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/metrics:
+    get:
+      summary: "Admin: request + cost metrics"
+      description: Requires the `admin` scope. Returns rolling counters for identify/nearby/resolve calls and OpenRouter cost telemetry.
+      tags:
+        - admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Metrics snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: object
+                    additionalProperties:
+                      type: number
+                  costUsd:
+                    type: number
+                  windowSeconds:
+                    type: number
+                required:
+                  - requests
+                  - costUsd
+                  - windowSeconds
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller lacks the `admin` scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/users:
+    get:
+      summary: "Admin: list users"
+      description: Requires the `admin` scope. Returns registered users.
+      tags:
+        - admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+                required:
+                  - users
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller lacks the `admin` scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+webhooks: {}
