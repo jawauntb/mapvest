@@ -159,6 +159,25 @@ export function generateMemo(
   );
 }
 
+export type AuctionChart = {
+  ticker: string;
+  period: string;
+  image: { mime: string; data: string; filename?: string };
+  levels?: { poc?: number; vah?: number; val?: number };
+  provider?: string;
+  sourceUrl?: string;
+};
+
+/** 1m auction chart proxied from underlying-analyzer. */
+export function fetchAuctionChart(
+  ticker: string,
+  period = "1m",
+  opts: FetchOpts = {},
+): Promise<AuctionChart> {
+  const qs = new URLSearchParams({ ticker, period });
+  return jsonFetch(`/v1/chart/auction?${qs.toString()}`, { method: "GET" }, opts);
+}
+
 export function secFilings(
   ticker: string,
   opts: FetchOpts = {},

@@ -6,12 +6,14 @@ import { useEffect, useState } from "react";
 import {
   addToWatchlist,
   generateMemo,
+  getAuctionChart,
   getQuote,
   getToken,
   listWatchlist,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
+  type AuctionChart,
 } from "@/lib/mapvest-api";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
@@ -22,6 +24,8 @@ export default function TickerDetail() {
   const symbolOrBrand = decodeURIComponent(params.symbol ?? "");
   const [data, setData] = useState<Resolved | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [chart, setChart] = useState<AuctionChart | null>(null);
+  const [chartErr, setChartErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
@@ -32,8 +36,23 @@ export default function TickerDetail() {
 
   useEffect(() => {
     if (!symbolOrBrand) return;
+    setChart(null);
+    setChartErr(null);
     resolveComparable(symbolOrBrand)
-      .then((r) => setData(r))
+      .then((r) => {
+        setData(r);
+        const chartTicker =
+          r.brand.ticker?.symbol ??
+          r.comparables[0]?.ticker ??
+          (/^[A-Z][A-Z0-9.]{0,5}$/.test(symbolOrBrand.toUpperCase())
+            ? symbolOrBrand.toUpperCase()
+            : null);
+        if (chartTicker) {
+          getAuctionChart(chartTicker, "1m")
+            .then(setChart)
+            .catch((e) => setChartErr(e instanceof Error ? e.message : "chart failed"));
+        }
+      })
       .catch((e) => setErr(e.message));
     getQuote(symbolOrBrand)
       .then((r) => r.quote && setQuote(r.quote))
@@ -142,6 +161,33 @@ export default function TickerDetail() {
         </div>
       ) : null}
 
+      <section className="app-chart">
+        <h2>
+          Auction chart · {chart?.ticker ?? ticker ?? "…"} · {chart?.period ?? "1m"}
+        </h2>
+        {chart ? (
+          <>
+            <img
+              className="app-chart-img"
+              alt={`${chart.ticker} 1m auction chart`}
+              src={`data:${chart.image.mime};base64,${chart.image.data}`}
+            />
+            {chart.levels ? (
+              <p className="app-muted">
+                POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
+                {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
+                {chart.levels.val?.toFixed?.(2) ?? "—"}
+                {chart.provider ? ` · ${chart.provider}` : ""}
+              </p>
+            ) : null}
+          </>
+        ) : chartErr ? (
+          <p className="app-err">{chartErr}</p>
+        ) : (
+          <p className="app-muted">Loading 1m auction chart…</p>
+        )}
+      </section>
+
       {ticker && authed ? (
         <div className="app-action-row">
           <button
@@ -194,7 +240,10 @@ export default function TickerDetail() {
           <ul className="app-simple-list">
             {data.comparables.map((c, i) => (
               <li key={`${c.ticker}-${i}`}>
-                <span className="app-ticker">{c.ticker}</span> · {c.name}{" "}
+                <Link href={`/app/ticker/${encodeURIComponent(c.ticker)}`}>
+                  <span className="app-ticker">${c.ticker}</span>
+                </Link>{" "}
+                · {c.name}{" "}
                 <span className="app-score">{Math.round(c.score * 100)}%</span>
               </li>
             ))}

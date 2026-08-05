@@ -173,6 +173,21 @@ export function getQuote(symbol: string) {
   }>(`/v1/quote?symbol=${encodeURIComponent(symbol)}`);
 }
 
+export type AuctionChart = {
+  ticker: string;
+  period: string;
+  image: { mime: string; data: string; filename?: string };
+  levels?: { poc?: number; vah?: number; val?: number };
+  provider?: string;
+  sourceUrl?: string;
+};
+
+/** 1m auction chart via underlying-analyzer (proxied). */
+export function getAuctionChart(ticker: string, period = "1m") {
+  const qs = new URLSearchParams({ ticker, period });
+  return req<AuctionChart>(`/v1/chart/auction?${qs.toString()}`);
+}
+
 // ---- identify ----
 
 export async function identifyImage(file: File, location?: { lat: number; lng: number }) {

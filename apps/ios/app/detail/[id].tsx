@@ -6,6 +6,7 @@ const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -13,8 +14,10 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import {
   addToWatchlist,
+  fetchAuctionChart,
   generateMemo,
   listWatchlist,
   removeFromWatchlist,
@@ -87,6 +90,18 @@ export default function DetailSheet() {
     staleTime: 5 * 60_000,
   });
 
+  const ticker =
+    q.data?.brand.ticker?.symbol ??
+    q.data?.comparables?.[0]?.ticker ??
+    (/^[A-Z][A-Z0-9.]{0,5}$/.test(brand.toUpperCase()) ? brand.toUpperCase() : undefined);
+
+  const chartQ = useQuery({
+    queryKey: ["auction-chart", ticker, "1m"],
+    enabled: !!ticker,
+    queryFn: () => fetchAuctionChart(ticker!, "1m", { token: session?.token }),
+    staleTime: 5 * 60_000,
+  });
+
   if (q.isLoading) {
     return (
       <View style={styles.center}>
@@ -104,7 +119,7 @@ export default function DetailSheet() {
   const data = q.data;
   if (!data) return null;
 
-  const ticker = data.brand.ticker?.symbol;
+  const publicTicker = data.brand.ticker?.symbol;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
@@ -118,9 +133,9 @@ export default function DetailSheet() {
             : "private"}
           {data.brand.sector ? ` · ${data.brand.sector}` : ""}
         </Text>
-        {ticker ? (
+        {publicTicker ? (
           <View style={styles.badgeRow}>
-            <OptionsBadge ticker={ticker} token={session?.token} />
+            <OptionsBadge ticker={publicTicker} token={session?.token} />
           </View>
         ) : (
           <View style={styles.badgeRow}>
@@ -133,9 +148,11 @@ export default function DetailSheet() {
         )}
       </View>
 
-      {ticker ? (
+      {ticker ? <AuctionChartBlock q={chartQ} ticker={ticker} /> : null}
+
+      {publicTicker ? (
         <WatchlistActions
-          ticker={ticker}
+          ticker={publicTicker}
           name={data.brand.name}
           sector={data.brand.sector}
           token={session?.token}
@@ -279,17 +296,62 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ComparableRow({ c }: { c: Comparable }) {
+function AuctionChartBlock({
+  q,
+  ticker,
+}: {
+  q: ReturnType<typeof useQuery>;
+  ticker: string;
+}) {
+  const data = q.data as Awaited<ReturnType<typeof fetchAuctionChart>> | undefined;
   return (
-    <View style={styles.row}>
+    <Section title={`Auction · $${ticker} · 1m`}>
+      {q.isLoading ? (
+        <ActivityIndicator color="#fff" />
+      ) : q.isError ? (
+        <Text style={styles.err}>{(q.error as Error).message}</Text>
+      ) : data?.image?.data ? (
+        <View style={{ gap: 8 }}>
+          <Image
+            source={{ uri: `data:${data.image.mime};base64,${data.image.data}` }}
+            style={styles.chartImg}
+            resizeMode="contain"
+            accessibilityLabel={`${ticker} 1 month auction chart`}
+          />
+          {data.levels ? (
+            <Text style={styles.muted}>
+              POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
+              {fmtLvl(data.levels.val)}
+              {data.provider ? ` · ${data.provider}` : ""}
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <Text style={styles.muted}>No chart.</Text>
+      )}
+    </Section>
+  );
+}
+
+function fmtLvl(n?: number): string {
+  return typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+function ComparableRow({ c }: { c: Comparable }) {
+  const router = useRouter();
+  return (
+    <Pressable
+      style={styles.row}
+      onPress={() => router.push(`/detail/${encodeURIComponent(c.ticker)}`)}
+    >
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>
-          {c.ticker} · {c.name}
+          ${c.ticker} · {c.name}
         </Text>
         <Text style={styles.rowSub}>{c.reasoning}</Text>
       </View>
       <Text style={styles.score}>{Math.round(c.score * 100)}%</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -490,6 +552,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 12,
+  },
+  chartImg: {
+    width: "100%",
+    height: 240,
+    borderRadius: 8,
+    backgroundColor: "#0a0a0a",
   },
   row: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   rowTitle: { color: "#fff", fontWeight: "600" },

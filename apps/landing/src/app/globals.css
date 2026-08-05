@@ -1133,6 +1133,19 @@ blockquote {
 .app-quote-up { color: var(--accent); }
 .app-quote-down { color: #ff5a5a; }
 .app-quote-disc { color: var(--muted); font-size: 0.75rem; }
+.app-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.app-chart h2 { font-size: 1.1rem; margin: 0; }
+.app-chart-img {
+  width: 100%;
+  max-width: 720px;
+  border-radius: 12px;
+  border: 1px solid #1a1a1a;
+  background: #0a0a0a;
+}
 .app-action-row {
   display: flex;
   gap: 0.5rem;

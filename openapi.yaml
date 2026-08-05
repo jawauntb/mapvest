@@ -384,6 +384,31 @@ components:
               - provider
               - fetchedAt
               - confidence
+        quote:
+          type: object
+          properties:
+            symbol:
+              type: string
+            price:
+              type: number
+            change:
+              type: number
+            changePct:
+              type: number
+            currency:
+              type: string
+            ts:
+              type: string
+            disclaimer:
+              type: string
+          required:
+            - symbol
+            - price
+            - change
+            - changePct
+            - currency
+            - ts
+            - disclaimer
       required:
         - brand
         - confidence
@@ -668,6 +693,31 @@ components:
                     - provider
                     - fetchedAt
                     - confidence
+              quote:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                  price:
+                    type: number
+                  change:
+                    type: number
+                  changePct:
+                    type: number
+                  currency:
+                    type: string
+                  ts:
+                    type: string
+                  disclaimer:
+                    type: string
+                required:
+                  - symbol
+                  - price
+                  - change
+                  - changePct
+                  - currency
+                  - ts
+                  - disclaimer
             required:
               - brand
               - confidence
@@ -890,6 +940,31 @@ components:
                   - provider
                   - fetchedAt
                   - confidence
+            quote:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                price:
+                  type: number
+                change:
+                  type: number
+                changePct:
+                  type: number
+                currency:
+                  type: string
+                ts:
+                  type: string
+                disclaimer:
+                  type: string
+              required:
+                - symbol
+                - price
+                - change
+                - changePct
+                - currency
+                - ts
+                - disclaimer
           required:
             - brand
             - confidence
@@ -1100,6 +1175,31 @@ components:
                         - provider
                         - fetchedAt
                         - confidence
+                  quote:
+                    type: object
+                    properties:
+                      symbol:
+                        type: string
+                      price:
+                        type: number
+                      change:
+                        type: number
+                      changePct:
+                        type: number
+                      currency:
+                        type: string
+                      ts:
+                        type: string
+                      disclaimer:
+                        type: string
+                    required:
+                      - symbol
+                      - price
+                      - change
+                      - changePct
+                      - currency
+                      - ts
+                      - disclaimer
                 required:
                   - brand
                   - confidence

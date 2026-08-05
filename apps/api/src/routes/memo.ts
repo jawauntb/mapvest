@@ -6,6 +6,12 @@ import { safeExecuteWithSpan } from "../lib/logfire.js";
  * `underlying-analyzer-reboot` service. That project already does SEC EDGAR,
  * Exa enrichment, and an Anthropic-authored brief; we just forward.
  *
+ * Upstream:
+ *   GET  /api/analysis/<ticker>
+ *   POST /api/analysis { tickers: [...] }
+ *   GET  /api/sec/<ticker>
+ *   POST /api/tools/vision/v2 { ticker }  (fallback memo)
+ *
  * See docs/SYSTEM_DESIGN.md D10 for the sibling-repo-boundary decision.
  */
 
@@ -13,6 +19,54 @@ const UNDERLYING_URL =
   process.env.UNDERLYING_URL ?? "https://underlying-terminal-production.up.railway.app";
 
 const memo = new Hono();
+
+function pickBrief(j: Record<string, unknown>): { memoText?: string; provider?: string } {
+  // Prefer named brief fields from /api/analysis
+  for (const [k, v] of Object.entries(j)) {
+    if (typeof v === "string" && v.trim().length > 100 && k.toLowerCase().includes("brief")) {
+      return {
+        memoText: v,
+        provider: k.replace(/\s*Brief\s*$/i, "").toLowerCase(),
+      };
+    }
+  }
+  // Vision / Market Memo shapes
+  for (const key of ["memo", "market_memo", "text", "brief", "content"]) {
+    const v = j[key];
+    if (typeof v === "string" && v.trim().length > 100) {
+      return { memoText: v, provider: typeof j.provider === "string" ? j.provider : "underlying" };
+    }
+  }
+  return {};
+}
+
+async function fetchAnalysis(ticker: string): Promise<Record<string, unknown>> {
+  // Prefer GET single-ticker; fall back to documented POST batch shape.
+  const getRes = await fetch(`${UNDERLYING_URL}/api/analysis/${encodeURIComponent(ticker)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (getRes.ok) return (await getRes.json()) as Record<string, unknown>;
+
+  const postRes = await fetch(`${UNDERLYING_URL}/api/analysis`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ tickers: [ticker], ticker, max_results: 1 }),
+  });
+  if (!postRes.ok) {
+    throw new Error(`underlying analysis ${postRes.status}`);
+  }
+  return (await postRes.json()) as Record<string, unknown>;
+}
+
+async function fetchVisionMemo(ticker: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${UNDERLYING_URL}/api/tools/vision/v2`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ ticker }),
+  });
+  if (!res.ok) throw new Error(`underlying vision ${res.status}`);
+  return (await res.json()) as Record<string, unknown>;
+}
 
 /**
  * POST /v1/memo  { ticker }
@@ -26,43 +80,45 @@ memo.post("/", async (c) => {
     span.setAttribute("ticker", ticker);
 
     const started = performance.now();
-    const res = await fetch(`${UNDERLYING_URL}/api/analysis`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticker }),
-    });
-    span.setAttributes({
-      upstream_status: res.status,
-      upstream_latency_ms: Math.round(performance.now() - started),
-    });
-    if (!res.ok) return c.json({ error: `underlying ${res.status}` }, 502);
-    const j = (await res.json()) as Record<string, unknown>;
-
-    // Underlying returns memos keyed by provider — "Anthropic Brief",
-    // "OpenAI Brief", etc. Pick the first non-empty markdown blob.
-    let memoText: string | undefined;
-    let provider: string | undefined;
-    for (const [k, v] of Object.entries(j)) {
-      if (typeof v === "string" && v.trim().length > 100 && k.toLowerCase().includes("brief")) {
-        memoText = v;
-        provider = k.replace(/\s*Brief\s*$/i, "").toLowerCase();
-        break;
+    let j: Record<string, unknown>;
+    let path = "analysis";
+    try {
+      j = await fetchAnalysis(ticker);
+    } catch (err) {
+      span.setAttribute("analysis_error", (err as Error).message);
+      try {
+        j = await fetchVisionMemo(ticker);
+        path = "vision_v2";
+      } catch (err2) {
+        return c.json(
+          {
+            error: `underlying memo failed: ${(err as Error).message}; vision: ${(err2 as Error).message}`,
+          },
+          502,
+        );
       }
     }
+    span.setAttributes({
+      upstream_path: path,
+      upstream_latency_ms: Math.round(performance.now() - started),
+    });
+
+    const { memoText, provider } = pickBrief(j);
     if (!memoText) {
       return c.json({ error: "no memo returned by underlying analyzer" }, 502);
     }
     return c.json({
       ticker,
-      provider: provider ?? "unknown",
+      provider: provider ?? "underlying",
       memo: memoText,
-      raw: j, // full payload preserved for callers who want it
+      sourceUrl: `${UNDERLYING_URL}/`,
+      raw: j,
     });
   });
 });
 
 /**
- * GET /v1/sec/:ticker → SEC 10-K citations (CIK, filing date, item URLs).
+ * GET /v1/memo/sec/:ticker → SEC 10-K citations (CIK, filing date, item URLs).
  */
 memo.get("/sec/:ticker", async (c) => {
   return safeExecuteWithSpan("http.sec", async (span) => {

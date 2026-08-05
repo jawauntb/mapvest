@@ -147,6 +147,31 @@ export const ResolveComparableResponse = z.object({
 });
 export type ResolveComparableResponse = z.infer<typeof ResolveComparableResponse>;
 
+/**
+ * Auction chart proxied from underlying-analyzer-reboot
+ * (`POST /api/charts/auction`). `image.data` is raw base64 (no data: prefix).
+ */
+export const AuctionChartResponse = z.object({
+  ticker: z.string(),
+  period: z.string(),
+  image: z.object({
+    mime: z.string(),
+    data: z.string(),
+    filename: z.string().optional(),
+  }),
+  levels: z
+    .object({
+      poc: z.number().optional(),
+      vah: z.number().optional(),
+      val: z.number().optional(),
+    })
+    .optional(),
+  provider: z.string().optional(),
+  providerNote: z.string().optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type AuctionChartResponse = z.infer<typeof AuctionChartResponse>;
+
 // -------- sibling link-outs (v0.1 scaffold, see docs/SYSTEM_DESIGN.md D10) --------
 
 /**
