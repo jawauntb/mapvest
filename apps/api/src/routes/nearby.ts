@@ -48,12 +48,21 @@ type OverpassElement = {
 };
 type OverpassResponse = { elements: OverpassElement[] };
 
+// Overpass mirrors — try in order, first success wins. Some are geo-blocked
+// or intermittently rate-limited, so we always try multiple. Docs:
+// https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.jp/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+];
+
 async function queryOverpass(
   lat: number,
   lng: number,
   radius: number,
 ): Promise<PlacesPayload> {
-  // Prefer commercial POIs — nodes with a brand tag or common shop/amenity.
   const q = `
     [out:json][timeout:8];
     (
@@ -63,40 +72,53 @@ async function queryOverpass(
     );
     out center 40;
   `;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `data=${encodeURIComponent(q)}`,
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`overpass ${res.status}`);
-    const j = (await res.json()) as OverpassResponse;
-    const seen = new Set<string>();
-    const results: PlacesResult[] = [];
-    for (const el of j.elements ?? []) {
-      const name = el.tags?.brand ?? el.tags?.name;
-      if (!name) continue;
-      const lat2 = el.lat ?? el.center?.lat;
-      const lng2 = el.lon ?? el.center?.lon;
-      if (typeof lat2 !== "number" || typeof lng2 !== "number") continue;
-      // dedupe on (name, ~100m grid) so we don't return five McDonald's for one storefront
-      const key = `${name.toLowerCase()}@${lat2.toFixed(3)},${lng2.toFixed(3)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      results.push({
-        place_id: `osm:${el.type}:${el.id}`,
-        name,
-        geometry: { location: { lat: lat2, lng: lng2 } },
-        types: [el.tags?.amenity ?? el.tags?.shop ?? "point_of_interest"],
+
+  const errs: string[] = [];
+  for (const mirror of OVERPASS_MIRRORS) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 6000);
+    try {
+      const res = await fetch(mirror, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "mapvest/0.1 (support@mapvest.app)",
+        },
+        body: `data=${encodeURIComponent(q)}`,
+        signal: controller.signal,
       });
+      clearTimeout(t);
+      if (!res.ok) {
+        errs.push(`${mirror} → ${res.status}`);
+        continue;
+      }
+      const j = (await res.json()) as OverpassResponse;
+      const seen = new Set<string>();
+      const results: PlacesResult[] = [];
+      for (const el of j.elements ?? []) {
+        const name = el.tags?.brand ?? el.tags?.name;
+        if (!name) continue;
+        const lat2 = el.lat ?? el.center?.lat;
+        const lng2 = el.lon ?? el.center?.lon;
+        if (typeof lat2 !== "number" || typeof lng2 !== "number") continue;
+        // dedupe on (name, ~100m grid) — one McDonald's, not five copies.
+        const key = `${name.toLowerCase()}@${lat2.toFixed(3)},${lng2.toFixed(3)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({
+          place_id: `osm:${el.type}:${el.id}`,
+          name,
+          geometry: { location: { lat: lat2, lng: lng2 } },
+          types: [el.tags?.amenity ?? el.tags?.shop ?? "point_of_interest"],
+        });
+      }
+      return { results };
+    } catch (err) {
+      clearTimeout(t);
+      errs.push(`${mirror} → ${(err as Error).message}`);
     }
-    return { results };
-  } finally {
-    clearTimeout(t);
   }
+  throw new Error(`all overpass mirrors failed: ${errs.join("; ")}`);
 }
 
 /**
