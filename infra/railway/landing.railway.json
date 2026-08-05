@@ -1,0 +1,22 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "service": {
+    "name": "landing",
+    "source": {
+      "root": "apps/landing"
+    }
+  },
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "bun install --frozen-lockfile && bun run --filter landing build"
+  },
+  "deploy": {
+    "startCommand": "bun run start",
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "numReplicas": 1,
+    "sleepApplication": false
+  }
+}
