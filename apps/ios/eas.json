@@ -8,7 +8,6 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "bundleIdentifier": "com.mapvest.app",
         "simulator": true
       },
       "env": {
@@ -18,7 +17,6 @@
     "preview": {
       "distribution": "internal",
       "ios": {
-        "bundleIdentifier": "com.mapvest.app",
         "simulator": false
       },
       "env": {
@@ -27,9 +25,6 @@
     },
     "production": {
       "autoIncrement": true,
-      "ios": {
-        "bundleIdentifier": "com.mapvest.app"
-      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-production-4b27.up.railway.app"
       }
