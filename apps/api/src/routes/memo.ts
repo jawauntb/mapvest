@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
+import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
 
 /**
  * Investment-memo + SEC endpoints — thin proxies over the sibling
@@ -72,7 +74,7 @@ async function fetchVisionMemo(ticker: string): Promise<Record<string, unknown>>
  * POST /v1/memo  { ticker }
  * → { ticker, memo: string, provider: "anthropic"|"openai"|..., sources? }
  */
-memo.post("/", async (c) => {
+memo.post("/", optionalAuth, requireGenerationQuota("memo"), async (c) => {
   return safeExecuteWithSpan("http.memo", async (span) => {
     const body = await c.req.json().catch(() => null);
     const ticker = (body?.ticker ?? "").toString().trim().toUpperCase();

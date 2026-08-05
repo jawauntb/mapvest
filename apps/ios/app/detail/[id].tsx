@@ -3,17 +3,6 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 // v0.1.1: use RN Linking (built-in) instead of expo-web-browser (native module,
 // needs pod install + rebuild). Same UX: taps open the URL in Safari.
 const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
 import {
   addToWatchlist,
   agentChat,
@@ -31,6 +20,17 @@ import {
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { API_URL } from "@/util/env";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
@@ -58,16 +58,13 @@ type UnderlyingLink = {
  * this endpoint is a scaffold for v0.2 and hasn't earned a top-level client
  * helper yet. See docs/SYSTEM_DESIGN.md D10.
  */
-async function fetchOptionsLink(
-  ticker: string,
-  token?: string,
-): Promise<OptionsLink> {
+async function fetchOptionsLink(ticker: string, token?: string): Promise<OptionsLink> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(
-    `${API_URL}/v1/options?ticker=${encodeURIComponent(ticker)}`,
-    { method: "GET", headers },
-  );
+  const res = await fetch(`${API_URL}/v1/options?ticker=${encodeURIComponent(ticker)}`, {
+    method: "GET",
+    headers,
+  });
   if (!res.ok) throw new Error(`options ${res.status}`);
   return (await res.json()) as OptionsLink;
 }
@@ -103,8 +100,7 @@ export default function DetailSheet() {
   const q = useQuery({
     queryKey: ["resolve-comparable", brand],
     enabled: !!brand,
-    queryFn: () =>
-      resolveComparable({ brand }, { token: session?.token }),
+    queryFn: () => resolveComparable({ brand }, { token: session?.token }),
     staleTime: 5 * 60_000,
   });
 
@@ -113,13 +109,11 @@ export default function DetailSheet() {
     : undefined;
   // Prefer listed brand ticker, then typed URL symbol, then top comparable.
   // Never let a comparable steal charts for a typed ticker like MCD.
-  const ticker =
-    q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
+  const ticker = q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
 
   const [tab, setTab] = useState<TabKey>("overview");
   const [researchOpen, setResearchOpen] = useState(false);
-  const [chartType, setChartType] =
-    useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
+  const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
 
   // Overview always loads auction 1mo; Advanced loads selected chip/period.
@@ -136,8 +130,7 @@ export default function DetailSheet() {
   const chartQ = useQuery({
     queryKey: ["chart", ticker, activeType, activePeriod],
     enabled: !!ticker,
-    queryFn: () =>
-      fetchChart(activeType, ticker!, activePeriod, { token: session?.token }),
+    queryFn: () => fetchChart(activeType, ticker!, activePeriod, { token: session?.token }),
     staleTime: 5 * 60_000,
   });
 
@@ -207,10 +200,7 @@ export default function DetailSheet() {
           <View style={styles.quoteRow}>
             <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
             <Text
-              style={[
-                styles.quoteChange,
-                { color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b" },
-              ]}
+              style={[styles.quoteChange, { color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b" }]}
             >
               {quote.change >= 0 ? "+" : ""}
               {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
@@ -242,18 +232,13 @@ export default function DetailSheet() {
 
           {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
 
-          {ticker ? (
-            <AgentOverviewBlock ticker={ticker} token={session?.token} />
-          ) : null}
+          {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
 
           {ticker ? (
             <View style={{ gap: 10 }}>
               <Pressable
                 onPress={() => setResearchOpen(true)}
-                style={({ pressed }) => [
-                  styles.researchBtn,
-                  pressed && { opacity: 0.85 },
-                ]}
+                style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
               >
                 <Text style={styles.researchBtnText}>Research…</Text>
                 <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
@@ -290,9 +275,7 @@ export default function DetailSheet() {
             {data.comparables.length === 0 ? (
               <Text style={styles.muted}>No public comparables resolved.</Text>
             ) : (
-              data.comparables.map((c, i) => (
-                <ComparableRow key={`${c.ticker}-${i}`} c={c} />
-              ))
+              data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
             )}
           </Section>
 
@@ -398,11 +381,7 @@ function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }
       onPress={onPress}
       accessibilityRole="link"
       accessibilityLabel={`Open ${ticker} in Robinhood`}
-      style={({ pressed }) => [
-        styles.badge,
-        styles.robinhoodBadge,
-        pressed && styles.badgePressed,
-      ]}
+      style={({ pressed }) => [styles.badge, styles.robinhoodBadge, pressed && styles.badgePressed]}
     >
       <Text style={styles.badgeText}>Open in Robinhood →</Text>
     </Pressable>
@@ -447,9 +426,7 @@ function OptionsBadge({ ticker, token }: { ticker: string; token?: string }) {
         pressed && ready && styles.badgePressed,
       ]}
     >
-      <Text style={styles.badgeText}>
-        {opt.isLoading ? "Options …" : `Options ${ticker} →`}
-      </Text>
+      <Text style={styles.badgeText}>{opt.isLoading ? "Options …" : `Options ${ticker} →`}</Text>
     </Pressable>
   );
 }
@@ -679,12 +656,7 @@ function ChartStrip({
           </Pressable>
         ))}
       </View>
-      <ChartImageBlock
-        q={q}
-        ticker={ticker}
-        label={label}
-        showLevels={chartType === "auction"}
-      />
+      <ChartImageBlock q={q} ticker={ticker} label={label} showLevels={chartType === "auction"} />
     </Section>
   );
 }
@@ -700,9 +672,7 @@ function AnalysisSnapshotBlock({
         {[
           data.sector,
           data.industry,
-          data.annualVolatility != null
-            ? `vol ${(data.annualVolatility * 100).toFixed(1)}%`
-            : null,
+          data.annualVolatility != null ? `vol ${(data.annualVolatility * 100).toFixed(1)}%` : null,
           data.fiftyTwoWeekLow != null || data.fiftyTwoWeekHigh != null
             ? `52w ${fmtLvl(data.fiftyTwoWeekLow)}–${fmtLvl(data.fiftyTwoWeekHigh)}`
             : null,
@@ -730,9 +700,7 @@ function AnalysisAdvancedBlock({
     ["Price", data.price != null ? `$${data.price.toFixed(2)}` : "—"],
     [
       "Ann. vol",
-      data.annualVolatility != null
-        ? `${(data.annualVolatility * 100).toFixed(1)}%`
-        : "—",
+      data.annualVolatility != null ? `${(data.annualVolatility * 100).toFixed(1)}%` : "—",
     ],
     ["52w low", fmtLvl(data.fiftyTwoWeekLow)],
     ["52w high", fmtLvl(data.fiftyTwoWeekHigh)],
@@ -747,9 +715,7 @@ function AnalysisAdvancedBlock({
           <Text style={styles.finVal}>{v}</Text>
         </View>
       ))}
-      {data.brief ? (
-        <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text>
-      ) : null}
+      {data.brief ? <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text> : null}
     </Section>
   );
 }
@@ -790,8 +756,7 @@ function EtfRow({ e }: { e: EtfExposure }) {
 }
 
 function SourceList({ sources }: { sources: Source[] }) {
-  if (sources.length === 0)
-    return <Text style={styles.muted}>No sources cited.</Text>;
+  if (sources.length === 0) return <Text style={styles.muted}>No sources cited.</Text>;
   return (
     <View style={{ gap: 6 }}>
       {sources.map((s, i) => (
@@ -824,6 +789,7 @@ function WatchlistActions({
   token?: string;
 }) {
   const qc = useQueryClient();
+  const router = useRouter();
   const sym = ticker.trim().toUpperCase();
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
   const [memoSaved, setMemoSaved] = useState(false);
@@ -837,16 +803,12 @@ function WatchlistActions({
     enabled: !!token,
     staleTime: 30_000,
   });
-  const serverSaved =
-    wl.data?.items.some((e) => e.ticker.toUpperCase() === sym) ?? false;
+  const serverSaved = wl.data?.items.some((e) => e.ticker.toUpperCase() === sym) ?? false;
   const isSaved = optimisticSaved ?? serverSaved;
 
   const saveM = useMutation({
     mutationFn: () =>
-      addToWatchlist(
-        { ticker: sym, name, sector, source: "detail" },
-        { token: token! },
-      ),
+      addToWatchlist({ ticker: sym, name, sector, source: "detail" }, { token: token! }),
     onMutate: () => {
       setOptimisticSaved(true);
       setStatusLine("Saving…");
@@ -890,10 +852,7 @@ function WatchlistActions({
   const saveMemoM = useMutation({
     mutationFn: () => {
       if (!memo || !token) throw new Error("no memo / not signed in");
-      return addToWatchlist(
-        { ticker: sym, name, sector, source: "detail" },
-        { token },
-      ).then(() =>
+      return addToWatchlist({ ticker: sym, name, sector, source: "detail" }, { token }).then(() =>
         saveMemoToWatchlist(sym, memo.text, memo.provider, { token }),
       );
     },
@@ -917,15 +876,27 @@ function WatchlistActions({
         <Text style={styles.muted}>
           Sign in to ★ Save this ticker, generate memos, and open Research briefs.
         </Text>
-        <Pressable
-          onPress={() => memoM.mutate()}
-          disabled={memoM.isPending}
-          style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.actionBtnText}>
-            {memoM.isPending ? "Generating…" : "📝 Generate memo"}
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            onPress={() => router.push("/auth")}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.actionBtnActive,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={[styles.actionBtnText, { color: "#000" }]}>Sign in</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => memoM.mutate()}
+            disabled={memoM.isPending}
+            style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.actionBtnText}>
+              {memoM.isPending ? "Generating…" : "📝 Generate memo"}
+            </Text>
+          </Pressable>
+        </View>
         {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
         {memo ? (
           <View style={styles.memoCard}>
@@ -971,9 +942,7 @@ function WatchlistActions({
           {memoM.isPending ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.actionBtnText}>
-              {memo ? "↻ Regenerate memo" : "📝 Memo"}
-            </Text>
+            <Text style={styles.actionBtnText}>{memo ? "↻ Regenerate memo" : "📝 Memo"}</Text>
           )}
         </Pressable>
       </View>
@@ -989,9 +958,7 @@ function WatchlistActions({
         </Text>
       ) : null}
 
-      {memoM.isError ? (
-        <Text style={styles.err}>{(memoM.error as Error).message}</Text>
-      ) : null}
+      {memoM.isError ? <Text style={styles.err}>{(memoM.error as Error).message}</Text> : null}
 
       {memo ? (
         <View style={styles.memoCard}>
@@ -1007,9 +974,7 @@ function WatchlistActions({
               { alignSelf: "flex-start" },
             ]}
           >
-            <Text
-              style={[styles.actionBtnText, memoSaved && { color: "#000" }]}
-            >
+            <Text style={[styles.actionBtnText, memoSaved && { color: "#000" }]}>
               {saveMemoM.isPending
                 ? "Saving…"
                 : memoSaved

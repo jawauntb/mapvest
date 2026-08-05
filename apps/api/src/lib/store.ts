@@ -2,8 +2,9 @@
  * User store — Postgres when POSTGRES_URL is set, otherwise in-memory (tests/dev).
  */
 import type { User } from "@mapvest/core";
-import { adminEmails, isDev } from "./env.js";
 import { dbEnabled, getSql, initDb } from "./db.js";
+import { ensureUserEntitlements } from "./entitlements.js";
+import { adminEmails, isDev } from "./env.js";
 
 type PendingLink = {
   email: string;
@@ -37,9 +38,7 @@ function rowToUser(row: {
   scopes: string[] | null;
 }): User {
   const createdAt =
-    typeof row.created_at === "string"
-      ? row.created_at
-      : row.created_at.toISOString();
+    typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString();
   const scopes = (row.scopes?.length ? row.scopes : scopesFor(row.email)) as User["scopes"];
   return { id: row.id, email: row.email, createdAt, scopes };
 }
@@ -60,7 +59,8 @@ async function dbGetById(id: string): Promise<User | undefined> {
 async function dbGetByEmail(email: string): Promise<User | undefined> {
   const sql = getSql();
   if (!sql) return undefined;
-  const rows = await sql`SELECT id, email, created_at, scopes FROM users WHERE email = ${email} LIMIT 1`;
+  const rows =
+    await sql`SELECT id, email, created_at, scopes FROM users WHERE email = ${email} LIMIT 1`;
   const row = rows[0] as
     | { id: string; email: string; created_at: Date | string; scopes: string[] | null }
     | undefined;
@@ -90,7 +90,10 @@ export async function findOrCreateUserByEmail(emailRaw: string): Promise<User> {
   const memId = byEmail.get(email);
   if (memId) {
     const u = users.get(memId);
-    if (u) return u;
+    if (u) {
+      await ensureUserEntitlements(u);
+      return u;
+    }
   }
 
   if (dbEnabled()) {
@@ -102,8 +105,10 @@ export async function findOrCreateUserByEmail(emailRaw: string): Promise<User> {
         const updated = { ...existing, scopes };
         cacheUser(updated);
         await dbUpsert(updated);
+        await ensureUserEntitlements(updated);
         return updated;
       }
+      await ensureUserEntitlements(existing);
       return existing;
     }
   }
@@ -117,6 +122,7 @@ export async function findOrCreateUserByEmail(emailRaw: string): Promise<User> {
   };
   cacheUser(user);
   if (dbEnabled()) await dbUpsert(user);
+  await ensureUserEntitlements(user);
   if (isDev()) console.log(`[auth] created user ${id} <${email}> scopes=${user.scopes.join(",")}`);
   return user;
 }
@@ -137,16 +143,25 @@ export async function ensureUser(id: string, emailRaw: string): Promise<User> {
   await initDb();
   const email = emailRaw.toLowerCase().trim();
   const existing = await getUserById(id);
-  if (existing) return existing;
+  if (existing) {
+    await ensureUserEntitlements(existing);
+    return existing;
+  }
 
   if (dbEnabled()) {
     const byMail = await dbGetByEmail(email);
-    if (byMail) return byMail;
+    if (byMail) {
+      await ensureUserEntitlements(byMail);
+      return byMail;
+    }
   } else {
     const byMailId = byEmail.get(email);
     if (byMailId) {
       const u = users.get(byMailId);
-      if (u) return u;
+      if (u) {
+        await ensureUserEntitlements(u);
+        return u;
+      }
     }
   }
 
@@ -158,6 +173,7 @@ export async function ensureUser(id: string, emailRaw: string): Promise<User> {
   };
   cacheUser(user);
   if (dbEnabled()) await dbUpsert(user);
+  await ensureUserEntitlements(user);
   if (isDev()) console.log(`[auth] rehydrated user ${id} <${email}>`);
   return user;
 }
@@ -167,7 +183,8 @@ export async function listUsers(): Promise<User[]> {
   if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
-      const rows = await sql`SELECT id, email, created_at, scopes FROM users ORDER BY created_at ASC`;
+      const rows =
+        await sql`SELECT id, email, created_at, scopes FROM users ORDER BY created_at ASC`;
       const out: User[] = [];
       for (const row of rows as Array<{
         id: string;

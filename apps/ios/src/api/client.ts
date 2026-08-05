@@ -1,15 +1,19 @@
+import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 import type {
   IdentifyResponse,
+  LatLng,
   NearbyResponse,
   ResolveComparableResponse,
   Session,
   User,
-  LatLng,
 } from "./types";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -20,16 +24,19 @@ type FetchOpts = {
   signal?: AbortSignal;
 };
 
-async function jsonFetch<T>(
-  path: string,
-  init: RequestInit,
-  opts: FetchOpts = {},
-): Promise<T> {
+async function jsonFetch<T>(path: string, init: RequestInit, opts: FetchOpts = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
+  }
+  // Anonymous device id — lets guest usage be metered without a session
+  // (Phase 8 Slice C). Best-effort: never block a request on it.
+  try {
+    headers.set("X-Device-Id", await getDeviceId());
+  } catch {
+    /* SecureStore unavailable — request proceeds without device id */
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -54,9 +61,7 @@ async function jsonFetch<T>(
 
 // -------- auth --------
 
-export function requestMagicLink(
-  email: string,
-): Promise<{ sent: true; devCode?: string }> {
+export function requestMagicLink(email: string): Promise<{ sent: true; devCode?: string }> {
   // v0.1: no SMTP wired, so the API returns { devCode } inline when
   // AUTH_RETURN_CODE=1. The auth screen surfaces it for demo submissions.
   return jsonFetch("/v1/auth/session", {
@@ -117,6 +122,11 @@ export async function identifyPhoto(
   const headers = new Headers();
   if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
   headers.set("Accept", "application/json");
+  try {
+    headers.set("X-Device-Id", await getDeviceId());
+  } catch {
+    /* SecureStore unavailable — request proceeds without device id */
+  }
   // Let fetch set the multipart boundary itself; do NOT set Content-Type.
 
   const res = await fetch(`${API_URL}/v1/identify`, {
@@ -136,11 +146,7 @@ export function resolveComparable(
   args: { brand: string; hintSector?: string },
   opts: FetchOpts = {},
 ): Promise<ResolveComparableResponse> {
-  return jsonFetch(
-    "/v1/resolve-comparable",
-    { method: "POST", body: JSON.stringify(args) },
-    opts,
-  );
+  return jsonFetch("/v1/resolve-comparable", { method: "POST", body: JSON.stringify(args) }, opts);
 }
 
 // -------- memo + watchlist --------
@@ -159,11 +165,7 @@ export function generateMemo(
   ticker: string,
   opts: FetchOpts = {},
 ): Promise<{ ticker: string; provider: string; memo: string }> {
-  return jsonFetch(
-    "/v1/memo",
-    { method: "POST", body: JSON.stringify({ ticker }) },
-    opts,
-  );
+  return jsonFetch("/v1/memo", { method: "POST", body: JSON.stringify({ ticker }) }, opts);
 }
 
 export type Quote = {
@@ -180,11 +182,7 @@ export function fetchQuote(
   symbol: string,
   opts: FetchOpts = {},
 ): Promise<{ quote?: Quote; error?: string }> {
-  return jsonFetch(
-    `/v1/quote?symbol=${encodeURIComponent(symbol)}`,
-    { method: "GET" },
-    opts,
-  );
+  return jsonFetch(`/v1/quote?symbol=${encodeURIComponent(symbol)}`, { method: "GET" }, opts);
 }
 
 /** Best-effort parallel quotes for list/saved rows (cap 10). */
@@ -378,22 +376,14 @@ export function addToWatchlist(
   entry: Partial<WatchEntry> & { ticker: string },
   opts: FetchOpts,
 ): Promise<{ entry: WatchEntry }> {
-  return jsonFetch(
-    "/v1/watchlist/add",
-    { method: "POST", body: JSON.stringify(entry) },
-    opts,
-  );
+  return jsonFetch("/v1/watchlist/add", { method: "POST", body: JSON.stringify(entry) }, opts);
 }
 
 export function removeFromWatchlist(
   ticker: string,
   opts: FetchOpts,
 ): Promise<{ ok: true; removed: boolean }> {
-  return jsonFetch(
-    `/v1/watchlist/${ticker}`,
-    { method: "DELETE" },
-    opts,
-  );
+  return jsonFetch(`/v1/watchlist/${ticker}`, { method: "DELETE" }, opts);
 }
 
 export function saveMemoToWatchlist(
@@ -449,11 +439,7 @@ export function openInRobinhood(
   linkOut: string;
   note?: string;
 }> {
-  return jsonFetch(
-    `/v1/robinhood?ticker=${encodeURIComponent(ticker)}`,
-    { method: "GET" },
-    opts,
-  );
+  return jsonFetch(`/v1/robinhood?ticker=${encodeURIComponent(ticker)}`, { method: "GET" }, opts);
 }
 
 // -------- admin --------

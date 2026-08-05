@@ -4,11 +4,11 @@
  */
 
 export const API_URL =
-  process.env.NEXT_PUBLIC_MAPVEST_API_URL ??
-  "https://api-production-4b27.up.railway.app";
+  process.env.NEXT_PUBLIC_MAPVEST_API_URL ?? "https://api-production-4b27.up.railway.app";
 
 const TOKEN_KEY = "mapvest.session.token";
 const USER_KEY = "mapvest.session.user";
+const DEVICE_ID_KEY = "mapvest.deviceId.v1";
 
 export type User = {
   id: string;
@@ -48,16 +48,15 @@ export type WatchEntry = {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
 
-async function req<T>(
-  path: string,
-  init: RequestInit = {},
-  needsAuth = false,
-): Promise<T> {
+async function req<T>(path: string, init: RequestInit = {}, needsAuth = false): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) {
@@ -70,6 +69,8 @@ async function req<T>(
   } else if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  const deviceId = getDeviceId();
+  if (deviceId) headers.set("X-Device-Id", deviceId);
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -111,6 +112,28 @@ export function setSession(session: Session, user: User) {
 export function clearSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+}
+
+/**
+ * Stable per-browser device id, generated once and persisted in
+ * localStorage. Sent as `X-Device-Id` so anonymous (guest) usage can be
+ * metered without requiring sign-in (Phase 8 Slice C). Never blocks a
+ * request — returns null during SSR or if storage is unavailable.
+ */
+export function getDeviceId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_KEY);
+    if (existing) return existing;
+    const next =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(DEVICE_ID_KEY, next);
+    return next;
+  } catch {
+    return null;
+  }
 }
 
 // ---- auth ----
@@ -177,9 +200,7 @@ export type Quote = {
 };
 
 export function getQuote(symbol: string) {
-  return req<{ quote?: Quote; error?: string }>(
-    `/v1/quote?symbol=${encodeURIComponent(symbol)}`,
-  );
+  return req<{ quote?: Quote; error?: string }>(`/v1/quote?symbol=${encodeURIComponent(symbol)}`);
 }
 
 /** Best-effort parallel quotes for list/saved (cap 10). */
@@ -400,6 +421,8 @@ export async function identifyImage(file: File, location?: { lat: number; lng: n
   const headers = new Headers();
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  const deviceId = getDeviceId();
+  if (deviceId) headers.set("X-Device-Id", deviceId);
   const res = await fetch(`${API_URL}/v1/identify`, {
     method: "POST",
     body: form,
@@ -462,11 +485,7 @@ export function addToWatchlist(entry: Partial<WatchEntry> & { ticker: string }) 
 }
 
 export function removeFromWatchlist(ticker: string) {
-  return req<{ ok: true; removed: boolean }>(
-    `/v1/watchlist/${ticker}`,
-    { method: "DELETE" },
-    true,
-  );
+  return req<{ ok: true; removed: boolean }>(`/v1/watchlist/${ticker}`, { method: "DELETE" }, true);
 }
 
 export function saveMemoToWatchlist(ticker: string, memo: string, provider: string | undefined) {

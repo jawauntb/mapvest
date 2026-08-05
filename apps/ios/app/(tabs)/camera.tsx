@@ -1,23 +1,16 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { CameraView, useCameraPermissions } from "expo-camera";
-import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { addToWatchlist, identifyPhoto } from "@/api/client";
 import type { IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { sectorColor } from "@/util/sectors";
+import { useQueryClient } from "@tanstack/react-query";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import * as Location from "expo-location";
+import { useRouter } from "expo-router";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type CameraCache = {
   frozenUri: string | null;
@@ -152,14 +145,15 @@ export default function CameraScreen() {
   }
 
   const top = result?.investables[0];
-  const ticker =
-    top?.brand.ticker?.symbol ??
-    top?.comparables?.[0]?.ticker ??
-    undefined;
+  const ticker = top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
   const accent = sectorColor(top?.brand.sector);
 
   async function onSave() {
-    if (!ticker || !session?.token || !top) return;
+    if (!ticker || !top) return;
+    if (!session?.token) {
+      router.push("/auth");
+      return;
+    }
     setSavedNote(`Saving $${ticker}…`);
     try {
       await addToWatchlist(
@@ -180,8 +174,7 @@ export default function CameraScreen() {
 
   function openDetail() {
     if (ticker) router.push(`/detail/${ticker}`);
-    else if (top?.brand.name)
-      router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
+    else if (top?.brand.name) router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
   }
 
   return (

@@ -1,3 +1,5 @@
+import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
+import { useSession } from "@/auth/session";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -13,15 +15,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import {
-  clearRobinhoodMcp,
-  fetchSettings,
-  saveRobinhoodMcp,
-} from "@/api/client";
-import { useSession } from "@/auth/session";
 
 /**
- * /home — account, sign-out, Robinhood MCP key (server-side masked store).
+ * /home — guest Sign in CTA, or (signed in) account, sign-out, Robinhood MCP
+ * key (server-side masked store). Home/settings is the one place sign-in /
+ * sign-out lives (Phase 8 Slice B) — every other tab works for guests.
  */
 export default function HomeSettingsScreen() {
   const { user, session, signOut } = useSession();
@@ -32,6 +30,10 @@ export default function HomeSettingsScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
 
+  // Hooks below must stay unconditional — the tab tree keeps this screen
+  // mounted (`unmountOnBlur: false`), so `session` can flip from null to set
+  // (or back) without the component remounting. Branching before all hooks
+  // run would violate the Rules of Hooks on that transition.
   const settingsQ = useQuery({
     queryKey: ["settings", session?.token],
     enabled: !!session?.token,
@@ -57,6 +59,10 @@ export default function HomeSettingsScreen() {
     },
     onError: (e) => setStatus((e as Error).message || "Clear failed"),
   });
+
+  if (!session) {
+    return <GuestHome />;
+  }
 
   const rh = settingsQ.data?.robinhoodMcp;
 
@@ -85,9 +91,9 @@ export default function HomeSettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.label}>Robinhood MCP</Text>
           <Text style={styles.muted}>
-            Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved,
-            ticker pages show Open in Robinhood so you can buy or place orders in Robinhood.
-            Mapvest never submits broker orders. Key is encrypted in Postgres for your account.
+            Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved, ticker
+            pages show Open in Robinhood so you can buy or place orders in Robinhood. Mapvest never
+            submits broker orders. Key is encrypted in Postgres for your account.
           </Text>
           {settingsQ.isLoading ? (
             <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
@@ -118,10 +124,7 @@ export default function HomeSettingsScreen() {
             blurOnSubmit
           />
           <View style={styles.row}>
-            <Pressable
-              style={styles.btn}
-              onPress={() => setShowToken((v) => !v)}
-            >
+            <Pressable style={styles.btn} onPress={() => setShowToken((v) => !v)}>
               <Text style={styles.btnText}>{showToken ? "Hide" : "Show"}</Text>
             </Pressable>
             <Pressable style={styles.btn} onPress={() => Keyboard.dismiss()}>
@@ -137,9 +140,7 @@ export default function HomeSettingsScreen() {
                 saveM.mutate();
               }}
             >
-              <Text style={styles.btnTextDark}>
-                {saveM.isPending ? "Saving…" : "Save key"}
-              </Text>
+              <Text style={styles.btnTextDark}>{saveM.isPending ? "Saving…" : "Save key"}</Text>
             </Pressable>
             {rh?.configured ? (
               <Pressable
@@ -166,6 +167,33 @@ export default function HomeSettingsScreen() {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Shown on Home when there's no session — map/camera/list/research still work; only Save/settings need sign-in. */
+function GuestHome() {
+  const router = useRouter();
+  return (
+    <View style={styles.root}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.h1}>Home</Text>
+        <Text style={styles.sub}>Account · settings · integrations</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Browsing as guest</Text>
+          <Text style={styles.muted}>
+            Map, Camera, Live, List, and Research all work without an account. Sign in to ★ Save
+            tickers to a watchlist, save memos, and connect your Robinhood MCP key.
+          </Text>
+          <Pressable
+            style={[styles.btn, styles.btnPrimary, { marginTop: 8 }]}
+            onPress={() => router.push("/auth")}
+          >
+            <Text style={styles.btnTextDark}>Sign in</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 

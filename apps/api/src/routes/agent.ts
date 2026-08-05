@@ -5,6 +5,8 @@ import {
   derivationReadHeaders,
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
+import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
 
 /**
  * Finance research agent — thin proxy to Derivation Research Console idea-chats.
@@ -232,7 +234,7 @@ agent.get("/threads/:id", async (c) => {
  * Body: { message, ticker?, threadId? }
  * Aggregates Derivation SSE into one ResearchArticle-shaped assistant turn.
  */
-agent.post("/chat", async (c) => {
+agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c) => {
   return safeExecuteWithSpan("http.agent.chat", async (span) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       message?: unknown;

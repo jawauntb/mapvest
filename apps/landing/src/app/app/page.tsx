@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  type AgentThread,
   type AlertItem,
+  ApiError,
   type CockpitRow,
   type NearbyItem,
+  type ResearchArticle,
   type User,
   type WatchEntry,
-  ApiError,
   addToWatchlist,
   agentChat,
   clearRobinhoodMcp,
@@ -24,8 +26,6 @@ import {
   identifyImage,
   listAgentThreads,
   listWatchlist,
-  type AgentThread,
-  type ResearchArticle,
   removeFromWatchlist,
   requestCode,
   saveMemoToWatchlist,
@@ -48,19 +48,22 @@ export default function AppPage() {
       return;
     }
     setUser(cached);
+    // Refresh profile in the background; keep the same token (sessions are
+    // long-lived, no rotation needed). Only clear the stored session on a
+    // definitive "this token will never work again" signal — an unknown
+    // user (e.g. after a Postgres reset) or a token that fails verification.
+    // A network blip, timeout, or transient 5xx must NOT sign the user out —
+    // "stay signed in until explicit Sign out" (Phase 8 Slice B).
     void getMe()
       .then((r) => {
         setUser(r.user);
-        const sessionRaw = window.localStorage.getItem("mapvest.session.token");
-        if (sessionRaw) {
-          // refresh user blob; keep existing session token
-          window.localStorage.setItem("mapvest.session.user", JSON.stringify(r.user));
-        }
+        window.localStorage.setItem("mapvest.session.user", JSON.stringify(r.user));
       })
       .catch((e) => {
         if (
-          (e instanceof ApiError && (e.status === 401 || e.status === 403)) ||
-          (e instanceof Error && /unknown user|invalid token|not signed/i.test(e.message))
+          e instanceof ApiError &&
+          e.status === 401 &&
+          /unknown user|invalid token/i.test(e.message)
         ) {
           clearSession();
           setUser(null);
@@ -70,11 +73,11 @@ export default function AppPage() {
   }, []);
 
   if (!ready) return <div className="app-loading">…</div>;
-  if (!user) return <SignIn onSignedIn={setUser} />;
 
   return (
     <Home
       user={user}
+      onSignedIn={setUser}
       onSignOut={() => {
         clearSession();
         setUser(null);
@@ -85,7 +88,13 @@ export default function AppPage() {
 
 /* -------------------------------------------------------------------------- */
 
-function SignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
+function SignIn({
+  onSignedIn,
+  embedded,
+}: {
+  onSignedIn: (u: User) => void;
+  embedded?: boolean;
+}) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"email" | "code">("email");
@@ -122,8 +131,8 @@ function SignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   }
 
   return (
-    <div className="app-signin">
-      <h1>Mapvest</h1>
+    <div className={embedded ? "app-signin app-signin-embedded" : "app-signin"}>
+      {embedded ? null : <h1>Mapvest</h1>}
       <p className="app-sub">
         {stage === "email"
           ? "Enter your email — we'll send you a one-time code."
@@ -176,7 +185,20 @@ function SignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
 
 type Tab = "home" | "nearby" | "identify" | "research" | "saved";
 
-function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+/**
+ * Guests can browse Nearby / Identify / Research without an account — only
+ * Home (Sign in / Sign out / settings) and Saved (watchlist) need a session
+ * (Phase 8 Slice B). Guests land on Home first so Sign in is one click away.
+ */
+function Home({
+  user,
+  onSignedIn,
+  onSignOut,
+}: {
+  user: User | null;
+  onSignedIn: (u: User) => void;
+  onSignOut: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("home");
 
   return (
@@ -200,22 +222,80 @@ function Home({ user, onSignOut }: { user: User; onSignOut: () => void }) {
             ★ Saved
           </TabBtn>
         </nav>
-        <button className="app-signout" onClick={onSignOut}>
-          {user.email} · sign out
-        </button>
+        {user ? (
+          <button className="app-signout" onClick={onSignOut}>
+            {user.email} · sign out
+          </button>
+        ) : (
+          <button className="app-signout" onClick={() => setTab("home")}>
+            Sign in
+          </button>
+        )}
       </header>
       <main className="app-main">
-        {tab === "home" ? <HomeSettingsTab user={user} onSignOut={onSignOut} /> : null}
+        {tab === "home" ? (
+          <HomeSettingsTab user={user} onSignedIn={onSignedIn} onSignOut={onSignOut} />
+        ) : null}
         {tab === "nearby" ? <NearbyTab /> : null}
         {tab === "identify" ? <IdentifyTab /> : null}
         {tab === "research" ? <ResearchChatTab /> : null}
-        {tab === "saved" ? <SavedTab /> : null}
+        {tab === "saved" ? (
+          user ? (
+            <SavedTab />
+          ) : (
+            <SignedOutSaved onGoHome={() => setTab("home")} />
+          )
+        ) : null}
       </main>
     </div>
   );
 }
 
+function SignedOutSaved({ onGoHome }: { onGoHome: () => void }) {
+  return (
+    <div className="app-empty">
+      <h2>Sign in to save tickers.</h2>
+      <p>
+        Your watchlist and memos are tied to your account. Nearby, Identify, and Research all work
+        without one.
+      </p>
+      <button type="button" className="app-btn app-btn-primary" onClick={onGoHome}>
+        Go to Home to sign in
+      </button>
+    </div>
+  );
+}
+
 function HomeSettingsTab({
+  user,
+  onSignedIn,
+  onSignOut,
+}: {
+  user: User | null;
+  onSignedIn: (u: User) => void;
+  onSignOut: () => void;
+}) {
+  if (!user) {
+    return (
+      <section className="app-panel" style={{ display: "grid", gap: 16 }}>
+        <div>
+          <h2>Home</h2>
+          <p className="app-sub">Account · settings · integrations</p>
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <p className="app-muted">
+            Browsing as guest — Nearby, Identify, and Research all work without an account. Sign in
+            to ★ Save tickers to a watchlist, save memos, and connect your Robinhood MCP key.
+          </p>
+        </div>
+        <SignIn onSignedIn={onSignedIn} embedded />
+      </section>
+    );
+  }
+  return <SignedInHomeSettings user={user} onSignOut={onSignOut} />;
+}
+
+function SignedInHomeSettings({
   user,
   onSignOut,
 }: {
@@ -427,11 +507,14 @@ function NearbyTab() {
             try {
               const q = await getQuote(t);
               return q.quote
-                ? ([t, {
-                    price: q.quote.price,
-                    change: q.quote.change,
-                    changePct: q.quote.changePct,
-                  }] as const)
+                ? ([
+                    t,
+                    {
+                      price: q.quote.price,
+                      change: q.quote.change,
+                      changePct: q.quote.changePct,
+                    },
+                  ] as const)
                 : null;
             } catch {
               return null;
@@ -832,11 +915,14 @@ function SavedTab() {
           try {
             const q = await getQuote(it.ticker);
             return q.quote
-              ? ([it.ticker, {
-                  price: q.quote.price,
-                  change: q.quote.change,
-                  changePct: q.quote.changePct,
-                }] as const)
+              ? ([
+                  it.ticker,
+                  {
+                    price: q.quote.price,
+                    change: q.quote.change,
+                    changePct: q.quote.changePct,
+                  },
+                ] as const)
               : null;
           } catch {
             return null;
@@ -929,7 +1015,14 @@ function SavedTab() {
             >
               ← all briefs
             </button>
-            <h2 style={{ textTransform: "none", letterSpacing: 0, color: "var(--fg)", fontSize: "1.1rem" }}>
+            <h2
+              style={{
+                textTransform: "none",
+                letterSpacing: 0,
+                color: "var(--fg)",
+                fontSize: "1.1rem",
+              }}
+            >
               {openBrief.title}
             </h2>
             {(openBrief.messages ?? []).map((m) => (
@@ -991,123 +1084,123 @@ function SavedTab() {
 
       {segment === "watchlist" && items && items.length > 0 ? (
         <>
-      <div className="app-action-row" style={{ marginBottom: "0.75rem" }}>
-        <button
-          type="button"
-          className="app-btn"
-          onClick={onCockpit}
-          disabled={panelBusy === "cockpit"}
-        >
-          {panelBusy === "cockpit" ? "Cockpit…" : "Cockpit"}
-        </button>
-        <button
-          type="button"
-          className="app-btn"
-          onClick={onAlerts}
-          disabled={panelBusy === "alerts"}
-        >
-          {panelBusy === "alerts" ? "Alerts…" : "Alerts"}
-        </button>
-        <span className="app-muted" style={{ alignSelf: "center" }}>
-          up to 10 · on demand
-        </span>
-      </div>
-      {panelErr ? <p className="app-err">{panelErr}</p> : null}
-      {cockpit ? (
-        <section style={{ marginBottom: "1rem" }}>
-          <h2>Cockpit</h2>
-          <table className="app-cockpit-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Ticker</th>
-                <th>Lane</th>
-                <th>Score</th>
-                <th>Ridge</th>
-                <th>Flow</th>
-                <th>Auction</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cockpit.map((r, i) => (
-                <tr key={`${r.ticker}-${i}`}>
-                  <td>{r.rank ?? i + 1}</td>
-                  <td>
-                    <Link href={`/app/ticker/${encodeURIComponent(r.ticker)}`}>
-                      <span className="app-ticker">${r.ticker}</span>
-                    </Link>
-                  </td>
-                  <td>{r.lane ?? "—"}</td>
-                  <td>{r.score != null ? r.score.toFixed?.(2) ?? r.score : "—"}</td>
-                  <td>{r.ridge ?? "—"}</td>
-                  <td>{r.flow ?? "—"}</td>
-                  <td>{r.auction ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      ) : null}
-      {alerts ? (
-        <section style={{ marginBottom: "1rem" }}>
-          <h2>Alerts</h2>
-          {alerts.length === 0 ? (
-            <p className="app-muted">No alerts for this set.</p>
-          ) : (
-            <ul className="app-alert-list">
-              {alerts.map((a, i) => (
-                <li key={i}>
-                  <strong>
-                    {a.ticker ? `$${a.ticker}` : "—"}
-                    {a.title ? ` · ${a.title}` : ""}
-                  </strong>
-                  <div className="app-muted">{a.summary ?? a.message ?? ""}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
-      {items.map((e) => {
-        const q = quotes[e.ticker];
-        return (
-          <Link
-            key={e.ticker}
-            href={`/app/ticker/${encodeURIComponent(e.ticker)}`}
-            className="app-row app-row-public"
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="app-row-title">
-                <span className="app-ticker">${e.ticker}</span> {e.name ? `· ${e.name}` : ""}
-              </div>
-              <div className="app-row-sub">
-                {e.sector ?? "—"}
-                {e.memo ? (
-                  <span className="app-memo-badge">
-                    {" "}
-                    · 📝 {e.memoProvider ?? "memo"} · {e.memo.length} chars
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            {q ? (
-              <div className="app-row-price">
-                <div className="app-row-price-val">${q.price.toFixed(2)}</div>
-                <div
-                  className={`app-row-price-chg ${
-                    q.change >= 0 ? "app-quote-up" : "app-quote-down"
-                  }`}
-                >
-                  {q.change >= 0 ? "+" : ""}
-                  {q.changePct.toFixed(2)}%
+          <div className="app-action-row" style={{ marginBottom: "0.75rem" }}>
+            <button
+              type="button"
+              className="app-btn"
+              onClick={onCockpit}
+              disabled={panelBusy === "cockpit"}
+            >
+              {panelBusy === "cockpit" ? "Cockpit…" : "Cockpit"}
+            </button>
+            <button
+              type="button"
+              className="app-btn"
+              onClick={onAlerts}
+              disabled={panelBusy === "alerts"}
+            >
+              {panelBusy === "alerts" ? "Alerts…" : "Alerts"}
+            </button>
+            <span className="app-muted" style={{ alignSelf: "center" }}>
+              up to 10 · on demand
+            </span>
+          </div>
+          {panelErr ? <p className="app-err">{panelErr}</p> : null}
+          {cockpit ? (
+            <section style={{ marginBottom: "1rem" }}>
+              <h2>Cockpit</h2>
+              <table className="app-cockpit-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Lane</th>
+                    <th>Score</th>
+                    <th>Ridge</th>
+                    <th>Flow</th>
+                    <th>Auction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cockpit.map((r, i) => (
+                    <tr key={`${r.ticker}-${i}`}>
+                      <td>{r.rank ?? i + 1}</td>
+                      <td>
+                        <Link href={`/app/ticker/${encodeURIComponent(r.ticker)}`}>
+                          <span className="app-ticker">${r.ticker}</span>
+                        </Link>
+                      </td>
+                      <td>{r.lane ?? "—"}</td>
+                      <td>{r.score != null ? (r.score.toFixed?.(2) ?? r.score) : "—"}</td>
+                      <td>{r.ridge ?? "—"}</td>
+                      <td>{r.flow ?? "—"}</td>
+                      <td>{r.auction ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
+          {alerts ? (
+            <section style={{ marginBottom: "1rem" }}>
+              <h2>Alerts</h2>
+              {alerts.length === 0 ? (
+                <p className="app-muted">No alerts for this set.</p>
+              ) : (
+                <ul className="app-alert-list">
+                  {alerts.map((a, i) => (
+                    <li key={i}>
+                      <strong>
+                        {a.ticker ? `$${a.ticker}` : "—"}
+                        {a.title ? ` · ${a.title}` : ""}
+                      </strong>
+                      <div className="app-muted">{a.summary ?? a.message ?? ""}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+          {items.map((e) => {
+            const q = quotes[e.ticker];
+            return (
+              <Link
+                key={e.ticker}
+                href={`/app/ticker/${encodeURIComponent(e.ticker)}`}
+                className="app-row app-row-public"
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="app-row-title">
+                    <span className="app-ticker">${e.ticker}</span> {e.name ? `· ${e.name}` : ""}
+                  </div>
+                  <div className="app-row-sub">
+                    {e.sector ?? "—"}
+                    {e.memo ? (
+                      <span className="app-memo-badge">
+                        {" "}
+                        · 📝 {e.memoProvider ?? "memo"} · {e.memo.length} chars
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <span className="app-chevron">›</span>
-            )}
-          </Link>
-        );
-      })}
+                {q ? (
+                  <div className="app-row-price">
+                    <div className="app-row-price-val">${q.price.toFixed(2)}</div>
+                    <div
+                      className={`app-row-price-chg ${
+                        q.change >= 0 ? "app-quote-up" : "app-quote-down"
+                      }`}
+                    >
+                      {q.change >= 0 ? "+" : ""}
+                      {q.changePct.toFixed(2)}%
+                    </div>
+                  </div>
+                ) : (
+                  <span className="app-chevron">›</span>
+                )}
+              </Link>
+            );
+          })}
         </>
       ) : null}
     </div>

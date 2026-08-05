@@ -5,18 +5,25 @@ process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
 process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 
 import { app } from "../src/index.js";
-import { __resetRateLimit } from "../src/middleware/rateLimit.js";
-import { __resetIdentifyGuards } from "../src/middleware/identifyGuards.js";
+import { __resetEntitlements } from "../src/lib/entitlements.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
+import { __resetIdentifyGuards } from "../src/middleware/identifyGuards.js";
+import { __resetRateLimit } from "../src/middleware/rateLimit.js";
 
 function url(path: string) {
   return `http://localhost/v1${path}`;
 }
 
+// requireGenerationQuota (Phase 8 Slice C) requires either a session or an
+// X-Device-Id header on every /v1/identify call — these guard tests are
+// anonymous, so they all need a device id to get past the quota check.
+const DEVICE_ID = "test-device-identify-guards";
+
 beforeEach(() => {
   __resetRateLimit();
   __resetIdentifyGuards();
   __resetMetrics();
+  __resetEntitlements();
 });
 
 describe("POST /v1/identify validation guards", () => {
@@ -27,6 +34,7 @@ describe("POST /v1/identify validation guards", () => {
     const res = await app.fetch(
       new Request(url("/identify"), {
         method: "POST",
+        headers: { "X-Device-Id": DEVICE_ID },
         body: form,
       }),
     );
@@ -46,6 +54,7 @@ describe("POST /v1/identify validation guards", () => {
     const res = await app.fetch(
       new Request(url("/identify"), {
         method: "POST",
+        headers: { "X-Device-Id": DEVICE_ID },
         body: form,
       }),
     );
@@ -58,13 +67,11 @@ describe("POST /v1/identify validation guards", () => {
     // 9 MB of zero bytes — over the 8 MB limit.
     const oversized = new Uint8Array(9 * 1024 * 1024);
     const form = new FormData();
-    form.set(
-      "image",
-      new File([oversized], "big.jpg", { type: "image/jpeg" }),
-    );
+    form.set("image", new File([oversized], "big.jpg", { type: "image/jpeg" }));
     const res = await app.fetch(
       new Request(url("/identify"), {
         method: "POST",
+        headers: { "X-Device-Id": DEVICE_ID },
         body: form,
       }),
     );
@@ -72,5 +79,4 @@ describe("POST /v1/identify validation guards", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("image too large");
   });
-
 });

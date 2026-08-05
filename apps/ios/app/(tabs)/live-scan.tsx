@@ -1,20 +1,14 @@
+import { addToWatchlist, identifyPhoto } from "@/api/client";
+import type { IdentifyResponse, LatLng } from "@/api/types";
+import { useSession } from "@/auth/session";
+import { sectorColor } from "@/util/sectors";
 import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { addToWatchlist, identifyPhoto } from "@/api/client";
-import type { IdentifyResponse, LatLng } from "@/api/types";
-import { useSession } from "@/auth/session";
-import { sectorColor } from "@/util/sectors";
 
 const FRAME_INTERVAL_MS = 1400;
 const LIVE_CACHE_KEY = ["tab-state", "live"] as const;
@@ -117,11 +111,7 @@ export default function LiveScanScreen() {
       persistLive({ latest: resp, err: null });
       // Auto-pause after a high-confidence public hit so user can Save / open.
       const hit = resp.investables[0];
-      if (
-        hit?.brand.isPublic &&
-        hit.brand.ticker?.symbol &&
-        hit.confidence === "high"
-      ) {
+      if (hit?.brand.isPublic && hit.brand.ticker?.symbol && hit.confidence === "high") {
         setRunning(false);
       }
     } catch (e) {
@@ -152,12 +142,15 @@ export default function LiveScanScreen() {
   }
 
   const top = latest?.investables[0];
-  const ticker =
-    top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
+  const ticker = top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
   const accent = sectorColor(top?.brand.sector);
 
   async function onSave() {
-    if (!ticker || !session?.token || !top) return;
+    if (!ticker || !top) return;
+    if (!session?.token) {
+      router.push("/auth");
+      return;
+    }
     setSavedNote(`Saving $${ticker}…`);
     try {
       await addToWatchlist(
@@ -178,8 +171,7 @@ export default function LiveScanScreen() {
 
   function openDetail() {
     if (ticker) router.push(`/detail/${ticker}`);
-    else if (top?.brand.name)
-      router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
+    else if (top?.brand.name) router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
   }
 
   return (
@@ -234,9 +226,7 @@ export default function LiveScanScreen() {
             style={[styles.toggle, running && styles.toggleOn]}
             onPress={() => setRunning((r) => !r)}
           >
-            <Text style={styles.toggleText}>
-              {running ? "Stop scan" : "Start scan"}
-            </Text>
+            <Text style={styles.toggleText}>{running ? "Stop scan" : "Start scan"}</Text>
           </Pressable>
         </View>
       </SafeAreaView>

@@ -1,3 +1,14 @@
+import {
+  type AlertItem,
+  type CockpitRow,
+  type Quote,
+  type WatchEntry,
+  fetchAlerts,
+  fetchCockpit,
+  fetchQuotesMap,
+  listWatchlist,
+} from "@/api/client";
+import { useSession } from "@/auth/session";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -12,17 +23,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  fetchAlerts,
-  fetchCockpit,
-  fetchQuotesMap,
-  listWatchlist,
-  type AlertItem,
-  type CockpitRow,
-  type Quote,
-  type WatchEntry,
-} from "@/api/client";
-import { useSession } from "@/auth/session";
 
 export default function SavedScreen() {
   const router = useRouter();
@@ -83,7 +83,18 @@ export default function SavedScreen() {
           {items.length} ticker{items.length === 1 ? "" : "s"}
         </Text>
       </View>
-      {q.isLoading ? (
+      {!session?.token ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>Sign in to save tickers.</Text>
+          <Text style={styles.emptySub}>
+            Your watchlist, memos, and Robinhood MCP key are tied to your account. Map, Camera,
+            Live, and Research all work without one.
+          </Text>
+          <Pressable style={styles.signInBtn} onPress={() => router.push("/auth")}>
+            <Text style={styles.signInBtnText}>Sign in</Text>
+          </Pressable>
+        </View>
+      ) : q.isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color="#fff" />
         </View>
@@ -91,8 +102,8 @@ export default function SavedScreen() {
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>Nothing saved yet.</Text>
           <Text style={styles.emptySub}>
-            On any detail sheet, tap ★ Save to add a ticker here. Tap 📝 to generate an
-            investment memo and save it too.
+            On any detail sheet, tap ★ Save to add a ticker here. Tap 📝 to generate an investment
+            memo and save it too.
           </Text>
         </View>
       ) : (
@@ -247,6 +258,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyTitle: { color: "#fff", fontSize: 18, fontWeight: "600", marginBottom: 8 },
   emptySub: { color: "#888", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  signInBtn: {
+    marginTop: 16,
+    backgroundColor: "#c8f5c8",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  signInBtnText: { color: "#000", fontWeight: "700" },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: "#222", marginLeft: 20 },
   row: {
     flexDirection: "row",
@@ -291,6 +310,12 @@ const styles = StyleSheet.create({
   cell: { color: "#ccc", fontSize: 12, width: 64 },
   cellHead: { color: "#888", fontWeight: "600" },
   cellTicker: { color: "#3ee68a", fontWeight: "700", width: 72 },
-  alertRow: { gap: 2, marginBottom: 8, borderLeftWidth: 2, borderLeftColor: "#3ee68a", paddingLeft: 8 },
+  alertRow: {
+    gap: 2,
+    marginBottom: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: "#3ee68a",
+    paddingLeft: 8,
+  },
   alertTitle: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });

@@ -12,10 +12,11 @@
   },
   "dependencies": {
     "@mapvest/core": "workspace:*",
-    "@mapvest/vision": "workspace:*",
     "@mapvest/finance": "workspace:*",
     "@mapvest/search": "workspace:*",
+    "@mapvest/vision": "workspace:*",
     "hono": "^4.6.9",
+    "stripe": "^22.4.0",
     "zod": "^3.23.8"
   }
 }

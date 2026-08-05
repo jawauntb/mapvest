@@ -127,6 +127,20 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 **Trade-off accepted**: Load-test numbers for v0.1.0 report application-path latencies from a small (n = 58) sample. We are not claiming a distributed-throughput ceiling from this run — see `docs/loadtest-v0.1.0.md` for the honest bounds.
 
+## D12 — Entitlements: device-metered free tier, not per-request billing
+
+**Decision**: The 50-generation free tier (`apps/api/src/lib/entitlements.ts`) meters lifetime usage per identity (signed-in `userId`, else anonymous `X-Device-Id`), not per time window, and is enforced by a single `requireGenerationQuota` middleware shared by the three billable routes (`POST /v1/identify`, `POST /v1/agent/chat`, `POST /v1/memo`).
+
+**Context**:
+
+- `optionalAuth` runs first and populates `c.get("user")` from a session bearer token *without* rejecting anonymous requests — these routes must stay usable by guests (Phase 8 product rule 1).
+- `requireGenerationQuota(kind)` then requires either that user or an `X-Device-Id` header, checks `getEntitlementState()`, and returns `402 { error, code: "quota_exceeded", remaining, limit }` when the quota is spent. It records the usage event only after the wrapped handler responds with status `< 400`, so failed upstream calls (e.g. a 502 from Derivation/Underlying) don't burn a user's quota.
+- `free_forever` (auto-granted for emails containing `jawaun`, or admin-scoped accounts; also settable via `POST /v1/admin/users/:id/entitlement`) and `subscribed` (Stripe, Slice E) both short-circuit to unlimited.
+- Anonymous usage is **not** merged into an account's usage when a device later signs in — a device's counter and a user's counter are independent. This is a deliberate v1 simplification (device→account usage migration is a Slice E+ follow-up) rather than an oversight.
+- `canPersist` (save/watchlist/memo-on-watchlist) is a separate field from `canGenerate` and is `true` only when signed in — that's Phase 8 product rule 2, independent of remaining quota.
+
+**Trade-off accepted**: Postgres is queried with a `count(*)` per quota check rather than a cached counter. At v0.1 traffic this is fine (`usage_events` is indexed on both `user_id` and `device_id`); revisit with a materialized counter column if quota checks show up in the hot-path latency budget.
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

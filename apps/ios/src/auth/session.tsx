@@ -1,7 +1,7 @@
-import * as SecureStore from "expo-secure-store";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session, User } from "@/api/types";
 import { ApiError, getMe } from "@/api/client";
+import type { Session, User } from "@/api/types";
+import * as SecureStore from "expo-secure-store";
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const KEY = "mapvest.session.v1";
 
@@ -34,15 +34,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!cancelled) setState(parsed);
-        // Refresh profile; clear stale JWT after API restarts ("unknown user").
+        // Refresh profile in the background; keep the same token (no rotation
+        // needed — sessions are long-lived). Only clear the stored session on
+        // a definitive "this token will never work again" signal (unknown
+        // user after a Postgres reset, or a token that fails verification).
+        // A network blip, timeout, or transient 5xx must NOT sign the user
+        // out — that would break "stay signed in until explicit Sign out".
         try {
           const { user } = await getMe(parsed.session.token);
           if (!cancelled) setState({ session: parsed.session, user });
         } catch (e) {
-          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          if (
+            e instanceof ApiError &&
+            e.status === 401 &&
+            /unknown user|invalid token/i.test(e.message)
+          ) {
             await SecureStore.deleteItemAsync(KEY);
             if (!cancelled) setState(null);
           }
+          // else: keep the cached session/user; retry on next app foreground.
         }
       } finally {
         if (!cancelled) setReady(true);

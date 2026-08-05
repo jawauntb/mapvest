@@ -46,6 +46,35 @@ export function postgresUrl(): string | undefined {
   return process.env.POSTGRES_URL || undefined;
 }
 
+// ---- Stripe (Phase 8 Slice E — $20/mo subscription) ----
+
+const LANDING_APP_URL = "https://mapvest.app/app";
+
+export function stripeSecretKey(): string | undefined {
+  return process.env.STRIPE_SECRET_KEY || undefined;
+}
+
+export function stripeWebhookSecret(): string | undefined {
+  return process.env.STRIPE_WEBHOOK_SECRET || undefined;
+}
+
+export function stripePriceIdMonthly(): string | undefined {
+  return process.env.STRIPE_PRICE_ID_MONTHLY || undefined;
+}
+
+/** True once the minimum Stripe env is present; checkout/portal 503 otherwise. */
+export function stripeConfigured(): boolean {
+  return Boolean(stripeSecretKey() && stripePriceIdMonthly());
+}
+
+export function stripeSuccessUrl(): string {
+  return process.env.STRIPE_SUCCESS_URL || LANDING_APP_URL;
+}
+
+export function stripeCancelUrl(): string {
+  return process.env.STRIPE_CANCEL_URL || LANDING_APP_URL;
+}
+
 /** Test-only helper — resets the once-warned set. */
 export function __resetEnvWarnings() {
   warned = new Set<string>();

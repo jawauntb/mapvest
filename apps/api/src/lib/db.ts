@@ -33,6 +33,25 @@ export async function initDb(): Promise<void> {
         scopes TEXT[] NOT NULL DEFAULT ARRAY['user']::text[]
       )
     `;
+    // Phase 8 Slice C+D — entitlements/billing columns. `plan` mirrors
+    // IMPLEMENTATION_PLAN.md's union: 'none' | 'free_trial' | 'free_forever' | 'subscribed'.
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'none'`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS free_forever BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS free_forever_reason TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS usage_events (
+        id TEXT PRIMARY KEY,
+        device_id TEXT,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS usage_events_user_idx ON usage_events (user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS usage_events_device_idx ON usage_events (device_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS usage_events_created_idx ON usage_events (created_at)`;
     await sql`
       CREATE TABLE IF NOT EXISTS user_robinhood_mcp (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -66,7 +85,7 @@ export async function initDb(): Promise<void> {
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS brand_ticker_cache_expires_idx ON brand_ticker_cache (expires_at)`;
-    console.log("[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache)");
+    console.log("[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, usage_events)");
   })();
   return initPromise;
 }

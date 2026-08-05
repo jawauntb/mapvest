@@ -12,6 +12,8 @@ import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { recordCost } from "../lib/costTelemetry.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
+import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
 import { sanitizeOcrString } from "../lib/sanitize.js";
 
 const identify = new Hono<Partial<AuthEnv>>();
@@ -19,7 +21,11 @@ const identify = new Hono<Partial<AuthEnv>>();
 /** 8 MB. Anything larger is rejected with 413 before we call the model. */
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+// optionalAuth first so identifyGuards' per-user bucket + the quota check
+// below both see c.get("user") when a session bearer token is present.
+identify.use("*", optionalAuth);
 identify.use("*", identifyGuards);
+identify.use("*", requireGenerationQuota("identify"));
 
 /**
  * Scrub every OCR-derived string on the identification payload so that
