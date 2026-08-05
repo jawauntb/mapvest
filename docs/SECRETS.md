@@ -20,7 +20,7 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |
-| `POSTGRES_URL` | Railway plugin | `apps/api` |
+| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | `apps/api` users + encrypted Robinhood MCP tokens |
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
 | `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |

@@ -38,8 +38,8 @@ admin.get("/cost", (c) => {
  * GET /v1/admin/users
  * List of registered users (id, email, scopes, createdAt).
  */
-admin.get("/users", (c) => {
-  return c.json({ users: listUsers() });
+admin.get("/users", async (c) => {
+  return c.json({ users: await listUsers() });
 });
 
 /**

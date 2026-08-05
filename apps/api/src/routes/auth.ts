@@ -91,7 +91,7 @@ auth.post("/verify", async (c) => {
   if (!pending) return c.json({ error: "token already used or expired" }, 401);
   if (pending.email !== email) return c.json({ error: "token mismatch" }, 401);
 
-  const user: User = findOrCreateUserByEmail(email);
+  const user: User = await findOrCreateUserByEmail(email);
 
   const nowSec = Math.floor(Date.now() / 1000);
   const sessionPayload = {
@@ -187,7 +187,7 @@ auth.post("/session/verify", async (c) => {
   if (entry.code !== code) return c.json({ error: "wrong code" }, 401);
   codeStore.delete(email); // single-use
 
-  const user: User = findOrCreateUserByEmail(email);
+  const user: User = await findOrCreateUserByEmail(email);
   const nowSec = Math.floor(Date.now() / 1000);
   const sessionJwt = await sign(
     {

@@ -33,8 +33,9 @@ export const bearerAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   const userId = typeof payload.sub === "string" ? payload.sub : undefined;
   if (!userId) return c.json({ error: "invalid token subject" }, 401);
   const email = typeof payload.email === "string" ? payload.email : undefined;
-  // Rehydrate after in-memory store wipe (API restart) when JWT still carries email.
-  const user = getUserById(userId) ?? (email ? ensureUser(userId, email) : undefined);
+  // Rehydrate from Postgres (or memory) when JWT still carries email after restarts.
+  const user =
+    (await getUserById(userId)) ?? (email ? await ensureUser(userId, email) : undefined);
   if (!user) return c.json({ error: "unknown user" }, 401);
 
   const expSec = typeof payload.exp === "number" ? payload.exp : 0;

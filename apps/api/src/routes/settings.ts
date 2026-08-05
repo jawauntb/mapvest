@@ -8,20 +8,19 @@ import {
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 /**
- * Per-user settings. Robinhood MCP credentials are stored server-side only
- * (never returned raw). Research chat still uses Derivation's operator MCP;
- * personal tokens gate "Open in Robinhood" deep-links — Mapvest does not
- * submit broker orders.
+ * Per-user settings. Robinhood MCP credentials are stored encrypted in Postgres
+ * (never returned raw). Personal tokens gate "Open in Robinhood" deep-links —
+ * Mapvest does not submit broker orders.
  */
 
 const settings = new Hono<AuthEnv>();
 settings.use("*", bearerAuth);
 
 /** GET /v1/settings → account + masked integrations */
-settings.get("/", (c) => {
-  return safeExecuteWithSpan("http.settings.get", (span) => {
+settings.get("/", async (c) => {
+  return safeExecuteWithSpan("http.settings.get", async (span) => {
     const user = c.get("user");
-    const rh = getRobinhoodMcp(user.id) ?? null;
+    const rh = (await getRobinhoodMcp(user.id)) ?? null;
     span.setAttributes({ user_id: user.id, has_robinhood_mcp: !!rh });
     return c.json({
       user: { id: user.id, email: user.email, scopes: user.scopes },
@@ -34,7 +33,7 @@ settings.get("/", (c) => {
           }
         : { configured: false as const },
       note:
-        "Paste your Robinhood agent MCP bearer under Home to unlock Open in Robinhood on ticker pages. Mapvest opens Robinhood for you to place orders there — we never submit broker orders. Research chat still uses Derivation’s operator MCP.",
+        "Paste your Robinhood agent MCP bearer under Home to unlock Open in Robinhood on ticker pages. Mapvest opens Robinhood for you to place orders there — we never submit broker orders. Key is encrypted in Postgres and survives redeploys.",
     });
   });
 });
@@ -51,7 +50,7 @@ settings.post("/robinhood-mcp", async (c) => {
     if (token.length < 20 || token.length > 8000) {
       return c.json({ error: "token required (20–8000 chars)" }, 400);
     }
-    const meta = setRobinhoodMcp(user.id, token);
+    const meta = await setRobinhoodMcp(user.id, token);
     span.setAttributes({ user_id: user.id, fingerprint: meta.fingerprint });
     return c.json({
       ok: true,
@@ -66,10 +65,10 @@ settings.post("/robinhood-mcp", async (c) => {
 });
 
 /** DELETE /v1/settings/robinhood-mcp */
-settings.delete("/robinhood-mcp", (c) => {
-  return safeExecuteWithSpan("http.settings.robinhood_mcp_clear", (span) => {
+settings.delete("/robinhood-mcp", async (c) => {
+  return safeExecuteWithSpan("http.settings.robinhood_mcp_clear", async (span) => {
     const user = c.get("user");
-    clearRobinhoodMcp(user.id);
+    await clearRobinhoodMcp(user.id);
     span.setAttributes({ user_id: user.id });
     return c.json({ ok: true, robinhoodMcp: { configured: false as const } });
   });

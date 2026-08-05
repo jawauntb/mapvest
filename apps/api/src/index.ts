@@ -22,6 +22,12 @@ import settings from "./routes/settings.js";
 import robinhood from "./routes/robinhood.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { rateLimit } from "./middleware/rateLimit.js";
+import { initDb } from "./lib/db.js";
+
+// Eager Postgres migrate (no-op when POSTGRES_URL unset).
+void initDb().catch((err) => {
+  console.error("[db] init failed", err);
+});
 
 const app = new Hono();
 app.use("*", logger());

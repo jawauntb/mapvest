@@ -14,15 +14,15 @@ import { safeExecuteWithSpan } from "../lib/logfire.js";
 const robinhood = new Hono<AuthEnv>();
 robinhood.use("*", bearerAuth);
 
-robinhood.get("/", (c) => {
-  return safeExecuteWithSpan("http.robinhood.open", (span) => {
+robinhood.get("/", async (c) => {
+  return safeExecuteWithSpan("http.robinhood.open", async (span) => {
     const raw = c.req.query("ticker") ?? "";
     const ticker = raw.trim().toUpperCase();
     if (!ticker || !/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker)) {
       return c.json({ error: "ticker required" }, 400);
     }
     const user = c.get("user");
-    const configured = hasRobinhoodMcp(user.id);
+    const configured = await hasRobinhoodMcp(user.id);
     span.setAttributes({
       user_id: user.id,
       ticker,

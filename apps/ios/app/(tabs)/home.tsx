@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,8 +27,10 @@ export default function HomeSettingsScreen() {
   const { user, session, signOut } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
+  const scrollRef = useRef<ScrollView>(null);
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
 
   const settingsQ = useQuery({
     queryKey: ["settings", session?.token],
@@ -37,7 +42,8 @@ export default function HomeSettingsScreen() {
     mutationFn: () => saveRobinhoodMcp(token.trim(), { token: session!.token }),
     onSuccess: async () => {
       setToken("");
-      setStatus("Robinhood MCP key saved (masked on server)");
+      Keyboard.dismiss();
+      setStatus("Robinhood MCP key saved (encrypted in DB)");
       await qc.invalidateQueries({ queryKey: ["settings", session?.token] });
     },
     onError: (e) => setStatus((e as Error).message || "Save failed"),
@@ -55,82 +61,117 @@ export default function HomeSettingsScreen() {
   const rh = settingsQ.data?.robinhoodMcp;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.h1}>Home</Text>
-      <Text style={styles.sub}>Account · settings · integrations</Text>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
+    >
+      <ScrollView
+        ref={scrollRef}
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
+        <Text style={styles.h1}>Home</Text>
+        <Text style={styles.sub}>Account · settings · integrations</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Signed in</Text>
-        <Text style={styles.value}>{user?.email ?? "—"}</Text>
-        <Text style={styles.muted}>{user?.id}</Text>
-      </View>
+        <View style={styles.card}>
+          <Text style={styles.label}>Signed in</Text>
+          <Text style={styles.value}>{user?.email ?? "—"}</Text>
+          <Text style={styles.muted}>{user?.id}</Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Robinhood MCP</Text>
-        <Text style={styles.muted}>
-          Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved,
-          ticker pages show Open in Robinhood so you can buy or place orders in Robinhood.
-          Mapvest never submits broker orders. Key is stored server-side (fingerprint only).
-        </Text>
-        {settingsQ.isLoading ? (
-          <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
-        ) : rh?.configured ? (
-          <Text style={styles.value}>
-            Configured · …{rh.last4} · fp {rh.fingerprint}
+        <View style={styles.card}>
+          <Text style={styles.label}>Robinhood MCP</Text>
+          <Text style={styles.muted}>
+            Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved,
+            ticker pages show Open in Robinhood so you can buy or place orders in Robinhood.
+            Mapvest never submits broker orders. Key is encrypted in Postgres for your account.
           </Text>
-        ) : (
-          <Text style={styles.muted}>Not configured</Text>
-        )}
-        <TextInput
-          style={styles.input}
-          placeholder="Paste Robinhood MCP token"
-          placeholderTextColor="#666"
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-          value={token}
-          onChangeText={setToken}
-        />
-        <View style={styles.row}>
-          <Pressable
-            style={[styles.btn, styles.btnPrimary]}
-            disabled={!token.trim() || saveM.isPending}
-            onPress={() => saveM.mutate()}
-          >
-            <Text style={styles.btnTextDark}>
-              {saveM.isPending ? "Saving…" : "Save key"}
+          {settingsQ.isLoading ? (
+            <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
+          ) : rh?.configured ? (
+            <Text style={styles.value}>
+              Configured · …{rh.last4} · fp {rh.fingerprint}
             </Text>
-          </Pressable>
-          {rh?.configured ? (
+          ) : (
+            <Text style={styles.muted}>Not configured</Text>
+          )}
+          <TextInput
+            style={styles.input}
+            placeholder="Paste Robinhood MCP token"
+            placeholderTextColor="#666"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            textContentType="password"
+            secureTextEntry={!showToken}
+            value={token}
+            onChangeText={setToken}
+            onFocus={() => {
+              // Keep field above the keyboard.
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
+            }}
+            returnKeyType="done"
+            onSubmitEditing={() => Keyboard.dismiss()}
+            blurOnSubmit
+          />
+          <View style={styles.row}>
             <Pressable
               style={styles.btn}
-              disabled={clearM.isPending}
-              onPress={() => clearM.mutate()}
+              onPress={() => setShowToken((v) => !v)}
             >
-              <Text style={styles.btnText}>Clear</Text>
+              <Text style={styles.btnText}>{showToken ? "Hide" : "Show"}</Text>
             </Pressable>
-          ) : null}
+            <Pressable style={styles.btn} onPress={() => Keyboard.dismiss()}>
+              <Text style={styles.btnText}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.row}>
+            <Pressable
+              style={[styles.btn, styles.btnPrimary]}
+              disabled={!token.trim() || saveM.isPending}
+              onPress={() => {
+                Keyboard.dismiss();
+                saveM.mutate();
+              }}
+            >
+              <Text style={styles.btnTextDark}>
+                {saveM.isPending ? "Saving…" : "Save key"}
+              </Text>
+            </Pressable>
+            {rh?.configured ? (
+              <Pressable
+                style={styles.btn}
+                disabled={clearM.isPending}
+                onPress={() => clearM.mutate()}
+              >
+                <Text style={styles.btnText}>Clear</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      {status ? <Text style={styles.status}>{status}</Text> : null}
+        {status ? <Text style={styles.status}>{status}</Text> : null}
 
-      <Pressable
-        style={styles.btn}
-        onPress={async () => {
-          await signOut();
-          router.replace("/auth");
-        }}
-      >
-        <Text style={styles.btnText}>Sign out</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable
+          style={styles.btn}
+          onPress={async () => {
+            await signOut();
+            router.replace("/auth");
+          }}
+        >
+          <Text style={styles.btnText}>Sign out</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-  content: { padding: 20, gap: 16, paddingBottom: 48 },
+  content: { padding: 20, gap: 16, paddingBottom: 120 },
   h1: { color: "#fff", fontSize: 28, fontWeight: "700" },
   sub: { color: "#888", marginTop: -8 },
   card: {
@@ -153,6 +194,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: "#fff",
     backgroundColor: "#0a0a0a",
+    minHeight: 44,
   },
   row: { flexDirection: "row", gap: 10, marginTop: 8 },
   btn: {
