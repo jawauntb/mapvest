@@ -24,12 +24,16 @@ export default function AuthScreen() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // v0.1: API returns devCode inline (AUTH_RETURN_CODE=1) since email isn't
+  // wired yet. Show it under the code input so the demo can complete.
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   async function sendLink() {
     setErr(null);
     setBusy(true);
     try {
-      await requestMagicLink(email.trim().toLowerCase());
+      const r = await requestMagicLink(email.trim().toLowerCase());
+      if (r.devCode) setDevCode(r.devCode);
       setStage("code");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not send magic link.");
@@ -96,6 +100,14 @@ export default function AuthScreen() {
             />
           )}
 
+          {devCode && stage === "code" ? (
+            <Pressable onPress={() => setCode(devCode)}>
+              <Text style={styles.devCode}>
+                Demo code (tap to fill): {devCode}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {err ? <Text style={styles.err}>{err}</Text> : null}
 
           <Pressable
@@ -138,6 +150,11 @@ const styles = StyleSheet.create({
     borderColor: "#222",
   },
   err: { color: "#ff5a5a", fontSize: 13 },
+  devCode: {
+    color: "#3ee68a",
+    fontSize: 13,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+  },
   button: {
     backgroundColor: "#fff",
     padding: 14,

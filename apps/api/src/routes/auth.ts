@@ -119,4 +119,90 @@ auth.get("/me", bearerAuth, (c) => {
   return c.json({ user });
 });
 
+/* ==========================================================================
+ * OTP-code flow — matches what the iOS client actually calls (/v1/auth/session
+ * + /v1/auth/session/verify with {email, code}). Kept alongside the
+ * magic-link/token flow above so both shapes work.
+ *
+ * v0.1: no SMTP wired, so the response includes `devCode` when
+ * AUTH_RETURN_CODE=1 (Doppler flag). The iOS auth screen surfaces it inline
+ * for demo submissions; prod turns it off once email/SMS lands.
+ * ========================================================================== */
+
+const SessionRequestBody = z.object({ email: z.string().email() });
+const SessionVerifyBody = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{4,8}$/),
+});
+
+// In-memory code store: email → { code, expiresAt }. Same 10-min TTL as magic
+// links. Multi-instance deploys will need Redis, tracked in D11.
+const codeStore = new Map<string, { code: string; expiresAt: number }>();
+
+function newCode(): string {
+  // 6-digit, zero-padded, cryptographically random.
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+  return String(n % 1_000_000).padStart(6, "0");
+}
+
+/**
+ * POST /v1/auth/session
+ * Body: { email }
+ * Issues a 6-digit code, stores it against the email with a 10-min TTL, and
+ * (in v0.1) returns it in the response body when AUTH_RETURN_CODE=1 so the
+ * demo can complete without a real email pipeline.
+ */
+auth.post("/session", async (c) => {
+  const raw = await c.req.json().catch(() => null);
+  const parsed = SessionRequestBody.safeParse(raw);
+  if (!parsed.success) return c.json({ error: "email required" }, 400);
+  const email = parsed.data.email.toLowerCase();
+  const code = newCode();
+  codeStore.set(email, { code, expiresAt: Date.now() + MAGIC_LINK_TTL_SEC * 1000 });
+  console.log(`[auth] session code for ${email}: ${code}`);
+  const body: { sent: true; devCode?: string } = { sent: true };
+  if (process.env.AUTH_RETURN_CODE === "1" || isDev()) body.devCode = code;
+  return c.json(body);
+});
+
+/**
+ * POST /v1/auth/session/verify
+ * Body: { email, code }
+ * Consumes the code (single-use), upserts the user, returns { session, user }.
+ */
+auth.post("/session/verify", async (c) => {
+  const raw = await c.req.json().catch(() => null);
+  const parsed = SessionVerifyBody.safeParse(raw);
+  if (!parsed.success) return c.json({ error: "email + 6-digit code required" }, 400);
+  const email = parsed.data.email.toLowerCase();
+  const code = parsed.data.code;
+
+  const entry = codeStore.get(email);
+  if (!entry) return c.json({ error: "no code issued for that email" }, 401);
+  if (entry.expiresAt <= Date.now()) {
+    codeStore.delete(email);
+    return c.json({ error: "code expired" }, 401);
+  }
+  if (entry.code !== code) return c.json({ error: "wrong code" }, 401);
+  codeStore.delete(email); // single-use
+
+  const user: User = findOrCreateUserByEmail(email);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const sessionJwt = await sign(
+    {
+      purpose: "session" as const,
+      sub: user.id,
+      iat: nowSec,
+      exp: nowSec + SESSION_TTL_SEC,
+    },
+    sessionSigningKey(),
+  );
+  const session: Session = {
+    token: sessionJwt,
+    userId: user.id,
+    expiresAt: new Date((nowSec + SESSION_TTL_SEC) * 1000).toISOString(),
+  };
+  return c.json({ session, user });
+});
+
 export default auth;

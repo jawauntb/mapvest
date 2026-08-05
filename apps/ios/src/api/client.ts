@@ -47,7 +47,11 @@ async function jsonFetch<T>(
 
 // -------- auth --------
 
-export function requestMagicLink(email: string): Promise<{ ok: true }> {
+export function requestMagicLink(
+  email: string,
+): Promise<{ sent: true; devCode?: string }> {
+  // v0.1: no SMTP wired, so the API returns { devCode } inline when
+  // AUTH_RETURN_CODE=1. The auth screen surfaces it for demo submissions.
   return jsonFetch("/v1/auth/session", {
     method: "POST",
     body: JSON.stringify({ email }),
