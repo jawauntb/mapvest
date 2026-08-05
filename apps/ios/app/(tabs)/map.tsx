@@ -7,7 +7,6 @@ import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps
 import { fetchNearby } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
-
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,
   longitude: -122.4194,
@@ -52,6 +51,13 @@ export default function MapScreen() {
 
   const items = useMemo(() => nearbyQuery.data?.items ?? [], [nearbyQuery.data]);
 
+  function openItem(item: NearbyItem) {
+    const ticker = item.investable?.brand.ticker?.symbol;
+    const comp = item.investable?.comparables?.[0]?.ticker;
+    const id = ticker ?? comp ?? item.place.name;
+    router.push(`/detail/${encodeURIComponent(id)}`);
+  }
+
   return (
     <View style={styles.root}>
       <MapView
@@ -73,11 +79,8 @@ export default function MapScreen() {
             title={markerTitle(item)}
             description={describeItem(item)}
             pinColor={pinColor(item)}
-            onCalloutPress={() => {
-              const ticker = item.investable?.brand.ticker?.symbol;
-              if (ticker) router.push(`/detail/${ticker}`);
-              else router.push(`/detail/${encodeURIComponent(item.place.name)}`);
-            }}
+            onPress={() => openItem(item)}
+            onCalloutPress={() => openItem(item)}
           />
         ))}
       </MapView>
@@ -95,7 +98,6 @@ export default function MapScreen() {
   );
 }
 
-/** Tap a green pin → callout shows `$MCD · McDonald's`. */
 function markerTitle(item: NearbyItem): string {
   const t = item.investable?.brand.ticker?.symbol;
   if (t && item.investable?.brand.isPublic) return `$${t} · ${item.place.name}`;
@@ -108,7 +110,7 @@ function describeItem(item: NearbyItem): string {
   const inv = item.investable;
   if (!inv) return item.place.types.slice(0, 3).join(", ") || "unlisted";
   if (inv.brand.isPublic) {
-    return `${inv.brand.sector ?? "public"} · tap for detail`;
+    return `${inv.brand.sector ?? "public"} · tap for Research / Save`;
   }
   if (inv.comparables.length > 0) {
     return `private · comps ${inv.comparables.map((c) => c.ticker).join(", ")}`;
@@ -118,8 +120,19 @@ function describeItem(item: NearbyItem): string {
 
 function pinColor(item: NearbyItem): string {
   const inv = item.investable;
+  // react-native-maps pinColor only accepts named colors on Apple pins;
+  // Google accepts hex. Prefer sector-tinted named fallbacks for reliability.
   if (!inv) return "gray";
-  if (inv.brand.isPublic) return "green";
+  if (inv.brand.isPublic) {
+    const sector = (inv.brand.sector ?? "").toLowerCase();
+    if (sector.includes("tech") || sector.includes("communication")) return "blue";
+    if (sector.includes("health")) return "purple";
+    if (sector.includes("energy")) return "yellow";
+    if (sector.includes("financ")) return "violet";
+    if (sector.includes("staple") || sector.includes("defensive")) return "green";
+    if (sector.includes("discretionary") || sector.includes("cyclical")) return "orange";
+    return "green";
+  }
   if (inv.comparables.length > 0 || inv.etfs.length > 0) return "orange";
   return "red";
 }

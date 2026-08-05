@@ -722,7 +722,30 @@ function WatchlistActions({
     },
   });
 
-  if (!token) return null;
+  if (!token) {
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={styles.muted}>
+          Sign in to ★ Save this ticker, generate memos, and open Research briefs.
+        </Text>
+        <Pressable
+          onPress={() => memoM.mutate()}
+          disabled={memoM.isPending}
+          style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.actionBtnText}>
+            {memoM.isPending ? "Generating…" : "📝 Generate memo"}
+          </Text>
+        </Pressable>
+        {memo ? (
+          <View style={styles.memoCard}>
+            <Text style={styles.memoProvider}>{memo.provider}</Text>
+            <Text style={styles.memoText}>{memo.text}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={{ gap: 12 }}>
