@@ -2,20 +2,17 @@ import type { LatLng, PhotoIdentification } from "@mapvest/core";
 
 /**
  * OpenRouter multimodal client. Prefers google/gemini-2.5-pro; falls back
- * to anthropic/claude-5-sonnet on 5xx or timeout > 8s.
+ * to anthropic/claude-sonnet-5, then openai/gpt-4o, on 4xx/5xx or timeout.
  *
  * Env: OPENROUTER_API_KEY, OPENROUTER_BASE_URL (via Doppler).
  *
  * Two entry points:
  *   - identifyFromImage(bytes, opts)         → PhotoIdentification (legacy)
  *   - identifyFromImageWithUsage(bytes, opts)→ { identification, usage }
- * The plain form remains the primary export for callers that don't need
- * cost telemetry; the "WithUsage" form surfaces model, token counts, and
- * latency so the API layer can wire them into logfire / cost dashboards.
  */
 
 const PRIMARY_MODEL = "google/gemini-2.5-pro";
-const FALLBACK_MODEL = "anthropic/claude-5-sonnet";
+const FALLBACK_MODELS = ["anthropic/claude-sonnet-5", "openai/gpt-4o"] as const;
 
 const SYSTEM_PROMPT = `You identify investable brands and products from an image.
 Return strict JSON matching:
@@ -28,6 +25,7 @@ Return strict JSON matching:
 Rules:
 - Only include brands you can see or infer from clearly visible text/logo.
 - Never fabricate a brand. If uncertain, return an empty "detected" array.
+- For characters / IP / toys, name the franchise or rights-holder brand when visible (e.g. "Pokémon", "Nintendo").
 - Sector should follow GICS terminology when possible (e.g. "Consumer Staples", "Consumer Discretionary").`;
 
 export type IdentifyOptions = {
@@ -91,7 +89,8 @@ async function callOpenRouter(
   };
 
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
+  // Multimodal identify routinely needs >8s; 25s default.
+  const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
   const started = performance.now();
   try {
     const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -108,9 +107,6 @@ async function callOpenRouter(
     if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
     const j = (await res.json()) as OpenRouterResponse;
     const rawContent = j.choices?.[0]?.message?.content ?? "{}";
-    // Some models ignore response_format: json_object and wrap the object in
-    // markdown code fences (```json ... ```) or add prose above/below.
-    // Strip fences, then grab the first {...} balanced block.
     const stripped = rawContent
       .replace(/^\s*```(?:json|JSON)?\s*/, "")
       .replace(/\s*```\s*$/, "")
@@ -125,8 +121,6 @@ async function callOpenRouter(
     try {
       parsed = JSON.parse(jsonSlice);
     } catch {
-      // Model returned unparseable garbage — surface an empty detection
-      // rather than crashing the whole /v1/identify call.
       parsed = { detected: [], visibleText: [] };
     }
     const identification = { ...parsed, modelUsed: model } as PhotoIdentification;
@@ -155,12 +149,17 @@ export async function identifyFromImageWithUsage(
   bytes: Uint8Array,
   opts: IdentifyOptions = {},
 ): Promise<IdentifyWithUsageResult> {
-  try {
-    return await callOpenRouter(PRIMARY_MODEL, bytes, opts);
-  } catch (err) {
-    console.warn("[vision] primary model failed, falling back:", err);
-    return await callOpenRouter(FALLBACK_MODEL, bytes, opts);
+  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      return await callOpenRouter(model, bytes, opts);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[vision] model ${model} failed, trying next:`, err);
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /**

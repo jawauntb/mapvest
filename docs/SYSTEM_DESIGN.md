@@ -20,7 +20,7 @@ Design decisions and the reasoning behind them. Update this file when a decision
 
 ## D3 — Multimodal via OpenRouter (Gemini primary)
 
-**Decision**: `packages/vision` calls OpenRouter with `google/gemini-2.5-pro` as the default model, falling back to `anthropic/claude-5-sonnet` on 5xx or timeout > 8s.
+**Decision**: `packages/vision` calls OpenRouter with `google/gemini-2.5-pro` as the default model, falling back to `anthropic/claude-sonnet-5` then `openai/gpt-4o` on errors/timeouts (default 25s for multimodal).
 
 **Why**: Gemini 2.5 Pro is currently the best price/quality on OCR + brand identification for the ticker use case. OpenRouter gives us a single interface for A/B testing without changing our code.
 

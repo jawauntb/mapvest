@@ -6,7 +6,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 
 | Provider | Purpose | Key |
 | --- | --- | --- |
-| **OpenRouter** | Multimodal LLM (image → brand + text extraction). Prefer `google/gemini-2.5-pro`, fall back to `anthropic/claude-5-sonnet` or `openai/gpt-4o` per cost/latency budget. | `OPENROUTER_API_KEY` (Doppler `cofounder/dev`) |
+| **OpenRouter** | Multimodal LLM (image → brand) + comparable-judge step. Prefer `google/gemini-2.5-pro`, fall back to `anthropic/claude-sonnet-5` then `openai/gpt-4o`. | `OPENROUTER_API_KEY` (Doppler `cofounder/dev`) |
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
 | **Google Places** | Nearby POI enumeration for the map view (primary). Multi-type queries (`restaurant`, `cafe`, `store`, `bank`, …) merged + de-noised (no hospitals/doctors/parks). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
@@ -75,7 +75,13 @@ services. Mapvest is only responsible for:
 
 ## Ticker honesty
 
-Comparables / ETF hits from Exa only emit a symbol when the page cites it as a listed ticker (`$MCD`, `NYSE: MCD`, `ticker: PLNT`). Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are rejected — see `packages/finance/src/tickerSymbol.ts`.
+Comparables pipeline for private brands / IP:
+
+1. Parallel **Exa** searches (competitors, parent ticker, comps).
+2. Heuristic extract of exchange-cited symbols (`$MCD`, `NYSE: MCD`).
+3. **OpenRouter agent** (`anthropic/claude-sonnet-5`) judges the evidence and picks ≤3 real listed tickers with reasoning + source URL.
+
+Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are rejected — see `packages/finance/src/tickerSymbol.ts`.
 
 ## What we do NOT use
 
