@@ -1,11 +1,25 @@
 import type { Metadata } from 'next';
+import { probeApiSafe, type ApiState } from '@/lib/status';
+import { CopyableCurl } from './CopyableCurl';
 
 export const metadata: Metadata = {
   title: 'Point at a place. See what’s investable.',
 };
 
-const TESTFLIGHT_URL = 'https://testflight.apple.com/join/PLACEHOLDER';
+// TestFlight isn't live yet. The visual CTA stays so the page shape is
+// unchanged, but the href intentionally does NOT go to the placeholder
+// join URL — anyone who clicks lands back on the page with a #coming-soon
+// anchor instead of a broken TestFlight join screen.
+const TESTFLIGHT_HREF = '#testflight-coming-soon';
 const GITHUB_URL = 'https://github.com/jawauntb/mapvest';
+const API_BASE_URL = 'https://api-production-4b27.up.railway.app';
+const API_DOCS_URL = '/docs';
+
+// Force this page to be statically rendered at build time. The API probe
+// runs once during `next build` — never at request time — which matches
+// the task requirement (fetches at build time only).
+export const dynamic = 'force-static';
+export const revalidate = false;
 
 const features = [
   {
@@ -345,10 +359,31 @@ const screenshots = [
   },
 ] as const;
 
-export default function HomePage() {
+// Map an API state to a badge label. Landing is always "up" from the
+// perspective of anyone who can read this page.
+function stateLabel(state: ApiState, upWord = 'live'): string {
+  if (state === 'up') return upWord;
+  if (state === 'down') return 'down';
+  return 'unknown';
+}
+
+export default async function HomePage() {
+  // Build-time probe. probeApiSafe never throws — the worst case is
+  // { api: "down" } or { api: "unknown" } and we render accordingly.
+  const status = await probeApiSafe();
+  const apiState: ApiState = status.api;
+  const apiBadgeLabel =
+    apiState === 'up' ? 'API: live' : apiState === 'down' ? 'API: down' : 'API: unknown';
+
+  const curlHealth = `curl -sS ${API_BASE_URL}/v1/health`;
+  const curlNearby = `curl -sS "${API_BASE_URL}/v1/nearby?lat=37.7749&lng=-122.4194&radius_m=500"`;
+  const curlResolve = `curl -sS -X POST "${API_BASE_URL}/v1/resolve-comparable" \\
+  -H 'content-type: application/json' \\
+  -d '{"brand":"Lindt","country":"CH"}'`;
+
   return (
     <>
-      <section className="hero">
+      <section className="hero" id="testflight-coming-soon">
         <div className="container">
           <span className="hero__eyebrow">alpha · iOS · TestFlight</span>
           <h1 className="hero__title">
@@ -363,13 +398,26 @@ export default function HomePage() {
           </p>
           <div className="hero__ctas">
             <a
-              className="btn btn--primary"
-              href={TESTFLIGHT_URL}
-              target="_blank"
-              rel="noreferrer noopener"
+              className="btn btn--primary btn--disabled"
+              href={TESTFLIGHT_HREF}
+              aria-disabled="true"
+              role="link"
             >
-              Join TestFlight
+              Join TestFlight (coming soon)
             </a>
+            <span className="cta-with-badge">
+              <a className="btn btn--ghost" href={API_DOCS_URL}>
+                Try the API
+              </a>
+              <span
+                className={`status-badge status-badge--${apiState}`}
+                aria-label={apiBadgeLabel}
+                title={`Last checked ${status.checkedAt}`}
+              >
+                <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
+                {apiBadgeLabel}
+              </span>
+            </span>
             <a
               className="btn btn--ghost"
               href={GITHUB_URL}
@@ -423,9 +471,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="section container">
+      <section className="section container" aria-labelledby="how-title">
         <div className="section__eyebrow">How it works</div>
-        <h2 className="section__title">
+        <h2 id="how-title" className="section__title">
           From a real-world signal to a citation-backed idea.
         </h2>
         <p className="section__lead">
@@ -438,6 +486,68 @@ export default function HomePage() {
             Read the docs →
           </a>
         </div>
+      </section>
+
+      <section className="section container" aria-labelledby="api-playground-title">
+        <div className="section__eyebrow">API playground</div>
+        <h2 id="api-playground-title" className="section__title">
+          Copy. Paste. Get sourced answers.
+        </h2>
+        <p className="section__lead">
+          The API is live at{' '}
+          <code>{API_BASE_URL}</code>. Three requests are enough to feel the
+          product — health, nearby brands, and a comparable resolver.
+        </p>
+
+        <div className="curl-stack">
+          <CopyableCurl
+            label="health"
+            path="/v1/health"
+            command={curlHealth}
+          />
+          <CopyableCurl
+            label="nearby"
+            path="/v1/nearby"
+            command={curlNearby}
+          />
+          <CopyableCurl
+            label="resolve"
+            path="/v1/resolve-comparable"
+            command={curlResolve}
+          />
+        </div>
+      </section>
+
+      <section className="section container" aria-labelledby="status-title">
+        <div className="section__eyebrow">System status</div>
+        <h2 id="status-title" className="section__title">
+          What’s up right now.
+        </h2>
+        <p className="section__lead">
+          Probed at build time from this static page. For live status hit{' '}
+          <code>/api/status</code>.
+        </p>
+
+        <ul className="status-list" role="list">
+          <li className={`status-row status-row--${apiState}`}>
+            <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
+            <span className="status-row__name">api</span>
+            <code className="status-row__host">
+              {API_BASE_URL.replace(/^https?:\/\//, '')}
+            </code>
+            <span className="status-row__state">{stateLabel(apiState)}</span>
+          </li>
+          <li className="status-row status-row--up">
+            <span className="status-dot status-dot--up" aria-hidden="true" />
+            <span className="status-row__name">landing</span>
+            <code className="status-row__host">landing-production-ce7b.up.railway.app</code>
+            <span className="status-row__state">live</span>
+          </li>
+        </ul>
+        <p className="status-note">
+          Last checked{' '}
+          <time dateTime={status.checkedAt}>{status.checkedAt}</time>.
+        </p>
       </section>
     </>
   );

@@ -129,6 +129,6 @@
 
   <!-- subtle bottom-right label -->
   <g transform="translate(1120,595)" text-anchor="end">
-    <text font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" fill="#6b6b6b">v0 · alpha</text>
+    <text font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" fill="#6b6b6b">v0.1.0 · alpha</text>
   </g>
 </svg>

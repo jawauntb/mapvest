@@ -88,13 +88,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 GitHub
               </a>
               <a
-                className="btn btn--primary"
-                href="https://testflight.apple.com/join/PLACEHOLDER"
-                target="_blank"
-                rel="noreferrer noopener"
+                className="btn btn--primary btn--disabled"
+                href="/#testflight-coming-soon"
+                aria-disabled="true"
+                role="link"
                 style={{ padding: '8px 14px', fontSize: 13 }}
               >
-                TestFlight
+                TestFlight (soon)
               </a>
             </nav>
           </div>
