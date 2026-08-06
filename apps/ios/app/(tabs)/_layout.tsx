@@ -6,7 +6,7 @@ import { Tabs } from "expo-router";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
- * Slim bottom bar: Home (watchlist) · Map · Camera · Live · List.
+ * Slim bottom bar: Home (watchlist) · Map · Camera · List.
  * Research, Saved, Settings live in the ChatGPT-style sidebar (☰).
  */
 export default function TabsLayout() {
@@ -80,10 +80,6 @@ function TabsInner() {
       <Tabs.Screen
         name="camera"
         options={{ title: "Camera", tabBarIcon: ({ color }) => <TabDot color={color} label="C" /> }}
-      />
-      <Tabs.Screen
-        name="live-scan"
-        options={{ title: "Live", tabBarIcon: ({ color }) => <TabDot color={color} label="L" /> }}
       />
       <Tabs.Screen
         name="list"

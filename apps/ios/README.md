@@ -30,8 +30,6 @@ in `eas.json`.
   publicness (green = public ticker, orange = has comps/ETFs, red/gray = other).
 - `/(tabs)/camera` — full-frame capture → `POST /v1/identify`. Result card
   taps through to the detail sheet.
-- `/(tabs)/live-scan` — throttled ~1 fps frame capture piped through
-  `/v1/identify`, with an in-flight guard so slow responses cannot backlog.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
 - `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
 - `/(tabs)/saved` — watchlist + cockpit/alerts; ★ Save / memos from detail.

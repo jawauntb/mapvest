@@ -200,8 +200,7 @@ export default function CameraScreen() {
     else if (top?.brand.name) router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
   }
 
-  // Only mount the camera while this tab is focused — otherwise Live/Camera
-  // fight for the same hardware session and shutter silently fails.
+  // Only mount while focused so blurred tabs cannot hold the camera session.
   const showLivePreview = focused && !frozenUri;
 
   return (

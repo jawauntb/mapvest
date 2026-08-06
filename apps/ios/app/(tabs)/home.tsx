@@ -120,10 +120,10 @@ export default function HomeScreen() {
           <Text style={styles.widgetTitle}>Camera</Text>
           <Text style={styles.widgetSub}>Snap a brand</Text>
         </Pressable>
-        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/live-scan")}>
-          <Text style={styles.widgetEmoji}>◎</Text>
-          <Text style={styles.widgetTitle}>Live</Text>
-          <Text style={styles.widgetSub}>Scan around</Text>
+        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/list")}>
+          <Text style={styles.widgetEmoji}>≡</Text>
+          <Text style={styles.widgetTitle}>List</Text>
+          <Text style={styles.widgetSub}>Nearby sorted</Text>
         </Pressable>
       </View>
 
