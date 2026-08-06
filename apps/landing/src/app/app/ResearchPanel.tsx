@@ -8,6 +8,7 @@ import {
   type ChartImage,
   type ResearchArticle,
 } from "@/lib/mapvest-api";
+import { ChartFigure } from "./ChartFigure";
 
 /**
  * Progressive research surface — opened from ticker detail, not a top-level tab.
@@ -200,10 +201,10 @@ function Article({
               <span className="app-muted"> · 1mo auction</span>
             </div>
             {c ? (
-              <img
-                className="app-chart-img"
-                alt={`${sym} auction`}
+              <ChartFigure
                 src={`data:${c.image.mime};base64,${c.image.data}`}
+                alt={`${sym} auction`}
+                filename={c.image.filename ?? `${sym}-auction-1mo.png`}
               />
             ) : (
               <div className="app-chart-skel" style={{ maxHeight: 160 }} />

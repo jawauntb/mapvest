@@ -24,7 +24,6 @@ import { API_URL } from "@/util/env";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -32,6 +31,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { ChartMedia } from "@/components/ChartMedia";
 import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
@@ -233,7 +233,14 @@ export default function DetailSheet() {
         <>
           {ticker ? (
             <Section title={`Auction · $${ticker} · 1mo`}>
-              <ChartImageBlock q={chartQ} ticker={ticker} label="Auction" showLevels />
+              <ChartImageBlock
+                q={chartQ}
+                ticker={ticker}
+                label="Auction"
+                showLevels
+                chartType="auction"
+                period="1mo"
+              />
             </Section>
           ) : null}
 
@@ -515,55 +522,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ZoomableChartImage({
-  uri,
-  accessibilityLabel,
-}: {
-  uri: string;
-  accessibilityLabel: string;
-}) {
-  return (
-    <ScrollView
-      style={styles.chartZoom}
-      contentContainerStyle={styles.chartZoomContent}
-      maximumZoomScale={4}
-      minimumZoomScale={1}
-      showsHorizontalScrollIndicator={false}
-      showsVerticalScrollIndicator={false}
-      centerContent
-      bouncesZoom
-      nestedScrollEnabled
-    >
-      <Image
-        source={{ uri }}
-        style={styles.chartImg}
-        resizeMode="contain"
-        accessibilityLabel={accessibilityLabel}
-      />
-    </ScrollView>
-  );
-}
-
 function ChartImageBlock({
   q,
   ticker,
   label,
   showLevels,
+  chartType,
+  period,
 }: {
   q: ReturnType<typeof useQuery>;
   ticker: string;
   label: string;
   showLevels?: boolean;
+  chartType?: string;
+  period?: string;
 }) {
   const data = q.data as Awaited<ReturnType<typeof fetchChart>> | undefined;
   if (q.isLoading || q.isFetching) return <ActivityIndicator color="#fff" />;
   if (q.isError) return <Text style={styles.err}>{(q.error as Error).message}</Text>;
   if (!data?.image?.data) return <Text style={styles.muted}>No chart.</Text>;
+  const typeSlug = chartType ?? data.type ?? label.toLowerCase().replace(/\s+/g, "-");
+  const per = period ?? data.period ?? "1mo";
+  const filename =
+    data.image.filename ?? `${ticker}-${typeSlug}-${per}.png`.replace(/[^\w.-]+/g, "_");
   return (
     <View style={{ gap: 8 }}>
-      <Text style={styles.chartHint}>Pinch to zoom</Text>
-      <ZoomableChartImage
+      <ChartMedia
         uri={`data:${data.image.mime};base64,${data.image.data}`}
+        filename={filename}
         accessibilityLabel={`${ticker} ${label} chart`}
       />
       {showLevels && data.levels ? (
@@ -678,7 +664,14 @@ function ChartStrip({
           </Pressable>
         ))}
       </View>
-      <ChartImageBlock q={q} ticker={ticker} label={label} showLevels={chartType === "auction"} />
+      <ChartImageBlock
+        q={q}
+        ticker={ticker}
+        label={label}
+        showLevels={chartType === "auction"}
+        chartType={chartType}
+        period={period}
+      />
     </Section>
   );
 }

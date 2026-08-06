@@ -21,6 +21,7 @@ import {
   type ChartImage,
   type ResearchArticle,
 } from "@/lib/mapvest-api";
+import { ChartFigure } from "../ChartFigure";
 import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
@@ -201,8 +202,13 @@ export default function TickerDetail() {
 
   useEffect(() => {
     if (!chartTicker) return;
+    // Overview always pins auction 1mo; Advanced follows chip/period.
+    if (tab === "overview") {
+      void loadChart(chartTicker, "auction", "1mo");
+      return;
+    }
     void loadChart(chartTicker, chartType, period);
-  }, [chartTicker, chartType, period, loadChart]);
+  }, [chartTicker, chartType, period, tab, loadChart]);
 
   if (err) return <div className="app-detail"><p className="app-err">{err}</p></div>;
   if (!data) return <div className="app-detail"><p className="app-muted">Loading…</p></div>;
@@ -376,29 +382,22 @@ export default function TickerDetail() {
         <>
           <section className="app-panel app-chart">
             <h2 className="app-chart-title">
-              Auction · ${chart?.ticker ?? chartTicker ?? "…"} · 1mo
+              Auction · ${chartTicker ?? "…"} · 1mo
             </h2>
-            {chart && !chartLoading && chartType === "auction" && period === "1mo" ? (
-              <>
-                <p className="app-muted" style={{ marginBottom: 6 }}>
-                  Pinch / scroll-zoom the chart
-                </p>
-                <div className="app-chart-zoom">
-                  <img
-                    className="app-chart-img"
-                    alt={`${chart.ticker} 1mo auction chart`}
-                    src={`data:${chart.image.mime};base64,${chart.image.data}`}
-                  />
-                </div>
-                {chart.levels ? (
-                  <p className="app-muted">
-                    POC {chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH{" "}
-                    {chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL{" "}
-                    {chart.levels.val?.toFixed?.(2) ?? "—"}
-                  </p>
-                ) : null}
-              </>
-            ) : chartErr && chartType === "auction" ? (
+            {chart && !chartLoading && chart.image?.data ? (
+              <ChartFigure
+                src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                alt={`${chart.ticker} 1mo auction chart`}
+                filename={
+                  chart.image.filename ?? `${chart.ticker}-auction-1mo.png`
+                }
+                caption={
+                  chart.levels
+                    ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? "yfinance"}`
+                    : chart.provider
+                }
+              />
+            ) : chartErr ? (
               <p className="app-err">{chartErr}</p>
             ) : (
               <div className="app-chart-skel" aria-label="Loading chart" />
@@ -603,61 +602,79 @@ export default function TickerDetail() {
           </section>
         </>
       ) : (
-        <section className="app-panel">
-          <h2>Advanced</h2>
-          <dl className="app-snapshot">
-            <div>
-              <dt>Resolved brand</dt>
-              <dd>{brand.name}</dd>
-            </div>
-            <div>
-              <dt>Public</dt>
-              <dd>{brand.isPublic ? "yes" : "no"}</dd>
-            </div>
-            <div>
-              <dt>Chart ticker</dt>
-              <dd>{chartTicker ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>Chart type / period</dt>
-              <dd>
-                {chartType} · {period}
-              </dd>
-            </div>
-            {analysis?.briefProvider ? (
-              <div>
-                <dt>Brief provider</dt>
-                <dd>{analysis.briefProvider}</dd>
-              </div>
-            ) : null}
-            {chart?.provider ? (
-              <div>
-                <dt>Chart provider</dt>
-                <dd>{chart.provider}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <h2 style={{ marginTop: "1.25rem" }}>Sources</h2>
-          {sources.length === 0 ? (
-            <p className="app-muted">No cited sources yet.</p>
-          ) : (
-            <ul className="app-simple-list">
-              {sources.map((s, i) => (
-                <li key={i}>
-                  <span className="app-ticker">{s.label}</span> · {s.provider}
-                  {s.url ? (
-                    <>
-                      {" · "}
-                      <a href={s.url} target="_blank" rel="noreferrer">
-                        {hostLabel(s.url)}
-                      </a>
-                    </>
-                  ) : null}
-                </li>
+        <>
+          <section className="app-panel app-chart">
+            <h2 className="app-chart-title">
+              {chipLabel} · ${chartTicker ?? "…"} · {period}
+            </h2>
+            <div className="app-chart-chips" role="tablist" aria-label="Chart type">
+              {CHART_CHIPS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`app-chip ${chartType === c.id ? "app-chip-active" : ""}`}
+                  onClick={() => setChartType(c.id)}
+                >
+                  {c.label}
+                </button>
               ))}
-            </ul>
-          )}
-        </section>
+            </div>
+            <div className="app-chart-chips" role="tablist" aria-label="Period">
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`app-chip ${period === p ? "app-chip-active" : ""}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            {chart && !chartLoading && chart.image?.data ? (
+              <ChartFigure
+                src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                alt={`${chart.ticker} ${chipLabel} ${period} chart`}
+                filename={
+                  chart.image.filename ??
+                  `${chart.ticker}-${chartType}-${period}.png`
+                }
+                caption={
+                  chartType === "auction" && chart.levels
+                    ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`
+                    : chart.provider
+                }
+              />
+            ) : chartErr ? (
+              <p className="app-err">{chartErr}</p>
+            ) : (
+              <div className="app-chart-skel" aria-label="Loading chart" />
+            )}
+          </section>
+
+          <section className="app-panel">
+            <h2>Sources</h2>
+            {sources.length === 0 ? (
+              <p className="app-muted">No cited sources yet.</p>
+            ) : (
+              <ul className="app-simple-list">
+                {sources.map((s, i) => (
+                  <li key={i}>
+                    <span className="app-ticker">{s.label}</span> · {s.provider}
+                    {s.url ? (
+                      <>
+                        {" · "}
+                        <a href={s.url} target="_blank" rel="noreferrer">
+                          {hostLabel(s.url)}
+                        </a>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
       )}
     </div>
   );
