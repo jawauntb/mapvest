@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addToWatchlist,
   agentChat,
+  fetchSettings,
   generateMemo,
   getAnalysis,
   getChart,
@@ -162,9 +163,23 @@ export default function TickerDetail() {
             .catch((e) => setOverviewErr(e instanceof Error ? e.message : "overview failed"))
             .finally(() => setOverviewLoading(false));
           if (authed) {
-            openInRobinhood(t)
-              .then((r) => setRhLink(r.linkOut))
-              .catch(() => setRhLink(null));
+            // Prefer API deep-link; fall back to public RH URL when settings
+            // say MCP is connected so the CTA isn't lost on a flaky 403.
+            const fallback = `https://robinhood.com/us/en/stocks/${encodeURIComponent(t)}/`;
+            void Promise.all([
+              openInRobinhood(t).catch(() => null),
+              fetchSettings().catch(() => null),
+            ]).then(([rh, settings]) => {
+              if (rh?.linkOut) {
+                setRhLink(rh.linkOut);
+                return;
+              }
+              if (settings?.robinhoodMcp && "configured" in settings.robinhoodMcp && settings.robinhoodMcp.configured) {
+                setRhLink(fallback);
+                return;
+              }
+              setRhLink(null);
+            });
           }
         }
       })
@@ -326,6 +341,20 @@ export default function TickerDetail() {
         </div>
       ) : null}
 
+      {/* Above-the-fold CTA — do not bury under agent overview. */}
+      {rhLink ? (
+        <div className="app-action-row" style={{ marginBottom: "0.75rem" }}>
+          <a
+            className="app-btn app-btn-robinhood"
+            href={rhLink}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in Robinhood →
+          </a>
+        </div>
+      ) : null}
+
       <div className="app-detail-tabs" role="tablist">
         <button
           type="button"
@@ -467,16 +496,6 @@ export default function TickerDetail() {
                 >
                   {busy === "memo" ? "…" : memo ? "↻ Memo" : "Memo"}
                 </button>
-              ) : null}
-              {rhLink ? (
-                <a
-                  className="app-btn app-btn-robinhood"
-                  href={rhLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open in Robinhood →
-                </a>
               ) : null}
             </div>
           ) : null}

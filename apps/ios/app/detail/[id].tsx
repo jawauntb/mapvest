@@ -9,6 +9,7 @@ import {
   fetchAnalysis,
   fetchChart,
   fetchQuote,
+  fetchSettings,
   generateMemo,
   listWatchlist,
   openInRobinhood,
@@ -207,6 +208,12 @@ export default function DetailSheet() {
             </Text>
           </View>
         ) : null}
+        {/* Above-the-fold: Open in Robinhood must not wait on agent overview. */}
+        {ticker && session?.token ? (
+          <View style={[styles.badgeRow, { marginTop: 12 }]}>
+            <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+          </View>
+        ) : null}
         <View style={styles.tabRow}>
           {(["overview", "advanced"] as TabKey[]).map((t) => (
             <Pressable
@@ -250,9 +257,6 @@ export default function DetailSheet() {
                 token={session?.token}
               />
               <View style={styles.badgeRow}>
-                {session?.token ? (
-                  <RobinhoodOpenBadge ticker={ticker} token={session.token} />
-                ) : null}
                 {publicTicker ? (
                   <OptionsBadge ticker={publicTicker} token={session?.token} />
                 ) : (
@@ -350,25 +354,38 @@ export default function DetailSheet() {
 }
 
 /**
- * Shown only when the signed-in user has a Robinhood MCP key under Home.
- * Opens the Robinhood stock page so they can buy / place orders there.
- * Mapvest never submits broker orders.
+ * Shown when Home → Robinhood MCP is connected. Placed under the quote so it
+ * stays above the fold (agent overview used to push it off-screen).
+ * Opens the Robinhood stock page — Mapvest never submits broker orders.
  */
 function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }) {
+  const settingsQ = useQuery({
+    queryKey: ["settings", token],
+    queryFn: () => fetchSettings({ token }),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const configured = settingsQ.data?.robinhoodMcp?.configured === true;
+
   const rh = useQuery({
     queryKey: ["robinhood-open", ticker, token],
     queryFn: () => openInRobinhood(ticker, { token }),
+    enabled: configured || settingsQ.isFetched,
     staleTime: 5 * 60_000,
     retry: false,
   });
 
-  if (rh.isError || !rh.data?.linkOut) {
-    // Not configured (403) or unavailable — hide quietly.
-    return null;
-  }
+  // Prefer API linkOut; if settings say MCP is on, still show a deep-link even
+  // when /v1/robinhood flakes — connection state lives on settings.
+  const url =
+    rh.data?.linkOut ??
+    (configured
+      ? `https://robinhood.com/us/en/stocks/${encodeURIComponent(ticker)}/`
+      : null);
+
+  if (!url) return null;
 
   const onPress = async () => {
-    const url = rh.data.linkOut;
     try {
       await WebBrowser.openBrowserAsync(url);
     } catch {
@@ -381,9 +398,14 @@ function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }
       onPress={onPress}
       accessibilityRole="link"
       accessibilityLabel={`Open ${ticker} in Robinhood`}
-      style={({ pressed }) => [styles.badge, styles.robinhoodBadge, pressed && styles.badgePressed]}
+      style={({ pressed }) => [
+        styles.badge,
+        styles.robinhoodBadge,
+        styles.robinhoodBadgeHero,
+        pressed && styles.badgePressed,
+      ]}
     >
-      <Text style={styles.badgeText}>Open in Robinhood →</Text>
+      <Text style={[styles.badgeText, styles.robinhoodBadgeText]}>Open in Robinhood →</Text>
     </Pressable>
   );
 }
@@ -1064,6 +1086,15 @@ const styles = StyleSheet.create({
   robinhoodBadge: {
     backgroundColor: "#0d2818",
     borderColor: "#2a6b45",
+  },
+  robinhoodBadgeHero: {
+    alignSelf: "flex-start",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  robinhoodBadgeText: {
+    color: "#3ECF8E",
+    fontSize: 14,
   },
   badgeDisabled: { opacity: 0.5 },
   badgePressed: { backgroundColor: "#22305a" },
