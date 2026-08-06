@@ -20,17 +20,23 @@ import { enableFreeze } from "react-native-screens";
 
 enableFreeze(true);
 
-// Foreground notification handler. Without this, a push received while the
-// app is open would be silently swallowed. We show the alert banner + play
-// the sound so users know the notification fired.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Foreground notification handler. Guarded because this runs at MODULE LOAD
+// — a native init failure here (bad JSI binding on first launch of a fresh
+// install) would crash the root with no ErrorBoundary in scope, giving the
+// user a black screen with no crash reporter UI. Try/catch keeps the app
+// alive; worst case notifications are silent until we ship a real fix.
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  console.warn("[push] setNotificationHandler failed at boot:", e);
+}
 
 const persister = createAsyncStoragePersister({
   storage: AsyncStorage,
