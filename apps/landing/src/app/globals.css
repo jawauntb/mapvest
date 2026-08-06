@@ -2177,3 +2177,70 @@ blockquote {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   margin-left: 0.5rem;
 }
+
+/* Legal pages (/privacy, /terms). Long-form serif prose on the site's dark
+   canvas — designed to satisfy App Store review with plain, readable copy. */
+.legal {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: clamp(48px, 8vw, 96px) clamp(20px, 5vw, 32px) 128px;
+  color: var(--fg, #eef1f4);
+  line-height: 1.6;
+}
+.legal__eyebrow {
+  color: var(--mv-accent, #14c4a6);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+.legal__title {
+  font-family: var(--font-syne), Georgia, serif;
+  font-size: clamp(32px, 5vw, 44px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: #fff;
+}
+.legal__meta {
+  color: rgba(238, 241, 244, 0.6);
+  font-size: 13px;
+  margin: 0 0 40px;
+}
+.legal__inner section {
+  margin: 32px 0;
+}
+.legal__inner h2 {
+  color: #fff;
+  font-family: var(--font-syne), Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+}
+.legal__inner p,
+.legal__inner li {
+  color: rgba(238, 241, 244, 0.86);
+  font-size: 15px;
+}
+.legal__inner p {
+  margin: 0 0 12px;
+}
+.legal__inner ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.legal__inner li {
+  margin: 6px 0;
+}
+.legal__inner a {
+  color: var(--mv-accent, #14c4a6);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.legal__inner strong {
+  color: #fff;
+  font-weight: 700;
+}
