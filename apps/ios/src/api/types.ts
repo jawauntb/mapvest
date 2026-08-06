@@ -100,9 +100,34 @@ export const IdentifyRequest = z.object({
 });
 export type IdentifyRequest = z.infer<typeof IdentifyRequest>;
 
+// Image-space bounding box for a locked-on detection. Coordinates are
+// normalized to [0,1] against the *displayed* preview frame so the overlay
+// can position pills without knowing the original image resolution.
+export const DetectionBox = z.object({
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+});
+export type DetectionBox = z.infer<typeof DetectionBox>;
+
+export const Detection = z.object({
+  box: DetectionBox,
+  ticker: z.string(),
+  name: z.string().optional(),
+  // Numeric confidence in [0,1]. Distinct from the categorical `Confidence`
+  // enum used elsewhere — this lets the overlay scale glow intensity smoothly.
+  confidence: z.number().min(0).max(1),
+});
+export type Detection = z.infer<typeof Detection>;
+
+// Note: `detections` is CLIENT-SIDE forward-compat only. The current
+// /v1/identify response does not include it; when absent, the camera screen
+// synthesizes a single detection from `investables[0]`.
 export const IdentifyResponse = z.object({
   identification: PhotoIdentification,
   investables: z.array(Investable),
+  detections: z.array(Detection).optional(),
 });
 export type IdentifyResponse = z.infer<typeof IdentifyResponse>;
 

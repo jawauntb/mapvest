@@ -5,6 +5,7 @@ import { identifyFromImageWithUsage } from "@mapvest/vision";
 import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { onIdentifyFinished } from "../lib/notifiers/imageNotifier.js";
 import { sanitizeOcrString } from "../lib/sanitize.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
@@ -182,6 +183,15 @@ identify.post("/", async (c) => {
     );
 
     span.setAttribute("investables_count", investables.length);
+    // Fire-and-forget push (opted-in authenticated users only). Picks the
+    // first investable's brand + ticker (if any) so the notification carries
+    // enough context for deep-linking.
+    if (user?.id && investables.length > 0) {
+      const top = investables[0];
+      const brand = top?.brand.name;
+      const ticker = top?.brand.ticker?.symbol;
+      onIdentifyFinished(user.id, brand, ticker).catch(() => {});
+    }
     const resp: IdentifyResponse = { identification, investables };
     return c.json(resp);
   });

@@ -1,13 +1,17 @@
-import { type ResearchArticle, agentChat } from "@/api/client";
+import { type ResearchArticle, agentChat, agentChatStream } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { RichText } from "@/components/RichText";
+import { ShareButton } from "@/components/ShareButton";
 import { colors, radii } from "@/theme/tokens";
+import { shareBriefText } from "@/util/share";
 import { hapticSelect, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +19,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 /** Ticker-bound research brief — not a top-level Chat tab. */
 export function ResearchSheet({
@@ -27,12 +32,32 @@ export function ResearchSheet({
   onClose: () => void;
 }) {
   const { session } = useSession();
+  const insets = useSafeAreaInsets();
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
   const [input, setInput] = useState(`What’s the story on $${ticker}?`);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  // Timeline of real progress items streamed from the SSE endpoint —
+  // "Running: foo" for `event: tool`, plus reasoning strings.
+  const [timeline, setTimeline] = useState<string[]>([]);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  // Live draft of the brief as tokens arrive. Reset per-turn; cleared when the
+  // finalized article lands.
+  const [draft, setDraft] = useState("");
+  const scrollRef = useRef<ScrollView | null>(null);
+
+  // Elapsed ticker only — the stage cycler is gone now that we stream real
+  // events; the timeline is fed by `agentChatStream`'s onEvent callback.
+  useEffect(() => {
+    if (!busy) return;
+    setElapsedMs(0);
+    const start = Date.now();
+    const tick = setInterval(() => setElapsedMs(Date.now() - start), 250);
+    return () => clearInterval(tick);
+  }, [busy]);
 
   async function onSend() {
     const msg = input.trim();
@@ -41,6 +66,8 @@ export function ResearchSheet({
     setBusy(true);
     setErr(null);
     setStatus("Researching… tools running");
+    setTimeline([]);
+    setDraft("");
     setTurns((t) => [
       ...t,
       {
@@ -56,17 +83,57 @@ export function ResearchSheet({
       },
     ]);
     setInput("");
+
+    let anyEvent = false;
     try {
-      const r = await agentChat(msg, { ticker, threadId }, { token: session?.token });
+      const r = await agentChatStream(
+        msg,
+        { ticker, threadId },
+        (ev) => {
+          anyEvent = true;
+          if (ev.type === "tool") {
+            const d = ev.data as { name: string };
+            setTimeline((t) => [...t, `Running: ${d.name}`]);
+          } else if (ev.type === "reasoning") {
+            const d = ev.data as { text: string };
+            if (d?.text) setTimeline((t) => [...t, d.text]);
+          } else if (ev.type === "token") {
+            const d = ev.data as { text: string };
+            if (typeof d?.text === "string") setDraft((s) => s + d.text);
+          } else if (ev.type === "article") {
+            const art = ev.data as ResearchArticle;
+            setTurns((t) => [...t, art]);
+            setDraft("");
+            const tools = art.toolsUsed?.length
+              ? ` · ${art.toolsUsed.slice(0, 3).join(", ")}`
+              : "";
+            setStatus(`Brief ready${tools}`);
+          }
+        },
+        { token: session?.token },
+      );
       if (r.threadId) setThreadId(r.threadId);
-      setTurns((t) => [...t, r.article]);
-      const tools = r.article.toolsUsed?.length
-        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
-        : "";
-      setStatus(`Brief ready${tools}`);
     } catch (e) {
-      setErr((e as Error).message);
-      setStatus(null);
+      // If the stream endpoint failed before yielding any events, fall back to
+      // the blocking JSON endpoint so the user still gets a brief.
+      if (!anyEvent) {
+        try {
+          const r = await agentChat(msg, { ticker, threadId }, { token: session?.token });
+          if (r.threadId) setThreadId(r.threadId);
+          setTurns((t) => [...t, r.article]);
+          setDraft("");
+          const tools = r.article.toolsUsed?.length
+            ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+            : "";
+          setStatus(`Brief ready${tools}`);
+        } catch (e2) {
+          setErr((e2 as Error).message);
+          setStatus(null);
+        }
+      } else {
+        setErr((e as Error).message);
+        setStatus(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -85,6 +152,22 @@ export function ResearchSheet({
             <Text style={styles.kicker}>Research · ${ticker}</Text>
             <Text style={styles.sub}>Brief-style · tools behind the scenes · not advice</Text>
           </View>
+          {(() => {
+            const latestArticle = [...turns].reverse().find((t) => t.role !== "user");
+            return latestArticle ? (
+              <ShareButton
+                onPress={() => {
+                  const [firstLine, ...rest] = latestArticle.content.split("\n");
+                  void shareBriefText({
+                    ticker,
+                    headline: firstLine ?? `$${ticker} research`,
+                    body: rest.join("\n").trim() || latestArticle.content,
+                  });
+                }}
+                accessibilityLabel="Share latest brief"
+              />
+            ) : null;
+          })()}
           <Pressable
             onPress={() => {
               hapticSelect();
@@ -98,7 +181,12 @@ export function ResearchSheet({
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.stream}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.stream}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          keyboardShouldPersistTaps="handled"
+        >
           {turns.length === 0 ? (
             <Text style={styles.sub}>Ask something focused. You’ll get a lede + evidence.</Text>
           ) : null}
@@ -128,41 +216,104 @@ export function ResearchSheet({
             ),
           )}
           {busy ? (
-            <View style={styles.statusRow}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.statusText}>{status ?? "Researching…"}</Text>
+            <View style={{ gap: 12 }}>
+              {draft ? (
+                <View style={styles.draftCard}>
+                  <RichText text={draft} />
+                  <Text style={styles.draftCaret}>▍</Text>
+                </View>
+              ) : null}
+              <View style={styles.progressCard}>
+                <View style={styles.progressHeader}>
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={styles.progressTitle}>
+                    {timeline[timeline.length - 1] ?? "Researching…"}
+                  </Text>
+                  <Text style={styles.progressElapsed}>{(elapsedMs / 1000).toFixed(1)}s</Text>
+                </View>
+                {timeline.length > 1 ? (
+                  <Pressable
+                    onPress={() => setTimelineOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      timelineOpen ? "Hide reasoning steps" : "Show reasoning steps"
+                    }
+                  >
+                    <Text style={styles.progressToggle}>
+                      {timelineOpen ? "Hide steps" : `${timeline.length} steps · show`}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {timelineOpen ? (
+                  <View style={{ gap: 4, marginTop: 2 }}>
+                    {timeline.map((line, i) => (
+                      <Text key={`${i}-${line}`} style={styles.timelineLine}>
+                        {i + 1 === timeline.length ? "▸" : "✓"} {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             </View>
           ) : status ? (
-            <Text style={styles.statusText}>{status}</Text>
+            <Pressable
+              onPress={() => setTimelineOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={timelineOpen ? "Hide steps" : "Show steps"}
+            >
+              <Text style={styles.statusText}>
+                {status}
+                {timeline.length ? ` · ${timeline.length} steps` : ""}
+              </Text>
+              {timelineOpen && timeline.length ? (
+                <View style={{ gap: 4, marginTop: 6 }}>
+                  {timeline.map((line, i) => (
+                    <Text key={`${i}-${line}`} style={styles.timelineLine}>
+                      ✓ {line}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </Pressable>
           ) : null}
           {err ? <Text style={styles.err}>{err}</Text> : null}
         </ScrollView>
 
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder={`Ask about $${ticker}…`}
-            placeholderTextColor={colors.fgDim}
-            editable={!busy}
-            onSubmitEditing={() => void onSend()}
-            accessibilityLabel={`Ask about $${ticker}`}
-          />
-          <Pressable
-            style={[styles.send, (!input.trim() || busy) && { opacity: 0.4 }]}
-            disabled={!input.trim() || busy}
-            onPress={() => void onSend()}
-            accessibilityRole="button"
-            accessibilityLabel="Ask"
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <View
+            style={[
+              styles.composer,
+              { paddingBottom: Math.max(insets.bottom, 12) },
+            ]}
           >
-            {busy ? (
-              <ActivityIndicator color={colors.accentInk} size="small" />
-            ) : (
-              <Ionicons name="arrow-up" size={18} color={colors.accentInk} />
-            )}
-          </Pressable>
-        </View>
+            <TextInput
+              style={styles.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder={`Ask about $${ticker}…`}
+              placeholderTextColor={colors.fgDim}
+              editable={!busy}
+              onSubmitEditing={() => void onSend()}
+              accessibilityLabel={`Ask about $${ticker}`}
+            />
+            <Pressable
+              style={[styles.send, (!input.trim() || busy) && { opacity: 0.4 }]}
+              disabled={!input.trim() || busy}
+              onPress={() => void onSend()}
+              accessibilityRole="button"
+              accessibilityLabel="Ask"
+            >
+              {busy ? (
+                <ActivityIndicator color={colors.accentInk} size="small" />
+              ) : (
+                <Ionicons name="arrow-up" size={18} color={colors.accentInk} />
+              )}
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -216,6 +367,54 @@ const styles = StyleSheet.create({
   tools: { color: colors.fgDim, fontSize: 11, marginTop: 4 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
   statusText: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 8 },
+  progressCard: {
+    marginTop: 8,
+    padding: 12,
+    gap: 8,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  draftCard: {
+    padding: 12,
+    gap: 6,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  draftCaret: {
+    color: colors.accent,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  progressTitle: {
+    color: colors.fg,
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+  },
+  progressElapsed: {
+    color: colors.fgDim,
+    fontSize: 12,
+    fontVariant: ["tabular-nums"],
+  },
+  progressToggle: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  timelineLine: {
+    color: colors.fgMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   err: { color: colors.danger, marginTop: 8 },
   composer: {
     flexDirection: "row",

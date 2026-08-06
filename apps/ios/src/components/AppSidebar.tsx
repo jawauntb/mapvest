@@ -1,71 +1,43 @@
 import { type AgentThread, listAgentThreads } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { useSidebar } from "@/nav/SidebarContext";
-import { colors, elevation, motion, radii, type } from "@/theme/tokens";
+import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
+import {
+  Dimensions,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const PANEL_WIDTH = Math.min(340, Dimensions.get("window").width * 0.82);
 
 /**
- * ChatGPT-style left drawer — watchlist, research chats, settings/home,
- * ticker search entry. Slide + fade with a snappy spring; swipe-left or tap
- * the scrim to dismiss. Keeps the bottom tab bar slim.
+ * ChatGPT-style left drawer — watchlist, research chats, settings, ticker
+ * search. Deliberately built with plain RN primitives (Modal + Pressable),
+ * NO Reanimated + NO GestureDetector: earlier iterations that wrapped the
+ * panel in a Pan gesture or laid a full-screen scrim over the panel body
+ * both blocked child taps on iOS. Simple wins here.
+ *
+ * Layout:
+ *   root: flexDirection "row"
+ *     └── panel (fixed width, on the left)
+ *     └── scrim (flex: 1, to the RIGHT of the panel — tap to close)
+ * Scrim and panel never overlap, so panel taps always reach child Pressables.
  */
 export function AppSidebar() {
   const { open, closeSidebar } = useSidebar();
   const router = useRouter();
   const { session, user } = useSession();
   const insets = useSafeAreaInsets();
-
-  // Modal stays mounted through the close animation, then unmounts.
-  const [mounted, setMounted] = useState(open);
-  const tx = useSharedValue(-PANEL_WIDTH);
-  const scrimOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      tx.value = withSpring(0, motion.springSnappy);
-      scrimOpacity.value = withTiming(1, { duration: 220 });
-    } else {
-      tx.value = withSpring(-PANEL_WIDTH, motion.springSoft);
-      scrimOpacity.value = withTiming(0, { duration: 180 }, (finished) => {
-        if (finished) runOnJS(setMounted)(false);
-      });
-    }
-  }, [open, tx, scrimOpacity]);
-
-  const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
-  const scrimStyle = useAnimatedStyle(() => ({ opacity: scrimOpacity.value }));
-
-  const pan = Gesture.Pan()
-    .activeOffsetX([-12, 12])
-    .onUpdate((e) => {
-      tx.value = Math.min(0, Math.max(-PANEL_WIDTH, e.translationX));
-    })
-    .onEnd((e) => {
-      const shouldClose = e.translationX < -PANEL_WIDTH * 0.3 || e.velocityX < -600;
-      if (shouldClose) {
-        runOnJS(closeSidebar)();
-      } else {
-        tx.value = withSpring(0, motion.springSnappy);
-      }
-    });
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -81,142 +53,167 @@ export function AppSidebar() {
     router.push(path as never);
   }
 
-  if (!mounted) return null;
-
   return (
-    <Modal visible={mounted} animationType="none" transparent onRequestClose={closeSidebar}>
+    <Modal
+      visible={open}
+      // "slide" is horizontal by default on Modals wrapping a row layout;
+      // on iOS this is a native slide-in from the left edge.
+      animationType="slide"
+      transparent
+      onRequestClose={closeSidebar}
+      // Absolute must for iOS pageSheet-style overlay behavior — keeps the
+      // parent view visible behind the sidebar.
+      presentationStyle="overFullScreen"
+    >
       <View style={styles.root}>
-        <GestureDetector gesture={pan}>
-          <Animated.View
-            style={[
-              styles.panel,
-              elevation.lg,
-              panelStyle,
-              { width: PANEL_WIDTH, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 12 },
-            ]}
-          >
-            <View style={styles.brandRow}>
-              <View style={styles.brandMark}>
-                <LinearGradient
-                  colors={colors.gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.brandMarkGrad}
-                >
-                  <Ionicons name="pin" size={16} color={colors.accentInk} />
-                </LinearGradient>
-                <Text style={styles.brand}>Mapvest</Text>
-              </View>
-              <Pressable
-                onPress={closeSidebar}
-                hitSlop={12}
-                style={styles.closeBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Close menu"
-              >
-                <Ionicons name="close" size={20} color={colors.fgMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 4, paddingBottom: 16 }}>
-              <NavRow
-                icon="home-outline"
-                label="Home"
-                hint="Watchlist · map · camera"
-                onPress={() => go("/(tabs)/home")}
-              />
-              <NavRow
-                icon="star-outline"
-                label="Watchlist"
-                hint="Saved tickers"
-                onPress={() => go("/(tabs)/saved")}
-              />
-              <NavRow
-                icon="sparkles-outline"
-                label="New research"
-                hint="Start a brief"
-                onPress={() => go("/(tabs)/research?intent=new")}
-              />
-              <NavRow
-                icon="search-outline"
-                label="Find ticker"
-                hint="Search by symbol"
-                onPress={() => go("/(tabs)/home?focus=search")}
-              />
-              <NavRow
-                icon="settings-outline"
-                label="Settings"
-                hint={user?.email ?? "Account · Robinhood MCP"}
-                onPress={() => go("/(tabs)/settings")}
-              />
-
-              <Text style={styles.section}>Recent chats</Text>
-              {!session?.token ? (
-                <Text style={styles.muted}>Sign in to sync research threads.</Text>
-              ) : threadsQ.isLoading ? (
-                <Text style={styles.muted}>Loading…</Text>
-              ) : threads.length === 0 ? (
-                <Text style={styles.muted}>No briefs yet — start a new research chat.</Text>
-              ) : (
-                threads.map((t: AgentThread) => (
-                  <Pressable
-                    key={t.id}
-                    style={styles.threadRow}
-                    onPress={() => {
-                      hapticSelect();
-                      closeSidebar();
-                      router.push(
-                        `/(tabs)/research?intent=thread&id=${encodeURIComponent(t.id)}` as never,
-                      );
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open research thread: ${t.title || "Research"}`}
-                  >
-                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.fgDim} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.threadTitle} numberOfLines={1}>
-                        {t.title || "Research"}
-                      </Text>
-                      {t.preview ? (
-                        <Text style={styles.threadPreview} numberOfLines={1}>
-                          {t.preview}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                ))
-              )}
-            </ScrollView>
-
-            <Pressable
-              style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-              onPress={() => go("/(tabs)/research?intent=new")}
-              accessibilityRole="button"
-              accessibilityLabel="Start new research chat"
-            >
+        <View
+          style={[
+            styles.panel,
+            elevation.lg,
+            {
+              width: PANEL_WIDTH,
+              paddingTop: insets.top + 8,
+              paddingBottom: insets.bottom + 12,
+            },
+          ]}
+        >
+          <View style={styles.brandRow}>
+            <View style={styles.brandMark}>
               <LinearGradient
                 colors={colors.gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.newChatBtn}
+                style={styles.brandMarkGrad}
               >
-                <Ionicons name="add" size={18} color={colors.accentInk} />
-                <Text style={styles.newChatText}>New chat</Text>
+                <Ionicons name="pin" size={16} color={colors.accentInk} />
               </LinearGradient>
+              <Text style={styles.brand}>Mapvest</Text>
+            </View>
+            <Pressable
+              onPress={closeSidebar}
+              hitSlop={12}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Close menu"
+            >
+              <Ionicons name="close" size={20} color={colors.fgMuted} />
             </Pressable>
-          </Animated.View>
-        </GestureDetector>
-        <Animated.View
-          style={[StyleSheet.absoluteFillObject, scrimStyle]}
-          pointerEvents={open ? "auto" : "none"}
-        >
+          </View>
+
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ gap: 4, paddingBottom: 16 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <NavRow
+              icon="home-outline"
+              label="Home"
+              hint="Watchlist · map · camera"
+              onPress={() => go("/(tabs)/home")}
+            />
+            <NavRow
+              icon="star-outline"
+              label="Watchlists"
+              hint="Your lists · saved tickers"
+              onPress={() => go("/watchlists")}
+            />
+            <NavRow
+              icon="folder-open-outline"
+              label="Location folder"
+              hint="Saved area briefs"
+              onPress={() => go("/saved-locations")}
+            />
+            <NavRow
+              icon="sparkles-outline"
+              label="New research"
+              hint="Start a brief"
+              onPress={() => go("/(tabs)/research?intent=new")}
+            />
+            <NavRow
+              icon="notifications-outline"
+              label="Alerts"
+              hint="Price + move triggers"
+              onPress={() => go("/alerts")}
+            />
+            <NavRow
+              icon="search-outline"
+              label="Find ticker"
+              hint="Search by symbol"
+              onPress={() => go("/(tabs)/home?focus=search")}
+            />
+            <NavRow
+              icon="settings-outline"
+              label="Settings"
+              hint={user?.email ?? "Account · Robinhood MCP"}
+              onPress={() => go("/(tabs)/settings")}
+            />
+
+            <Text style={styles.section}>Recent chats</Text>
+            {!session?.token ? (
+              <Text style={styles.muted}>Sign in to sync research threads.</Text>
+            ) : threadsQ.isLoading ? (
+              <Text style={styles.muted}>Loading…</Text>
+            ) : threads.length === 0 ? (
+              <Text style={styles.muted}>No briefs yet — start a new research chat.</Text>
+            ) : (
+              threads.map((t: AgentThread) => (
+                <Pressable
+                  key={t.id}
+                  style={styles.threadRow}
+                  onPress={() => {
+                    hapticSelect();
+                    closeSidebar();
+                    router.push(
+                      `/(tabs)/research?intent=thread&id=${encodeURIComponent(t.id)}` as never,
+                    );
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open research thread: ${t.title || "Research"}`}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.fgDim} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.threadTitle} numberOfLines={1}>
+                      {t.title || "Research"}
+                    </Text>
+                    {t.preview ? (
+                      <Text style={styles.threadPreview} numberOfLines={1}>
+                        {t.preview}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+
           <Pressable
-            style={styles.scrim}
-            onPress={closeSidebar}
+            style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+            onPress={() => go("/(tabs)/research?intent=new")}
             accessibilityRole="button"
-            accessibilityLabel="Close menu"
-          />
-        </Animated.View>
+            accessibilityLabel="Start new research chat"
+          >
+            <LinearGradient
+              colors={colors.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.newChatBtn}
+            >
+              <Ionicons name="add" size={18} color={colors.accentInk} />
+              <Text style={styles.newChatText}>New chat</Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
+
+        {/* Scrim ONLY covers the area to the right of the panel. Because it
+            occupies a distinct flex slot (never overlapping the panel), it
+            can NEVER intercept taps inside the panel — the class of bug that
+            broke every previous iteration. */}
+        <Pressable
+          style={styles.scrim}
+          onPress={closeSidebar}
+          accessibilityRole="button"
+          accessibilityLabel="Close menu"
+        />
       </View>
     </Modal>
   );
@@ -235,7 +232,7 @@ function NavRow({
 }) {
   return (
     <Pressable
-      style={styles.navRow}
+      style={({ pressed }) => [styles.navRow, pressed && { opacity: 0.65 }]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -294,10 +291,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    minHeight: 44,
+    minHeight: 48,
   },
   navIcon: {
     width: 32,

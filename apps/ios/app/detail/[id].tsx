@@ -9,7 +9,6 @@ import {
   fetchAnalysis,
   fetchChart,
   fetchQuote,
-  fetchSettings,
   generateMemo,
   listWatchlist,
   openInRobinhood,
@@ -20,6 +19,11 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { useSidebar } from "@/nav/SidebarContext";
+import { openChatAbout } from "@/nav/chatAbout";
+import { ChatAboutButton } from "@/components/ChatAboutButton";
+import { SetAlertButton } from "@/components/SetAlertButton";
+import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { ChartMedia } from "@/components/ChartMedia";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -182,23 +186,59 @@ export default function DetailSheet() {
         <Stack.Screen
           options={{
             title: "Investable",
+            // Hide iOS's native back chevron/pill so it can't stack behind
+            // our own — that was the cause of the misalignment.
+            headerBackVisible: false,
+            // Center the headerLeft slot vertically within the header. Without
+            // this the slot stretches full-height and the child pill sits at
+            // the top of its container rather than the vertical middle.
+            headerLeftContainerStyle: {
+              paddingLeft: 12,
+              alignItems: "center",
+              justifyContent: "center",
+            },
             headerLeft: () => (
               <Pressable
                 onPress={() => router.replace("/(tabs)/home")}
-                hitSlop={12}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Back to home"
+                // Own the pill explicitly so its geometry is deterministic —
+                // no reliance on native back-button chrome poking through.
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 8,
-                  minHeight: 44,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  gap: 2,
+                  borderRadius: 999,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                  backgroundColor: colors.bgElevated,
                 }}
-                accessibilityRole="button"
-                accessibilityLabel="Back to home"
               >
-                <Ionicons name="chevron-back" size={20} color={colors.fg} />
-                <Text style={{ color: colors.fg, fontSize: 17, fontWeight: "600" }}>Home</Text>
+                <Ionicons name="chevron-back" size={18} color={colors.fg} />
+                <Text
+                  style={{
+                    color: colors.fg,
+                    fontSize: 15,
+                    fontWeight: "700",
+                    includeFontPadding: false,
+                    // Nudges the text baseline to match the chevron's optical
+                    // center on iOS. Without this the text reads 1px high.
+                    lineHeight: 18,
+                  }}
+                >
+                  Home
+                </Text>
               </Pressable>
             ),
+            headerRight: () => <DetailHeaderRight ticker={ticker} />,
+            headerRightContainerStyle: {
+              paddingRight: 12,
+              alignItems: "center",
+              justifyContent: "center",
+            },
           }}
         />
         <View>
@@ -225,10 +265,12 @@ export default function DetailSheet() {
               </Text>
             </View>
           ) : null}
-          {/* Above-the-fold: Open in Robinhood must not wait on agent overview. */}
+          {/* Above-the-fold: Open in Robinhood + Set alert must not wait on
+              agent overview. Both are pure user-actions with no LLM latency. */}
           {ticker && session?.token ? (
             <View style={[styles.badgeRow, { marginTop: 12 }]}>
               <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+              <SetAlertButton ticker={ticker} />
             </View>
           ) : null}
           <View style={styles.tabRow}>
@@ -268,6 +310,8 @@ export default function DetailSheet() {
                 />
               </Section>
             ) : null}
+
+            {ticker ? <TickerNewsSection ticker={ticker} token={session?.token} /> : null}
 
             {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
 
@@ -373,9 +417,14 @@ export default function DetailSheet() {
                       onPress={() => Linking.openURL(c.URL)}
                       style={styles.row}
                     >
-                      <Text style={styles.link}>
-                        {c.Form} · {c.Label}
-                      </Text>
+                      {/* `flex: 1` wrapper is required — `styles.row` is
+                          `flexDirection: "row"`, and without it a long
+                          `Form · Label` line pushes right off the card. */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.link}>
+                          {c.Form} · {c.Label}
+                        </Text>
+                      </View>
                     </Pressable>
                   ))
                 ) : (
@@ -400,41 +449,136 @@ export default function DetailSheet() {
 }
 
 /**
- * Shown when Home → Robinhood MCP is connected. Placed under the quote so it
- * stays above the fold (agent overview used to push it off-screen).
- * Opens the Robinhood stock page — Mapvest never submits broker orders.
+ * Detail screen header-right: sidebar burger + quick-save star. Lets the user
+ * open the app menu from a Stack screen (tabs already carry the burger via
+ * their layout) and toggle watchlist membership without scrolling to the
+ * Save/Memo actions block further down the page.
+ */
+function DetailHeaderRight({ ticker }: { ticker: string }) {
+  const { session } = useSession();
+  const { openSidebar } = useSidebar();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const wlQ = useQuery({
+    queryKey: ["watchlist", session?.token],
+    queryFn: () => listWatchlist({ token: session!.token }),
+    enabled: !!session?.token,
+    staleTime: 15_000,
+  });
+  const saved = !!wlQ.data?.items?.some((e) => e.ticker.toUpperCase() === ticker.toUpperCase());
+  const addM = useMutation({
+    mutationFn: () =>
+      addToWatchlist({ ticker, source: "detail" }, { token: session!.token }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", session?.token] }),
+  });
+  const rmM = useMutation({
+    mutationFn: () => removeFromWatchlist(ticker, { token: session!.token }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", session?.token] }),
+  });
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      {ticker ? (
+        <ChatAboutButton
+          onPress={() => openChatAbout(router, { kind: "ticker", ticker })}
+          accessibilityLabel={`Chat about $${ticker}`}
+        />
+      ) : null}
+      {session?.token ? (
+        <Pressable
+          onPress={() => {
+            hapticSelect();
+            saved ? rmM.mutate() : addM.mutate();
+          }}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={saved ? `Remove ${ticker} from watchlist` : `Save ${ticker}`}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons
+            name={saved ? "star" : "star-outline"}
+            size={20}
+            color={saved ? colors.accent : colors.fgMuted}
+          />
+        </Pressable>
+      ) : null}
+      <Pressable
+        onPress={() => {
+          hapticSelect();
+          openSidebar();
+        }}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Open menu"
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="menu-outline" size={22} color={colors.fg} />
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Renders "Open in Robinhood" on every public ticker page above the fold.
+ * The button opens Robinhood's public stock page (no auth needed). If the
+ * user has connected their Robinhood MCP under Settings, the /v1/robinhood
+ * endpoint may return a personalized linkOut (e.g. pre-filled order intent);
+ * that's a bonus, not a requirement. The button never gates on MCP state.
+ * Mapvest does not submit broker orders — it only deep-links.
  */
 function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }) {
-  const settingsQ = useQuery({
-    queryKey: ["settings", token],
-    queryFn: () => fetchSettings({ token }),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const configured = settingsQ.data?.robinhoodMcp?.configured === true;
-
   const rh = useQuery({
     queryKey: ["robinhood-open", ticker, token],
     queryFn: () => openInRobinhood(ticker, { token }),
-    enabled: configured || settingsQ.isFetched,
+    // Fire regardless of MCP state — the endpoint returns a plain deep-link
+    // even without an MCP token; the token only enriches the response.
+    enabled: !!ticker,
     staleTime: 5 * 60_000,
     retry: false,
   });
 
-  // Prefer API linkOut; if settings say MCP is on, still show a deep-link even
-  // when /v1/robinhood flakes — connection state lives on settings.
+  // Always render the deep-link. Robinhood's stock page is a public URL that
+  // requires no credentials to open — the MCP token gates richer features
+  // (auto-populated order tickets) but must never gate the button itself.
+  // If configured, prefer the API's linkOut in case it's been personalized.
   const url =
-    rh.data?.linkOut ??
-    (configured ? `https://robinhood.com/us/en/stocks/${encodeURIComponent(ticker)}/` : null);
+    rh.data?.linkOut ?? `https://robinhood.com/us/en/stocks/${encodeURIComponent(ticker)}/`;
 
-  if (!url) return null;
+  if (!ticker) return null;
 
   const onPress = async () => {
+    // Prefer the Robinhood app over Safari. Two-step fallback:
+    //   1) Try the custom scheme robinhood://stocks/<TICKER> — opens the app
+    //      directly if installed. Requires "robinhood" in Info.plist's
+    //      LSApplicationQueriesSchemes; without it canOpenURL returns false
+    //      on iOS and we drop to step 2, which is still fine.
+    //   2) Universal Link via Linking.openURL — iOS auto-routes to the
+    //      installed Robinhood app; falls back to Safari if not installed.
+    //      NOTE: never use WebBrowser.openBrowserAsync here — it forces the
+    //      URL into SFSafariViewController and iOS never gets the chance to
+    //      hand it off to the app.
+    const appScheme = `robinhood://stocks/${encodeURIComponent(ticker)}`;
     try {
-      await WebBrowser.openBrowserAsync(url);
+      const canOpenApp = await Linking.canOpenURL(appScheme).catch(() => false);
+      if (canOpenApp) {
+        await Linking.openURL(appScheme);
+        return;
+      }
     } catch {
-      Linking.openURL(url).catch(() => {});
+      // fall through to Universal Link
     }
+    Linking.openURL(url).catch(() => {});
   };
 
   return (
@@ -610,9 +754,17 @@ function AgentOverviewBlock({
   ticker: string;
   token?: string;
 }) {
+  // Lazy-load: the agent brief costs 5–15s and was the single biggest blocker
+  // on this screen. Now the page paints instantly and the user opts in via
+  // the button below. If the query was cached from a previous visit (staleTime
+  // 30min) we honor the cache and skip the button — feels the same as before.
+  const qc = useQueryClient();
+  const key = ["agent-overview", ticker, token ?? "anon"];
+  const hasCache = !!qc.getQueryData(key);
+  const [wantBrief, setWantBrief] = useState(hasCache);
   const overviewQ = useQuery({
-    queryKey: ["agent-overview", ticker, token ?? "anon"],
-    enabled: !!ticker,
+    queryKey: key,
+    enabled: !!ticker && wantBrief,
     staleTime: 30 * 60_000,
     retry: 1,
     queryFn: () =>
@@ -622,6 +774,26 @@ function AgentOverviewBlock({
         { token },
       ),
   });
+
+  if (!wantBrief) {
+    return (
+      <Section title={`Overview · $${ticker}`}>
+        <Pressable
+          onPress={() => {
+            hapticSelect();
+            setWantBrief(true);
+          }}
+          style={({ pressed }) => [styles.loadBriefBtn, pressed && { opacity: 0.75 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Load full agent brief"
+        >
+          <Ionicons name="sparkles-outline" size={16} color={colors.accent} />
+          <Text style={styles.loadBriefText}>Load full brief</Text>
+          <Text style={styles.loadBriefSub}>~5–15s · fresh from the research agent</Text>
+        </Pressable>
+      </Section>
+    );
+  }
 
   return (
     <Section title={`Overview · $${ticker}`}>
@@ -640,12 +812,16 @@ function AgentOverviewBlock({
           </Pressable>
         </View>
       ) : (
-        <View style={{ gap: 10 }}>
+        // `alignSelf: "stretch"` pins the block to the card's inner width so
+        // long agent prose can't push its parent wider than the ScrollView
+        // content column. Without it, RN can size a column-flex View to its
+        // intrinsic content width and let a single long line spill right.
+        <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
           <RichText text={overviewQ.data?.article.content ?? ""} />
           {(overviewQ.data?.article.interesting?.length ?? 0) > 0 ? (
-            <View style={{ gap: 4 }}>
+            <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
               {overviewQ.data!.article.interesting.slice(0, 5).map((line) => (
-                <Text key={line} style={styles.muted}>
+                <Text key={line} style={[styles.muted, { flexShrink: 1 }]}>
                   · {line}
                 </Text>
               ))}
@@ -723,7 +899,7 @@ function AnalysisSnapshotBlock({
 }) {
   return (
     <Section title="At a glance">
-      <Text style={styles.muted}>
+      <Text style={[styles.muted, { flexShrink: 1 }]}>
         {[
           data.sector,
           data.industry,
@@ -736,7 +912,7 @@ function AnalysisSnapshotBlock({
           .join(" · ") || "—"}
       </Text>
       {data.brief ? (
-        <View style={{ marginTop: 10 }}>
+        <View style={{ marginTop: 10, alignSelf: "stretch", width: "100%" }}>
           <RichText text={data.brief} mutedStyle={styles.muted} />
         </View>
       ) : null}
@@ -1134,6 +1310,18 @@ const styles = StyleSheet.create({
   chartHint: { color: colors.fgDim, fontSize: 11 },
   overviewBody: { color: colors.fg, fontSize: 14, lineHeight: 21 },
   errInline: { color: colors.danger, fontSize: 13 },
+  loadBriefBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  loadBriefText: { color: colors.accent, fontWeight: "700", fontSize: 14 },
+  loadBriefSub: { color: colors.fgDim, fontSize: 11, marginLeft: "auto" },
   miniBtn: {
     flexDirection: "row",
     alignItems: "center",

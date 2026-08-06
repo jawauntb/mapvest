@@ -1,13 +1,18 @@
 import { useSession } from "@/auth/session";
-import { AppSidebar } from "@/components/AppSidebar";
-import { SidebarProvider, useSidebar } from "@/nav/SidebarContext";
+import { useSidebar } from "@/nav/SidebarContext";
 import { colors, motion } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -33,11 +38,46 @@ export default function TabsLayout() {
     );
   }
 
+  // SidebarProvider + AppSidebar now live at the root _layout.tsx so detail
+  // screens (which are siblings of the tabs layout) also have access to
+  // useSidebar. This screen just uses the provider from above.
   return (
-    <SidebarProvider>
+    <>
       <TabsInner />
-      <AppSidebar />
-    </SidebarProvider>
+      <EdgeSwipeOpener />
+    </>
+  );
+}
+
+/**
+ * Slim left-edge swipe zone that opens the sidebar. Sits above tab content
+ * but is only 20pt wide and only activates on a right-swipe of ≥40pt, so
+ * it never intercepts tap targets on any tab screen.
+ */
+function EdgeSwipeOpener() {
+  const { openSidebar } = useSidebar();
+  const pan = Gesture.Pan()
+    // Only activate once the finger has moved ≥30pt right — leaves horizontal
+    // list scrolls and taps in front of it untouched.
+    .activeOffsetX([30, 30])
+    .onEnd((e) => {
+      if (e.translationX > 40 && Math.abs(e.velocityX) > 0) {
+        runOnJS(openSidebar)();
+      }
+    });
+  return (
+    <GestureDetector gesture={pan}>
+      <View
+        pointerEvents="box-only"
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: 20,
+        }}
+      />
+    </GestureDetector>
   );
 }
 
@@ -147,9 +187,15 @@ function TabsInner() {
         }}
       />
       {/* Sidebar destinations — hidden from tab bar */}
-      <Tabs.Screen name="research" options={{ href: null, title: "Research" }} />
+      <Tabs.Screen
+        name="research"
+        options={{ href: null, title: "Research", headerShown: false }}
+      />
       <Tabs.Screen name="saved" options={{ href: null, title: "Watchlist" }} />
-      <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
+      <Tabs.Screen
+        name="settings"
+        options={{ href: null, title: "Settings", headerShown: false }}
+      />
       <Tabs.Screen
         name="admin"
         options={{

@@ -1,6 +1,8 @@
 import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { ChatAboutButton } from "@/components/ChatAboutButton";
+import { openChatAbout } from "@/nav/chatAbout";
 import { colors, radii } from "@/theme/tokens";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
@@ -170,6 +172,32 @@ export default function MapScreen() {
           </BlurView>
         ) : null}
       </View>
+
+      {/* Floating "Chat about this area" affordance. Lives outside the
+          pointerEvents="none" overlay so it's actually tappable. Only shown
+          when we have nearby pins to seed the chat with. */}
+      {items.length > 0 ? (
+        <View style={styles.chatFab}>
+          <ChatAboutButton
+            label="Chat about this area"
+            accessibilityLabel="Chat about brands visible on the map"
+            onPress={() =>
+              openChatAbout(router, {
+                kind: "map",
+                label: `${items.length} pins on screen`,
+                center: { lat: region.latitude, lng: region.longitude },
+                nearby: items.slice(0, 20).map((i) => {
+                  const pin = resolvePinTicker(i);
+                  return {
+                    ticker: pin?.symbol,
+                    name: i.place.name,
+                  };
+                }),
+              })
+            }
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -287,6 +315,13 @@ const styles = StyleSheet.create({
     right: 16,
     alignItems: "center",
     gap: 8,
+  },
+  chatFab: {
+    // Bottom-right so it doesn't collide with Google Maps' own compass /
+    // my-location button that sits top-right on the map surface.
+    position: "absolute",
+    bottom: 24,
+    right: 16,
   },
   loadingPill: {
     width: 36,

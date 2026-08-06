@@ -17,7 +17,7 @@ export const atlasSignal = {
     fg: "#F2F4F5",
     fgMuted: "#8B939C",
     fgDim: "#5C6570",
-    accent: "#3ECF8E",
+    accent: "#14C4A6",
     accentHover: "#52D99C",
     accentMuted: "#1F6B4A",
     accentInk: "#0A1F14",
@@ -30,7 +30,7 @@ export const atlasSignal = {
     accent2Muted: "#173F73",
     // The "Atlas sweep" — jade to signal-blue. Hero backgrounds, chart
     // strokes, loading sweeps. Flat gradient, no bloom/glow.
-    gradient: "linear-gradient(135deg, #3ECF8E 0%, #21B5A6 45%, #2F8FEF 100%)",
+    gradient: "linear-gradient(135deg, #14C4A6 0%, #21B5A6 45%, #2F8FEF 100%)",
     warn: "#E8A054",
     danger: "#E85D5D",
     border: "#242A32",

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { onMemoFinished } from "../lib/notifiers/memoNotifier.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
 
@@ -108,6 +109,14 @@ memo.post("/", optionalAuth, requireGenerationQuota("memo"), async (c) => {
     const { memoText, provider } = pickBrief(j);
     if (!memoText) {
       return c.json({ error: "no memo returned by underlying analyzer" }, 502);
+    }
+    // Fire-and-forget push for authenticated users. Anonymous callers can't
+    // opt in to notifications, so we simply skip when no user is set.
+    const memoUser = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
+      "user",
+    );
+    if (memoUser?.id) {
+      onMemoFinished(memoUser.id, ticker, provider).catch(() => {});
     }
     return c.json({
       ticker,

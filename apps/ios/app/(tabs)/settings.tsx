@@ -1,12 +1,26 @@
 import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import {
+  ensurePermissions,
+  getStoredTokenId,
+  registerForPush,
+} from "@/notif/registerForPush";
+import {
+  getPushPrefs,
+  PUSH_EVENT_LABELS,
+  PUSH_EVENT_ORDER,
+  type PushEventKey,
+  type PushPrefs,
+  setPushPref,
+} from "@/notif/prefs";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -15,14 +29,19 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
 
 /**
- * /settings — account, sign-out, Robinhood MCP (via sidebar).
+ * /settings — account, sign-out, Robinhood MCP, opt-in push notifications.
  * Sign-in / sign-out lives here (Phase 8 Slice B); other tabs work for guests.
+ *
+ * Notifications section is entirely opt-in: master switch requests OS
+ * permission on first flip; individual per-event toggles POST to
+ * /v1/push/prefs on every change (fire-and-forget).
  */
 export default function SettingsScreen() {
   const { user, session, signOut } = useSession();
@@ -91,6 +110,8 @@ export default function SettingsScreen() {
           <Text style={styles.value}>{user?.email ?? "—"}</Text>
           <Text style={styles.muted}>{user?.id}</Text>
         </View>
+
+        <NotificationsSection sessionToken={session.token} />
 
         <View style={styles.card}>
           <View style={styles.cardHead}>
@@ -203,6 +224,152 @@ export default function SettingsScreen() {
   );
 }
 
+// ---------- Notifications sub-section ----------
+
+/**
+ * One-per-event toggle list. All prefs default to `false`; the user MUST
+ * flip individual switches for each notification kind they want. A master
+ * "Enable notifications" switch at top requests the OS permission and, once
+ * granted, keeps the individual toggles visible + interactive. When permission
+ * is denied we still register the token (spec) but disable interaction on the
+ * per-event switches so a user isn't tricked into a no-op change.
+ */
+function NotificationsSection({ sessionToken }: { sessionToken: string }) {
+  const [permissionStatus, setPermissionStatus] = useState<
+    "unknown" | "granted" | "denied" | "undetermined"
+  >("unknown");
+  const [tokenId, setTokenId] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<PushPrefs>({});
+  const [busy, setBusy] = useState(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPatch = useRef<Partial<PushPrefs>>({});
+
+  // Initial load — permission + prefs.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const perm = await Notifications.getPermissionsAsync();
+        if (cancelled) return;
+        setPermissionStatus(
+          perm.status === "granted"
+            ? "granted"
+            : perm.status === "denied"
+              ? "denied"
+              : "undetermined",
+        );
+        const stored = await getStoredTokenId();
+        const remote = await getPushPrefs({ token: sessionToken });
+        if (cancelled) return;
+        setTokenId(remote.tokenId ?? stored);
+        setPrefs(remote.prefs);
+      } catch {
+        /* silent — UI shows disabled state */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken]);
+
+  const commit = useCallback(() => {
+    if (!tokenId) return;
+    const patch = pendingPatch.current;
+    pendingPatch.current = {};
+    if (Object.keys(patch).length === 0) return;
+    void setPushPref(tokenId, patch, { token: sessionToken });
+  }, [tokenId, sessionToken]);
+
+  const scheduleCommit = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(commit, 400);
+  }, [commit]);
+
+  const setEvent = (key: PushEventKey, val: boolean) => {
+    setPrefs((prev) => ({ ...prev, [key]: val }));
+    pendingPatch.current = { ...pendingPatch.current, [key]: val };
+    scheduleCommit();
+    hapticSelect();
+  };
+
+  const onToggleMaster = async (next: boolean) => {
+    if (!next) {
+      // "Master off" turns every event pref to false in one write. The OS
+      // permission itself can only be revoked from iOS Settings — we honor
+      // the user's intent by muting everything.
+      const off: PushPrefs = {};
+      for (const k of PUSH_EVENT_ORDER) off[k] = false;
+      setPrefs((prev) => ({ ...prev, ...off }));
+      pendingPatch.current = { ...pendingPatch.current, ...off };
+      scheduleCommit();
+      return;
+    }
+    setBusy(true);
+    try {
+      const granted = await ensurePermissions();
+      setPermissionStatus(granted ? "granted" : "denied");
+      if (granted) {
+        // Ensure the server has a token for us. registerForPush is idempotent.
+        const res = await registerForPush({ token: sessionToken });
+        if (res?.tokenId) setTokenId(res.tokenId);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const masterOn = permissionStatus === "granted";
+  const anyEventOn = PUSH_EVENT_ORDER.some((k) => prefs[k] === true);
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <Ionicons name="notifications-outline" size={15} color={colors.accent} />
+        <Text style={styles.label}>Notifications</Text>
+      </View>
+      <Text style={styles.muted}>
+        Opt-in push notifications. Each event below is off by default. Turn on the master switch to
+        grant iOS permission, then pick which events you want to hear about.
+      </Text>
+
+      <View style={styles.notifRow}>
+        <Text style={styles.notifLabel}>Enable notifications</Text>
+        <Switch
+          value={masterOn}
+          disabled={busy}
+          onValueChange={onToggleMaster}
+          accessibilityLabel="Enable notifications"
+        />
+      </View>
+
+      {permissionStatus === "denied" ? (
+        <Text style={styles.muted}>
+          iOS permission is currently denied. Open Settings → Notifications → Mapvest to allow
+          push, then return here to pick which events you want.
+        </Text>
+      ) : null}
+
+      {PUSH_EVENT_ORDER.map((key) => (
+        <View style={styles.notifRow} key={key}>
+          <Text style={styles.notifLabel}>{PUSH_EVENT_LABELS[key]}</Text>
+          <Switch
+            value={prefs[key] === true}
+            disabled={!masterOn || !tokenId}
+            onValueChange={(v) => setEvent(key, v)}
+            accessibilityLabel={PUSH_EVENT_LABELS[key]}
+          />
+        </View>
+      ))}
+
+      {masterOn && !anyEventOn ? (
+        <Text style={styles.muted}>
+          Nothing is enabled yet — flip any switch above to start receiving that event type.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** Shown on Home when there's no session — map/camera/list/research still work; only Save/settings need sign-in. */
 function GuestHome() {
   const router = useRouter();
@@ -247,6 +414,19 @@ const styles = StyleSheet.create({
   value: { color: colors.fg, fontSize: 16 },
   configuredRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   muted: { color: colors.fgMuted, fontSize: 13, lineHeight: 18 },
+  notifRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    gap: 12,
+  },
+  notifLabel: {
+    color: colors.fg,
+    fontSize: 15,
+    flex: 1,
+    paddingRight: 8,
+  },
   input: {
     marginTop: 8,
     borderWidth: 1,

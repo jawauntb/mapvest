@@ -1,10 +1,13 @@
 import { type Quote, fetchNearby, fetchQuotesMap } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
+import { SectorRing, buildSegments } from "@/components/SectorRing";
 import { SkeletonList } from "@/components/Skeleton";
+import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
@@ -93,8 +96,59 @@ export default function ListScreen() {
   });
   const quotes: Record<string, Quote> = quotesQ.data ?? {};
 
+  // Sector composition of the currently-visible items. Cheap: O(n) over
+  // items, memoized on items identity. Priority:
+  //   1. Public brand's own sector.
+  //   2. Private brand's declared sector (still meaningful for grouping).
+  //   3. First OSM/place type as a fuzzy fallback ("cafe", "supermarket").
+  //   4. "Unknown" — rolled into "Other" by buildSegments if it's small.
+  const sectorSegments = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const i of items) {
+      const inv = i.investable;
+      const raw = inv?.brand.sector ?? i.place.types[0] ?? "Unknown";
+      const key = (raw ?? "Unknown").trim() || "Unknown";
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return buildSegments(counts, 6);
+  }, [items]);
+
+  // Build a `list` seed from the currently visible items — capped at 20 so
+  // the resulting message doesn't balloon. Only real ticker + name info; we
+  // never leak coordinates through the chat prefill.
+  const chatSeedItems = useMemo(
+    () =>
+      items.slice(0, 20).map((i) => ({
+        ticker:
+          i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker,
+        name: i.place.name,
+        sector: i.investable?.brand.sector,
+      })),
+    [items],
+  );
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      {(q.isLoading || sectorSegments.length > 0) && (
+        <View style={styles.ringWrap}>
+          <SectorRing segments={sectorSegments} loading={q.isLoading} />
+        </View>
+      )}
+      {items.length > 0 ? (
+        <View style={styles.chatPillWrap}>
+          <ChatAboutButton
+            label="Chat about this list"
+            accessibilityLabel="Chat about this nearby list"
+            onPress={() =>
+              openChatAbout(router, {
+                kind: "list",
+                label: `${items.length} nearby brands`,
+                items: chatSeedItems,
+              })
+            }
+          />
+        </View>
+      ) : null}
       <View style={styles.sortRow}>
         {SORTS.map(({ key, label, icon }) => (
           <ScalePressable
@@ -239,6 +293,14 @@ function formatDistance(m: number): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  ringWrap: { paddingTop: 8, paddingBottom: 12 },
+  chatPillWrap: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
   sortRow: { flexDirection: "row", gap: 8, padding: 12 },
   chip: {
     flexDirection: "row",

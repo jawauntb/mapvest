@@ -102,9 +102,19 @@ export function fetchNearby(
 /**
  * POST a captured photo to /v1/identify. `imageUri` is a local file:// URI
  * from expo-camera. We upload as multipart/form-data.
+ *
+ * Optional `roi` (normalized image-space circle) and `hint` (short text
+ * note) are attached as extra multipart fields for the server to consume
+ * once ROI-aware identify is wired up. They are safe to omit — the server
+ * treats absence as "identify the whole frame".
  */
 export async function identifyPhoto(
-  args: { imageUri: string; location?: LatLng },
+  args: {
+    imageUri: string;
+    location?: LatLng;
+    roi?: { xN: number; yN: number; rN: number };
+    hint?: string;
+  },
   opts: FetchOpts = {},
 ): Promise<IdentifyResponse> {
   const form = new FormData();
@@ -118,6 +128,12 @@ export async function identifyPhoto(
   } as any);
   if (args.location) {
     form.append("location", JSON.stringify(args.location));
+  }
+  if (args.roi) {
+    form.append("roi", JSON.stringify(args.roi));
+  }
+  if (args.hint && args.hint.trim()) {
+    form.append("hint", args.hint.trim());
   }
   const headers = new Headers();
   if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
@@ -155,10 +171,11 @@ export type WatchEntry = {
   ticker: string;
   name?: string;
   sector?: string;
-  source: "camera" | "map" | "list" | "manual" | "detail" | "live";
+  source: "camera" | "map" | "list" | "manual" | "detail" | "live" | "web";
   memo?: string;
   memoProvider?: string;
   createdAt: string;
+  listId?: string;
 };
 
 export function generateMemo(
@@ -361,6 +378,137 @@ export function agentChat(
   );
 }
 
+/**
+ * Streaming counterpart to `agentChat`. POSTs to /v1/agent/stream and consumes
+ * the SSE response line-by-line via fetch + ReadableStream — EventSource is
+ * intentionally avoided because RN's built-in fetch doesn't ship it and the
+ * common polyfills break Reanimated worklets.
+ *
+ * The callback receives every parsed SSE event as `{ type, data }`. The
+ * returned promise resolves with the final article once `event: done` fires,
+ * or rejects on `event: error` / transport failure. If the response body is
+ * missing (some RN releases hide it behind polyfills) the promise rejects so
+ * ResearchSheet can fall back to the non-streaming call.
+ */
+export type AgentStreamEvent =
+  | { type: "tool"; data: { name: string; arg?: string } }
+  | { type: "tool_end"; data: { name: string; ok: boolean } }
+  | { type: "reasoning"; data: { text: string } }
+  | { type: "token"; data: { text: string } }
+  | { type: "article"; data: ResearchArticle }
+  | { type: "done"; data: { threadId?: string } }
+  | { type: "error"; data: { message: string } }
+  | { type: string; data: unknown };
+
+export async function agentChatStream(
+  message: string,
+  args: { ticker?: string; threadId?: string } = {},
+  onEvent: (event: AgentStreamEvent) => void,
+  opts: FetchOpts = {},
+): Promise<{ article: ResearchArticle; threadId?: string }> {
+  const headers = new Headers();
+  headers.set("Accept", "text/event-stream");
+  headers.set("Content-Type", "application/json");
+  if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
+  try {
+    headers.set("X-Device-Id", await getDeviceId());
+  } catch {
+    /* SecureStore unavailable — request proceeds without device id */
+  }
+
+  const res = await fetch(`${API_URL}/v1/agent/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      message,
+      ticker: args.ticker,
+      threadId: args.threadId,
+    }),
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let msg = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim()) msg = j.error;
+    } catch {
+      /* plain-text body */
+    }
+    throw new ApiError(res.status, msg);
+  }
+
+  // React Native's fetch exposes the body as a ReadableStream on iOS 18 / RN 0.76+.
+  // If the polyfill hides it (older Expo Go builds), fall back to res.text() which
+  // still lets us fire the terminal events even without token-by-token motion.
+  const body = res.body as ReadableStream<Uint8Array> | null;
+  const decoder = new TextDecoder("utf-8");
+
+  let finalArticle: ResearchArticle | undefined;
+  let finalThreadId: string | undefined;
+  let errored: string | undefined;
+
+  const dispatch = (rawBlock: string) => {
+    const lines = rawBlock.split("\n").filter(Boolean);
+    if (!lines.length) return;
+    let eventName = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) return;
+    let data: unknown;
+    try {
+      data = JSON.parse(dataLines.join("\n"));
+    } catch {
+      return;
+    }
+    const evt = { type: eventName, data } as AgentStreamEvent;
+    onEvent(evt);
+    if (eventName === "article") {
+      finalArticle = data as ResearchArticle;
+    } else if (eventName === "done") {
+      const d = data as { threadId?: string };
+      finalThreadId = d?.threadId;
+    } else if (eventName === "error") {
+      const d = data as { message?: string };
+      errored = d?.message || "stream error";
+    }
+  };
+
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx = buf.indexOf("\n\n");
+      while (idx !== -1) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        dispatch(block);
+        idx = buf.indexOf("\n\n");
+      }
+      if (errored) break;
+    }
+    if (!errored && buf.trim()) dispatch(buf);
+  } else {
+    // Whole-body fallback for RN builds without a streaming fetch.
+    const text = await res.text();
+    for (const block of text.split("\n\n")) {
+      dispatch(block);
+      if (errored) break;
+    }
+  }
+
+  if (errored) throw new ApiError(500, errored);
+  if (!finalArticle) throw new ApiError(500, "stream ended without an article");
+  return { article: finalArticle, threadId: finalThreadId };
+}
+
 export function secFilings(
   ticker: string,
   opts: FetchOpts = {},
@@ -368,14 +516,24 @@ export function secFilings(
   return jsonFetch(`/v1/memo/sec/${ticker}`, { method: "GET" }, opts);
 }
 
-export function listWatchlist(opts: FetchOpts): Promise<{ items: WatchEntry[] }> {
-  return jsonFetch("/v1/watchlist", { method: "GET" }, opts);
+export function listWatchlist(
+  opts: FetchOpts,
+  args: { listId?: string } = {},
+): Promise<{ items: WatchEntry[] }> {
+  const qs = args.listId ? `?listId=${encodeURIComponent(args.listId)}` : "";
+  return jsonFetch(`/v1/watchlist${qs}`, { method: "GET" }, opts);
+}
+
+export function fetchWatchlistBrief(
+  opts: FetchOpts,
+): Promise<{ headline: string; body: string; generatedAt: string }> {
+  return jsonFetch("/v1/watchlist/brief", { method: "GET" }, opts);
 }
 
 export function addToWatchlist(
-  entry: Partial<WatchEntry> & { ticker: string },
+  entry: Partial<WatchEntry> & { ticker: string; listId?: string },
   opts: FetchOpts,
-): Promise<{ entry: WatchEntry }> {
+): Promise<{ entry: WatchEntry; unresolved?: boolean }> {
   return jsonFetch("/v1/watchlist/add", { method: "POST", body: JSON.stringify(entry) }, opts);
 }
 
@@ -450,4 +608,113 @@ export function adminMetrics(opts: FetchOpts): Promise<{
   activeUsers: number;
 }> {
   return jsonFetch("/v1/admin/metrics", { method: "GET" }, opts);
+}
+
+// -------- multiple watchlists --------
+// Server endpoints under /v1/watchlist/lists and /list-summary — see
+// apps/api/src/routes/watchlist.ts. Types kept plain so the same shapes can
+// flow through useQuery cache keys without a schema roundtrip.
+
+export type WatchlistSummary = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  tickerCount: number;
+  createdAt?: string;
+};
+
+export type ListSummaryResponse = {
+  sectors: Array<{ sector: string; count: number; pct: number }>;
+  backtestReady: boolean;
+  tickerCount: number;
+  updatedAt: string;
+};
+
+export function listWatchlists(opts: FetchOpts): Promise<{ lists: WatchlistSummary[] }> {
+  return jsonFetch("/v1/watchlist/lists", { method: "GET" }, opts);
+}
+
+export function createWatchlist(
+  name: string,
+  opts: FetchOpts,
+): Promise<{ list: WatchlistSummary }> {
+  return jsonFetch(
+    "/v1/watchlist/lists",
+    { method: "POST", body: JSON.stringify({ name }) },
+    opts,
+  );
+}
+
+export function renameWatchlist(
+  id: string,
+  name: string,
+  opts: FetchOpts,
+): Promise<{ list: WatchlistSummary }> {
+  return jsonFetch(
+    `/v1/watchlist/lists/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify({ name }) },
+    opts,
+  );
+}
+
+export async function deleteWatchlist(id: string, opts: FetchOpts): Promise<void> {
+  // 204 No Content — jsonFetch expects JSON, so we skip it and fetch directly.
+  const headers = new Headers();
+  if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
+  headers.set("Accept", "application/json");
+  try {
+    headers.set("X-Device-Id", await getDeviceId());
+  } catch {
+    /* SecureStore unavailable */
+  }
+  const res = await fetch(`${API_URL}/v1/watchlist/lists/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers,
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let msg = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim()) msg = j.error;
+    } catch {
+      /* plain text */
+    }
+    throw new ApiError(res.status, msg);
+  }
+}
+
+export async function moveTicker(
+  args: { ticker: string; toListId: string; fromListId?: string },
+  opts: FetchOpts,
+): Promise<void> {
+  const headers = new Headers({ "Content-Type": "application/json", Accept: "application/json" });
+  if (opts.token) headers.set("Authorization", `Bearer ${opts.token}`);
+  try {
+    headers.set("X-Device-Id", await getDeviceId());
+  } catch {
+    /* SecureStore unavailable */
+  }
+  const res = await fetch(`${API_URL}/v1/watchlist/move`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(args),
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ApiError(res.status, text || res.statusText);
+  }
+}
+
+export function getListSummary(
+  listId: string,
+  opts: FetchOpts,
+): Promise<ListSummaryResponse> {
+  return jsonFetch(
+    `/v1/watchlist/list-summary?listId=${encodeURIComponent(listId)}`,
+    { method: "GET" },
+    opts,
+  );
 }

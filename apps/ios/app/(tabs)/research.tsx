@@ -12,12 +12,13 @@ import { RichText } from "@/components/RichText";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
+import { decodeChatSeed, seedToDraft } from "@/nav/chatAbout";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -39,7 +40,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function ResearchChatScreen() {
   const { session } = useSession();
   const router = useRouter();
-  const params = useLocalSearchParams<{ intent?: string; id?: string }>();
+  const params = useLocalSearchParams<{ intent?: string; id?: string; seed?: string }>();
   const [mode, setMode] = useState<"list" | "chat">("list");
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
@@ -48,6 +49,11 @@ export default function ResearchChatScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  // Track which seed we've already consumed so a re-render (or the effect
+  // re-running because of the router/params identity churn) doesn't clobber
+  // a draft the user has since edited.
+  const consumedSeedRef = useRef<string | null>(null);
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -72,18 +78,36 @@ export default function ResearchChatScreen() {
     [session?.token],
   );
 
-  function newChat() {
+  function newChat(prefill?: string) {
     hapticTap();
     setMode("chat");
     setThreadId(undefined);
     setTurns([]);
     setTitle("New research");
-    setInput("");
+    setInput(prefill ?? "");
     setErr(null);
+    if (prefill) {
+      // Auto-focus so the user lands on the composer with the draft ready
+      // to edit + send. Small delay lets the chat view mount first.
+      setTimeout(() => inputRef.current?.focus(), 120);
+    }
   }
 
-  // Sidebar deep-links: ?intent=new | ?intent=thread&id=
+  // Sidebar deep-links: ?intent=new | ?intent=thread&id= | ?seed=<b64>
   useEffect(() => {
+    // Universal "Chat about this" seed. We consume each unique seed exactly
+    // once — if the effect re-fires with the same seed we no-op, so any
+    // edits the user made to the draft aren't clobbered.
+    if (params.intent === "new" && params.seed) {
+      if (consumedSeedRef.current === params.seed) return;
+      consumedSeedRef.current = params.seed;
+      const parsed = decodeChatSeed(params.seed);
+      // Malformed seed → silently fall through to an empty draft. Never
+      // crash the screen just because a query string looked weird.
+      const draft = parsed ? seedToDraft(parsed) : "";
+      newChat(draft);
+      return;
+    }
     if (params.intent === "new") {
       newChat();
       return;
@@ -94,7 +118,7 @@ export default function ResearchChatScreen() {
     // biome-ignore lint/correctness/useExhaustiveDependencies: newChat is a
     // plain (unmemoized) function recreated every render — this effect must
     // key off the URL params only, or it would re-fire on every render.
-  }, [params.intent, params.id, openThread]);
+  }, [params.intent, params.id, params.seed, openThread]);
 
   async function onSend() {
     const msg = input.trim();
@@ -140,7 +164,7 @@ export default function ResearchChatScreen() {
           <Text style={styles.h1}>Research</Text>
           <Pressable
             style={styles.newBtn}
-            onPress={newChat}
+            onPress={() => newChat()}
             accessibilityRole="button"
             accessibilityLabel="New research chat"
           >
@@ -160,7 +184,11 @@ export default function ResearchChatScreen() {
               title="No briefs yet"
               subtitle="Start a chat, or open a ticker → Research…"
             >
-              <PrimaryButton label="Start research" onPress={newChat} style={{ marginTop: 4 }} />
+              <PrimaryButton
+                label="Start research"
+                onPress={() => newChat()}
+                style={{ marginTop: 4 }}
+              />
             </EmptyState>
           ) : (
             <FlatList
@@ -221,7 +249,7 @@ export default function ResearchChatScreen() {
             {title}
           </Text>
           <Pressable
-            onPress={newChat}
+            onPress={() => newChat()}
             style={styles.back}
             accessibilityRole="button"
             accessibilityLabel="New chat"
@@ -280,6 +308,7 @@ export default function ResearchChatScreen() {
 
         <View style={styles.composer}>
           <TextInput
+            ref={inputRef}
             style={styles.input}
             value={input}
             onChangeText={setInput}

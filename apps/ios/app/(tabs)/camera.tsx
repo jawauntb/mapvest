@@ -1,12 +1,15 @@
 import { addToWatchlist, identifyPhoto } from "@/api/client";
-import type { IdentifyResponse, LatLng } from "@/api/types";
+import type { Confidence, Detection, IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { captureStill } from "@/camera/captureStill";
+import { CameraDetectionOverlay } from "@/components/CameraDetectionOverlay";
+import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { pickFromLibrary } from "@/util/pickImage";
 import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
@@ -16,8 +19,16 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  type LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type CameraCache = {
@@ -48,6 +59,21 @@ export default function CameraScreen() {
   const [err, setErr] = useState<string | null>(cached?.err ?? null);
   const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
   const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+  const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+  // `pendingUri` gates the annotator. When set, we render <PhotoAnnotator>
+  // full-screen over the camera and only kick off identify once the user
+  // confirms. Applies to BOTH capture and library-picked photos.
+  const [pendingUri, setPendingUri] = useState<string | null>(null);
+
+  function onPreviewLayout(e: LayoutChangeEvent) {
+    const { width, height } = e.nativeEvent.layout;
+    setPreviewSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height },
+    );
+  }
 
   // Drop stale ready flag when CameraView unmounts (tab blur / frozen frame).
   useEffect(() => {
@@ -56,6 +82,22 @@ export default function CameraScreen() {
       readySinceRef.current = null;
     }
   }, [focused, frozenUri]);
+
+  // Coerce the identify response into a `Detection[]`. If the API already
+  // returns `detections` (forward-compat path), use them; otherwise synthesize
+  // a single centered detection from the top investable so users still get the
+  // glow-box treatment.
+  //
+  // NOTE: This useMemo MUST live above the permission-gated early returns so
+  // the hook count stays stable across renders (Rules of Hooks). Previously
+  // it sat below and the first render — when perm is still `null` — bailed
+  // before ever calling this hook, so as soon as perm loaded React tripped
+  // "Rendered more hooks than during the previous render." That crash is what
+  // made the camera tab appear "broken" after the PhotoAnnotator wiring.
+  const detections = useMemo<Detection[]>(
+    () => coerceDetections(result),
+    [result],
+  );
 
   function persistCamera(next: Partial<CameraCache>) {
     const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
@@ -123,36 +165,89 @@ export default function CameraScreen() {
     setSavedNote(null);
     try {
       const photo = await captureStill(cam, { readySince: readySinceRef.current });
-      setFrozenUri(photo.uri);
-      persistCamera({ frozenUri: photo.uri, result: null, err: null, queuedNote: null });
-      const location = await currentLocation();
+      // Hand off to the annotator instead of identifying immediately —
+      // the user gets to draw an ROI + type a hint before we upload.
+      setPendingUri(photo.uri);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(msg || "Capture failed");
+      persistCamera({ err: msg });
+    } finally {
+      setBusy(false);
+    }
+  }
 
+  async function pickLibrary() {
+    if (busy) return;
+    hapticTap();
+    try {
+      const uri = await pickFromLibrary();
+      if (!uri) return;
+      // Same annotator flow as fresh capture.
+      setErr(null);
+      setResult(null);
+      setQueuedNote(null);
+      setSavedNote(null);
+      setPendingUri(uri);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not open library");
+    }
+  }
+
+  /**
+   * Run identify with optional ROI + hint. Shared by the annotator's Scan
+   * path for both freshly captured and library-picked photos. Falls back to
+   * enqueue on network failure / offline just like the original inline
+   * flow did.
+   */
+  async function runIdentify(args: {
+    imageUri: string;
+    roi?: { xN: number; yN: number; rN: number };
+    hint?: string;
+  }) {
+    setBusy(true);
+    setErr(null);
+    setResult(null);
+    setQueuedNote(null);
+    setSavedNote(null);
+    setFrozenUri(args.imageUri);
+    persistCamera({
+      frozenUri: args.imageUri,
+      result: null,
+      err: null,
+      queuedNote: null,
+    });
+    const location = await currentLocation();
+    try {
       if (!online) {
-        await enqueuePhoto({ imageUri: photo.uri, location });
+        await enqueuePhoto({ imageUri: args.imageUri, location });
         const note = "Offline — queued. Will upload when back online.";
         setQueuedNote(note);
         persistCamera({ queuedNote: note });
         return;
       }
-
       try {
         const resp = await identifyPhoto(
-          { imageUri: photo.uri, location },
+          {
+            imageUri: args.imageUri,
+            location,
+            roi: args.roi,
+            hint: args.hint,
+          },
           { token: session?.token },
         );
         setResult(resp);
         persistCamera({ result: resp, err: null });
       } catch (e) {
-        await enqueuePhoto({ imageUri: photo.uri, location });
+        await enqueuePhoto({ imageUri: args.imageUri, location });
         const msg = e instanceof Error ? e.message : String(e);
         setQueuedNote("Upload failed — queued for retry.");
         setErr(msg);
-        persistCamera({ queuedNote: "Upload failed — queued for retry.", err: msg });
+        persistCamera({
+          queuedNote: "Upload failed — queued for retry.",
+          err: msg,
+        });
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setErr(msg || "Capture failed");
-      persistCamera({ err: msg });
     } finally {
       setBusy(false);
     }
@@ -213,8 +308,24 @@ export default function CameraScreen() {
   // Only mount while focused so blurred tabs cannot hold the camera session.
   const showLivePreview = focused && !frozenUri;
 
+  // Full-screen annotator takes over once we have a pending photo (captured
+  // or library-picked). Returning early keeps the CameraView unmounted
+  // while the modal is up, which frees the AVFoundation session.
+  if (pendingUri) {
+    return (
+      <PhotoAnnotator
+        imageUri={pendingUri}
+        onCancel={() => setPendingUri(null)}
+        onConfirm={(opts) => {
+          setPendingUri(null);
+          void runIdentify(opts);
+        }}
+      />
+    );
+  }
+
   return (
-    <View style={styles.root}>
+    <View style={styles.root} onLayout={onPreviewLayout}>
       {frozenUri ? (
         <Image source={{ uri: frozenUri }} style={StyleSheet.absoluteFillObject} />
       ) : showLivePreview ? (
@@ -240,6 +351,9 @@ export default function CameraScreen() {
           <Text style={styles.msg}>Opening camera…</Text>
         </View>
       )}
+      {frozenUri && detections.length > 0 ? (
+        <CameraDetectionOverlay detections={detections} containerSize={previewSize} />
+      ) : null}
       <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
         <View style={styles.statusRow} pointerEvents="none">
           <BlurView intensity={40} tint="dark" style={styles.statusPill}>
@@ -333,27 +447,81 @@ export default function CameraScreen() {
               <Text style={styles.secondaryText}>Retake</Text>
             </Pressable>
           ) : (
-            <Pressable
-              onPress={() => void capture()}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel="Capture photo"
-              style={[styles.shutterRing, busy && { opacity: 0.5 }]}
-            >
-              <LinearGradient
-                colors={colors.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.shutterGrad}
+            <View style={styles.captureRow}>
+              {/* Spacer keeps the shutter visually centered while the
+                  Library pill anchors to the right. */}
+              <View style={styles.captureSide} />
+              <Pressable
+                onPress={() => void capture()}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel="Capture photo"
+                style={[styles.shutterRing, busy && { opacity: 0.5 }]}
               >
-                <View style={styles.shutterInner} />
-              </LinearGradient>
-            </Pressable>
+                <LinearGradient
+                  colors={colors.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.shutterGrad}
+                >
+                  <View style={styles.shutterInner} />
+                </LinearGradient>
+              </Pressable>
+              <View style={styles.captureSide}>
+                <Pressable
+                  onPress={() => void pickLibrary()}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick from library"
+                  style={[styles.libraryBtn, busy && { opacity: 0.5 }]}
+                >
+                  <Ionicons name="images-outline" size={16} color={colors.fg} />
+                  <Text style={styles.libraryBtnText}>Library</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
         </View>
       </SafeAreaView>
     </View>
   );
+}
+
+/**
+ * Map the categorical `Confidence` enum to a numeric [0,1] value so
+ * synthesized detections can drive the overlay's opacity ramp.
+ */
+function confidenceToNumber(c: Confidence | undefined): number {
+  if (c === "high") return 0.9;
+  if (c === "medium") return 0.65;
+  if (c === "low") return 0.4;
+  return 0.6;
+}
+
+/**
+ * Coerce an identify response into a `Detection[]`. Preserves any
+ * server-provided detections (forward-compat) and otherwise synthesizes
+ * a single centered detection from the top investable so the overlay
+ * still has something to render.
+ */
+function coerceDetections(resp: IdentifyResponse | null): Detection[] {
+  if (!resp) return [];
+  if (resp.detections && resp.detections.length > 0) {
+    return resp.detections.slice(0, 3);
+  }
+  const inv = resp.investables[0];
+  if (!inv) return [];
+  const ticker = inv.brand.ticker?.symbol ?? inv.comparables?.[0]?.ticker;
+  if (!ticker) return [];
+  return [
+    {
+      // Centered ROI box — ~60% wide, ~40% tall, placed mid-frame.
+      box: { x: 0.2, y: 0.3, w: 0.6, h: 0.4 },
+      ticker,
+      name: inv.brand.name,
+      confidence: confidenceToNumber(inv.confidence),
+    },
+  ];
 }
 
 const styles = StyleSheet.create({
@@ -381,6 +549,32 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   permRoot: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
   controls: { alignItems: "center", paddingBottom: 24 },
+  captureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 32,
+  },
+  captureSide: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  libraryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    minHeight: 36,
+  },
+  libraryBtnText: { color: colors.fg, fontSize: 13, fontWeight: "700" },
   shutterRing: {
     width: 80,
     height: 80,

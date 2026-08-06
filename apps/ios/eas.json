@@ -33,7 +33,17 @@
   "submit": {
     "production": {
       "ios": {
-        "bundleIdentifier": "com.mapvest.app"
+        "bundleIdentifier": "com.mapvest.app",
+        "appleId": "jawauntb@yahoo.com",
+        "appleTeamId": "58877MPK38",
+        "ascApiKeyPath": "./credentials/ios/asc-api-key.p8"
+      }
+    },
+    "preview": {
+      "ios": {
+        "bundleIdentifier": "com.mapvest.app",
+        "appleId": "jawauntb@yahoo.com",
+        "appleTeamId": "58877MPK38"
       }
     }
   }

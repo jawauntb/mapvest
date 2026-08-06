@@ -11,7 +11,7 @@ export const colors = {
   fg: "#F2F4F5",
   fgMuted: "#8B939C",
   fgDim: "#5C6570",
-  accent: "#3ECF8E",
+  accent: "#14C4A6",
   accentHover: "#52D99C",
   accentMuted: "#1F6B4A",
   accentInk: "#0A1F14",
@@ -20,7 +20,7 @@ export const colors = {
   accent2: "#2F8FEF",
   accent2Hover: "#4FA4FF",
   accent2Muted: "#173F73",
-  gradient: ["#3ECF8E", "#21B5A6", "#2F8FEF"] as const, // for expo-linear-gradient
+  gradient: ["#14C4A6", "#21B5A6", "#2F8FEF"] as const, // for expo-linear-gradient
   warn: "#E8A054",
   danger: "#E85D5D",
   border: "#242A32",

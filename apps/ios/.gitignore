@@ -14,3 +14,9 @@ android/
 
 expo-env.d.ts
 # @end expo-cli
+# EAS credentials — NEVER commit these
+credentials.json
+credentials/
+*.p12
+*.mobileprovision
+*.p8

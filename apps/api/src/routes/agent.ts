@@ -1,10 +1,12 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import {
   DERIVATION_URL,
   derivationMutateHeaders,
   derivationReadHeaders,
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
 
@@ -366,6 +368,15 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
       error,
     };
 
+    // Fire-and-forget push (opted-in users only). Never blocks the response.
+    const chatUser = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
+      "user",
+    );
+    if (chatUser?.id) {
+      const title = content.split(/\r?\n/)[0]?.trim() || "Research ready";
+      onAgentResponseReady(chatUser.id, resolvedThread, title.slice(0, 160)).catch(() => {});
+    }
+
     return c.json({
       threadId: resolvedThread,
       ticker,
@@ -387,6 +398,298 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
       },
       provider: "derivation-research-console",
       sourceUrl: `${DERIVATION_URL}/docs`,
+    });
+  });
+});
+
+/**
+ * POST /v1/agent/stream
+ * Same body as /v1/agent/chat, but the response is `text/event-stream`.
+ *
+ * Emits these named events, one JSON payload per event:
+ *   tool       { name, arg? }        — a tool call started
+ *   tool_end   { name, ok }          — a tool call finished
+ *   reasoning  { text }              — short human-readable status
+ *   token      { text }              — chunk of the streamed brief
+ *   article    ResearchArticle       — final composed brief (same shape as /chat's `article`)
+ *   done       { threadId? }         — stream complete
+ *   error      { message }           — fatal error; stream will close after
+ *
+ * The upstream Derivation console already speaks SSE, so we forward its
+ * events after translating them into our own event vocabulary. If upstream
+ * fails to yield any streamed text (e.g. it only sends a final result blob),
+ * we degrade gracefully by emitting one `token` event with the full body and
+ * one `article` event so the UI still updates.
+ */
+agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    message?: unknown;
+    ticker?: unknown;
+    threadId?: unknown;
+  };
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  if (!message || message.length > 4000) {
+    return c.json({ error: "message required (1–4000 chars)" }, 400);
+  }
+  const ticker =
+    typeof body.ticker === "string" && /^[A-Z][A-Z0-9.]{0,5}$/i.test(body.ticker.trim())
+      ? body.ticker.trim().toUpperCase()
+      : undefined;
+  const threadId = typeof body.threadId === "string" ? body.threadId : undefined;
+
+  const prompt = ticker
+    ? `Focus ticker: $${ticker}. Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.\n\nUser: ${message}`
+    : `Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.\n\nUser: ${message}`;
+
+  return streamSSE(c, async (sse) => {
+    return safeExecuteWithSpan("http.agent.stream", async (span) => {
+      span.setAttributes({ has_ticker: !!ticker, ticker: ticker ?? "", upstream: DERIVATION_URL });
+      const started = performance.now();
+
+      await sse.writeSSE({
+        event: "reasoning",
+        data: JSON.stringify({ text: "Contacting research agent…" }),
+      });
+
+      let upstream: Response;
+      try {
+        upstream = await fetch(`${DERIVATION_URL}/api/idea-chats/stream`, {
+          method: "POST",
+          headers: derivationMutateHeaders(),
+          body: JSON.stringify({
+            message: prompt,
+            client_message_id: crypto.randomUUID(),
+            ...(threadId ? { thread_id: threadId, threadId } : {}),
+          }),
+          signal: AbortSignal.timeout(90_000),
+        });
+      } catch (e) {
+        await sse.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message: (e as Error).message || "upstream failed" }),
+        });
+        return;
+      }
+
+      span.setAttributes({
+        upstream_status: upstream.status,
+        upstream_connect_ms: Math.round(performance.now() - started),
+      });
+
+      if (!upstream.ok || !upstream.body) {
+        const text = await upstream.text().catch(() => "");
+        await sse.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            message: `derivation agent ${upstream.status}`,
+            detail: text.slice(0, 300),
+          }),
+        });
+        return;
+      }
+
+      // Accumulators for building the final ResearchArticle.
+      const texts: string[] = [];
+      const tools: string[] = [];
+      const openTools = new Set<string>();
+      let resolvedThread = threadId;
+      let latestBriefing: string | undefined;
+      let interesting: string[] = [];
+      let ideas: ReturnType<typeof normalizeMessage>["ideas"] = [];
+      let sources: Array<{ label: string; url?: string }> = [];
+      let mode: string | undefined;
+      let error: string | undefined;
+      let tokensStreamed = 0;
+
+      // Manual SSE parser over the upstream ReadableStream so we can emit
+      // events downstream as they arrive rather than waiting for res.text().
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buf = "";
+
+      const handleBlock = async (rawBlock: string) => {
+        const lines = rawBlock.split("\n").filter(Boolean);
+        if (!lines.length) return;
+        const dataLines: string[] = [];
+        for (const line of lines) {
+          if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+        }
+        if (!dataLines.length) return;
+        let payload: {
+          thread?: UpstreamThread;
+          data?: { type?: string; text?: string; tool?: string; ok?: boolean; arg?: string };
+          latest_result?: UpstreamMsg["result"];
+        };
+        try {
+          payload = JSON.parse(dataLines.join("\n"));
+        } catch {
+          return;
+        }
+
+        if (payload.thread?.id) {
+          resolvedThread = payload.thread.id;
+          if (payload.thread.latest_result || payload.thread.messages?.length) {
+            const norm = normalizeThread(payload.thread);
+            const last = norm.messages.filter((m) => m.role === "assistant").at(-1);
+            if (last?.content) latestBriefing = last.content;
+            if (last?.interesting.length) interesting = last.interesting;
+            if (last?.ideas.length) ideas = last.ideas;
+            if (last?.sources.length) sources = last.sources;
+            if (last?.toolsUsed.length) tools.push(...last.toolsUsed);
+            mode = last?.mode;
+            error = last?.error;
+          }
+        }
+        const inner = payload.data;
+        if (inner?.type === "tool_start" && typeof inner.tool === "string") {
+          tools.push(inner.tool);
+          openTools.add(inner.tool);
+          await sse.writeSSE({
+            event: "tool",
+            data: JSON.stringify({ name: inner.tool, arg: inner.arg }),
+          });
+          await sse.writeSSE({
+            event: "reasoning",
+            data: JSON.stringify({ text: `Running ${inner.tool}…` }),
+          });
+        }
+        if (inner?.type === "tool_end" && typeof inner.tool === "string") {
+          openTools.delete(inner.tool);
+          await sse.writeSSE({
+            event: "tool_end",
+            data: JSON.stringify({ name: inner.tool, ok: inner.ok !== false }),
+          });
+        }
+        if (inner?.type === "model_text" && typeof inner.text === "string") {
+          texts.push(inner.text);
+          const brief = extractBriefing(inner.text);
+          if (brief) latestBriefing = brief;
+          // Chunk into ~20-char slices so the client sees a smooth stream even
+          // when upstream buffers into large paragraphs. If it's already short,
+          // one event is fine.
+          const chunkSize = 24;
+          if (inner.text.length <= chunkSize) {
+            tokensStreamed += 1;
+            await sse.writeSSE({
+              event: "token",
+              data: JSON.stringify({ text: inner.text }),
+            });
+          } else {
+            for (let i = 0; i < inner.text.length; i += chunkSize) {
+              const slice = inner.text.slice(i, i + chunkSize);
+              tokensStreamed += 1;
+              await sse.writeSSE({
+                event: "token",
+                data: JSON.stringify({ text: slice }),
+              });
+              await sse.sleep(15);
+            }
+          }
+        }
+        if (payload.latest_result?.briefing) {
+          latestBriefing = payload.latest_result.briefing;
+          interesting = payload.latest_result.interesting ?? interesting;
+        }
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          // Split on blank-line SSE boundaries; keep the trailing partial in buf.
+          let idx = buf.indexOf("\n\n");
+          while (idx !== -1) {
+            const block = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            await handleBlock(block);
+            idx = buf.indexOf("\n\n");
+          }
+        }
+        // Flush any remaining buffered block.
+        if (buf.trim()) await handleBlock(buf);
+      } catch (e) {
+        await sse.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message: (e as Error).message || "stream read failed" }),
+        });
+        return;
+      }
+
+      const content =
+        latestBriefing ??
+        texts
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .slice(-2)
+          .join("\n\n")
+          .trim();
+
+      if (!content) {
+        await sse.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            message: "agent returned no text",
+            threadId: resolvedThread,
+          }),
+        });
+        return;
+      }
+
+      // Graceful degradation: if upstream never yielded model_text chunks,
+      // still feed the client a single token event so the draft area fills.
+      if (tokensStreamed === 0) {
+        await sse.writeSSE({
+          event: "token",
+          data: JSON.stringify({ text: content }),
+        });
+      }
+
+      const chartTickers = [
+        ...(ticker ? [ticker] : []),
+        ...tickersFromText(content),
+      ].filter((t, i, a) => a.indexOf(t) === i);
+
+      const article = {
+        id: crypto.randomUUID(),
+        role: "assistant" as const,
+        content,
+        createdAt: new Date().toISOString(),
+        interesting,
+        ideas,
+        toolsUsed: [...new Set(tools)],
+        sources,
+        chartTickers: chartTickers.slice(0, 4),
+        mode,
+        error,
+      };
+
+      await sse.writeSSE({
+        event: "article",
+        data: JSON.stringify(article),
+      });
+
+      // Fire-and-forget push for opted-in users. Never blocks the SSE stream.
+      const streamUser = (
+        c as unknown as { get: (k: string) => { id?: string } | undefined }
+      ).get("user");
+      if (streamUser?.id) {
+        const title = content.split(/\r?\n/)[0]?.trim() || "Research ready";
+        onAgentResponseReady(streamUser.id, resolvedThread, title.slice(0, 160)).catch(
+          () => {},
+        );
+      }
+
+      await sse.writeSSE({
+        event: "done",
+        data: JSON.stringify({ threadId: resolvedThread }),
+      });
+
+      span.setAttributes({
+        stream_ms: Math.round(performance.now() - started),
+        tools_seen: [...new Set(tools)].length,
+        tokens_streamed: tokensStreamed,
+      });
     });
   });
 });

@@ -10,14 +10,14 @@
   --mv-fg: #f2f4f5;
   --mv-fg-muted: #8b939c;
   --mv-fg-dim: #5c6570;
-  --mv-accent: #3ecf8e;
+  --mv-accent: #14c4a6;
   --mv-accent-hover: #52d99c;
   --mv-accent-muted: #1f6b4a;
   --mv-accent-ink: #0a1f14;
   --mv-accent2: #2f8fef;
   --mv-accent2-hover: #4fa4ff;
   --mv-accent2-muted: #173f73;
-  --mv-gradient: linear-gradient(135deg, #3ecf8e 0%, #21b5a6 45%, #2f8fef 100%);
+  --mv-gradient: linear-gradient(135deg, #14c4a6 0%, #21b5a6 45%, #2f8fef 100%);
   --mv-warn: #e8a054;
   --mv-danger: #e85d5d;
   --mv-border: #242a32;
