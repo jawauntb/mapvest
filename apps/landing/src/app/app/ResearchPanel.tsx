@@ -9,6 +9,7 @@ import {
   type ResearchArticle,
 } from "@/lib/mapvest-api";
 import { ChartFigure } from "./ChartFigure";
+import { FormattedBrief } from "./FormattedBrief";
 
 /**
  * Progressive research surface — opened from ticker detail, not a top-level tab.
@@ -179,18 +180,9 @@ function Article({
   article: ResearchArticle;
   charts: Record<string, ChartImage>;
 }) {
-  const paras = article.content.split(/\n\n+/).filter(Boolean);
-  const lede = paras[0] ?? article.content;
-  const rest = paras.slice(1);
-
   return (
     <article className="app-article">
-      <p className="app-article-lede">{lede}</p>
-      {rest.map((p, i) => (
-        <p key={i} className="app-article-body">
-          {p}
-        </p>
-      ))}
+      <FormattedBrief text={article.content} />
 
       {article.chartTickers.slice(0, 2).map((sym) => {
         const c = charts[sym];

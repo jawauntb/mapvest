@@ -32,6 +32,8 @@ import {
   View,
 } from "react-native";
 import { ChartMedia } from "@/components/ChartMedia";
+import { RichText } from "@/components/RichText";
+import { colors } from "@/theme/tokens";
 import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
@@ -177,12 +179,12 @@ export default function DetailSheet() {
           title: "Investable",
           headerLeft: () => (
             <Pressable
-              onPress={() => router.push("/(tabs)/home")}
+              onPress={() => router.replace("/(tabs)/home")}
               hitSlop={12}
               style={{ paddingHorizontal: 8 }}
-              accessibilityLabel="Open home and settings"
+              accessibilityLabel="Back to home"
             >
-              <Text style={{ color: "#111", fontSize: 20, fontWeight: "700" }}>☰</Text>
+              <Text style={{ color: colors.fg, fontSize: 18, fontWeight: "700" }}>‹ Home</Text>
             </Pressable>
           ),
         }}
@@ -231,6 +233,8 @@ export default function DetailSheet() {
 
       {tab === "overview" ? (
         <>
+          {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
+
           {ticker ? (
             <Section title={`Auction · $${ticker} · 1mo`}>
               <ChartImageBlock
@@ -245,8 +249,6 @@ export default function DetailSheet() {
           ) : null}
 
           {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
-
-          {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
 
           {ticker ? (
             <View style={{ gap: 10 }}>
@@ -577,18 +579,18 @@ function AgentOverviewBlock({
     retry: 1,
     queryFn: () =>
       agentChat(
-        `Write a longer agentic research overview of $${ticker} before any memo. Structure: (1) lede / what's the story now, (2) business & competitive position, (3) recent catalysts and risks, (4) valuation / market context, (5) what to watch next. 400–700 words, article-style, cite tools/sources when used. Research-only; not advice; no trades.`,
+        `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
         { ticker },
         { token },
       ),
   });
 
   return (
-    <Section title={`Agent overview · $${ticker}`}>
+    <Section title={`Overview · $${ticker}`}>
       {overviewQ.isLoading || overviewQ.isFetching ? (
         <View style={{ gap: 8 }}>
           <ActivityIndicator color="#9f9" />
-          <Text style={styles.muted}>Researching a longer brief…</Text>
+          <Text style={styles.muted}>Writing a longer agent brief…</Text>
         </View>
       ) : overviewQ.isError ? (
         <View style={{ gap: 8 }}>
@@ -601,7 +603,7 @@ function AgentOverviewBlock({
         </View>
       ) : (
         <View style={{ gap: 10 }}>
-          <Text style={styles.overviewBody}>{overviewQ.data?.article.content}</Text>
+          <RichText text={overviewQ.data?.article.content ?? ""} />
           {(overviewQ.data?.article.interesting?.length ?? 0) > 0 ? (
             <View style={{ gap: 4 }}>
               {overviewQ.data!.article.interesting.slice(0, 5).map((line) => (
@@ -682,7 +684,7 @@ function AnalysisSnapshotBlock({
   data: Awaited<ReturnType<typeof fetchAnalysis>>;
 }) {
   return (
-    <Section title="Summary">
+    <Section title="At a glance">
       <Text style={styles.muted}>
         {[
           data.sector,
@@ -696,9 +698,9 @@ function AnalysisSnapshotBlock({
           .join(" · ") || "—"}
       </Text>
       {data.brief ? (
-        <Text style={[styles.muted, { marginTop: 8 }]} numberOfLines={6}>
-          {data.brief}
-        </Text>
+        <View style={{ marginTop: 10 }}>
+          <RichText text={data.brief} mutedStyle={styles.muted} />
+        </View>
       ) : null}
     </Section>
   );

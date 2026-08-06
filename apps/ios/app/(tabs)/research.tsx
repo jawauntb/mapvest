@@ -1,6 +1,7 @@
+import { RichText } from "@/components/RichText";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -30,6 +31,7 @@ import { useSession } from "@/auth/session";
 export default function ResearchChatScreen() {
   const { session } = useSession();
   const router = useRouter();
+  const params = useLocalSearchParams<{ intent?: string; id?: string }>();
   const [mode, setMode] = useState<"list" | "chat">("list");
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
@@ -70,6 +72,17 @@ export default function ResearchChatScreen() {
     setInput("");
     setErr(null);
   }
+
+  // Sidebar deep-links: ?intent=new | ?intent=thread&id=
+  useEffect(() => {
+    if (params.intent === "new") {
+      newChat();
+      return;
+    }
+    if (params.intent === "thread" && params.id) {
+      void openThread({ id: params.id, title: "Research", preview: "" });
+    }
+  }, [params.intent, params.id, openThread]);
 
   async function onSend() {
     const msg = input.trim();
@@ -189,7 +202,7 @@ export default function ResearchChatScreen() {
               </Text>
             ) : (
               <View key={t.id} style={styles.article}>
-                <Text style={styles.lede}>{t.content}</Text>
+                <RichText text={t.content} />
                 {t.interesting.slice(0, 4).map((x, i) => (
                   <Text key={i} style={styles.bullet}>
                     · {x}

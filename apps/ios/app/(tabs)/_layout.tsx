@@ -1,15 +1,16 @@
+import { AppSidebar } from "@/components/AppSidebar";
 import { useSession } from "@/auth/session";
+import { SidebarProvider, useSidebar } from "@/nav/SidebarContext";
 import { colors } from "@/theme/tokens";
 import { Tabs } from "expo-router";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
- * Guests can use the whole tab tree (map/camera/live/list/research) without
- * signing in — Phase 8 Slice B. Sign-in is only required for Save/watchlist
- * and Home → Robinhood MCP settings, each of which prompts inline.
+ * Slim bottom bar: Home (watchlist) · Map · Camera · Live · List.
+ * Research, Saved, Settings live in the ChatGPT-style sidebar (☰).
  */
 export default function TabsLayout() {
-  const { ready, isAdmin } = useSession();
+  const { ready } = useSession();
 
   if (!ready) {
     return (
@@ -27,19 +28,40 @@ export default function TabsLayout() {
   }
 
   return (
+    <SidebarProvider>
+      <TabsInner />
+      <AppSidebar />
+    </SidebarProvider>
+  );
+}
+
+function TabsInner() {
+  const { isAdmin } = useSession();
+  const { openSidebar } = useSidebar();
+
+  return (
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.fg,
+        headerTitleStyle: { fontWeight: "700" },
+        headerLeft: () => (
+          <Pressable
+            onPress={openSidebar}
+            hitSlop={12}
+            style={{ paddingHorizontal: 14 }}
+            accessibilityLabel="Open menu"
+          >
+            <Text style={{ color: colors.fg, fontSize: 20, fontWeight: "700" }}>☰</Text>
+          </Pressable>
+        ),
         tabBarStyle: {
           backgroundColor: colors.bg,
           borderTopColor: colors.border,
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.fgDim,
-        // Keep tab trees alive when switching — Camera/Live keep their last result.
         lazy: true,
-        unmountOnBlur: false,
         freezeOnBlur: true,
       }}
     >
@@ -47,6 +69,7 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: "Home",
+          headerShown: false, // custom top bar with burger
           tabBarIcon: ({ color }) => <TabDot color={color} label="⌂" />,
         }}
       />
@@ -66,22 +89,14 @@ export default function TabsLayout() {
         name="list"
         options={{ title: "List", tabBarIcon: ({ color }) => <TabDot color={color} label="≡" /> }}
       />
-      <Tabs.Screen
-        name="research"
-        options={{
-          title: "Research",
-          tabBarIcon: ({ color }) => <TabDot color={color} label="◎" />,
-        }}
-      />
-      <Tabs.Screen
-        name="saved"
-        options={{ title: "Saved", tabBarIcon: ({ color }) => <TabDot color={color} label="★" /> }}
-      />
+      {/* Sidebar destinations — hidden from tab bar */}
+      <Tabs.Screen name="research" options={{ href: null, title: "Research" }} />
+      <Tabs.Screen name="saved" options={{ href: null, title: "Watchlist" }} />
+      <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
       <Tabs.Screen
         name="admin"
         options={{
           title: "Admin",
-          // Hide the tab entirely unless the signed-in user has admin scope.
           href: isAdmin ? "/(tabs)/admin" : null,
           tabBarIcon: ({ color }) => <TabDot color={color} label="⚙" />,
         }}

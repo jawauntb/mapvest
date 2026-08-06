@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { agentChat, type ResearchArticle } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { RichText } from "@/components/RichText";
 
 /** Ticker-bound research brief — not a top-level Chat tab. */
 export function ResearchSheet({
@@ -91,7 +92,7 @@ export function ResearchSheet({
               </Text>
             ) : (
               <View key={t.id} style={styles.article}>
-                <Text style={styles.lede}>{t.content}</Text>
+                <RichText text={t.content} />
                 {t.interesting.slice(0, 4).map((x, i) => (
                   <Text key={i} style={styles.bullet}>
                     · {x}

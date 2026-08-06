@@ -1432,9 +1432,29 @@ blockquote {
 }
 .app-overview-body {
   white-space: pre-wrap;
-  line-height: 1.55;
+  line-height: 1.65;
   color: var(--fg, #ddd);
   font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.app-overview-body p {
+  margin: 0;
+}
+.app-overview-body h2,
+.app-overview-body h3 {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--fg, #fff);
+}
+.app-overview-body ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 .app-chart-skel {
   width: 100%;

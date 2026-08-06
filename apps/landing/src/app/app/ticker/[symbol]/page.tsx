@@ -22,6 +22,7 @@ import {
   type ResearchArticle,
 } from "@/lib/mapvest-api";
 import { ChartFigure } from "../ChartFigure";
+import { FormattedBrief } from "../FormattedBrief";
 import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
@@ -154,7 +155,7 @@ export default function TickerDetail() {
             .catch(() => {});
           setOverviewLoading(true);
           agentChat(
-            `Write a longer agentic research overview of $${t} before any memo. Structure: (1) lede / what's the story now, (2) business & competitive position, (3) recent catalysts and risks, (4) valuation / market context, (5) what to watch next. 400–700 words, article-style, cite tools/sources when used. Research-only; not advice; no trades.`,
+            `Write a detailed investor overview of $${t} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
             { ticker: t },
           )
             .then((r) => {
@@ -422,7 +423,7 @@ export default function TickerDetail() {
               ) : overviewErr ? (
                 <p className="app-err">{overviewErr}</p>
               ) : overview ? (
-                <div className="app-overview-body">{overview.content}</div>
+                <FormattedBrief text={overview.content} />
               ) : (
                 <p className="app-muted">Overview unavailable.</p>
               )}

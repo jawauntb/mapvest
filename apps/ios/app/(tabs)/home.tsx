@@ -1,240 +1,304 @@
-import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
+import {
+  type Quote,
+  type WatchEntry,
+  fetchQuotesMap,
+  listWatchlist,
+} from "@/api/client";
 import { useSession } from "@/auth/session";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useSidebar } from "@/nav/SidebarContext";
+import { colors } from "@/theme/tokens";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
+  FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 /**
- * /home — guest Sign in CTA, or (signed in) account, sign-out, Robinhood MCP
- * key (server-side masked store). Home/settings is the one place sign-in /
- * sign-out lives (Phase 8 Slice B) — every other tab works for guests.
+ * Default Home — watchlist + map/camera shortcuts + ticker search.
+ * Settings / research / saved chats live in the sidebar menu.
  */
-export default function HomeSettingsScreen() {
-  const { user, session, signOut } = useSession();
+export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
-  const scrollRef = useRef<ScrollView>(null);
-  const [token, setToken] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(false);
+  const { session } = useSession();
+  const { openSidebar } = useSidebar();
+  const params = useLocalSearchParams<{ focus?: string }>();
+  const searchRef = useRef<TextInput>(null);
+  const [tickerQuery, setTickerQuery] = useState("");
 
-  // Hooks below must stay unconditional — the tab tree keeps this screen
-  // mounted (`unmountOnBlur: false`), so `session` can flip from null to set
-  // (or back) without the component remounting. Branching before all hooks
-  // run would violate the Rules of Hooks on that transition.
-  const settingsQ = useQuery({
-    queryKey: ["settings", session?.token],
+  useEffect(() => {
+    if (params.focus === "search") {
+      setTimeout(() => searchRef.current?.focus(), 200);
+    }
+  }, [params.focus]);
+
+  const wl = useQuery({
+    queryKey: ["watchlist", session?.token],
+    queryFn: () => listWatchlist({ token: session!.token }),
     enabled: !!session?.token,
-    queryFn: () => fetchSettings({ token: session!.token }),
+    staleTime: 5_000,
   });
 
-  const saveM = useMutation({
-    mutationFn: () => saveRobinhoodMcp(token.trim(), { token: session!.token }),
-    onSuccess: async () => {
-      setToken("");
-      Keyboard.dismiss();
-      setStatus("Robinhood MCP key saved (encrypted in DB)");
-      await qc.invalidateQueries({ queryKey: ["settings", session?.token] });
-    },
-    onError: (e) => setStatus((e as Error).message || "Save failed"),
-  });
+  useFocusEffect(
+    useCallback(() => {
+      if (session?.token) void qc.invalidateQueries({ queryKey: ["watchlist", session.token] });
+    }, [qc, session?.token]),
+  );
 
-  const clearM = useMutation({
-    mutationFn: () => clearRobinhoodMcp({ token: session!.token }),
-    onSuccess: async () => {
-      setStatus("Robinhood MCP key cleared");
-      await qc.invalidateQueries({ queryKey: ["settings", session?.token] });
-    },
-    onError: (e) => setStatus((e as Error).message || "Clear failed"),
+  const items = wl.data?.items ?? [];
+  const tickers = items.map((i) => i.ticker).slice(0, 16);
+  const quotesQ = useQuery({
+    queryKey: ["home-quotes", tickers.join(",")],
+    queryFn: () => fetchQuotesMap(tickers, { token: session?.token }),
+    enabled: tickers.length > 0,
+    staleTime: 60_000,
   });
+  const quotes: Record<string, Quote> = quotesQ.data ?? {};
 
-  if (!session) {
-    return <GuestHome />;
+  function openTicker(raw: string) {
+    const sym = raw.trim().toUpperCase().replace(/^\$/, "");
+    if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(sym)) return;
+    setTickerQuery("");
+    router.push(`/detail/${encodeURIComponent(sym)}`);
   }
 
-  const rh = settingsQ.data?.robinhoodMcp;
-
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
-    >
-      <ScrollView
-        ref={scrollRef}
-        style={styles.root}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-      >
-        <Text style={styles.h1}>Home</Text>
-        <Text style={styles.sub}>Account · settings · integrations</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Signed in</Text>
-          <Text style={styles.value}>{user?.email ?? "—"}</Text>
-          <Text style={styles.muted}>{user?.id}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Robinhood MCP</Text>
-          <Text style={styles.muted}>
-            Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved, ticker
-            pages show Open in Robinhood so you can buy or place orders in Robinhood. Mapvest never
-            submits broker orders. Key is encrypted in Postgres for your account.
-          </Text>
-          {settingsQ.isLoading ? (
-            <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
-          ) : rh?.configured ? (
-            <Text style={styles.value}>
-              Configured · …{rh.last4} · fp {rh.fingerprint}
-            </Text>
-          ) : (
-            <Text style={styles.muted}>Not configured</Text>
-          )}
-          <TextInput
-            style={styles.input}
-            placeholder="Paste Robinhood MCP token"
-            placeholderTextColor="#666"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            textContentType="password"
-            secureTextEntry={!showToken}
-            value={token}
-            onChangeText={setToken}
-            onFocus={() => {
-              // Keep field above the keyboard.
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
-            }}
-            returnKeyType="done"
-            onSubmitEditing={() => Keyboard.dismiss()}
-            blurOnSubmit
-          />
-          <View style={styles.row}>
-            <Pressable style={styles.btn} onPress={() => setShowToken((v) => !v)}>
-              <Text style={styles.btnText}>{showToken ? "Hide" : "Show"}</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={() => Keyboard.dismiss()}>
-              <Text style={styles.btnText}>Done</Text>
-            </Pressable>
-          </View>
-          <View style={styles.row}>
-            <Pressable
-              style={[styles.btn, styles.btnPrimary]}
-              disabled={!token.trim() || saveM.isPending}
-              onPress={() => {
-                Keyboard.dismiss();
-                saveM.mutate();
-              }}
-            >
-              <Text style={styles.btnTextDark}>{saveM.isPending ? "Saving…" : "Save key"}</Text>
-            </Pressable>
-            {rh?.configured ? (
-              <Pressable
-                style={styles.btn}
-                disabled={clearM.isPending}
-                onPress={() => clearM.mutate()}
-              >
-                <Text style={styles.btnText}>Clear</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <View style={styles.topBar}>
         <Pressable
-          style={styles.btn}
-          onPress={async () => {
-            await signOut();
-            router.replace("/auth");
-          }}
+          onPress={openSidebar}
+          hitSlop={12}
+          style={styles.burger}
+          accessibilityLabel="Open menu"
         >
-          <Text style={styles.btnText}>Sign out</Text>
+          <Text style={styles.burgerIcon}>☰</Text>
         </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <Text style={styles.title}>Mapvest</Text>
+        <Pressable onPress={() => router.push("/(tabs)/settings")} hitSlop={12}>
+          <Text style={styles.gear}>⚙</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.searchRow}>
+        <TextInput
+          ref={searchRef}
+          style={styles.search}
+          placeholder="Find ticker — AAPL, SBUX…"
+          placeholderTextColor="#666"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          value={tickerQuery}
+          onChangeText={setTickerQuery}
+          returnKeyType="search"
+          onSubmitEditing={() => openTicker(tickerQuery)}
+        />
+        <Pressable
+          style={[styles.goBtn, !tickerQuery.trim() && { opacity: 0.4 }]}
+          disabled={!tickerQuery.trim()}
+          onPress={() => openTicker(tickerQuery)}
+        >
+          <Text style={styles.goBtnText}>Go</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.widgets}>
+        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/map")}>
+          <Text style={styles.widgetEmoji}>🗺</Text>
+          <Text style={styles.widgetTitle}>Map</Text>
+          <Text style={styles.widgetSub}>Nearby brands</Text>
+        </Pressable>
+        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/camera")}>
+          <Text style={styles.widgetEmoji}>📷</Text>
+          <Text style={styles.widgetTitle}>Camera</Text>
+          <Text style={styles.widgetSub}>Snap a brand</Text>
+        </Pressable>
+        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/live-scan")}>
+          <Text style={styles.widgetEmoji}>◎</Text>
+          <Text style={styles.widgetTitle}>Live</Text>
+          <Text style={styles.widgetSub}>Scan around</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>Watchlist</Text>
+        <Text style={styles.count}>
+          {items.length} ticker{items.length === 1 ? "" : "s"}
+        </Text>
+      </View>
+
+      {!session?.token ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>Sign in to keep a watchlist</Text>
+          <Text style={styles.emptySub}>
+            Browse map and camera as a guest. Sign in to ★ Save tickers and research threads.
+          </Text>
+          <Pressable style={styles.primaryBtn} onPress={() => router.push("/auth")}>
+            <Text style={styles.primaryBtnText}>Sign in</Text>
+          </Pressable>
+        </View>
+      ) : wl.isLoading ? (
+        <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
+      ) : items.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>Nothing saved yet</Text>
+          <Text style={styles.emptySub}>
+            Open a ticker from Map or search above, then tap ★ Save. It shows up here.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(e) => e.ticker}
+          contentContainerStyle={{ paddingBottom: 32, paddingHorizontal: 16 }}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          renderItem={({ item }) => (
+            <WatchRow
+              entry={item}
+              quote={quotes[item.ticker.toUpperCase()]}
+              onPress={() =>
+                router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })
+              }
+            />
+          )}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
-/** Shown on Home when there's no session — map/camera/list/research still work; only Save/settings need sign-in. */
-function GuestHome() {
-  const router = useRouter();
+function WatchRow({
+  entry,
+  quote,
+  onPress,
+}: {
+  entry: WatchEntry;
+  quote?: Quote;
+  onPress: () => void;
+}) {
+  const up = (quote?.change ?? 0) >= 0;
   return (
-    <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Home</Text>
-        <Text style={styles.sub}>Account · settings · integrations</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Browsing as guest</Text>
-          <Text style={styles.muted}>
-            Map, Camera, Live, List, and Research all work without an account. Sign in to ★ Save
-            tickers to a watchlist, save memos, and connect your Robinhood MCP key.
+    <Pressable style={styles.row} onPress={onPress}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTicker}>${entry.ticker}</Text>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {entry.name ?? entry.sector ?? "—"}
+        </Text>
+      </View>
+      {quote ? (
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={styles.rowPrice}>${quote.price.toFixed(2)}</Text>
+          <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12, fontWeight: "700" }}>
+            {up ? "+" : ""}
+            {quote.changePct.toFixed(2)}%
           </Text>
-          <Pressable
-            style={[styles.btn, styles.btnPrimary, { marginTop: 8 }]}
-            onPress={() => router.push("/auth")}
-          >
-            <Text style={styles.btnTextDark}>Sign in</Text>
-          </Pressable>
         </View>
-      </ScrollView>
-    </View>
+      ) : (
+        <Text style={styles.rowName}>›</Text>
+      )}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
-  content: { padding: 20, gap: 16, paddingBottom: 120 },
-  h1: { color: "#fff", fontSize: 28, fontWeight: "700" },
-  sub: { color: "#888", marginTop: -8 },
-  card: {
-    backgroundColor: "#141414",
-    borderRadius: 14,
-    padding: 16,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#222",
-  },
-  label: { color: "#9f9", fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
-  value: { color: "#fff", fontSize: 16 },
-  muted: { color: "#777", fontSize: 13, lineHeight: 18 },
-  input: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#fff",
-    backgroundColor: "#0a0a0a",
-    minHeight: 44,
-  },
-  row: { flexDirection: "row", gap: 10, marginTop: 8 },
-  btn: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#444",
-    paddingVertical: 12,
+  root: { flex: 1, backgroundColor: colors.bg },
+  topBar: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  btnPrimary: { backgroundColor: "#c8f5c8", borderColor: "#c8f5c8" },
-  btnText: { color: "#fff", fontWeight: "600" },
-  btnTextDark: { color: "#000", fontWeight: "700" },
-  status: { color: "#9f9", fontSize: 13 },
+  burger: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgElevated,
+  },
+  burgerIcon: { color: colors.fg, fontSize: 18, fontWeight: "700" },
+  title: { color: colors.fg, fontSize: 20, fontWeight: "800" },
+  gear: { color: colors.fgMuted, fontSize: 20, padding: 8 },
+  searchRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  search: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: colors.fg,
+    fontSize: 15,
+  },
+  goBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+  },
+  goBtnText: { color: colors.accentInk, fontWeight: "800" },
+  widgets: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  widget: {
+    flex: 1,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 12,
+    gap: 2,
+  },
+  widgetEmoji: { fontSize: 18 },
+  widgetTitle: { color: colors.fg, fontWeight: "700", fontSize: 14 },
+  widgetSub: { color: colors.fgDim, fontSize: 11 },
+  sectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  sectionTitle: { color: colors.fg, fontSize: 18, fontWeight: "700" },
+  count: { color: colors.fgDim, fontSize: 13 },
+  center: { padding: 28, alignItems: "center", gap: 10 },
+  emptyTitle: { color: colors.fg, fontSize: 17, fontWeight: "600" },
+  emptySub: { color: colors.fgMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
+  primaryBtn: {
+    marginTop: 8,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  primaryBtnText: { color: colors.accentInk, fontWeight: "800" },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    gap: 12,
+  },
+  rowTicker: { color: colors.fg, fontWeight: "800", fontSize: 16 },
+  rowName: { color: colors.fgMuted, fontSize: 12, marginTop: 2 },
+  rowPrice: { color: colors.fg, fontWeight: "600", fontSize: 15 },
 });
