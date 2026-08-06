@@ -1,0 +1,42 @@
+# .easignore at the git root — controls the EAS build tarball.
+# We're building apps/ios but need the monorepo context.
+
+# Drop other monorepo apps that aren't needed for the iOS build.
+apps/api/
+apps/landing/
+
+# Drop root-level node_modules and bun caches (they'll be reinstalled).
+node_modules/
+.bun/
+bun.lock
+.turbo/
+.next/
+dist/
+build/
+out/
+
+# Drop docs / postman that just bloat the tarball
+docs/
+postman.json
+openapi.yaml
+IMPLEMENTATION_PLAN.md
+scripts/
+
+# Cursor / VS Code / IDE cruft
+.cursor/
+.vscode/
+.idea/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+apps/ios/credentials.json
+apps/ios/credentials/
+apps/ios/*.p12
+apps/ios/*.mobileprovision
+apps/ios/*.p8
+
+# System
+.DS_Store
+*.log

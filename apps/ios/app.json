@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
-      "buildNumber": "7",
+      "buildNumber": "9",
       "infoPlist": {
         "NSCameraUsageDescription": "Mapvest uses your camera to identify brands you see in the wild and map them to public tickers.",
         "NSLocationWhenInUseUsageDescription": "Mapvest uses your location to show investable brands near you on the map.",
@@ -30,7 +30,9 @@
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
+        "com.apple.security.application-groups": [
+          "group.com.mapvest.app.widget"
+        ]
       }
     },
     "android": {
@@ -82,7 +84,10 @@
             "NSExtensionActivationSupportsText": true
           },
           "iosShareExtensionName": "Share to Mapvest",
-          "androidIntentFilters": ["text/*", "image/*"]
+          "androidIntentFilters": [
+            "text/*",
+            "image/*"
+          ]
         }
       ],
       "@bacons/apple-targets",
