@@ -32,6 +32,16 @@ a:hover {
   color: #ffffff;
 }
 
+/* Modern focus ring — additive, never removes native outlines elsewhere. */
+a:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+.curl__copy:focus-visible {
+  outline: 2px solid var(--mv-focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 h1,
 h2,
 h3,

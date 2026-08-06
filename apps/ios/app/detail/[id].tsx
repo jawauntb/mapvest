@@ -33,7 +33,11 @@ import {
 } from "react-native";
 import { ChartMedia } from "@/components/ChartMedia";
 import { RichText } from "@/components/RichText";
-import { colors } from "@/theme/tokens";
+import { ScreenFade } from "@/components/ScreenFade";
+import { colors, elevation, radii, type } from "@/theme/tokens";
+import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
@@ -154,7 +158,7 @@ export default function DetailSheet() {
   if (q.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color={colors.fg} />
       </View>
     );
   }
@@ -173,6 +177,7 @@ export default function DetailSheet() {
   const quote = quoteQ.data?.quote;
 
   return (
+    <ScreenFade>
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
       <Stack.Screen
         options={{
@@ -181,10 +186,12 @@ export default function DetailSheet() {
             <Pressable
               onPress={() => router.replace("/(tabs)/home")}
               hitSlop={12}
-              style={{ paddingHorizontal: 8 }}
+              style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, minHeight: 44 }}
+              accessibilityRole="button"
               accessibilityLabel="Back to home"
             >
-              <Text style={{ color: colors.fg, fontSize: 18, fontWeight: "700" }}>‹ Home</Text>
+              <Ionicons name="chevron-back" size={20} color={colors.fg} />
+              <Text style={{ color: colors.fg, fontSize: 17, fontWeight: "600" }}>Home</Text>
             </Pressable>
           ),
         }}
@@ -203,7 +210,7 @@ export default function DetailSheet() {
           <View style={styles.quoteRow}>
             <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
             <Text
-              style={[styles.quoteChange, { color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b" }]}
+              style={[styles.quoteChange, { color: quote.change >= 0 ? colors.accent : colors.danger }]}
             >
               {quote.change >= 0 ? "+" : ""}
               {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
@@ -220,8 +227,14 @@ export default function DetailSheet() {
           {(["overview", "advanced"] as TabKey[]).map((t) => (
             <Pressable
               key={t}
-              onPress={() => setTab(t)}
+              onPress={() => {
+                hapticSelect();
+                setTab(t);
+              }}
               style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === t }}
+              accessibilityLabel={t === "overview" ? "Overview" : "Advanced"}
             >
               <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
                 {t === "overview" ? "Overview" : "Advanced"}
@@ -253,11 +266,26 @@ export default function DetailSheet() {
           {ticker ? (
             <View style={{ gap: 10 }}>
               <Pressable
-                onPress={() => setResearchOpen(true)}
+                onPress={() => {
+                  hapticTap();
+                  setResearchOpen(true);
+                }}
                 style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Research $${ticker}`}
               >
-                <Text style={styles.researchBtnText}>Research…</Text>
-                <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
+                <LinearGradient
+                  colors={colors.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.researchBtnGrad}
+                >
+                  <Ionicons name="sparkles" size={18} color={colors.accentInk} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.researchBtnText}>Research…</Text>
+                    <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
+                  </View>
+                </LinearGradient>
               </Pressable>
               <WatchlistActions
                 ticker={ticker}
@@ -327,7 +355,7 @@ export default function DetailSheet() {
           {ticker ? (
             <Section title="SEC filings">
               {secQ.isLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.fg} />
               ) : secQ.isError ? (
                 <Text style={styles.muted}>SEC pack unavailable.</Text>
               ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
@@ -359,6 +387,7 @@ export default function DetailSheet() {
         </>
       )}
     </ScrollView>
+    </ScreenFade>
   );
 }
 
@@ -1018,69 +1047,78 @@ function dedupeSources(list: Source[]): Source[] {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#000",
+    backgroundColor: colors.bg,
   },
-  h1: { color: "#fff", fontSize: 28, fontWeight: "700" },
-  h2: { color: "#fff", fontSize: 15, fontWeight: "600", letterSpacing: 0.4 },
-  sub: { color: "#888", marginTop: 4 },
-  muted: { color: "#888", fontSize: 13 },
+  h1: { color: colors.fg, ...type.h1, fontSize: 28 },
+  h2: { color: colors.fg, ...type.label, fontSize: 15 },
+  sub: { color: colors.fgMuted, marginTop: 4 },
+  muted: { color: colors.fgMuted, fontSize: 13 },
   card: {
-    backgroundColor: "#111",
-    borderColor: "#222",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: radii.lg,
     padding: 12,
     gap: 12,
+    ...elevation.sm,
   },
   chartZoom: {
     width: "100%",
     height: 260,
-    borderRadius: 8,
-    backgroundColor: "#0a0a0a",
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSunken,
     overflow: "hidden",
   },
   chartZoomContent: { alignItems: "center", justifyContent: "center" },
   chartImg: {
     width: 360,
     height: 240,
-    borderRadius: 8,
-    backgroundColor: "#0a0a0a",
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSunken,
   },
-  chartHint: { color: "#666", fontSize: 11 },
-  overviewBody: { color: "#ddd", fontSize: 14, lineHeight: 21 },
-  errInline: { color: "#ff5a5a", fontSize: 13 },
+  chartHint: { color: colors.fgDim, fontSize: 11 },
+  overviewBody: { color: colors.fg, fontSize: 14, lineHeight: 21 },
+  errInline: { color: colors.danger, fontSize: 13 },
   miniBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 999,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
+    minHeight: 32,
   },
-  miniBtnText: { color: "#9f9", fontSize: 12, fontWeight: "600" },
+  miniBtnText: { color: colors.accent, fontSize: 12, fontWeight: "600" },
   row: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  rowTitle: { color: "#fff", fontWeight: "600" },
-  rowSub: { color: "#999", fontSize: 12, marginTop: 2 },
-  score: { color: "#7aa2ff", fontWeight: "700" },
-  link: { color: "#7aa2ff", fontSize: 12 },
-  err: { color: "#ff5a5a", padding: 16, textAlign: "center" },
+  rowTitle: { color: colors.fg, fontWeight: "600" },
+  rowSub: { color: colors.fgMuted, fontSize: 12, marginTop: 2 },
+  score: { color: colors.accent2, fontWeight: "700" },
+  link: { color: colors.accent2, fontSize: 12 },
+  err: { color: colors.danger, padding: 16, textAlign: "center" },
   badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   badge: {
-    backgroundColor: "#1a2440",
-    borderColor: "#2b3d6e",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.accent2Muted,
+    borderColor: colors.accent2,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingVertical: 6,
     paddingHorizontal: 12,
+    minHeight: 32,
   },
   robinhoodBadge: {
-    backgroundColor: "#0d2818",
-    borderColor: "#2a6b45",
+    backgroundColor: colors.accentMuted,
+    borderColor: colors.accent,
   },
   robinhoodBadgeHero: {
     alignSelf: "flex-start",
@@ -1088,101 +1126,119 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   robinhoodBadgeText: {
-    color: "#3ECF8E",
+    color: colors.accent,
     fontSize: 14,
   },
   badgeDisabled: { opacity: 0.5 },
-  badgePressed: { backgroundColor: "#22305a" },
+  badgePressed: { opacity: 0.8 },
   badgeText: {
-    color: "#7aa2ff",
+    color: colors.accent2,
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   actionBtn: {
-    backgroundColor: "#141414",
-    borderColor: "#2a2a2a",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: radii.md,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     flex: 1,
-    alignItems: "center",
+    minHeight: 44,
   },
   actionBtnActive: {
-    backgroundColor: "#3ee68a",
-    borderColor: "#3ee68a",
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
-  actionBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  statusLine: { color: "#3ee68a", fontSize: 13, fontWeight: "600" },
+  actionBtnText: { color: colors.fg, fontSize: 14, fontWeight: "600" },
+  statusLine: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   memoCard: {
-    backgroundColor: "#0e0e0e",
-    borderColor: "#222",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: radii.lg,
     padding: 14,
     gap: 12,
   },
   memoProvider: {
-    color: "#3ee68a",
+    color: colors.accent,
     fontSize: 11,
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  memoText: { color: "#e6e6e6", fontSize: 14, lineHeight: 21 },
+  memoText: { color: colors.fg, fontSize: 14, lineHeight: 21 },
   chip: {
-    backgroundColor: "#141414",
-    borderColor: "#2a2a2a",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
+    borderRadius: radii.pill,
+    paddingVertical: 7,
     paddingHorizontal: 12,
+    minHeight: 32,
+    justifyContent: "center",
   },
-  chipActive: { backgroundColor: "#3ee68a", borderColor: "#3ee68a" },
-  chipText: { color: "#fff", fontSize: 12, fontWeight: "600" },
-  chipTextActive: { color: "#000" },
+  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { color: colors.fg, fontSize: 12, fontWeight: "600" },
+  chipTextActive: { color: colors.accentInk },
   periodBtn: {
-    borderColor: "#333",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 6,
-    paddingVertical: 4,
+    borderRadius: radii.sm,
+    paddingVertical: 5,
     paddingHorizontal: 8,
+    minHeight: 28,
+    justifyContent: "center",
   },
-  periodBtnActive: { borderColor: "#3ee68a" },
-  periodText: { color: "#888", fontSize: 11 },
-  periodTextActive: { color: "#3ee68a" },
+  periodBtnActive: { borderColor: colors.accent },
+  periodText: { color: colors.fgMuted, fontSize: 11 },
+  periodTextActive: { color: colors.accent },
   quoteRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
-  quotePrice: { color: "#fff", fontSize: 28, fontWeight: "700" },
+  quotePrice: { color: colors.fg, ...type.h1, fontSize: 28 },
   quoteChange: { fontSize: 15, fontWeight: "600" },
   tabRow: { flexDirection: "row", gap: 8, marginTop: 14 },
   tabBtn: {
-    borderColor: "#2a2a2a",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
+    borderRadius: radii.pill,
+    paddingVertical: 7,
     paddingHorizontal: 14,
+    minHeight: 32,
+    justifyContent: "center",
   },
-  tabBtnOn: { backgroundColor: "#fff", borderColor: "#fff" },
-  tabText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
-  tabTextOn: { color: "#000" },
+  tabBtnOn: { backgroundColor: colors.fg, borderColor: colors.fg },
+  tabText: { color: colors.fgMuted, fontSize: 13, fontWeight: "600" },
+  tabTextOn: { color: colors.bg },
   researchBtn: {
-    backgroundColor: "#101410",
-    borderColor: "#2a3d2a",
-    borderWidth: 1,
-    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: radii.lg,
+    padding: 3,
+    overflow: "hidden",
+  },
+  researchBtnGrad: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: radii.lg - 3,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    gap: 2,
   },
-  researchBtnText: { color: "#3ee68a", fontSize: 15, fontWeight: "700" },
-  researchBtnSub: { color: "#888", fontSize: 12 },
+  researchBtnText: { color: colors.accentInk, fontSize: 15, fontWeight: "800" },
+  researchBtnSub: { color: colors.accentInk, opacity: 0.85, fontSize: 12, fontWeight: "600" },
   finRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#222",
+    borderBottomColor: colors.border,
   },
-  finKey: { color: "#888", fontSize: 13 },
-  finVal: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  finKey: { color: colors.fgMuted, fontSize: 13 },
+  finVal: { color: colors.fg, fontSize: 13, fontWeight: "600" },
 });

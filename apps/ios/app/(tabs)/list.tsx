@@ -3,9 +3,7 @@ import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -14,9 +12,22 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { EmptyState } from "@/components/EmptyState";
+import { ScalePressable } from "@/components/ScalePressable";
+import { ScreenFade } from "@/components/ScreenFade";
+import { SkeletonList } from "@/components/Skeleton";
+import { colors, elevation, radii, type } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
+import { Ionicons } from "@expo/vector-icons";
 
 type SortKey = "distance" | "sector" | "public";
+
+const SORTS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "distance", label: "Distance", icon: "navigate-outline" },
+  { key: "public", label: "Public", icon: "trending-up-outline" },
+  { key: "sector", label: "Sector", icon: "grid-outline" },
+];
 
 export default function ListScreen() {
   const router = useRouter();
@@ -94,80 +105,97 @@ export default function ListScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <View style={styles.sortRow}>
-        {(["distance", "public", "sector"] as SortKey[]).map((k) => (
-          <Pressable
-            key={k}
-            onPress={() => setSort(k)}
-            style={[styles.chip, sort === k && styles.chipOn]}
+        {SORTS.map(({ key, label, icon }) => (
+          <ScalePressable
+            key={key}
+            onPress={() => {
+              hapticSelect();
+              setSort(key);
+            }}
+            style={[styles.chip, sort === key && styles.chipOn]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: sort === key }}
+            accessibilityLabel={`Sort by ${label}`}
           >
-            <Text style={[styles.chipText, sort === k && styles.chipTextOn]}>
-              {k}
-            </Text>
-          </Pressable>
+            <Ionicons name={icon} size={13} color={sort === key ? colors.accentInk : colors.fgMuted} />
+            <Text style={[styles.chipText, sort === key && styles.chipTextOn]}>{label}</Text>
+          </ScalePressable>
         ))}
       </View>
 
-      {q.isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : q.isError ? (
-        <View style={styles.center}>
-          <Text style={styles.err}>{(q.error as Error).message}</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(i) => i.place.id}
-          renderItem={({ item }) => {
-            const t =
-              item.investable?.brand.ticker?.symbol ??
-              item.investable?.comparables?.[0]?.ticker;
-            const quote = t ? quotes[t.toUpperCase()] : undefined;
-            const accent = item.investable?.brand.isPublic
-              ? sectorColor(item.investable.brand.sector)
-              : pinColor(item);
-            return (
-              <Pressable
-                style={styles.row}
-                onPress={() => {
-                  if (t) router.push(`/detail/${t}`);
-                  else router.push(`/detail/${encodeURIComponent(item.place.name)}`);
-                }}
-              >
-                <View style={[styles.dot, { backgroundColor: accent }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{listTitle(item)}</Text>
-                  <Text style={styles.sub}>
-                    {formatItem(item)} ·{" "}
-                    {formatDistance(haversine(origin, item.place.location))}
-                  </Text>
-                </View>
-                <View style={styles.priceCol}>
-                  {quote ? (
-                    <>
-                      <Text style={styles.price}>${quote.price.toFixed(2)}</Text>
-                      <Text
-                        style={{
-                          color: quote.change >= 0 ? "#3ee68a" : "#ff6b6b",
-                          fontSize: 12,
-                        }}
-                      >
-                        {quote.change >= 0 ? "+" : ""}
-                        {quote.changePct.toFixed(2)}%
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.chevron}>›</Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          }}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
-          contentContainerStyle={{ paddingBottom: 40 }}
-        />
-      )}
+      <ScreenFade>
+        {q.isLoading ? (
+          <SkeletonList rows={7} />
+        ) : q.isError ? (
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Could not load nearby brands"
+            subtitle={(q.error as Error).message}
+          />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon="location-outline"
+            title="Nothing nearby yet"
+            subtitle="Move around or check location permissions — investable brands within 1.5km show up here."
+          />
+        ) : (
+          <FlatList
+            data={items}
+            keyExtractor={(i) => i.place.id}
+            renderItem={({ item }) => {
+              const t =
+                item.investable?.brand.ticker?.symbol ??
+                item.investable?.comparables?.[0]?.ticker;
+              const quote = t ? quotes[t.toUpperCase()] : undefined;
+              const accent = item.investable?.brand.isPublic
+                ? sectorColor(item.investable.brand.sector)
+                : pinColor(item);
+              const up = (quote?.change ?? 0) >= 0;
+              return (
+                <ScalePressable
+                  style={styles.row}
+                  onPress={() => {
+                    if (t) router.push(`/detail/${t}`);
+                    else router.push(`/detail/${encodeURIComponent(item.place.name)}`);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${listTitle(item)}`}
+                >
+                  <View style={[styles.dot, { backgroundColor: accent }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.name}>{listTitle(item)}</Text>
+                    <Text style={styles.sub}>
+                      {formatItem(item)} ·{" "}
+                      {formatDistance(haversine(origin, item.place.location))}
+                    </Text>
+                  </View>
+                  <View style={styles.priceCol}>
+                    {quote ? (
+                      <>
+                        <Text style={styles.price}>${quote.price.toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                          <Ionicons
+                            name={up ? "caret-up" : "caret-down"}
+                            size={9}
+                            color={up ? colors.accent : colors.danger}
+                          />
+                          <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12 }}>
+                            {quote.changePct.toFixed(2)}%
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Ionicons name="chevron-forward" size={16} color={colors.fgDim} />
+                    )}
+                  </View>
+                </ScalePressable>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+            contentContainerStyle={{ paddingBottom: 40 }}
+          />
+        )}
+      </ScreenFade>
     </SafeAreaView>
   );
 }
@@ -222,32 +250,35 @@ function formatDistance(m: number): string {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   sortRow: { flexDirection: "row", gap: 8, padding: 12 },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    minHeight: 36,
   },
-  chipOn: { backgroundColor: "#fff", borderColor: "#fff" },
-  chipText: { color: "#aaa", fontSize: 13 },
-  chipTextOn: { color: "#000", fontWeight: "700" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { color: colors.fgMuted, fontSize: 13, fontWeight: "600" },
+  chipTextOn: { color: colors.accentInk, fontWeight: "700" },
   row: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 13,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    backgroundColor: colors.bg,
   },
-  name: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  sub: { color: "#888", fontSize: 12, marginTop: 2 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  name: { color: colors.fg, ...type.body, fontWeight: "600", fontSize: 16 },
+  sub: { color: colors.fgDim, fontSize: 12, marginTop: 2 },
+  dot: { width: 10, height: 10, borderRadius: 5, ...elevation.sm },
   priceCol: { alignItems: "flex-end", minWidth: 72 },
-  price: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  chevron: { color: "#666", fontSize: 22 },
-  sep: { height: 1, backgroundColor: "#111" },
-  err: { color: "#ff5a5a", padding: 16, textAlign: "center" },
+  price: { color: colors.fg, fontSize: 15, fontWeight: "700" },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 16 },
 });
