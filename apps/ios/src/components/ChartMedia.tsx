@@ -12,6 +12,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, radii } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
 
 /**
  * Photo chart viewer: inline preview, fullscreen pinch-zoom, Save PNG.
@@ -63,22 +66,31 @@ export function ChartMedia({
         <Text style={styles.hint}>Tap to expand · pinch to zoom</Text>
         <View style={styles.toolbarBtns}>
           <Pressable
-            onPress={() => setOpen(true)}
+            onPress={() => {
+              hapticSelect();
+              setOpen(true);
+            }}
             style={({ pressed }) => [styles.toolBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
             accessibilityLabel="Expand chart"
           >
+            <Ionicons name="expand-outline" size={13} color={colors.accent} />
             <Text style={styles.toolBtnText}>Expand</Text>
           </Pressable>
           <Pressable
             onPress={() => void savePng()}
             disabled={saving}
             style={({ pressed }) => [styles.toolBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
             accessibilityLabel="Save chart as PNG"
           >
             {saving ? (
-              <ActivityIndicator color="#3ECF8E" />
+              <ActivityIndicator color={colors.accent} />
             ) : (
-              <Text style={styles.toolBtnText}>Save PNG</Text>
+              <>
+                <Ionicons name="download-outline" size={13} color={colors.accent} />
+                <Text style={styles.toolBtnText}>Save PNG</Text>
+              </>
             )}
           </Pressable>
         </View>
@@ -116,7 +128,10 @@ export function ChartMedia({
             <Pressable
               onPress={() => setOpen(false)}
               style={({ pressed }) => [styles.toolBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
+              <Ionicons name="close" size={14} color={colors.accent} />
               <Text style={styles.toolBtnText}>Close</Text>
             </Pressable>
             <Text style={styles.modalTitle} numberOfLines={1}>
@@ -126,11 +141,16 @@ export function ChartMedia({
               onPress={() => void savePng()}
               disabled={saving}
               style={({ pressed }) => [styles.toolBtn, styles.toolBtnAccent, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Save chart as PNG"
             >
               {saving ? (
-                <ActivityIndicator color="#0C0E10" />
+                <ActivityIndicator color={colors.accentInk} />
               ) : (
-                <Text style={[styles.toolBtnText, styles.toolBtnAccentText]}>Save PNG</Text>
+                <>
+                  <Ionicons name="download-outline" size={13} color={colors.accentInk} />
+                  <Text style={[styles.toolBtnText, styles.toolBtnAccentText]}>Save PNG</Text>
+                </>
               )}
             </Pressable>
           </View>
@@ -168,35 +188,39 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolbarBtns: { flexDirection: "row", gap: 6 },
-  hint: { color: "#666", fontSize: 11, flex: 1 },
+  hint: { color: colors.fgDim, fontSize: 11, flex: 1 },
   toolBtn: {
-    borderWidth: 1,
-    borderColor: "#2a6b45",
-    backgroundColor: "#0d2818",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minWidth: 72,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.accentMuted,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 72,
+    minHeight: 32,
+    justifyContent: "center",
   },
   toolBtnAccent: {
-    backgroundColor: "#3ECF8E",
-    borderColor: "#3ECF8E",
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
-  toolBtnText: { color: "#3ECF8E", fontSize: 12, fontWeight: "700" },
-  toolBtnAccentText: { color: "#0C0E10" },
+  toolBtnText: { color: colors.accent, fontSize: 12, fontWeight: "700" },
+  toolBtnAccentText: { color: colors.accentInk },
   pressed: { opacity: 0.75 },
   inlineZoom: {
     width: "100%",
     height: 280,
-    borderRadius: 12,
-    backgroundColor: "#050505",
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSunken,
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: colors.border,
   },
   zoomContent: { alignItems: "center", justifyContent: "center", minHeight: 280 },
   inlineImg: { width: "100%", height: 260 },
-  modalRoot: { flex: 1, backgroundColor: "#050505", paddingTop: 54 },
+  modalRoot: { flex: 1, backgroundColor: colors.bgSunken, paddingTop: 54 },
   modalBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -205,7 +229,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  modalTitle: { color: "#ccc", fontSize: 13, flex: 1, textAlign: "center" },
+  modalTitle: { color: colors.fgMuted, fontSize: 13, flex: 1, textAlign: "center" },
   modalZoom: { flex: 1 },
   modalZoomContent: {
     flexGrow: 1,
@@ -215,7 +239,7 @@ const styles = StyleSheet.create({
   },
   modalImg: { width: "100%", height: 520 },
   modalHint: {
-    color: "#666",
+    color: colors.fgDim,
     fontSize: 11,
     textAlign: "center",
     paddingVertical: 12,

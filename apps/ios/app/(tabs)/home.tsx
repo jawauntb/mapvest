@@ -107,6 +107,7 @@ export default function HomeScreen() {
 
       <ScreenFade>
         <FlatList
+          style={{ flex: 1 }}
           data={items}
           keyExtractor={(e) => e.ticker}
           contentContainerStyle={{ paddingBottom: 32 }}

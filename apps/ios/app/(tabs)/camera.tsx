@@ -5,7 +5,7 @@ import { captureStill } from "@/camera/captureStill";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
-import { colors, elevation, radii, type } from "@/theme/tokens";
+import { colors, radii, type } from "@/theme/tokens";
 import { sectorColor } from "@/util/sectors";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";

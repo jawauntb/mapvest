@@ -540,8 +540,9 @@ function UnderlyingBadge({
       ]}
     >
       <Text style={styles.badgeText}>
-        {link.isLoading ? "Underlying analyzer …" : "Underlying analyzer →"}
+        {link.isLoading ? "Underlying analyzer …" : "Underlying analyzer"}
       </Text>
+      {!link.isLoading ? <Ionicons name="arrow-forward" size={12} color={colors.accent2} /> : null}
     </Pressable>
   );
 }
@@ -571,7 +572,7 @@ function ChartImageBlock({
   period?: string;
 }) {
   const data = q.data as Awaited<ReturnType<typeof fetchChart>> | undefined;
-  if (q.isLoading || q.isFetching) return <ActivityIndicator color="#fff" />;
+  if (q.isLoading || q.isFetching) return <ActivityIndicator color={colors.fg} />;
   if (q.isError) return <Text style={styles.err}>{(q.error as Error).message}</Text>;
   if (!data?.image?.data) return <Text style={styles.muted}>No chart.</Text>;
   const typeSlug = chartType ?? data.type ?? label.toLowerCase().replace(/\s+/g, "-");
@@ -620,7 +621,7 @@ function AgentOverviewBlock({
     <Section title={`Overview · $${ticker}`}>
       {overviewQ.isLoading || overviewQ.isFetching ? (
         <View style={{ gap: 8 }}>
-          <ActivityIndicator color="#9f9" />
+          <ActivityIndicator color={colors.accent} />
           <Text style={styles.muted}>Writing a longer agent brief…</Text>
         </View>
       ) : overviewQ.isError ? (
@@ -862,7 +863,8 @@ function WatchlistActions({
       setStatusLine("Saving…");
     },
     onSuccess: () => {
-      setStatusLine("★ Saved to watchlist");
+      hapticSuccess();
+      setStatusLine("Saved to watchlist");
       void qc.invalidateQueries({ queryKey: ["watchlist", token] });
     },
     onError: (e) => {
@@ -909,8 +911,9 @@ function WatchlistActions({
       setStatusLine("Saving memo…");
     },
     onSuccess: () => {
+      hapticSuccess();
       setMemoSaved(true);
-      setStatusLine("✓ Memo saved");
+      setStatusLine("Memo saved");
       void qc.invalidateQueries({ queryKey: ["watchlist", token] });
     },
     onError: (e) => setStatusLine((e as Error).message || "Memo save failed"),
@@ -922,7 +925,7 @@ function WatchlistActions({
     return (
       <View style={{ gap: 8 }}>
         <Text style={styles.muted}>
-          Sign in to ★ Save this ticker, generate memos, and open Research briefs.
+          Sign in to save this ticker, generate memos, and open Research briefs.
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
@@ -932,17 +935,26 @@ function WatchlistActions({
               styles.actionBtnActive,
               pressed && { opacity: 0.7 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in"
           >
-            <Text style={[styles.actionBtnText, { color: "#000" }]}>Sign in</Text>
+            <Text style={[styles.actionBtnText, { color: colors.accentInk }]}>Sign in</Text>
           </Pressable>
           <Pressable
             onPress={() => memoM.mutate()}
             disabled={memoM.isPending}
             style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Generate memo"
           >
-            <Text style={styles.actionBtnText}>
-              {memoM.isPending ? "Generating…" : "📝 Generate memo"}
-            </Text>
+            {memoM.isPending ? (
+              <ActivityIndicator color={colors.fg} />
+            ) : (
+              <>
+                <Ionicons name="document-text-outline" size={15} color={colors.fg} />
+                <Text style={styles.actionBtnText}>Generate memo</Text>
+              </>
+            )}
           </Pressable>
         </View>
         {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
@@ -960,9 +972,14 @@ function WatchlistActions({
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Pressable
-          onPress={() => (isSaved ? removeM.mutate() : saveM.mutate())}
+          onPress={() => {
+            hapticTap();
+            isSaved ? removeM.mutate() : saveM.mutate();
+          }}
           disabled={saving}
+          accessibilityRole="button"
           accessibilityState={{ selected: isSaved, busy: saving }}
+          accessibilityLabel={isSaved ? `Remove ${sym} from watchlist` : `Save ${sym} to watchlist`}
           style={({ pressed }) => [
             styles.actionBtn,
             isSaved ? styles.actionBtnActive : null,
@@ -971,11 +988,18 @@ function WatchlistActions({
           ]}
         >
           {saving ? (
-            <ActivityIndicator color={isSaved ? "#000" : "#fff"} />
+            <ActivityIndicator color={isSaved ? colors.accentInk : colors.fg} />
           ) : (
-            <Text style={[styles.actionBtnText, isSaved && { color: "#000" }]}>
-              {isSaved ? "★ Saved" : "☆ Save"}
-            </Text>
+            <>
+              <Ionicons
+                name={isSaved ? "star" : "star-outline"}
+                size={15}
+                color={isSaved ? colors.accentInk : colors.fg}
+              />
+              <Text style={[styles.actionBtnText, isSaved && { color: colors.accentInk }]}>
+                {isSaved ? "Saved" : "Save"}
+              </Text>
+            </>
           )}
         </Pressable>
         <Pressable
@@ -986,11 +1010,16 @@ function WatchlistActions({
             memoM.isPending && { opacity: 0.7 },
             pressed && { opacity: 0.7 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={memo ? "Regenerate memo" : "Generate memo"}
         >
           {memoM.isPending ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.fg} />
           ) : (
-            <Text style={styles.actionBtnText}>{memo ? "↻ Regenerate memo" : "📝 Memo"}</Text>
+            <>
+              <Ionicons name={memo ? "refresh-outline" : "document-text-outline"} size={15} color={colors.fg} />
+              <Text style={styles.actionBtnText}>{memo ? "Regenerate memo" : "Memo"}</Text>
+            </>
           )}
         </Pressable>
       </View>
@@ -1021,13 +1050,22 @@ function WatchlistActions({
               pressed && { opacity: 0.7 },
               { alignSelf: "flex-start" },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Save memo to watchlist"
           >
-            <Text style={[styles.actionBtnText, memoSaved && { color: "#000" }]}>
+            {!saveMemoM.isPending ? (
+              <Ionicons
+                name={memoSaved ? "checkmark-circle" : "bookmark-outline"}
+                size={15}
+                color={memoSaved ? colors.accentInk : colors.fg}
+              />
+            ) : null}
+            <Text style={[styles.actionBtnText, memoSaved && { color: colors.accentInk }]}>
               {saveMemoM.isPending
                 ? "Saving…"
                 : memoSaved
-                  ? "✓ Memo saved"
-                  : "💾 Save memo to watchlist"}
+                  ? "Memo saved"
+                  : "Save memo to watchlist"}
             </Text>
           </Pressable>
         </View>

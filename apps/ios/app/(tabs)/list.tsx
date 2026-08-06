@@ -140,6 +140,7 @@ export default function ListScreen() {
           />
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             data={items}
             keyExtractor={(i) => i.place.id}
             renderItem={({ item }) => {

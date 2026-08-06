@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
+import { colors } from "@/theme/tokens";
 
 /**
  * Lightweight article formatter for agent briefs.
@@ -97,14 +98,14 @@ function splitBlocks(raw: string): Block[] {
 
 const styles = StyleSheet.create({
   wrap: { gap: 10 },
-  lede: { fontSize: 15, fontWeight: "600", color: "#eee", lineHeight: 22 },
-  body: { color: "#ccc", fontSize: 14, lineHeight: 21 },
+  lede: { fontSize: 15, fontWeight: "600", color: colors.fg, lineHeight: 22 },
+  body: { color: colors.fgMuted, fontSize: 14, lineHeight: 21 },
   heading: {
-    color: "#fff",
+    color: colors.fg,
     fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.2,
     marginTop: 4,
   },
-  bullet: { color: "#9a9a9a", fontSize: 13, lineHeight: 19, paddingLeft: 2 },
+  bullet: { color: colors.fgDim, fontSize: 13, lineHeight: 19, paddingLeft: 2 },
 });
