@@ -70,14 +70,14 @@ export default function CameraScreen() {
 
   if (!perm) {
     return (
-      <View style={styles.center}>
+      <View style={styles.permRoot}>
         <ActivityIndicator color={colors.fg} />
       </View>
     );
   }
   if (!perm.granted) {
     return (
-      <SafeAreaView style={styles.center}>
+      <SafeAreaView style={styles.permRoot}>
         <View style={styles.permIcon}>
           <Ionicons name="camera-outline" size={30} color={colors.fgMuted} />
         </View>
