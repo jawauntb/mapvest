@@ -21,8 +21,8 @@ import {
   type ChartImage,
   type ResearchArticle,
 } from "@/lib/mapvest-api";
-import { ChartFigure } from "../ChartFigure";
-import { FormattedBrief } from "../FormattedBrief";
+import { ChartFigure } from "../../ChartFigure";
+import { FormattedBrief } from "../../FormattedBrief";
 import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
