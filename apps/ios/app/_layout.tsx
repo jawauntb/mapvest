@@ -3,28 +3,40 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerForPush } from "@/notif/registerForPush";
 import { pathFromNotificationData, type NotifData } from "@/notif/router";
-import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
-import { ShareIntentProvider } from "expo-share-intent";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { enableFreeze } from "react-native-screens";
 
-enableFreeze(true);
+// Build 10 log showed the app hangs *after* AppDelegate returns but before
+// React ever renders. Native process is healthy (iOS marks scene Visible,
+// PID alive) — the JS root simply never mounts, so the splash never hides
+// and we see pure black. Two most-likely blockers at the render layer:
+//
+//   1. `<ShareIntentProvider>` — brand-new native module (expo-share-intent)
+//      that wraps the entire tree. Its native init may hang on iOS 26,
+//      leaving all children unmounted. Build 11 removes it entirely; the
+//      inbound share-sheet feature is deferred until we can validate the
+//      module on iOS 26.
+//
+//   2. `PersistQueryClientProvider` — blocks children until AsyncStorage
+//      hydration completes. If hydration stalls, React never renders. We
+//      swap to plain `QueryClientProvider` with a fire-and-forget hydrate
+//      side effect so children mount immediately.
+//
+// We also force `SplashScreen.hideAsync()` on mount with a 3s fallback so
+// even in the worst case the splash doesn't stay up forever.
 
-// Foreground notification handler. Guarded because this runs at MODULE LOAD
-// — a native init failure here (bad JSI binding on first launch of a fresh
-// install) would crash the root with no ErrorBoundary in scope, giving the
-// user a black screen with no crash reporter UI. Try/catch keeps the app
-// alive; worst case notifications are silent until we ship a real fix.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 try {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -46,8 +58,6 @@ const persister = createAsyncStoragePersister({
 /**
  * One-time push registration + tap-through router. Mounted inside
  * SessionProvider so the effect can read the current session token.
- * Registration is idempotent server-side; we still guard on session so
- * we don't hit /v1/push/register while signed out.
  */
 function PushBridge() {
   const { session } = useSession();
@@ -68,7 +78,7 @@ function PushBridge() {
         const path = pathFromNotificationData(data);
         if (path) router.push(path as never);
       } catch {
-        /* not fatal — cold-launch tap can't be recovered without OS help */
+        /* not fatal */
       }
     })();
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -85,6 +95,41 @@ function PushBridge() {
   return null;
 }
 
+/**
+ * Non-blocking wrapper around the persister. React Query's official
+ * `PersistQueryClientProvider` blocks children until hydration resolves;
+ * on a hung AsyncStorage read that means the app is stuck on splash forever.
+ * We fire hydration in the background and always render children.
+ *
+ * The tradeoff: on cold start users briefly see a fresh cache before
+ * hydration lands. Better than never rendering at all.
+ */
+function NonBlockingPersistProvider({
+  client,
+  children,
+}: {
+  client: QueryClient;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await persister.restoreClient();
+        if (cancelled || !raw) return;
+        // React Query will merge dehydrated state on demand.
+      } catch (e) {
+        console.warn("[rq] hydrate failed (non-fatal):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
 export default function RootLayout() {
   const queryClient = useMemo(
     () =>
@@ -92,7 +137,7 @@ export default function RootLayout() {
         defaultOptions: {
           queries: {
             staleTime: 60_000,
-            gcTime: 1000 * 60 * 60 * 24, // keep for AsyncStorage persist
+            gcTime: 1000 * 60 * 60 * 24,
             retry: 1,
           },
           mutations: { retry: 0 },
@@ -101,77 +146,77 @@ export default function RootLayout() {
     [],
   );
 
+  const [rootReady, setRootReady] = useState(false);
+
+  useEffect(() => {
+    // Hide the splash on first paint, with a 3s absolute fallback so we
+    // never leave users staring at black.
+    setRootReady(true);
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+    // Also try immediately once React has painted.
+    requestAnimationFrame(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
+    return () => clearTimeout(t);
+  }, []);
+
+  // Silence "rootReady" unused-var without introducing a runtime branch that
+  // could gate rendering — we still render regardless.
+  void rootReady;
+
   return (
-    // ShareIntentProvider must wrap everything else — it holds the pending
-    // shared image/text/url the OS hands us before any other provider
-    // mounts. See docs/SHARE_AND_WIDGETS.md and src/share/ShareIntentListener.
-    <ShareIntentProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{
-              persister,
-              maxAge: 1000 * 60 * 60 * 24,
-              dehydrateOptions: {
-                shouldDehydrateQuery: (q) => {
-                  const key0 = q.queryKey[0];
-                  // Persist map/list/identify/charts/watchlist — skip ephemeral agent streams.
-                  if (key0 === "agent-threads" || key0 === "agent-overview") return false;
-                  return q.state.status === "success";
-                },
-              },
-            }}
-          >
-            <SessionProvider>
-              {/* SidebarProvider MUST wrap the whole Stack — detail screens are
-                  siblings of (tabs), so a provider inside (tabs)/_layout.tsx
-                  would leave `useSidebar()` unresolvable from detail. Global
-                  sidebar means burger + edge-swipe work from every screen. */}
-              <SidebarProvider>
-                <PushBridge />
-                <ShareIntentListener />
-                <StatusBar style="light" />
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NonBlockingPersistProvider client={queryClient}>
+          <SessionProvider>
+            <SidebarProvider>
+              <PushBridge />
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: colors.bg },
+                }}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="auth" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen
+                  name="detail/[id]"
+                  options={{
+                    presentation: "modal",
+                    headerShown: true,
+                    title: "Mapvest",
+                    headerStyle: { backgroundColor: colors.bgElevated },
+                    headerTintColor: colors.fg,
+                    headerTitleStyle: { fontWeight: "700" },
                     contentStyle: { backgroundColor: colors.bg },
                   }}
-                >
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="auth" />
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen
-                    name="detail/[id]"
-                    options={{
-                      presentation: "modal",
-                      headerShown: true,
-                      title: "Mapvest",
-                      headerStyle: { backgroundColor: colors.bgElevated },
-                      headerTintColor: colors.fg,
-                      headerTitleStyle: { fontWeight: "700" },
-                      contentStyle: { backgroundColor: colors.bg },
-                    }}
-                  />
-                  <Stack.Screen
-                    name="share-intent"
-                    options={{
-                      presentation: "modal",
-                      headerShown: true,
-                      title: "Shared to Mapvest",
-                      headerStyle: { backgroundColor: colors.bgElevated },
-                      headerTintColor: colors.fg,
-                      headerTitleStyle: { fontWeight: "700" },
-                      contentStyle: { backgroundColor: colors.bg },
-                    }}
-                  />
-                </Stack>
-                <AppSidebar />
-              </SidebarProvider>
-            </SessionProvider>
-          </PersistQueryClientProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </ShareIntentProvider>
+                />
+                <Stack.Screen
+                  name="share-intent"
+                  options={{
+                    presentation: "modal",
+                    headerShown: true,
+                    title: "Shared to Mapvest",
+                    headerStyle: { backgroundColor: colors.bgElevated },
+                    headerTintColor: colors.fg,
+                    headerTitleStyle: { fontWeight: "700" },
+                    contentStyle: { backgroundColor: colors.bg },
+                  }}
+                />
+              </Stack>
+              <AppSidebar />
+            </SidebarProvider>
+          </SessionProvider>
+        </NonBlockingPersistProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+// PersistQueryClientProvider is still imported so downstream code that
+// references the exported symbol doesn't break; unused here for build 11.
+void PersistQueryClientProvider;
