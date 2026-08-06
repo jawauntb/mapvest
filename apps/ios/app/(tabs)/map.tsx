@@ -4,9 +4,10 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
-import { fetchChart, fetchNearby } from "@/api/client";
+import { fetchChart, fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,
   longitude: -122.4194,
@@ -21,6 +22,8 @@ export default function MapScreen() {
   const cachedRegion = qc.getQueryData<Region>(["tab-state", "map-region"]);
   const [region, setRegion] = useState<Region>(cachedRegion ?? FALLBACK_REGION);
   const [permErr, setPermErr] = useState<string | null>(null);
+  /** Keep custom marker bitmaps fresh until quotes land, then freeze for perf. */
+  const [trackMarkers, setTrackMarkers] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -56,25 +59,44 @@ export default function MapScreen() {
 
   const items = useMemo(() => nearbyQuery.data?.items ?? [], [nearbyQuery.data]);
 
+  const pinTickers = useMemo(() => {
+    const out: string[] = [];
+    for (const item of items) {
+      const t = resolvePinTicker(item);
+      if (t) out.push(t.symbol);
+    }
+    return [...new Set(out)];
+  }, [items]);
+
+  const quotesQuery = useQuery({
+    queryKey: ["map-quotes", pinTickers.join(",")],
+    enabled: pinTickers.length > 0,
+    queryFn: () => fetchQuotesMap(pinTickers, { token: session?.token }),
+    staleTime: 60_000,
+  });
+
+  const quotes = quotesQuery.data ?? {};
+
+  useEffect(() => {
+    setTrackMarkers(true);
+    const t = setTimeout(() => setTrackMarkers(false), quotesQuery.isFetched ? 400 : 1200);
+    return () => clearTimeout(t);
+  }, [items, quotesQuery.isFetched, quotesQuery.dataUpdatedAt]);
+
   // Warm auction charts for top public tickers so detail opens faster.
   useEffect(() => {
-    const tickers = items
-      .map((i) => i.investable?.brand.ticker?.symbol)
-      .filter((t): t is string => !!t)
-      .slice(0, 4);
-    for (const t of tickers) {
+    for (const t of pinTickers.slice(0, 4)) {
       void qc.prefetchQuery({
         queryKey: ["chart", t, "auction", "1mo"],
         queryFn: () => fetchChart("auction", t, "1mo", { token: session?.token }),
         staleTime: 10 * 60_000,
       });
     }
-  }, [items, qc, session?.token]);
+  }, [pinTickers, qc, session?.token]);
 
   function openItem(item: NearbyItem) {
-    const ticker = item.investable?.brand.ticker?.symbol;
-    const comp = item.investable?.comparables?.[0]?.ticker;
-    const id = ticker ?? comp ?? item.place.name;
+    const pin = resolvePinTicker(item);
+    const id = pin?.symbol ?? item.place.name;
     router.push(`/detail/${encodeURIComponent(id)}`);
   }
 
@@ -92,24 +114,35 @@ export default function MapScreen() {
         showsUserLocation
         showsMyLocationButton
       >
-        {items.map((item) => (
-          <Marker
-            key={item.place.id}
-            coordinate={{
-              latitude: item.place.location.lat,
-              longitude: item.place.location.lng,
-            }}
-            title={markerTitle(item)}
-            description={describeItem(item)}
-            pinColor={pinColor(item)}
-            onPress={() => openItem(item)}
-            onCalloutPress={() => openItem(item)}
-          />
-        ))}
+        {items.map((item) => {
+          const pin = resolvePinTicker(item);
+          const quote = pin ? quotes[pin.symbol] : undefined;
+          return (
+            <Marker
+              key={item.place.id}
+              coordinate={{
+                latitude: item.place.location.lat,
+                longitude: item.place.location.lng,
+              }}
+              tracksViewChanges={trackMarkers}
+              anchor={{ x: 0.5, y: 1 }}
+              onPress={() => openItem(item)}
+            >
+              <TickerPin
+                placeName={item.place.name}
+                pin={pin}
+                quote={quote}
+                accent={pinColor(item)}
+              />
+            </Marker>
+          );
+        })}
       </MapView>
 
       <View pointerEvents="none" style={styles.overlay}>
-        {nearbyQuery.isFetching ? <ActivityIndicator color="#fff" /> : null}
+        {nearbyQuery.isFetching || quotesQuery.isFetching ? (
+          <ActivityIndicator color="#fff" />
+        ) : null}
         {permErr ? <Text style={styles.warn}>{permErr}</Text> : null}
         {nearbyQuery.isError ? (
           <Text style={styles.warn}>
@@ -121,32 +154,74 @@ export default function MapScreen() {
   );
 }
 
-function markerTitle(item: NearbyItem): string {
-  const t = item.investable?.brand.ticker?.symbol;
-  if (t && item.investable?.brand.isPublic) return `$${t} · ${item.place.name}`;
-  const comp = item.investable?.comparables?.[0]?.ticker;
-  if (comp) return `≈$${comp} · ${item.place.name}`;
-  return item.place.name;
+type PinTicker = {
+  symbol: string;
+  /** true = brand's own listing; false = closest public comparable */
+  isPublic: boolean;
+};
+
+function resolvePinTicker(item: NearbyItem): PinTicker | null {
+  const inv = item.investable;
+  if (!inv) return null;
+  const own = inv.brand.ticker?.symbol?.trim().toUpperCase();
+  if (own) return { symbol: own, isPublic: !!inv.brand.isPublic };
+  const comp = inv.comparables?.[0]?.ticker?.trim().toUpperCase();
+  if (comp) return { symbol: comp, isPublic: false };
+  return null;
 }
 
-function describeItem(item: NearbyItem): string {
-  const inv = item.investable;
-  if (!inv) return item.place.types.slice(0, 3).join(", ") || "unlisted";
-  if (inv.brand.isPublic) {
-    return `${inv.brand.sector ?? "public"} · tap for Research / Save`;
+function TickerPin({
+  placeName,
+  pin,
+  quote,
+  accent,
+}: {
+  placeName: string;
+  pin: PinTicker | null;
+  quote?: Quote;
+  accent: string;
+}) {
+  if (!pin) {
+    return (
+      <View style={styles.plainPinWrap}>
+        <View style={[styles.plainDot, { backgroundColor: accentHex(accent) }]} />
+        <View style={styles.plainStem} />
+      </View>
+    );
   }
-  if (inv.comparables.length > 0) {
-    return `private · comps ${inv.comparables.map((c) => c.ticker).join(", ")}`;
-  }
-  return "private · no validated ticker";
+
+  const up = (quote?.change ?? 0) >= 0;
+  return (
+    <View style={styles.pinWrap}>
+      <View style={[styles.bubble, { borderColor: accentHex(accent) }]}>
+        <Text style={styles.tickerText}>
+          {pin.isPublic ? "" : "≈"}${pin.symbol}
+        </Text>
+        {quote ? (
+          <>
+            <Text style={styles.priceText}>${quote.price.toFixed(2)}</Text>
+            <Text style={[styles.chgText, { color: up ? "#3ECF8E" : "#ff6b6b" }]}>
+              {up ? "+" : ""}
+              {quote.changePct.toFixed(2)}%
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.priceMuted}>…</Text>
+        )}
+        <Text style={styles.placeHint} numberOfLines={1}>
+          {placeName}
+        </Text>
+      </View>
+      <View style={[styles.stem, { borderTopColor: accentHex(accent) }]} />
+      <View style={[styles.dot, { backgroundColor: accentHex(accent) }]} />
+    </View>
+  );
 }
 
 function pinColor(item: NearbyItem): string {
   const inv = item.investable;
-  // react-native-maps pinColor only accepts named colors on Apple pins;
-  // Google accepts hex. Prefer sector-tinted named fallbacks for reliability.
   if (!inv) return "gray";
-  if (inv.brand.isPublic) {
+  if (inv.brand.isPublic || inv.brand.ticker?.symbol) {
     const sector = (inv.brand.sector ?? "").toLowerCase();
     if (sector.includes("tech") || sector.includes("communication")) return "blue";
     if (sector.includes("health")) return "purple";
@@ -158,6 +233,26 @@ function pinColor(item: NearbyItem): string {
   }
   if (inv.comparables.length > 0 || inv.etfs.length > 0) return "orange";
   return "red";
+}
+
+function accentHex(name: string): string {
+  switch (name) {
+    case "blue":
+      return "#4C8DFF";
+    case "purple":
+    case "violet":
+      return "#A78BFA";
+    case "yellow":
+      return "#E8C547";
+    case "orange":
+      return "#F0A36B";
+    case "green":
+      return "#3ECF8E";
+    case "red":
+      return "#FF6B6B";
+    default:
+      return "#888";
+  }
 }
 
 const styles = StyleSheet.create({
@@ -177,5 +272,68 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 6,
     fontSize: 12,
+  },
+  pinWrap: { alignItems: "center", maxWidth: 120 },
+  bubble: {
+    backgroundColor: "rgba(12, 14, 16, 0.92)",
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignItems: "center",
+    minWidth: 72,
+  },
+  tickerText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  priceText: {
+    color: "#eee",
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 1,
+  },
+  priceMuted: { color: "#666", fontSize: 11, marginTop: 1 },
+  chgText: { fontSize: 10, fontWeight: "700", marginTop: 1 },
+  placeHint: {
+    color: "#888",
+    fontSize: 9,
+    marginTop: 2,
+    maxWidth: 100,
+    textAlign: "center",
+  },
+  stem: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    marginTop: -1,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 1,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  plainPinWrap: { alignItems: "center" },
+  plainDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  plainStem: {
+    width: 2,
+    height: 8,
+    backgroundColor: "#555",
+    marginTop: -1,
   },
 });

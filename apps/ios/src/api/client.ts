@@ -185,12 +185,12 @@ export function fetchQuote(
   return jsonFetch(`/v1/quote?symbol=${encodeURIComponent(symbol)}`, { method: "GET" }, opts);
 }
 
-/** Best-effort parallel quotes for list/saved rows (cap 10). */
+/** Best-effort parallel quotes for list/map pins (cap 24). */
 export async function fetchQuotesMap(
   symbols: string[],
   opts: FetchOpts = {},
 ): Promise<Record<string, Quote>> {
-  const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 10);
+  const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 24);
   const entries = await Promise.all(
     uniq.map(async (sym) => {
       try {
