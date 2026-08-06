@@ -155,7 +155,7 @@ export type WatchEntry = {
   ticker: string;
   name?: string;
   sector?: string;
-  source: "camera" | "map" | "list" | "manual" | "detail";
+  source: "camera" | "map" | "list" | "manual" | "detail" | "live";
   memo?: string;
   memoProvider?: string;
   createdAt: string;

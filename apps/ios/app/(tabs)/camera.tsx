@@ -1,6 +1,7 @@
 import { addToWatchlist, identifyPhoto } from "@/api/client";
 import type { IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { captureStill } from "@/camera/captureStill";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { sectorColor } from "@/util/sectors";
@@ -29,6 +30,7 @@ export default function CameraScreen() {
   const [perm, requestPerm] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const readyRef = useRef(false);
+  const readySinceRef = useRef<number | null>(null);
   const router = useRouter();
   const qc = useQueryClient();
   const { session } = useSession();
@@ -45,7 +47,7 @@ export default function CameraScreen() {
   useEffect(() => {
     if (!focused || frozenUri) {
       readyRef.current = false;
-      cameraRef.current = null;
+      readySinceRef.current = null;
     }
   }, [focused, frozenUri]);
 
@@ -101,21 +103,18 @@ export default function CameraScreen() {
       setErr("Camera still starting — wait a sec and tap again.");
       return;
     }
+    const cam = cameraRef.current;
+    if (!cam) {
+      setErr("Camera still starting — wait a sec and tap again.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     setResult(null);
     setQueuedNote(null);
     setSavedNote(null);
     try {
-      // Live scan can hold the camera if both tabs stay mounted — we unmount
-      // CameraView when unfocused. Prefer processed JPEG for a reliable still.
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.75,
-        skipProcessing: false,
-        exif: false,
-        shutterSound: false,
-      });
-      if (!photo?.uri) throw new Error("No photo captured.");
+      const photo = await captureStill(cam, { readySince: readySinceRef.current });
       setFrozenUri(photo.uri);
       persistCamera({ frozenUri: photo.uri, result: null, err: null, queuedNote: null });
       const location = await currentLocation();
@@ -158,6 +157,7 @@ export default function CameraScreen() {
     setQueuedNote(null);
     setSavedNote(null);
     readyRef.current = false;
+    readySinceRef.current = null;
     persistCamera({
       frozenUri: null,
       result: null,
@@ -215,12 +215,14 @@ export default function CameraScreen() {
           }}
           style={StyleSheet.absoluteFillObject}
           facing="back"
-          mode="picture"
+          active={focused && !frozenUri}
           onCameraReady={() => {
             readyRef.current = true;
+            readySinceRef.current = Date.now();
           }}
           onMountError={(e) => {
             readyRef.current = false;
+            readySinceRef.current = null;
             setErr(e.message || "Camera failed to start");
           }}
         />

@@ -1,18 +1,21 @@
 import { addToWatchlist, identifyPhoto } from "@/api/client";
 import type { IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { captureStill } from "@/camera/captureStill";
 import { sectorColor } from "@/util/sectors";
+import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
-import { useIsFocused } from "@react-navigation/native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const FRAME_INTERVAL_MS = 1400;
+const FRAME_INTERVAL_MS = 1600;
 const LIVE_CACHE_KEY = ["tab-state", "live"] as const;
+/** Show banner only after this many consecutive capture failures. */
+const FAIL_BEFORE_BANNER = 2;
 
 type LiveCache = {
   latest: IdentifyResponse | null;
@@ -29,11 +32,14 @@ export default function LiveScanScreen() {
   const [perm, requestPerm] = useCameraPermissions();
   const cached = qc.getQueryData<LiveCache>(LIVE_CACHE_KEY);
   const [running, setRunning] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [latest, setLatest] = useState<IdentifyResponse | null>(cached?.latest ?? null);
-  const [err, setErr] = useState<string | null>(cached?.err ?? null);
+  const [err, setErr] = useState<string | null>(null); // don't restore stale capture errors
   const [frames, setFrames] = useState(cached?.frames ?? 0);
   const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
   const readyRef = useRef(false);
+  const readySinceRef = useRef<number | null>(null);
+  const failStreak = useRef(0);
 
   function persistLive(next: Partial<LiveCache>) {
     const prev = qc.getQueryData<LiveCache>(LIVE_CACHE_KEY) ?? {
@@ -69,8 +75,9 @@ export default function LiveScanScreen() {
     useCallback(() => {
       return () => {
         setRunning(false);
+        setCameraReady(false);
         readyRef.current = false;
-        cameraRef.current = null;
+        readySinceRef.current = null;
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
@@ -80,37 +87,28 @@ export default function LiveScanScreen() {
   );
 
   useEffect(() => {
-    if (!focused) {
-      readyRef.current = false;
-      cameraRef.current = null;
-    }
-  }, [focused]);
-
-  useEffect(() => {
-    if (!running || !focused) {
+    if (!running || !focused || !cameraReady) {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
       return;
     }
+    // First frame ASAP, then interval.
+    void tick();
     timerRef.current = setInterval(() => void tick(), FRAME_INTERVAL_MS);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, focused]);
+  }, [running, focused, cameraReady]);
 
   async function tick() {
-    if (inFlight.current || !cameraRef.current || !readyRef.current || !focused) return;
+    const cam = cameraRef.current;
+    if (inFlight.current || !cam || !readyRef.current || !focused || !running) return;
     inFlight.current = true;
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.45,
-        skipProcessing: false,
-        exif: false,
-        shutterSound: false,
-      });
-      if (!photo?.uri) return;
+      const photo = await captureStill(cam, { readySince: readySinceRef.current });
+      failStreak.current = 0;
       setFrames((n) => {
         const next = n + 1;
         persistLive({ frames: next });
@@ -129,12 +127,31 @@ export default function LiveScanScreen() {
         setRunning(false);
       }
     } catch (e) {
+      failStreak.current += 1;
       const msg = e instanceof Error ? e.message : String(e);
-      setErr(msg);
-      persistLive({ err: msg });
+      // Transient AVFoundation misses are common right after mount — retry quietly.
+      if (failStreak.current >= FAIL_BEFORE_BANNER) {
+        setErr(msg || "Image could not be captured");
+        persistLive({ err: msg });
+      }
     } finally {
       inFlight.current = false;
     }
+  }
+
+  function onToggle() {
+    if (running) {
+      setRunning(false);
+      return;
+    }
+    failStreak.current = 0;
+    setErr(null);
+    setSavedNote(null);
+    if (!cameraReady) {
+      setErr("Camera still starting — wait a sec and tap again.");
+      return;
+    }
+    setRunning(true);
   }
 
   if (!perm) {
@@ -197,22 +214,30 @@ export default function LiveScanScreen() {
           }}
           style={StyleSheet.absoluteFillObject}
           facing="back"
-          mode="picture"
+          active={focused}
           onCameraReady={() => {
             readyRef.current = true;
+            readySinceRef.current = Date.now();
+            setCameraReady(true);
           }}
           onMountError={(e) => {
             readyRef.current = false;
+            readySinceRef.current = null;
+            setCameraReady(false);
             setErr(e.message || "Camera failed to start");
           }}
         />
       ) : (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#000" }]} />
       )}
-      <SafeAreaView style={styles.hud} edges={["top", "bottom"]}>
-        <View style={styles.topBar}>
+      <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
+        <View style={styles.topBar} pointerEvents="none">
           <Text style={styles.status}>
-            {running ? `Scanning · frame ${frames}` : "Idle · camera paused"}
+            {running
+              ? `Scanning · frame ${frames}`
+              : cameraReady
+                ? "Idle · tap Start"
+                : "Opening camera…"}
           </Text>
         </View>
 
@@ -250,7 +275,7 @@ export default function LiveScanScreen() {
         <View style={styles.controls}>
           <Pressable
             style={[styles.toggle, running && styles.toggleOn]}
-            onPress={() => setRunning((r) => !r)}
+            onPress={onToggle}
           >
             <Text style={styles.toggleText}>{running ? "Stop scan" : "Start scan"}</Text>
           </Pressable>
