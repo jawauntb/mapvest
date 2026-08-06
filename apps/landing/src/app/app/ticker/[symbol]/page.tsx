@@ -174,7 +174,7 @@ export default function TickerDetail() {
                 setRhLink(rh.linkOut);
                 return;
               }
-              if (settings?.robinhoodMcp && "configured" in settings.robinhoodMcp && settings.robinhoodMcp.configured) {
+              if (settings?.robinhoodMcp.configured) {
                 setRhLink(fallback);
                 return;
               }
