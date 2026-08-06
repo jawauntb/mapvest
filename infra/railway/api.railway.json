@@ -8,7 +8,7 @@
   },
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "bun install --frozen-lockfile && bun run --filter api build || true"
+    "buildCommand": "bun install --frozen-lockfile && bun run --filter '@mapvest/api' build || true"
   },
   "deploy": {
     "startCommand": "bun run start",
