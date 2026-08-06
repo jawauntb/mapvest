@@ -2,6 +2,7 @@ import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/clien
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { colors, radii } from "@/theme/tokens";
+import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
@@ -52,6 +53,7 @@ export default function MapScreen() {
       };
       setRegion(next);
       qc.setQueryData(["tab-state", "map-region"], next);
+      void saveLastLocationForWidgets({ lat: next.latitude, lng: next.longitude });
     })();
   }, [cachedRegion, qc]);
 
