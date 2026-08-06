@@ -27,6 +27,10 @@ options.get("/", (c) => {
       link_out: "option_derivation",
       deferred_to: "v0.2",
     });
+    // Static link-out scaffold — the response is a pure function of the
+    // query string with no I/O, so it is safe to cache for longer than the
+    // dynamic routes.
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
     return c.json({
       ticker,
       linkOut: "https://github.com/jawauntb/option_derivation",

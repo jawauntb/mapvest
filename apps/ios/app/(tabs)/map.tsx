@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -7,6 +8,7 @@ import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps
 import { fetchChart, fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { colors, radii } from "@/theme/tokens";
 
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,
@@ -151,13 +153,21 @@ export default function MapScreen() {
 
       <View pointerEvents="none" style={styles.overlay}>
         {nearbyQuery.isFetching || quotesQuery.isFetching ? (
-          <ActivityIndicator color="#fff" />
+          <BlurView intensity={40} tint="dark" style={styles.loadingPill}>
+            <ActivityIndicator color={colors.fg} size="small" />
+          </BlurView>
         ) : null}
-        {permErr ? <Text style={styles.warn}>{permErr}</Text> : null}
+        {permErr ? (
+          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
+            <Text style={styles.warn}>{permErr}</Text>
+          </BlurView>
+        ) : null}
         {nearbyQuery.isError ? (
-          <Text style={styles.warn}>
-            {(nearbyQuery.error as Error).message || "Could not load nearby brands."}
-          </Text>
+          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
+            <Text style={styles.warn}>
+              {(nearbyQuery.error as Error).message || "Could not load nearby brands."}
+            </Text>
+          </BlurView>
         ) : null}
       </View>
     </View>
@@ -275,12 +285,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  loadingPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  warnWrap: {
+    overflow: "hidden",
+    borderRadius: radii.md,
+  },
   warn: {
-    color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    color: colors.fg,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
     fontSize: 12,
   },
   pinCanvas: {

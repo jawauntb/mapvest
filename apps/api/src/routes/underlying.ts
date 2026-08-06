@@ -30,6 +30,10 @@ underlying.get("/", (c) => {
       link_out: "the-underlying-analyzer-reboot",
       deferred_to: "v0.2",
     });
+    // Static link-out scaffold — the response is a pure function of the
+    // query string with no I/O, so it is safe to cache for longer than the
+    // dynamic routes.
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
     return c.json({
       linkOut: "https://underlying-terminal-production.up.railway.app/",
       note: "underlying-analyzer link-out — live sibling instance",
