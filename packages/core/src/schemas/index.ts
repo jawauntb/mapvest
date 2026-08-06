@@ -134,6 +134,35 @@ export const NearbyResponse = z.object({
 });
 export type NearbyResponse = z.infer<typeof NearbyResponse>;
 
+// -------- home-screen widgets (iOS WidgetKit / Android App Widget) --------
+
+/**
+ * Trimmed nearby item for a home-screen widget tile — a widget refreshes on
+ * a timeline (every 15-60 min) so the payload stays tiny and cheap. See
+ * `GET /v1/widget/nearby` in apps/api and the widget extension sources under
+ * apps/ios/targets/widget (iOS) and apps/ios/widgets (Android).
+ */
+export const WidgetNearbyItem = z.object({
+  name: z.string(),
+  ticker: z.string().optional(),
+  isPublic: z.boolean().optional(),
+  sector: z.string().optional(),
+  distanceM: z.number().optional(),
+  price: z.number().optional(),
+  changePct: z.number().optional(),
+  location: LatLng,
+});
+export type WidgetNearbyItem = z.infer<typeof WidgetNearbyItem>;
+
+export const WidgetNearbyResponse = z.object({
+  origin: LatLng,
+  items: z.array(WidgetNearbyItem),
+  /** URL for `GET /v1/widget/map-snapshot` with the same origin/items baked in. */
+  mapSnapshotUrl: z.string().url().optional(),
+  generatedAt: z.string(), // ISO
+});
+export type WidgetNearbyResponse = z.infer<typeof WidgetNearbyResponse>;
+
 export const ResolveComparableRequest = z.object({
   brand: z.string(),
   hintSector: z.string().optional(),

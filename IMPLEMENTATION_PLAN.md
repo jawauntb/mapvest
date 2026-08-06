@@ -201,3 +201,38 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 - [ ] Tick this phase’s checkboxes as each slice lands
 
 **Acceptance**: Docs match live env vars; `bun run openapi && bun run postman` clean.
+
+---
+
+## Phase 9 — Share-to-Mapvest + home-screen widgets
+
+See `docs/SHARE_AND_WIDGETS.md` for the full design + activation checklist.
+API + JS/TS are done and tested; the native share extension and widget
+extensions only activate after an `expo prebuild` + Xcode/EAS build, which
+this environment can't run — that step is the "acceptance" gate below.
+
+- [x] `apps/api`: `GET /v1/widget/nearby` + `GET /v1/widget/map-snapshot`
+      (Google Static Maps proxy, key stays server-side), sharing the
+      `/v1/nearby` places cascade via `lib/nearby-resolve.ts`
+- [x] `packages/core`: `WidgetNearbyItem` / `WidgetNearbyResponse` schemas;
+      `openapi.yaml` + `postman.json` regenerated
+- [x] iOS: outbound Share button on the detail sheet (native OS share sheet)
+- [x] iOS: inbound share-to-Mapvest via `expo-share-intent` —
+      `ShareIntentListener` + `app/share-intent.tsx` run a shared image
+      through the same `/v1/identify` pipeline as the Camera tab
+- [x] iOS: WidgetKit "Nearby" list + map widgets (`targets/widget/`, via
+      `@bacons/apple-targets`) — Swift source in place, deployment target
+      16.0, no iOS-17-only APIs
+- [x] Android: "Nearby" home-screen widget (`src/widgets/`, via
+      `react-native-android-widget`) — JSX widget UI + headless task handler
+- [ ] `expo prebuild --clean` run at least once against these changes and
+      verified in a simulator/device (share sheet target appears; both
+      widgets render and refresh)
+- [ ] `ios.appleTeamId` set in `app.json` before the next EAS build (needed
+      for the widget extension to code-sign)
+- [ ] Real simulator/device screenshots of both widgets + the share sheet
+      replace the placeholder description above once verified
+
+**Acceptance**: Sharing a photo from Photos/Messages/a browser to Mapvest
+identifies it end-to-end; both home-screen widgets show real nearby data
+and refresh after visiting Map/List.

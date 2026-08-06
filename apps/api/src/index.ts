@@ -33,6 +33,7 @@ import sessionRoutes from "./routes/session.js";
 import settings from "./routes/settings.js";
 import underlying from "./routes/underlying.js";
 import watchlist from "./routes/watchlist.js";
+import widget from "./routes/widget.js";
 
 // Eager Postgres migrate (no-op when POSTGRES_URL unset).
 void initDb().catch((err) => {
@@ -96,6 +97,8 @@ app.route("/v1/robinhood", robinhood);
 app.route("/v1/entitlements", entitlements);
 // Opt-in push notifications — token registration, per-event prefs.
 app.route("/v1/push", push);
+// Native widget backends — nearby list + map snapshot.
+app.route("/v1/widget", widget);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {

@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "place_id": "mock:widget:1",
+      "name": "Starbucks",
+      "geometry": { "location": { "lat": 37.7751, "lng": -122.4195 } },
+      "types": ["cafe"]
+    },
+    {
+      "place_id": "mock:widget:2",
+      "name": "McDonald's",
+      "geometry": { "location": { "lat": 37.7755, "lng": -122.4201 } },
+      "types": ["restaurant"]
+    },
+    {
+      "place_id": "mock:widget:3",
+      "name": "Joe's Corner Deli",
+      "geometry": { "location": { "lat": 37.776, "lng": -122.4188 } },
+      "types": ["store"]
+    }
+  ]
+}

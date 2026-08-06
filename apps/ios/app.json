@@ -28,6 +28,9 @@
       },
       "config": {
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
       }
     },
     "android": {
@@ -67,6 +70,38 @@
         "expo-notifications",
         {
           "iosDisplayInForeground": true
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "iosShareExtensionName": "Share to Mapvest",
+          "androidIntentFilters": ["text/*", "image/*"]
+        }
+      ],
+      "@bacons/apple-targets",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "NearbyWidget",
+              "label": "Mapvest Nearby",
+              "description": "Investable brands near you — map + list.",
+              "minWidth": "250dp",
+              "minHeight": "150dp",
+              "maxResizeWidth": "300dp",
+              "maxResizeHeight": "300dp",
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
         }
       ]
     ],

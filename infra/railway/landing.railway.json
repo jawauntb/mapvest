@@ -8,7 +8,7 @@
   },
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "bun install --frozen-lockfile && bun run --filter landing build"
+    "buildCommand": "bun install --frozen-lockfile && bun run --filter '@mapvest/landing' build"
   },
   "deploy": {
     "startCommand": "bun run start",

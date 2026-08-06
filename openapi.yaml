@@ -23,6 +23,8 @@ tags:
     description: Photo → investable identification
   - name: nearby
     description: Location-driven place lookup
+  - name: widget
+    description: Home-screen widget data (iOS WidgetKit / Android App Widget)
   - name: finance
     description: Ticker / comparable / ETF resolution
   - name: auth
@@ -1208,6 +1210,102 @@ components:
               - place
       required:
         - items
+    WidgetNearbyItem:
+      type: object
+      properties:
+        name:
+          type: string
+        ticker:
+          type: string
+        isPublic:
+          type: boolean
+        sector:
+          type: string
+        distanceM:
+          type: number
+        price:
+          type: number
+        changePct:
+          type: number
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          required:
+            - lat
+            - lng
+      required:
+        - name
+        - location
+    WidgetNearbyResponse:
+      type: object
+      properties:
+        origin:
+          type: object
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          required:
+            - lat
+            - lng
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              ticker:
+                type: string
+              isPublic:
+                type: boolean
+              sector:
+                type: string
+              distanceM:
+                type: number
+              price:
+                type: number
+              changePct:
+                type: number
+              location:
+                type: object
+                properties:
+                  lat:
+                    type: number
+                    minimum: -90
+                    maximum: 90
+                  lng:
+                    type: number
+                    minimum: -180
+                    maximum: 180
+                required:
+                  - lat
+                  - lng
+            required:
+              - name
+              - location
+        mapSnapshotUrl:
+          type: string
+          format: uri
+        generatedAt:
+          type: string
+      required:
+        - origin
+        - items
+        - generatedAt
     ResolveComparableRequest:
       type: object
       properties:
@@ -2054,6 +2152,139 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/widget/nearby:
+    get:
+      summary: Trimmed nearby payload for home-screen widgets
+      description: Same places cascade + brand join as `/v1/nearby`, capped small (max 12) with quotes attached for up to 6 tickers. Built for the iOS WidgetKit and Android home-screen widgets, which refresh on a timeline rather than on demand. No auth required.
+      tags:
+        - widget
+      parameters:
+        - schema:
+            type: number
+          required: true
+          name: lat
+          in: query
+        - schema:
+            type: number
+          required: true
+          name: lng
+          in: query
+        - schema:
+            type: number
+            default: 500
+          required: false
+          name: radius
+          in: query
+        - schema:
+            type: number
+            default: 25
+          required: false
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Widget-sized nearby items resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetNearbyResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/widget/map-snapshot:
+    get:
+      summary: Static map PNG for home-screen widgets
+      description: Server-rendered Google Static Maps PNG with a pin for the origin and one per nearby investable, labeled by ticker. Proxies the request so `GOOGLE_MAPS_API_KEY` never reaches a widget extension (see docs/SECRETS.md). Returns 501 when no key is configured.
+      tags:
+        - widget
+      parameters:
+        - schema:
+            type: number
+          required: true
+          name: lat
+          in: query
+        - schema:
+            type: number
+          required: true
+          name: lng
+          in: query
+        - schema:
+            type: number
+            default: 500
+          required: false
+          name: radius
+          in: query
+        - schema:
+            type: number
+            default: 25
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+            description: PNG width in px, capped at 640.
+          required: false
+          description: PNG width in px, capped at 640.
+          name: width
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+            description: PNG height in px, capped at 640.
+          required: false
+          description: PNG height in px, capped at 640.
+          name: height
+          in: query
+      responses:
+        "200":
+          description: Map snapshot PNG.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Map snapshot not configured (GOOGLE_MAPS_API_KEY unset).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream places lookup or static map request failed.
           content:
             application/json:
               schema:

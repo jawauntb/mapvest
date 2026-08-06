@@ -11,6 +11,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
+import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
@@ -43,7 +44,9 @@ export default function ListScreen() {
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setOrigin({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      const next = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      setOrigin(next);
+      void saveLastLocationForWidgets(next);
     })();
   }, []);
 

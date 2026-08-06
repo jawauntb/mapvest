@@ -1,0 +1,187 @@
+# Share-to-Mapvest + home-screen widgets
+
+Two related features that let Mapvest live outside the app itself:
+
+1. **Share-to-Mapvest** — share any photo from Photos, Messages, Safari,
+   Chrome, Claude, ChatGPT, Google Photos, or anywhere else the OS shows a
+   share sheet, and Mapvest shows up as a target, the same way "Open in…"
+   does for a photo. Mapvest identifies the shared image and offers to save
+   the ticker or open the full detail sheet.
+2. **Home-screen widgets** — a "Nearby" list widget and a "Nearby" map
+   widget (iOS WidgetKit + Android App Widget) showing investable brands
+   near the last location Mapvest saw, without opening the app.
+
+Both ship as real source in this repo, but **both require a native rebuild
+to activate** — `bun test`/`tsc --noEmit` cover the JS/TS surface and the
+API endpoints, but a share extension and a widget extension are separate
+native targets that only exist after `expo prebuild` regenerates the `ios/`
+and `android/` directories. This environment has no Xcode/Android Studio
+to build and smoke-test those targets, so treat everything under
+"Activation checklist" below as required, not optional, before the next
+TestFlight/Play build.
+
+## Share-to-Mapvest
+
+- **Library**: [`expo-share-intent`](https://github.com/achorein/expo-share-intent)
+  (`5.1.1`, matches Expo SDK 54 — see the package's own SDK compatibility
+  table before bumping). Its config plugin generates the iOS Share
+  Extension target and the Android `ACTION_SEND` intent filters at
+  `expo prebuild` time — no hand-written native share-extension code lives
+  in this repo.
+- **Config**: `apps/ios/app.json` → `plugins: ["expo-share-intent", {...}]`.
+  Accepts images, web URLs/pages, and text; only images run through
+  `/v1/identify` today (see below).
+- **Receiving flow**:
+  - `apps/ios/app/_layout.tsx` wraps the app in `ShareIntentProvider` and
+    mounts `ShareIntentListener` (`apps/ios/src/share/ShareIntentListener.tsx`),
+    which watches `useShareIntentContext().hasShareIntent` and routes to
+    `/share-intent`.
+  - `apps/ios/app/share-intent.tsx` reads the shared image, runs it through
+    the same `identifyPhoto()` call the Camera tab uses (with a best-effort
+    location fix), and shows the same result card (Save / View details).
+    A shared text/URL with no image shows a friendly "photos only for now"
+    message instead of erroring.
+- **Outbound half**: the detail sheet (`apps/ios/app/detail/[id].tsx`) has a
+  header **Share** button using React Native's built-in `Share` API — the
+  native OS share sheet, so a ticker can be shared right back out to
+  Messages, Notes, Claude, etc.
+
+### Activation checklist (share)
+
+1. `cd apps/ios && bun install` (pulls `expo-share-intent`).
+2. `bunx expo prebuild --clean` — regenerates `ios/`/`android/` with the
+   share extension target and Android intent filters wired in.
+3. If prebuild reports `Config sync failed` on the Xcode project mod, see
+   the `patch-package` note in the `expo-share-intent` README ("Config sync
+   failed" section) — this is a known issue with some Xcode project
+   versions and is fixed with a small patch, not a code change here.
+4. `expo run:ios` / `expo run:android` in a simulator, then use the
+   simulator's Photos app (or a browser) to share an image to Mapvest and
+   confirm `/share-intent` opens with a result.
+5. Before the next EAS build, check that only **one** iOS extension target
+   exists in `app.json`/credentials (EAS flags multiple `appExtensions`
+   entries — see expo-share-intent's README FAQ).
+
+## Home-screen widgets
+
+Both widgets read `GET /v1/widget/nearby` (trimmed nearby payload, capped
+at 12 items, quotes on top 6 tickers) and the map widget additionally reads
+`GET /v1/widget/map-snapshot` (a server-rendered Google Static Maps PNG).
+See `apps/api/src/routes/widget.ts`. Both endpoints are public (no bearer
+token) since a widget can't reliably hold a fresh session, and they return
+the same public brand/ticker data `/v1/nearby` does.
+
+**The map snapshot is server-rendered on purpose** — same rule as the iOS
+maps SDK key (`docs/SECRETS.md`): a widget extension is a build artifact
+distributed to end users, so it must never carry `GOOGLE_MAPS_API_KEY`
+directly. If `GOOGLE_MAPS_API_KEY` isn't configured, `/v1/widget/map-snapshot`
+returns `501` and the map widget falls back to the same list layout as the
+"Nearby" list widget.
+
+### Where the widgets get a location
+
+Widgets can't prompt for GPS permission themselves. Whenever the Map or
+List tab gets a location fix, it calls
+`saveLastLocationForWidgets()` (`apps/ios/src/widgets/widgetLocation.ts`),
+which:
+
+- **Android**: writes to `AsyncStorage` — the widget's headless task
+  handler (`apps/ios/src/widgets/widget-task-handler.tsx`, registered from
+  `apps/ios/index.js`) runs in the same JS engine and reads it straight
+  back.
+- **iOS**: mirrors the value into a shared App Group
+  (`group.com.mapvest.app.widget`) via `@bacons/apple-targets`'
+  `ExtensionStorage`, since the WidgetKit extension is a fully separate
+  Swift process with zero JS/RN access. `targets/widget/NearbyModels.swift`
+  reads it back with `UserDefaults(suiteName:)`.
+
+A widget that's never seen a location (freshly added, before the app has
+ever obtained a GPS fix) falls back to San Francisco — the same default the
+Map tab's `FALLBACK_REGION` uses.
+
+### iOS — WidgetKit (`apps/ios/targets/widget/`)
+
+Built with [`@bacons/apple-targets`](https://github.com/EvanBacon/expo-apple-targets)
+(`4.0.7` — pinned below `5.x` because that version pulls in an
+`@expo/prebuild-config` version tied to Expo SDK 55, not our SDK 54). Its
+config plugin (`app.json` → `"@bacons/apple-targets"`) auto-discovers every
+`targets/*/expo-target.config.js` and links the directory as a native
+Xcode target at `expo prebuild` time — the Swift files below are hand
+written, but the Xcode project wiring, `Info.plist`, and entitlements are
+generated.
+
+- `expo-target.config.js` — target type `widget`, App Group entitlement.
+- `NearbyModels.swift` — DTOs mirroring `WidgetNearbyResponse`
+  (`packages/core`), the App Group reader, and the two `fetch*` network
+  calls (plain `URLSession`, no dependencies).
+- `NearbyProvider.swift` — shared `TimelineProvider`, refreshes every 30
+  minutes.
+- `NearbyListWidget.swift` — small/medium/large list of nearby tickers.
+- `NearbyMapWidget.swift` — medium/large map snapshot with the nearest
+  ticker overlaid; falls back to a list if the snapshot didn't load.
+- `MapvestWidgetBundle.swift` — `@main` `WidgetBundle` registering both.
+- `ColorHex.swift` — the RN app's palette (`apps/ios/src/theme/tokens.ts`)
+  mirrored as plain hex `Color` values, so the widget target doesn't need
+  its own Xcode asset-catalog color story.
+
+Deployment target is pinned to iOS 16 in `expo-target.config.js` — the
+widgets intentionally avoid iOS 17-only APIs (SwiftUI `Map`,
+`containerBackground(for:)`) so they build against the same minimum iOS
+version as the main app.
+
+### Android — App Widget (`apps/ios/src/widgets/`)
+
+Built with [`react-native-android-widget`](https://github.com/sAleksovski/react-native-android-widget)
+(`0.21.0`) — the widget UI is JSX (`FlexWidget`/`TextWidget` primitives
+rendered to native RemoteViews), not hand-written Kotlin. Android
+RemoteViews can't embed a live map surface or an arbitrary bitmap easily
+without extra plumbing, so the Android widget is list-only for now; the
+"map" experience on Android is the iOS map widget's fallback list, reused.
+
+- `app.json` → `["react-native-android-widget", { widgets: [...] }]`
+  registers the `NearbyWidget` App Widget provider (30 min update period,
+  resizable) — this generates the `AndroidManifest.xml` entry and
+  `res/xml/*_widget_info.xml` at prebuild time.
+- `apps/ios/index.js` replaces the default `expo-router/entry` as the app's
+  `main` so the widget's headless task can be registered alongside
+  expo-router's own bootstrapping — the headless task lives outside
+  file-based routes by design.
+- `src/widgets/widget-task-handler.tsx` — handles `WIDGET_ADDED` /
+  `WIDGET_UPDATE` / `WIDGET_RESIZED` by fetching `widgetData.ts` and calling
+  `renderWidget()`.
+- `src/widgets/widgetData.ts` — fetch + origin resolution (mirrors
+  `NearbyModels.swift`'s Swift version).
+- `src/widgets/NearbyWidget.tsx` — the JSX widget UI itself.
+
+### Activation checklist (widgets)
+
+1. `cd apps/ios && bun install` (pulls `@bacons/apple-targets`,
+   `react-native-android-widget`).
+2. Set `ios.appleTeamId` in `app.json` before an EAS/Xcode build — the
+   plugin warns (does not hard-fail prebuild) without it, but the widget
+   extension target won't code-sign.
+3. `bunx expo prebuild --clean`.
+4. iOS: open `xed ios`, confirm the "MapvestWidgets" target builds, add the
+   widget to a simulator home screen, and confirm it shows the placeholder
+   data before the network call resolves and real data after.
+5. Android: `expo run:android`, long-press the home screen → Widgets →
+   "Mapvest Nearby", confirm it renders and updates after visiting the Map
+   or List tab (which seeds the last-known location).
+6. Both: hit `GET {API_URL}/v1/widget/nearby?lat=37.7749&lng=-122.4194` and
+   `GET {API_URL}/v1/widget/map-snapshot?lat=37.7749&lng=-122.4194` directly
+   to confirm the deployed API is serving them (the map snapshot 501s until
+   `GOOGLE_MAPS_API_KEY` is set on Railway — see `docs/SECRETS.md`).
+
+## API surface
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /v1/widget/nearby` | none | Trimmed nearby payload (≤12 items, quotes on top 6 tickers) |
+| `GET /v1/widget/map-snapshot` | none | Server-rendered static map PNG; `501` if `GOOGLE_MAPS_API_KEY` unset |
+
+Both share `apps/api/src/lib/nearby-resolve.ts` with `/v1/nearby` — the
+Google Places → Overpass → Photon cascade and brand→ticker join are
+identical, just capped smaller. Schemas: `WidgetNearbyItem` /
+`WidgetNearbyResponse` in `packages/core/src/schemas`. Regenerated into
+`openapi.yaml` / `postman.json` via `bun run openapi && bun run postman`
+per AGENTS.md §6 — do not hand-edit those files.
