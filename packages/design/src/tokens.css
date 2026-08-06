@@ -6,6 +6,7 @@
   --mv-bg: #0c0e10;
   --mv-bg-elev: #161a1f;
   --mv-bg-sunken: #08090b;
+  --mv-bg-glass: rgba(22, 26, 31, 0.66);
   --mv-fg: #f2f4f5;
   --mv-fg-muted: #8b939c;
   --mv-fg-dim: #5c6570;
@@ -13,10 +14,15 @@
   --mv-accent-hover: #52d99c;
   --mv-accent-muted: #1f6b4a;
   --mv-accent-ink: #0a1f14;
+  --mv-accent2: #2f8fef;
+  --mv-accent2-hover: #4fa4ff;
+  --mv-accent2-muted: #173f73;
+  --mv-gradient: linear-gradient(135deg, #3ecf8e 0%, #21b5a6 45%, #2f8fef 100%);
   --mv-warn: #e8a054;
   --mv-danger: #e85d5d;
   --mv-border: #242a32;
   --mv-border-strong: #323a45;
+  --mv-glass-border: rgba(242, 244, 245, 0.08);
   --mv-focus: rgba(62, 207, 142, 0.45);
   --mv-font-display: "Syne", "Avenir Next", "Segoe UI", sans-serif;
   --mv-font-sans: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -25,9 +31,14 @@
   --mv-radius-md: 10px;
   --mv-radius-lg: 16px;
   --mv-radius-xl: 22px;
+  --mv-radius-pill: 999px;
+  --mv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 1px rgba(0, 0, 0, 0.16);
+  --mv-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --mv-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.28);
   --mv-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --mv-fast: 140ms;
   --mv-base: 220ms;
+  --mv-slow: 420ms;
 
   /* Back-compat aliases used by existing landing CSS */
   --bg: var(--mv-bg);

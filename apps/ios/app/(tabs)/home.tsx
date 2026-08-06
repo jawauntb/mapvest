@@ -1,19 +1,22 @@
-import {
-  type Quote,
-  type WatchEntry,
-  fetchQuotesMap,
-  listWatchlist,
-} from "@/api/client";
+import { type Quote, type WatchEntry, fetchQuotesMap, listWatchlist } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { EmptyState } from "@/components/EmptyState";
+import { PrimaryButton } from "@/components/PrimaryButton";
+import { ScalePressable } from "@/components/ScalePressable";
+import { ScreenFade } from "@/components/ScreenFade";
+import { SkeletonList } from "@/components/Skeleton";
 import { useSidebar } from "@/nav/SidebarContext";
-import { colors } from "@/theme/tokens";
+import { colors, elevation, radii, type } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -74,102 +77,168 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.root} edges={["top"]}>
       <View style={styles.topBar}>
         <Pressable
-          onPress={openSidebar}
+          onPress={() => {
+            hapticSelect();
+            openSidebar();
+          }}
           hitSlop={12}
           style={styles.burger}
+          accessibilityRole="button"
           accessibilityLabel="Open menu"
         >
-          <Text style={styles.burgerIcon}>☰</Text>
+          <Ionicons name="menu-outline" size={20} color={colors.fg} />
         </Pressable>
         <Text style={styles.title}>Mapvest</Text>
-        <Pressable onPress={() => router.push("/(tabs)/settings")} hitSlop={12}>
-          <Text style={styles.gear}>⚙</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.searchRow}>
-        <TextInput
-          ref={searchRef}
-          style={styles.search}
-          placeholder="Find ticker — AAPL, SBUX…"
-          placeholderTextColor="#666"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          value={tickerQuery}
-          onChangeText={setTickerQuery}
-          returnKeyType="search"
-          onSubmitEditing={() => openTicker(tickerQuery)}
-        />
         <Pressable
-          style={[styles.goBtn, !tickerQuery.trim() && { opacity: 0.4 }]}
-          disabled={!tickerQuery.trim()}
-          onPress={() => openTicker(tickerQuery)}
+          onPress={() => router.push("/(tabs)/settings")}
+          hitSlop={12}
+          style={styles.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
         >
-          <Text style={styles.goBtnText}>Go</Text>
+          <Ionicons name="settings-outline" size={20} color={colors.fgMuted} />
         </Pressable>
       </View>
 
-      <View style={styles.widgets}>
-        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/map")}>
-          <Text style={styles.widgetEmoji}>🗺</Text>
-          <Text style={styles.widgetTitle}>Map</Text>
-          <Text style={styles.widgetSub}>Nearby brands</Text>
-        </Pressable>
-        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/camera")}>
-          <Text style={styles.widgetEmoji}>📷</Text>
-          <Text style={styles.widgetTitle}>Camera</Text>
-          <Text style={styles.widgetSub}>Snap a brand</Text>
-        </Pressable>
-        <Pressable style={styles.widget} onPress={() => router.push("/(tabs)/list")}>
-          <Text style={styles.widgetEmoji}>≡</Text>
-          <Text style={styles.widgetTitle}>List</Text>
-          <Text style={styles.widgetSub}>Nearby sorted</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Watchlist</Text>
-        <Text style={styles.count}>
-          {items.length} ticker{items.length === 1 ? "" : "s"}
-        </Text>
-      </View>
-
-      {!session?.token ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyTitle}>Sign in to keep a watchlist</Text>
-          <Text style={styles.emptySub}>
-            Browse map and camera as a guest. Sign in to ★ Save tickers and research threads.
-          </Text>
-          <Pressable style={styles.primaryBtn} onPress={() => router.push("/auth")}>
-            <Text style={styles.primaryBtnText}>Sign in</Text>
-          </Pressable>
-        </View>
-      ) : wl.isLoading ? (
-        <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
-      ) : items.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyTitle}>Nothing saved yet</Text>
-          <Text style={styles.emptySub}>
-            Open a ticker from Map or search above, then tap ★ Save. It shows up here.
-          </Text>
-        </View>
-      ) : (
+      <ScreenFade>
         <FlatList
+          style={{ flex: 1 }}
           data={items}
           keyExtractor={(e) => e.ticker}
-          contentContainerStyle={{ paddingBottom: 32, paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingBottom: 32 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={!!session?.token && wl.isRefetching}
+              onRefresh={() => wl.refetch()}
+              tintColor={colors.fgMuted}
+            />
+          }
+          ListHeaderComponent={
+            <View>
+              <View style={styles.searchRow}>
+                <View style={styles.searchWrap}>
+                  <Ionicons
+                    name="search-outline"
+                    size={17}
+                    color={colors.fgDim}
+                    style={{ marginLeft: 12 }}
+                  />
+                  <TextInput
+                    ref={searchRef}
+                    style={styles.search}
+                    placeholder="Find ticker — AAPL, SBUX…"
+                    placeholderTextColor={colors.fgDim}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    value={tickerQuery}
+                    onChangeText={setTickerQuery}
+                    returnKeyType="search"
+                    onSubmitEditing={() => openTicker(tickerQuery)}
+                    accessibilityLabel="Find ticker"
+                  />
+                </View>
+                <Pressable
+                  style={[styles.goBtn, !tickerQuery.trim() && { opacity: 0.4 }]}
+                  disabled={!tickerQuery.trim()}
+                  onPress={() => openTicker(tickerQuery)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go to ticker"
+                >
+                  <Ionicons name="arrow-forward" size={18} color={colors.accentInk} />
+                </Pressable>
+              </View>
+
+              {/* Hero card — camera identify is Mapvest's signature loop. */}
+              <ScalePressable
+                onPress={() => router.push("/(tabs)/camera")}
+                accessibilityRole="button"
+                accessibilityLabel="Open camera — identify what's investable"
+                style={[styles.hero, elevation.md]}
+              >
+                <LinearGradient
+                  colors={colors.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroGrad}
+                >
+                  <View style={styles.heroIcon}>
+                    <Ionicons name="camera" size={22} color={colors.accentInk} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.heroTitle}>Snap a brand</Text>
+                    <Text style={styles.heroSub}>Point your camera — see what's investable</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
+                </LinearGradient>
+              </ScalePressable>
+
+              <View style={styles.widgets}>
+                <ScalePressable
+                  style={[styles.widget, elevation.sm]}
+                  onPress={() => router.push("/(tabs)/map")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open map — nearby brands"
+                >
+                  <View style={styles.widgetIcon}>
+                    <Ionicons name="map-outline" size={18} color={colors.accent} />
+                  </View>
+                  <Text style={styles.widgetTitle}>Map</Text>
+                  <Text style={styles.widgetSub}>Nearby brands</Text>
+                </ScalePressable>
+                <ScalePressable
+                  style={[styles.widget, elevation.sm]}
+                  onPress={() => router.push("/(tabs)/list")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open list — nearby sorted"
+                >
+                  <View style={styles.widgetIcon}>
+                    <Ionicons name="list-outline" size={18} color={colors.accent} />
+                  </View>
+                  <Text style={styles.widgetTitle}>List</Text>
+                  <Text style={styles.widgetSub}>Nearby sorted</Text>
+                </ScalePressable>
+              </View>
+
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Watchlist</Text>
+                <Text style={styles.count}>
+                  {items.length} ticker{items.length === 1 ? "" : "s"}
+                </Text>
+              </View>
+
+              {!session?.token ? (
+                <EmptyState
+                  icon="star-outline"
+                  title="Sign in to keep a watchlist"
+                  subtitle="Browse map and camera as a guest. Sign in to save tickers and research threads."
+                >
+                  <PrimaryButton
+                    label="Sign in"
+                    onPress={() => router.push("/auth")}
+                    style={{ marginTop: 4, alignSelf: "stretch" }}
+                  />
+                </EmptyState>
+              ) : wl.isLoading ? (
+                <SkeletonList rows={4} />
+              ) : items.length === 0 ? (
+                <EmptyState
+                  icon="bookmark-outline"
+                  title="Nothing saved yet"
+                  subtitle="Open a ticker from Map or search above, then tap Save. It shows up here."
+                />
+              ) : null}
+            </View>
+          }
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           renderItem={({ item }) => (
             <WatchRow
               entry={item}
               quote={quotes[item.ticker.toUpperCase()]}
-              onPress={() =>
-                router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })
-              }
+              onPress={() => router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })}
             />
           )}
         />
-      )}
+      </ScreenFade>
     </SafeAreaView>
   );
 }
@@ -185,7 +254,12 @@ function WatchRow({
 }) {
   const up = (quote?.change ?? 0) >= 0;
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <ScalePressable
+      style={styles.row}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${entry.ticker}`}
+    >
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTicker}>${entry.ticker}</Text>
         <Text style={styles.rowName} numberOfLines={1}>
@@ -193,17 +267,32 @@ function WatchRow({
         </Text>
       </View>
       {quote ? (
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={styles.rowPrice}>${quote.price.toFixed(2)}</Text>
-          <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12, fontWeight: "700" }}>
-            {up ? "+" : ""}
-            {quote.changePct.toFixed(2)}%
-          </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={styles.rowPrice}>${quote.price.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+              <Ionicons
+                name={up ? "caret-up" : "caret-down"}
+                size={10}
+                color={up ? colors.accent : colors.danger}
+              />
+              <Text
+                style={{
+                  color: up ? colors.accent : colors.danger,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {quote.changePct.toFixed(2)}%
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.fgDim} />
         </View>
       ) : (
-        <Text style={styles.rowName}>›</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.fgDim} />
       )}
-    </Pressable>
+    </ScalePressable>
   );
 }
 
@@ -226,33 +315,71 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.bgElevated,
   },
-  burgerIcon: { color: colors.fg, fontSize: 18, fontWeight: "700" },
-  title: { color: colors.fg, fontSize: 20, fontWeight: "800" },
-  gear: { color: colors.fgMuted, fontSize: 20, padding: 8 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { color: colors.fg, ...type.h3, fontSize: 20 },
   searchRow: {
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  search: {
+  searchWrap: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.bgElevated,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: radii.md,
+  },
+  search: {
+    flex: 1,
+    paddingHorizontal: 10,
     paddingVertical: 11,
     color: colors.fg,
     fontSize: 15,
+    minHeight: 44,
   },
   goBtn: {
+    width: 48,
     backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    borderRadius: radii.md,
+    alignItems: "center",
     justifyContent: "center",
   },
-  goBtnText: { color: colors.accentInk, fontWeight: "800" },
+  hero: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: radii.xl,
+    overflow: "hidden",
+  },
+  heroGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 18,
+  },
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTitle: { color: colors.accentInk, ...type.h3, fontSize: 17 },
+  heroSub: {
+    color: colors.accentInk,
+    opacity: 0.85,
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "600",
+  },
   widgets: {
     flexDirection: "row",
     gap: 8,
@@ -264,12 +391,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
-    padding: 12,
-    gap: 2,
+    borderRadius: radii.lg,
+    padding: 14,
+    gap: 3,
   },
-  widgetEmoji: { fontSize: 18 },
-  widgetTitle: { color: colors.fg, fontWeight: "700", fontSize: 14 },
+  widgetIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.sm,
+    backgroundColor: colors.bgSunken,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  widgetTitle: { color: colors.fg, ...type.body, fontWeight: "700", fontSize: 14 },
   widgetSub: { color: colors.fgDim, fontSize: 11 },
   sectionHead: {
     flexDirection: "row",
@@ -278,24 +413,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
-  sectionTitle: { color: colors.fg, fontSize: 18, fontWeight: "700" },
+  sectionTitle: { color: colors.fg, ...type.h3, fontSize: 18 },
   count: { color: colors.fgDim, fontSize: 13 },
-  center: { padding: 28, alignItems: "center", gap: 10 },
-  emptyTitle: { color: colors.fg, fontSize: 17, fontWeight: "600" },
-  emptySub: { color: colors.fgMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
-  primaryBtn: {
-    marginTop: 8,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  primaryBtnText: { color: colors.accentInk, fontWeight: "800" },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 16 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 14,
+    paddingHorizontal: 16,
     gap: 12,
   },
   rowTicker: { color: colors.fg, fontWeight: "800", fontSize: 16 },

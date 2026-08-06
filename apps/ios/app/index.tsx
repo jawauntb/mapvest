@@ -1,4 +1,5 @@
 import { useSession } from "@/auth/session";
+import { colors } from "@/theme/tokens";
 import { Redirect } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 
@@ -7,9 +8,14 @@ export default function Gate() {
   if (!ready) {
     return (
       <View
-        style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.bg,
+        }}
       >
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }

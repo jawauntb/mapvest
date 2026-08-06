@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { initDb } from "./lib/db.js";
@@ -44,6 +45,9 @@ app.use(
     allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id"],
   }),
 );
+// gzip/deflate JSON responses over 1KB (hono/compress default threshold).
+// Uses the standard CompressionStream API, supported natively by Bun.
+app.use("*", compress());
 app.use("*", metricsMiddleware);
 app.use("*", rateLimit());
 

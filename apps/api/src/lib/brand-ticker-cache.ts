@@ -27,6 +27,56 @@ export async function readBrandTickerCache(
   return row.payload;
 }
 
+/**
+ * Batched cache read — one `WHERE brand_key = ANY(...)` round-trip instead of
+ * N single-row lookups. Callers that need to resolve a whole page of place
+ * names (e.g. /v1/nearby) should use this instead of looping
+ * `readBrandTickerCache` per name.
+ *
+ * Returns a Map keyed by the *original* input name (not the normalized
+ * brand_key) so callers can look up hits by the name they already have.
+ * Names that miss the cache (or dedupe to the same key) are simply absent
+ * from the map — same "null means miss" contract as the single-name reader.
+ */
+export async function readBrandTickerCacheMany(
+  names: string[],
+): Promise<Map<string, { brand: Brand; sources: Source[] }>> {
+  const result = new Map<string, { brand: Brand; sources: Source[] }>();
+  if (names.length === 0) return result;
+  await initDb();
+  if (!dbEnabled()) return result;
+  const sql = getSql();
+  if (!sql) return result;
+
+  const keyToNames = new Map<string, string[]>();
+  for (const name of names) {
+    const key = brandKey(name);
+    const bucket = keyToNames.get(key);
+    if (bucket) bucket.push(name);
+    else keyToNames.set(key, [name]);
+  }
+  const keys = [...keyToNames.keys()];
+
+  const rows = await sql`
+    SELECT brand_key, payload
+    FROM brand_ticker_cache
+    WHERE brand_key = ANY(${sql.array(keys)})
+      AND expires_at > now()
+  `;
+  for (const row of rows as Array<{
+    brand_key: string;
+    payload: { brand: Brand; sources: Source[] };
+  }>) {
+    if (!row?.payload?.brand) continue;
+    const originalNames = keyToNames.get(row.brand_key);
+    if (!originalNames) continue;
+    for (const name of originalNames) {
+      result.set(name, row.payload);
+    }
+  }
+  return result;
+}
+
 export async function writeBrandTickerCache(
   name: string,
   brand: Brand,

@@ -1,20 +1,15 @@
-import { Hono } from "hono";
 import type { IdentifyResponse, Investable, PhotoIdentification, Source } from "@mapvest/core";
-import { identifyFromImageWithUsage } from "@mapvest/vision";
-import {
-  getQuote,
-  resolveComparable,
-  resolveEtfExposure,
-  resolveTicker,
-} from "@mapvest/finance";
 import type { Quote } from "@mapvest/core";
-import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { getQuote, resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
+import { identifyFromImageWithUsage } from "@mapvest/vision";
+import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
+import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { sanitizeOcrString } from "../lib/sanitize.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
-import { sanitizeOcrString } from "../lib/sanitize.js";
 
 const identify = new Hono<Partial<AuthEnv>>();
 
@@ -97,9 +92,7 @@ identify.post("/", async (c) => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const location = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
 
-    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
-      "user",
-    );
+    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get("user");
     span.setAttributes({
       image_size_bytes: bytes.byteLength,
       has_location: Boolean(location),
@@ -107,10 +100,9 @@ identify.post("/", async (c) => {
     });
 
     const started = performance.now();
-    const { identification: rawIdentification, usage } = await identifyFromImageWithUsage(
-      bytes,
-      { location },
-    );
+    const { identification: rawIdentification, usage } = await identifyFromImageWithUsage(bytes, {
+      location,
+    });
     const identification = sanitizeIdentification(rawIdentification);
     const latencyMs = Math.round(performance.now() - started);
 
@@ -139,45 +131,55 @@ identify.post("/", async (c) => {
       requestId: c.req.header("x-request-id"),
     });
 
-    const investables: Investable[] = [];
-    for (const d of identification.detected) {
-      if (!d.brand) continue;
-      const { brand, sources } = await resolveTicker(d.brand);
-      const publicSources: Source[] = [
-        ...sources,
-        {
-          provider: "openrouter",
-          fetchedAt: new Date().toISOString(),
-          confidence: d.confidence,
-        },
-      ];
+    // Detections are independent of each other — resolve ticker/quote/
+    // comparable/ETF for each in parallel instead of one at a time. An
+    // index-mapped Promise.all preserves `identification.detected` order in
+    // the output regardless of which detection resolves first, and a brand-
+    // less detection resolves to `null` so it can be filtered out afterward
+    // without disturbing the ordering of the rest.
+    const resolvedInvestables = await Promise.all(
+      identification.detected.map(async (d): Promise<Investable | null> => {
+        if (!d.brand) return null;
+        const { brand, sources } = await resolveTicker(d.brand);
+        const publicSources: Source[] = [
+          ...sources,
+          {
+            provider: "openrouter",
+            fetchedAt: new Date().toISOString(),
+            confidence: d.confidence,
+          },
+        ];
 
-      if (brand.isPublic) {
-        // Best-effort: attach a delayed quote for public brands. Bounded to
-        // 500 ms so identify latency stays flat even if Yahoo is slow.
-        const q = brand.ticker?.symbol ? await bestEffortQuote(brand.ticker.symbol) : null;
-        investables.push({
-          brand,
-          comparables: [],
-          etfs: [],
-          confidence: d.confidence,
-          sources: publicSources,
-          ...(q ? { quote: q } : {}),
-        });
-      } else {
+        if (brand.isPublic) {
+          // Best-effort: attach a delayed quote for public brands. Bounded to
+          // 500 ms so identify latency stays flat even if Yahoo is slow.
+          const q = brand.ticker?.symbol ? await bestEffortQuote(brand.ticker.symbol) : null;
+          return {
+            brand,
+            comparables: [],
+            etfs: [],
+            confidence: d.confidence,
+            sources: publicSources,
+            ...(q ? { quote: q } : {}),
+          };
+        }
+
         const [comparables, etfs] = await Promise.all([
           resolveComparable(d.brand, d.sector),
           resolveEtfExposure(d.sector ?? d.brand),
         ]);
-        investables.push({
+        return {
           brand,
           comparables,
           etfs,
           confidence: d.confidence === "high" ? "medium" : "low",
           sources: publicSources,
-        });
-      }
-    }
+        };
+      }),
+    );
+    const investables: Investable[] = resolvedInvestables.filter(
+      (i): i is Investable => i !== null,
+    );
 
     span.setAttribute("investables_count", investables.length);
     const resp: IdentifyResponse = { identification, investables };

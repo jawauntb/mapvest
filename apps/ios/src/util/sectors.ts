@@ -9,8 +9,9 @@ const SECTOR_COLORS: Record<string, string> = {
   "consumer defensive": "#3EE68A",
   healthcare: "#FF6B9D",
   "health care": "#FF6B9D",
-  financials: "#C4A0FF",
-  financial: "#C4A0FF",
+  // Brand rule: no purple — gold/amber keeps financials distinct from energy.
+  financials: "#D6A24C",
+  financial: "#D6A24C",
   energy: "#F5C542",
   industrials: "#8B9BB4",
   materials: "#B8956C",
@@ -19,7 +20,7 @@ const SECTOR_COLORS: Record<string, string> = {
   "real estate": "#E8A0BF",
   "communication services": "#7AD7F0",
   communications: "#7AD7F0",
-  "communication": "#7AD7F0",
+  communication: "#7AD7F0",
 };
 
 export function sectorColor(sector?: string | null): string {

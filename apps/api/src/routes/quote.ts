@@ -1,5 +1,5 @@
-import { Hono } from "hono";
 import { getQuote } from "@mapvest/finance";
+import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const quote = new Hono();
@@ -32,6 +32,11 @@ quote.get("/", async (c) => {
     if (!q) {
       return c.json({ error: "quote unavailable" }, 502);
     }
+    // Quotes are delayed/best-effort already (see getQuote), so a short
+    // client/CDN cache is safe and absorbs bursty re-requests (e.g. a
+    // watchlist screen re-fetching the same symbol) without serving
+    // meaningfully stale prices.
+    c.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
     return c.json({ quote: q });
   });
 });

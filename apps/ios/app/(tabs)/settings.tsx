@@ -1,5 +1,9 @@
 import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { PrimaryButton } from "@/components/PrimaryButton";
+import { colors, radii, type } from "@/theme/tokens";
+import { hapticSelect, hapticSuccess } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -44,6 +48,7 @@ export default function SettingsScreen() {
     onSuccess: async () => {
       setToken("");
       Keyboard.dismiss();
+      hapticSuccess();
       setStatus("Robinhood MCP key saved (encrypted in DB)");
       await qc.invalidateQueries({ queryKey: ["settings", session?.token] });
     },
@@ -88,25 +93,31 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Robinhood MCP</Text>
+          <View style={styles.cardHead}>
+            <Ionicons name="link-outline" size={15} color={colors.accent} />
+            <Text style={styles.label}>Robinhood MCP</Text>
+          </View>
           <Text style={styles.muted}>
             Paste the bearer from your Robinhood agent / ChatGPT MCP connector. Once saved, ticker
             pages show Open in Robinhood so you can buy or place orders in Robinhood. Mapvest never
             submits broker orders. Key is encrypted in Postgres for your account.
           </Text>
           {settingsQ.isLoading ? (
-            <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
+            <ActivityIndicator color={colors.fg} style={{ marginTop: 12 }} />
           ) : rh?.configured ? (
-            <Text style={styles.value}>
-              Configured · …{rh.last4} · fp {rh.fingerprint}
-            </Text>
+            <View style={styles.configuredRow}>
+              <Ionicons name="checkmark-circle" size={15} color={colors.accent} />
+              <Text style={styles.value}>
+                Configured · …{rh.last4} · fp {rh.fingerprint}
+              </Text>
+            </View>
           ) : (
             <Text style={styles.muted}>Not configured</Text>
           )}
           <TextInput
             style={styles.input}
             placeholder="Paste Robinhood MCP token"
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.fgDim}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
@@ -121,32 +132,51 @@ export default function SettingsScreen() {
             returnKeyType="done"
             onSubmitEditing={() => Keyboard.dismiss()}
             blurOnSubmit
+            accessibilityLabel="Robinhood MCP token"
           />
           <View style={styles.row}>
-            <Pressable style={styles.btn} onPress={() => setShowToken((v) => !v)}>
+            <Pressable
+              style={styles.btn}
+              onPress={() => setShowToken((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showToken ? "Hide token" : "Show token"}
+            >
+              <Ionicons
+                name={showToken ? "eye-off-outline" : "eye-outline"}
+                size={15}
+                color={colors.fg}
+              />
               <Text style={styles.btnText}>{showToken ? "Hide" : "Show"}</Text>
             </Pressable>
-            <Pressable style={styles.btn} onPress={() => Keyboard.dismiss()}>
+            <Pressable
+              style={styles.btn}
+              onPress={() => Keyboard.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+            >
               <Text style={styles.btnText}>Done</Text>
             </Pressable>
           </View>
           <View style={styles.row}>
-            <Pressable
-              style={[styles.btn, styles.btnPrimary]}
-              disabled={!token.trim() || saveM.isPending}
+            <PrimaryButton
+              label={saveM.isPending ? "Saving…" : "Save key"}
+              busy={saveM.isPending}
+              disabled={!token.trim()}
               onPress={() => {
                 Keyboard.dismiss();
                 saveM.mutate();
               }}
-            >
-              <Text style={styles.btnTextDark}>{saveM.isPending ? "Saving…" : "Save key"}</Text>
-            </Pressable>
+              style={{ flex: 1 }}
+            />
             {rh?.configured ? (
               <Pressable
                 style={styles.btn}
                 disabled={clearM.isPending}
                 onPress={() => clearM.mutate()}
+                accessibilityRole="button"
+                accessibilityLabel="Clear Robinhood MCP key"
               >
+                <Ionicons name="trash-outline" size={15} color={colors.fg} />
                 <Text style={styles.btnText}>Clear</Text>
               </Pressable>
             ) : null}
@@ -158,10 +188,14 @@ export default function SettingsScreen() {
         <Pressable
           style={styles.btn}
           onPress={async () => {
+            hapticSelect();
             await signOut();
             router.replace("/auth");
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
         >
+          <Ionicons name="log-out-outline" size={15} color={colors.fg} />
           <Text style={styles.btnText}>Sign out</Text>
         </Pressable>
       </ScrollView>
@@ -181,15 +215,14 @@ function GuestHome() {
         <View style={styles.card}>
           <Text style={styles.label}>Browsing as guest</Text>
           <Text style={styles.muted}>
-            Map, Camera, Live, List, and Research all work without an account. Sign in to ★ Save
-            tickers to a watchlist, save memos, and connect your Robinhood MCP key.
+            Map, Camera, and Research all work without an account. Sign in to save tickers to a
+            watchlist, save memos, and connect your Robinhood MCP key.
           </Text>
-          <Pressable
-            style={[styles.btn, styles.btnPrimary, { marginTop: 8 }]}
+          <PrimaryButton
+            label="Sign in"
             onPress={() => router.push("/auth")}
-          >
-            <Text style={styles.btnTextDark}>Sign in</Text>
-          </Pressable>
+            style={{ marginTop: 8, alignSelf: "stretch" }}
+          />
         </View>
       </ScrollView>
     </View>
@@ -197,43 +230,47 @@ function GuestHome() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, gap: 16, paddingBottom: 120 },
-  h1: { color: "#fff", fontSize: 28, fontWeight: "700" },
-  sub: { color: "#888", marginTop: -8 },
+  h1: { color: colors.fg, ...type.h1, fontSize: 28 },
+  sub: { color: colors.fgMuted, marginTop: -8 },
   card: {
-    backgroundColor: "#141414",
-    borderRadius: 14,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.lg,
     padding: 16,
     gap: 8,
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: colors.border,
   },
-  label: { color: "#9f9", fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
-  value: { color: "#fff", fontSize: 16 },
-  muted: { color: "#777", fontSize: 13, lineHeight: 18 },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  label: { color: colors.accent, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
+  value: { color: colors.fg, fontSize: 16 },
+  configuredRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  muted: { color: colors.fgMuted, fontSize: 13, lineHeight: 18 },
   input: {
     marginTop: 8,
     borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: radii.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: "#fff",
-    backgroundColor: "#0a0a0a",
+    color: colors.fg,
+    backgroundColor: colors.bgSunken,
     minHeight: 44,
   },
   row: { flexDirection: "row", gap: 10, marginTop: 8 },
   btn: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#444",
-    paddingVertical: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    minHeight: 44,
   },
-  btnPrimary: { backgroundColor: "#c8f5c8", borderColor: "#c8f5c8" },
-  btnText: { color: "#fff", fontWeight: "600" },
-  btnTextDark: { color: "#000", fontWeight: "700" },
-  status: { color: "#9f9", fontSize: 13 },
+  btnText: { color: colors.fg, fontWeight: "600" },
+  status: { color: colors.accent, fontSize: 13 },
 });

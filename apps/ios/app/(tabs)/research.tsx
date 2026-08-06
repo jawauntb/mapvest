@@ -1,4 +1,20 @@
+import {
+  type AgentThread,
+  type ResearchArticle,
+  agentChat,
+  getAgentThread,
+  listAgentThreads,
+} from "@/api/client";
+import { useSession } from "@/auth/session";
+import { EmptyState } from "@/components/EmptyState";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { RichText } from "@/components/RichText";
+import { ScalePressable } from "@/components/ScalePressable";
+import { ScreenFade } from "@/components/ScreenFade";
+import { SkeletonList } from "@/components/Skeleton";
+import { colors, radii, type } from "@/theme/tokens";
+import { hapticSelect, hapticTap } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -15,14 +31,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  agentChat,
-  getAgentThread,
-  listAgentThreads,
-  type AgentThread,
-  type ResearchArticle,
-} from "@/api/client";
-import { useSession } from "@/auth/session";
 
 /**
  * ChatGPT-like research surface — thread list + article briefs.
@@ -65,6 +73,7 @@ export default function ResearchChatScreen() {
   );
 
   function newChat() {
+    hapticTap();
     setMode("chat");
     setThreadId(undefined);
     setTurns([]);
@@ -82,6 +91,9 @@ export default function ResearchChatScreen() {
     if (params.intent === "thread" && params.id) {
       void openThread({ id: params.id, title: "Research", preview: "" });
     }
+    // biome-ignore lint/correctness/useExhaustiveDependencies: newChat is a
+    // plain (unmemoized) function recreated every render — this effect must
+    // key off the URL params only, or it would re-fire on every render.
   }, [params.intent, params.id, openThread]);
 
   async function onSend() {
@@ -126,46 +138,61 @@ export default function ResearchChatScreen() {
       <SafeAreaView style={styles.root} edges={["top"]}>
         <View style={styles.header}>
           <Text style={styles.h1}>Research</Text>
-          <Pressable style={styles.newBtn} onPress={newChat}>
-            <Text style={styles.newBtnText}>+ New</Text>
+          <Pressable
+            style={styles.newBtn}
+            onPress={newChat}
+            accessibilityRole="button"
+            accessibilityLabel="New research chat"
+          >
+            <Ionicons name="add" size={16} color={colors.accentInk} />
+            <Text style={styles.newBtnText}>New</Text>
           </Pressable>
         </View>
         <Text style={styles.hint}>
           Article-style briefs · Derivation tools behind the scenes · not advice
         </Text>
-        {threadsQ.isLoading ? (
-          <ActivityIndicator color="#fff" style={{ marginTop: 40 }} />
-        ) : threads.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No briefs yet</Text>
-            <Text style={styles.hint}>
-              Start a chat, or open a ticker → Research…
-            </Text>
-            <Pressable style={styles.newBtnWide} onPress={newChat}>
-              <Text style={styles.newBtnText}>Start research</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <FlatList
-            data={threads}
-            keyExtractor={(t) => t.id}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            ItemSeparatorComponent={() => <View style={styles.sep} />}
-            renderItem={({ item }) => (
-              <Pressable style={styles.row} onPress={() => void openThread(item)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.rowSub} numberOfLines={2}>
-                    {item.preview || "—"}
-                  </Text>
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            )}
-          />
-        )}
+        <ScreenFade>
+          {threadsQ.isLoading ? (
+            <SkeletonList rows={5} />
+          ) : threads.length === 0 ? (
+            <EmptyState
+              icon="sparkles-outline"
+              title="No briefs yet"
+              subtitle="Start a chat, or open a ticker → Research…"
+            >
+              <PrimaryButton label="Start research" onPress={newChat} style={{ marginTop: 4 }} />
+            </EmptyState>
+          ) : (
+            <FlatList
+              style={{ flex: 1 }}
+              data={threads}
+              keyExtractor={(t) => t.id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              ItemSeparatorComponent={() => <View style={styles.sep} />}
+              renderItem={({ item }) => (
+                <ScalePressable
+                  style={styles.row}
+                  onPress={() => void openThread(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open research thread: ${item.title}`}
+                >
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.rowSub} numberOfLines={2}>
+                      {item.preview || "—"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.fgDim} />
+                </ScalePressable>
+              )}
+            />
+          )}
+        </ScreenFade>
       </SafeAreaView>
     );
   }
@@ -178,13 +205,27 @@ export default function ResearchChatScreen() {
         keyboardVerticalOffset={64}
       >
         <View style={styles.chatBar}>
-          <Pressable onPress={() => setMode("list")} style={styles.back}>
-            <Text style={styles.backText}>‹ Chats</Text>
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              setMode("list");
+            }}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back to chats"
+          >
+            <Ionicons name="chevron-back" size={18} color={colors.accent2} />
+            <Text style={styles.backText}>Chats</Text>
           </Pressable>
           <Text style={styles.chatTitle} numberOfLines={1}>
             {title}
           </Text>
-          <Pressable onPress={newChat} style={styles.back}>
+          <Pressable
+            onPress={newChat}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="New chat"
+          >
             <Text style={styles.backText}>New</Text>
           </Pressable>
         </View>
@@ -213,21 +254,22 @@ export default function ResearchChatScreen() {
                     key={sym}
                     onPress={() => router.push(`/detail/${sym}`)}
                     style={styles.tickerChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open $${sym}`}
                   >
-                    <Text style={styles.tickerChipText}>${sym} →</Text>
+                    <Text style={styles.tickerChipText}>${sym}</Text>
+                    <Ionicons name="arrow-forward" size={11} color={colors.accent} />
                   </Pressable>
                 ))}
                 {t.toolsUsed.length ? (
-                  <Text style={styles.tools}>
-                    Tools · {t.toolsUsed.slice(0, 5).join(" · ")}
-                  </Text>
+                  <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
                 ) : null}
               </View>
             ),
           )}
           {busy ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
-              <ActivityIndicator color="#3ee68a" />
+              <ActivityIndicator color={colors.accent} />
               <Text style={styles.statusText}>{status ?? "Researching…"}</Text>
             </View>
           ) : status ? (
@@ -242,17 +284,20 @@ export default function ResearchChatScreen() {
             value={input}
             onChangeText={setInput}
             placeholder="Ask Mapvest…"
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.fgDim}
             editable={!busy}
             multiline
             onSubmitEditing={() => void onSend()}
+            accessibilityLabel="Ask Mapvest"
           />
           <Pressable
             style={[styles.send, (!input.trim() || busy) && { opacity: 0.35 }]}
             disabled={!input.trim() || busy}
             onPress={() => void onSend()}
+            accessibilityRole="button"
+            accessibilityLabel="Send"
           >
-            <Text style={styles.sendText}>↑</Text>
+            <Ionicons name="arrow-up" size={20} color={colors.accentInk} />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -261,7 +306,7 @@ export default function ResearchChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
@@ -270,26 +315,26 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  h1: { color: "#fff", fontSize: 28, fontWeight: "700" },
-  hint: { color: "#888", fontSize: 13, paddingHorizontal: 20, marginBottom: 12, lineHeight: 18 },
+  h1: { color: colors.fg, ...type.h1, fontSize: 28 },
   newBtn: {
-    backgroundColor: "#1a5cff",
-    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.accent,
+    borderRadius: radii.pill,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    minHeight: 36,
   },
-  newBtnWide: {
-    backgroundColor: "#1a5cff",
-    borderRadius: 999,
+  newBtnText: { color: colors.accentInk, fontWeight: "800", fontSize: 14 },
+  hint: {
+    color: colors.fgMuted,
+    fontSize: 13,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    marginTop: 16,
-    alignSelf: "center",
+    marginBottom: 12,
+    lineHeight: 18,
   },
-  newBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-  emptyTitle: { color: "#fff", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: "#222", marginLeft: 20 },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 20 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -297,72 +342,81 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  rowTitle: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  rowSub: { color: "#888", fontSize: 13, marginTop: 4, lineHeight: 18 },
-  chevron: { color: "#555", fontSize: 22 },
+  rowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowTitle: { color: colors.fg, fontSize: 16, fontWeight: "600" },
+  rowSub: { color: colors.fgMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
   chatBar: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderBottomColor: "#1f1f1f",
+    borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
-  back: { padding: 6, minWidth: 64 },
-  backText: { color: "#5B8CFF", fontWeight: "600", fontSize: 15 },
-  chatTitle: { flex: 1, color: "#fff", fontWeight: "600", textAlign: "center", fontSize: 15 },
+  back: { flexDirection: "row", alignItems: "center", padding: 6, minWidth: 64, minHeight: 44 },
+  backText: { color: colors.accent2, fontWeight: "600", fontSize: 15 },
+  chatTitle: { flex: 1, color: colors.fg, fontWeight: "600", textAlign: "center", fontSize: 15 },
   stream: { padding: 16, gap: 16, paddingBottom: 40 },
   q: {
-    color: "#aaa",
-    borderLeftColor: "#333",
+    color: colors.fgMuted,
+    borderLeftColor: colors.border,
     borderLeftWidth: 2,
     paddingLeft: 10,
     fontSize: 15,
   },
   article: { gap: 8 },
-  lede: { color: "#fff", fontSize: 17, fontWeight: "600", lineHeight: 24 },
-  bullet: { color: "#aaa", fontSize: 13, lineHeight: 18 },
+  bullet: { color: colors.fgMuted, fontSize: 13, lineHeight: 18 },
   tickerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     alignSelf: "flex-start",
-    backgroundColor: "#141414",
-    borderColor: "#2a2a2a",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
+    minHeight: 32,
   },
-  tickerChipText: { color: "#3ee68a", fontWeight: "700", fontSize: 13 },
-  tools: { color: "#555", fontSize: 11 },
-  statusText: { color: "#3ee68a", fontSize: 13, fontWeight: "600", marginTop: 8 },
-  err: { color: "#ff6b6b", marginTop: 8 },
+  tickerChipText: { color: colors.accent, fontWeight: "700", fontSize: 13 },
+  tools: { color: colors.fgDim, fontSize: 11 },
+  statusText: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 8 },
+  err: { color: colors.danger, marginTop: 8 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
     padding: 12,
-    borderTopColor: "#1f1f1f",
+    borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,
-    backgroundColor: "#141414",
-    borderColor: "#2a2a2a",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 22,
-    color: "#fff",
+    color: colors.fg,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
     maxHeight: 120,
   },
   send: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#1a5cff",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
-  sendText: { color: "#fff", fontSize: 18, fontWeight: "700" },
 });

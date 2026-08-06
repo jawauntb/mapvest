@@ -1,12 +1,14 @@
+import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/client";
+import type { NearbyItem } from "@/api/types";
+import { useSession } from "@/auth/session";
+import { colors, radii } from "@/theme/tokens";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
-import { fetchChart, fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
-import type { NearbyItem } from "@/api/types";
-import { useSession } from "@/auth/session";
 
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,
@@ -151,13 +153,21 @@ export default function MapScreen() {
 
       <View pointerEvents="none" style={styles.overlay}>
         {nearbyQuery.isFetching || quotesQuery.isFetching ? (
-          <ActivityIndicator color="#fff" />
+          <BlurView intensity={40} tint="dark" style={styles.loadingPill}>
+            <ActivityIndicator color={colors.fg} size="small" />
+          </BlurView>
         ) : null}
-        {permErr ? <Text style={styles.warn}>{permErr}</Text> : null}
+        {permErr ? (
+          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
+            <Text style={styles.warn}>{permErr}</Text>
+          </BlurView>
+        ) : null}
         {nearbyQuery.isError ? (
-          <Text style={styles.warn}>
-            {(nearbyQuery.error as Error).message || "Could not load nearby brands."}
-          </Text>
+          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
+            <Text style={styles.warn}>
+              {(nearbyQuery.error as Error).message || "Could not load nearby brands."}
+            </Text>
+          </BlurView>
         ) : null}
       </View>
     </View>
@@ -210,7 +220,7 @@ function TickerPin({
         {quote ? (
           <Text style={styles.priceText} numberOfLines={1}>
             ${quote.price.toFixed(2)}{" "}
-            <Text style={{ color: up ? "#3ECF8E" : "#ff6b6b" }}>
+            <Text style={{ color: up ? colors.accent : colors.danger }}>
               {up ? "+" : ""}
               {quote.changePct.toFixed(1)}%
             </Text>
@@ -234,9 +244,9 @@ function pinColor(item: NearbyItem): string {
   if (inv.brand.isPublic || inv.brand.ticker?.symbol) {
     const sector = (inv.brand.sector ?? "").toLowerCase();
     if (sector.includes("tech") || sector.includes("communication")) return "blue";
-    if (sector.includes("health")) return "purple";
+    if (sector.includes("health")) return "rose";
     if (sector.includes("energy")) return "yellow";
-    if (sector.includes("financ")) return "violet";
+    if (sector.includes("financ")) return "gold";
     if (sector.includes("staple") || sector.includes("defensive")) return "green";
     if (sector.includes("discretionary") || sector.includes("cyclical")) return "orange";
     return "green";
@@ -245,28 +255,31 @@ function pinColor(item: NearbyItem): string {
   return "red";
 }
 
+// Categorical pin palette — brand rule: no purple. Distinct from the
+// signature jade/blue accent so investable pins stay visually separate.
 function accentHex(name: string): string {
   switch (name) {
     case "blue":
-      return "#4C8DFF";
-    case "purple":
-    case "violet":
-      return "#A78BFA";
+      return colors.accent2;
+    case "rose":
+      return "#FF6B9D";
+    case "gold":
+      return "#D6A24C";
     case "yellow":
       return "#E8C547";
     case "orange":
       return "#F0A36B";
     case "green":
-      return "#3ECF8E";
+      return colors.accent;
     case "red":
-      return "#FF6B6B";
+      return colors.danger;
     default:
-      return "#888";
+      return colors.fgDim;
   }
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   overlay: {
     position: "absolute",
     top: 16,
@@ -275,12 +288,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  loadingPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  warnWrap: {
+    overflow: "hidden",
+    borderRadius: radii.md,
+  },
   warn: {
-    color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    color: colors.fg,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
     fontSize: 12,
   },
   pinCanvas: {
@@ -293,26 +316,26 @@ const styles = StyleSheet.create({
     width: PIN_W - 4,
     backgroundColor: "rgba(12, 14, 16, 0.94)",
     borderWidth: 1.5,
-    borderRadius: 10,
+    borderRadius: radii.md,
     paddingHorizontal: 6,
     paddingVertical: 4,
     alignItems: "center",
   },
   tickerText: {
-    color: "#fff",
+    color: colors.fg,
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.2,
   },
   priceText: {
-    color: "#eee",
+    color: colors.fg,
     fontSize: 10,
     fontWeight: "600",
     marginTop: 1,
   },
-  priceMuted: { color: "#666", fontSize: 10, marginTop: 1 },
+  priceMuted: { color: colors.fgDim, fontSize: 10, marginTop: 1 },
   placeHint: {
-    color: "#888",
+    color: colors.fgMuted,
     fontSize: 9,
     marginTop: 1,
     maxWidth: PIN_W - 12,
@@ -334,7 +357,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 1,
     borderWidth: 1.5,
-    borderColor: "#fff",
+    borderColor: colors.fg,
   },
   plainCanvas: {
     width: PLAIN_W,
@@ -347,7 +370,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 2,
-    borderColor: "#fff",
+    borderColor: colors.fg,
     marginBottom: 2,
   },
 });

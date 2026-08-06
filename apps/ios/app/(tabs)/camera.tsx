@@ -2,12 +2,18 @@ import { addToWatchlist, identifyPhoto } from "@/api/client";
 import type { IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { captureStill } from "@/camera/captureStill";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
+import { colors, radii, type } from "@/theme/tokens";
+import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
+import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
+import { BlurView } from "expo-blur";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -64,18 +70,19 @@ export default function CameraScreen() {
 
   if (!perm) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#fff" />
+      <View style={styles.permRoot}>
+        <ActivityIndicator color={colors.fg} />
       </View>
     );
   }
   if (!perm.granted) {
     return (
-      <SafeAreaView style={styles.center}>
+      <SafeAreaView style={styles.permRoot}>
+        <View style={styles.permIcon}>
+          <Ionicons name="camera-outline" size={30} color={colors.fgMuted} />
+        </View>
         <Text style={styles.msg}>Mapvest needs camera access.</Text>
-        <Pressable style={styles.btn} onPress={requestPerm}>
-          <Text style={styles.btnText}>Grant access</Text>
-        </Pressable>
+        <PrimaryButton label="Grant access" onPress={requestPerm} style={{ marginTop: 16 }} />
       </SafeAreaView>
     );
   }
@@ -108,6 +115,7 @@ export default function CameraScreen() {
       setErr("Camera still starting — wait a sec and tap again.");
       return;
     }
+    hapticTap();
     setBusy(true);
     setErr(null);
     setResult(null);
@@ -151,6 +159,7 @@ export default function CameraScreen() {
   }
 
   function retake() {
+    hapticSelect();
     setFrozenUri(null);
     setResult(null);
     setErr(null);
@@ -188,7 +197,8 @@ export default function CameraScreen() {
         },
         { token: session.token },
       );
-      setSavedNote(`★ Saved $${ticker}`);
+      hapticSuccess();
+      setSavedNote(`Saved $${ticker}`);
     } catch (e) {
       setSavedNote(null);
       setErr(e instanceof Error ? e.message : "save failed");
@@ -232,20 +242,35 @@ export default function CameraScreen() {
       )}
       <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
         <View style={styles.statusRow} pointerEvents="none">
-          <Text style={styles.status}>
-            {frozenUri ? "Frozen" : online ? "Online" : "Offline"}{" "}
-            {pending.length ? `· ${pending.length} queued` : ""}
-          </Text>
+          <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+            <Ionicons
+              name={frozenUri ? "image" : online ? "wifi" : "cloud-offline-outline"}
+              size={12}
+              color={colors.fg}
+            />
+            <Text style={styles.status}>
+              {frozenUri ? "Frozen" : online ? "Online" : "Offline"}
+              {pending.length ? ` · ${pending.length} queued` : ""}
+            </Text>
+          </BlurView>
         </View>
 
         <View style={styles.center} pointerEvents="none">
-          {busy ? <ActivityIndicator color="#fff" size="large" /> : null}
+          {busy ? <ActivityIndicator color={colors.fg} size="large" /> : null}
         </View>
 
         {result || err || queuedNote ? (
-          <View style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}>
+          <BlurView
+            intensity={50}
+            tint="dark"
+            style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
+          >
             {top ? (
-              <Pressable onPress={openDetail}>
+              <Pressable
+                onPress={openDetail}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${top.brand.name}`}
+              >
                 <Text style={styles.resultTitle}>{top.brand.name}</Text>
                 <Text style={styles.resultSubtitle}>
                   {ticker ? `$${ticker}` : "private"} · {top.confidence}
@@ -255,41 +280,75 @@ export default function CameraScreen() {
             ) : null}
             <View style={styles.cardActions}>
               {ticker ? (
-                <Pressable style={styles.miniBtn} onPress={() => void onSave()}>
-                  <Text style={styles.miniBtnText}>☆ Save</Text>
+                <Pressable
+                  style={styles.miniBtn}
+                  onPress={() => void onSave()}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Save ${ticker} to watchlist`}
+                >
+                  <Ionicons name="star-outline" size={13} color={colors.accent} />
+                  <Text style={styles.miniBtnText}>Save</Text>
                 </Pressable>
               ) : null}
               {top ? (
-                <Pressable style={styles.miniBtn} onPress={openDetail}>
-                  <Text style={styles.miniBtnText}>Open · Research</Text>
+                <Pressable
+                  style={styles.miniBtn}
+                  onPress={openDetail}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open research"
+                >
+                  <Ionicons name="document-text-outline" size={13} color={colors.accent} />
+                  <Text style={styles.miniBtnText}>Research</Text>
                 </Pressable>
               ) : null}
-              <Pressable style={styles.miniBtn} onPress={retake}>
+              <Pressable
+                style={styles.miniBtn}
+                onPress={retake}
+                accessibilityRole="button"
+                accessibilityLabel="Retake photo"
+              >
+                <Ionicons name="refresh-outline" size={13} color={colors.accent} />
                 <Text style={styles.miniBtnText}>Retake</Text>
               </Pressable>
             </View>
             {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
             {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
             {err ? <Text style={styles.err}>{err}</Text> : null}
-          </View>
+          </BlurView>
         ) : err ? (
-          <View style={styles.resultCard}>
+          <BlurView intensity={50} tint="dark" style={styles.resultCard}>
             <Text style={styles.err}>{err}</Text>
-          </View>
+          </BlurView>
         ) : null}
 
         <View style={styles.controls}>
           {frozenUri ? (
-            <Pressable style={styles.secondary} onPress={retake}>
+            <Pressable
+              style={styles.secondary}
+              onPress={retake}
+              accessibilityRole="button"
+              accessibilityLabel="Retake photo"
+            >
+              <Ionicons name="refresh" size={16} color={colors.bg} />
               <Text style={styles.secondaryText}>Retake</Text>
             </Pressable>
           ) : (
             <Pressable
               onPress={() => void capture()}
               disabled={busy}
+              accessibilityRole="button"
               accessibilityLabel="Capture photo"
-              style={[styles.shutter, busy && { opacity: 0.5 }]}
-            />
+              style={[styles.shutterRing, busy && { opacity: 0.5 }]}
+            >
+              <LinearGradient
+                colors={colors.gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.shutterGrad}
+              >
+                <View style={styles.shutterInner} />
+              </LinearGradient>
+            </Pressable>
           )}
         </View>
       </SafeAreaView>
@@ -298,61 +357,95 @@ export default function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   hud: { flex: 1, justifyContent: "space-between" },
   statusRow: {
     alignItems: "flex-end",
     paddingHorizontal: 16,
     paddingTop: 8,
   },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+  },
   status: {
-    color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    color: colors.fg,
     fontSize: 12,
+    fontWeight: "600",
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  permRoot: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
   controls: { alignItems: "center", paddingBottom: 24 },
-  shutter: {
-    width: 72,
-    height: 72,
+  shutterRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    padding: 5,
+  },
+  shutterGrad: {
+    flex: 1,
     borderRadius: 36,
-    backgroundColor: "#fff",
-    borderColor: "rgba(255,255,255,0.3)",
-    borderWidth: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shutterInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.bg,
   },
   secondary: {
-    backgroundColor: "#fff",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.fg,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: radii.pill,
+    minHeight: 44,
   },
-  secondaryText: { color: "#000", fontWeight: "700" },
+  secondaryText: { color: colors.bg, fontWeight: "700" },
   resultCard: {
     marginHorizontal: 16,
     marginBottom: 8,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.78)",
+    padding: 14,
+    borderRadius: radii.lg,
+    overflow: "hidden",
     gap: 8,
   },
-  resultTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
-  resultSubtitle: { color: "#ccc", fontSize: 13, marginTop: 2 },
+  resultTitle: { color: colors.fg, ...type.h3, fontSize: 18 },
+  resultSubtitle: { color: colors.fgMuted, fontSize: 13, marginTop: 2 },
   cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   miniBtn: {
-    backgroundColor: "#1a1a1a",
-    borderColor: "#333",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    minHeight: 32,
   },
-  miniBtnText: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  queued: { color: "#ffd77a", fontSize: 12, marginTop: 4 },
-  err: { color: "#ff5a5a", fontSize: 12, marginTop: 4 },
-  msg: { color: "#fff", padding: 24, textAlign: "center" },
-  btn: { backgroundColor: "#fff", padding: 12, borderRadius: 8 },
-  btnText: { color: "#000", fontWeight: "700" },
+  miniBtnText: { color: colors.fg, fontSize: 13, fontWeight: "600" },
+  queued: { color: colors.warn, fontSize: 12, marginTop: 4 },
+  err: { color: colors.danger, fontSize: 12, marginTop: 4 },
+  msg: { color: colors.fg, padding: 24, textAlign: "center" },
+  permIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
 });

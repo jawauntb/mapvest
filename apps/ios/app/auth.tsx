@@ -1,7 +1,14 @@
+import { requestMagicLink, verifyMagicLink } from "@/api/client";
+import { useSession } from "@/auth/session";
+import { PrimaryButton } from "@/components/PrimaryButton";
+import { ScreenFade } from "@/components/ScreenFade";
+import { colors, radii } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,8 +18,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { requestMagicLink, verifyMagicLink } from "@/api/client";
-import { useSession } from "@/auth/session";
 
 type Stage = "email" | "code";
 
@@ -46,10 +51,7 @@ export default function AuthScreen() {
     setErr(null);
     setBusy(true);
     try {
-      const { session, user } = await verifyMagicLink(
-        email.trim().toLowerCase(),
-        code.trim(),
-      );
+      const { session, user } = await verifyMagicLink(email.trim().toLowerCase(), code.trim());
       await signIn(session, user);
       router.replace("/(tabs)/map");
     } catch (e) {
@@ -65,102 +67,135 @@ export default function AuthScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <View style={styles.container}>
-          <Text style={styles.title}>Mapvest</Text>
-          <Text style={styles.subtitle}>
-            {stage === "email"
-              ? "Enter your email — we'll send you a one-time code."
-              : `We sent a code to ${email}. Enter it below.`}
-          </Text>
+        <ScreenFade>
+          <View style={styles.container}>
+            <View style={styles.mark}>
+              <LinearGradient
+                colors={colors.gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.markGrad}
+              >
+                <Ionicons name="pin" size={22} color={colors.accentInk} />
+              </LinearGradient>
+            </View>
+            <Text style={styles.title}>Mapvest</Text>
+            <Text style={styles.subtitle}>
+              {stage === "email"
+                ? "Enter your email — we'll send you a one-time code."
+                : `We sent a code to ${email}. Enter it below.`}
+            </Text>
 
-          {stage === "email" ? (
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoComplete="email"
-              autoCorrect={false}
-              keyboardType="email-address"
-              placeholder="you@example.com"
-              placeholderTextColor="#666"
-              style={styles.input}
-              onSubmitEditing={sendLink}
+            <View style={styles.inputWrap}>
+              <Ionicons
+                name={stage === "email" ? "mail-outline" : "keypad-outline"}
+                size={17}
+                color={colors.fgDim}
+                style={{ marginLeft: 14 }}
+              />
+              {stage === "email" ? (
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.fgDim}
+                  style={styles.input}
+                  onSubmitEditing={sendLink}
+                  accessibilityLabel="Email address"
+                />
+              ) : (
+                <TextInput
+                  value={code}
+                  onChangeText={setCode}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="number-pad"
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.fgDim}
+                  style={styles.input}
+                  onSubmitEditing={submitCode}
+                  accessibilityLabel="6-digit code"
+                />
+              )}
+            </View>
+
+            {devCode && stage === "code" ? (
+              <Pressable
+                onPress={() => setCode(devCode)}
+                accessibilityRole="button"
+                accessibilityLabel="Fill demo code"
+              >
+                <Text style={styles.devCode}>Demo code (tap to fill): {devCode}</Text>
+              </Pressable>
+            ) : null}
+
+            {err ? <Text style={styles.err}>{err}</Text> : null}
+
+            <PrimaryButton
+              label={stage === "email" ? "Send code" : "Verify"}
+              onPress={stage === "email" ? sendLink : submitCode}
+              busy={busy}
+              disabled={stage === "email" ? !email : !code}
+              style={{ marginTop: 4 }}
             />
-          ) : (
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="number-pad"
-              placeholder="6-digit code"
-              placeholderTextColor="#666"
-              style={styles.input}
-              onSubmitEditing={submitCode}
-            />
-          )}
 
-          {devCode && stage === "code" ? (
-            <Pressable onPress={() => setCode(devCode)}>
-              <Text style={styles.devCode}>
-                Demo code (tap to fill): {devCode}
-              </Text>
-            </Pressable>
-          ) : null}
-
-          {err ? <Text style={styles.err}>{err}</Text> : null}
-
-          <Pressable
-            style={[styles.button, busy && { opacity: 0.6 }]}
-            onPress={stage === "email" ? sendLink : submitCode}
-            disabled={busy || (stage === "email" ? !email : !code)}
-          >
-            {busy ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {stage === "email" ? "Send code" : "Verify"}
-              </Text>
-            )}
-          </Pressable>
-
-          {stage === "code" ? (
-            <Pressable onPress={() => setStage("email")}>
-              <Text style={styles.linkText}>Use a different email</Text>
-            </Pressable>
-          ) : null}
-        </View>
+            {stage === "code" ? (
+              <Pressable
+                onPress={() => {
+                  hapticSelect();
+                  setStage("email");
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Use a different email"
+              >
+                <Text style={styles.linkText}>Use a different email</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </ScreenFade>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1, paddingHorizontal: 24, justifyContent: "center", gap: 16 },
-  title: { color: "#fff", fontSize: 40, fontWeight: "700" },
-  subtitle: { color: "#aaa", fontSize: 15, lineHeight: 20 },
-  input: {
-    backgroundColor: "#111",
-    color: "#fff",
-    padding: 14,
-    borderRadius: 10,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: "#222",
+  mark: { alignSelf: "flex-start", marginBottom: 4 },
+  markGrad: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  err: { color: "#ff5a5a", fontSize: 13 },
+  title: { color: colors.fg, fontSize: 36, lineHeight: 40, fontWeight: "800", letterSpacing: -0.4 },
+  subtitle: { color: colors.fgMuted, fontSize: 15, lineHeight: 20 },
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  input: {
+    flex: 1,
+    color: colors.fg,
+    paddingHorizontal: 10,
+    paddingVertical: 14,
+    fontSize: 16,
+    minHeight: 44,
+  },
+  err: { color: colors.danger, fontSize: 13 },
   devCode: {
-    color: "#3ee68a",
+    color: colors.accent,
     fontSize: 13,
     fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
   },
-  button: {
-    backgroundColor: "#fff",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  buttonText: { color: "#000", fontWeight: "600", fontSize: 16 },
-  linkText: { color: "#7aa2ff", textAlign: "center", paddingTop: 8 },
+  linkText: { color: colors.accent2, textAlign: "center", paddingTop: 8, minHeight: 44 },
 });

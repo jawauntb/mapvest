@@ -1,3 +1,9 @@
+import { type ResearchArticle, agentChat } from "@/api/client";
+import { useSession } from "@/auth/session";
+import { RichText } from "@/components/RichText";
+import { colors, radii } from "@/theme/tokens";
+import { hapticSelect, hapticTap } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,9 +15,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { agentChat, type ResearchArticle } from "@/api/client";
-import { useSession } from "@/auth/session";
-import { RichText } from "@/components/RichText";
 
 /** Ticker-bound research brief — not a top-level Chat tab. */
 export function ResearchSheet({
@@ -34,6 +37,7 @@ export function ResearchSheet({
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    hapticTap();
     setBusy(true);
     setErr(null);
     setStatus("Researching… tools running");
@@ -69,15 +73,28 @@ export function ResearchSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <View style={styles.root}>
         <View style={styles.bar}>
           <View style={{ flex: 1 }}>
             <Text style={styles.kicker}>Research · ${ticker}</Text>
             <Text style={styles.sub}>Brief-style · tools behind the scenes · not advice</Text>
           </View>
-          <Pressable onPress={onClose} style={styles.close}>
-            <Text style={styles.closeText}>Close</Text>
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              onClose();
+            }}
+            style={styles.close}
+            accessibilityRole="button"
+            accessibilityLabel="Close research"
+          >
+            <Ionicons name="close" size={18} color={colors.fg} />
           </Pressable>
         </View>
 
@@ -112,7 +129,7 @@ export function ResearchSheet({
           )}
           {busy ? (
             <View style={styles.statusRow}>
-              <ActivityIndicator color="#3ee68a" />
+              <ActivityIndicator color={colors.accent} />
               <Text style={styles.statusText}>{status ?? "Researching…"}</Text>
             </View>
           ) : status ? (
@@ -127,16 +144,23 @@ export function ResearchSheet({
             value={input}
             onChangeText={setInput}
             placeholder={`Ask about $${ticker}…`}
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.fgDim}
             editable={!busy}
             onSubmitEditing={() => void onSend()}
+            accessibilityLabel={`Ask about $${ticker}`}
           />
           <Pressable
             style={[styles.send, (!input.trim() || busy) && { opacity: 0.4 }]}
             disabled={!input.trim() || busy}
             onPress={() => void onSend()}
+            accessibilityRole="button"
+            accessibilityLabel="Ask"
           >
-            <Text style={styles.sendText}>{busy ? "…" : "Ask"}</Text>
+            {busy ? (
+              <ActivityIndicator color={colors.accentInk} size="small" />
+            ) : (
+              <Ionicons name="arrow-up" size={18} color={colors.accentInk} />
+            )}
           </Pressable>
         </View>
       </View>
@@ -145,71 +169,79 @@ export function ResearchSheet({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0a0a0a", paddingTop: 12 },
+  root: { flex: 1, backgroundColor: colors.bg, paddingTop: 12 },
   bar: {
     flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomColor: "#1f1f1f",
+    borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
   kicker: {
-    color: "#3ee68a",
+    color: colors.accent,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  sub: { color: "#888", fontSize: 12, marginTop: 2, lineHeight: 16 },
-  close: { paddingVertical: 6, paddingHorizontal: 10 },
-  closeText: { color: "#fff", fontWeight: "600" },
+  sub: { color: colors.fgMuted, fontSize: 12, marginTop: 2, lineHeight: 16 },
+  close: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgElevated,
+  },
   stream: { padding: 16, gap: 16, paddingBottom: 40 },
   q: {
-    color: "#aaa",
-    borderLeftColor: "#333",
+    color: colors.fgMuted,
+    borderLeftColor: colors.border,
     borderLeftWidth: 2,
     paddingLeft: 10,
     fontSize: 14,
   },
   article: { gap: 8 },
-  lede: { color: "#fff", fontSize: 17, fontWeight: "600", lineHeight: 24 },
-  bullet: { color: "#aaa", fontSize: 13, lineHeight: 18 },
+  bullet: { color: colors.fgMuted, fontSize: 13, lineHeight: 18 },
   idea: {
-    borderColor: "#222",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: radii.md,
     padding: 10,
     gap: 4,
   },
-  ideaTitle: { color: "#fff", fontWeight: "600", fontSize: 14 },
-  tools: { color: "#555", fontSize: 11, marginTop: 4 },
+  ideaTitle: { color: colors.fg, fontWeight: "600", fontSize: 14 },
+  tools: { color: colors.fgDim, fontSize: 11, marginTop: 4 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
-  statusText: { color: "#3ee68a", fontSize: 13, fontWeight: "600", marginTop: 8 },
-  err: { color: "#ff6b6b", marginTop: 8 },
+  statusText: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 8 },
+  err: { color: colors.danger, marginTop: 8 },
   composer: {
     flexDirection: "row",
     gap: 8,
     padding: 12,
-    borderTopColor: "#1f1f1f",
+    borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,
-    backgroundColor: "#141414",
-    borderColor: "#2a2a2a",
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 10,
-    color: "#fff",
+    borderRadius: radii.md,
+    color: colors.fg,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    minHeight: 44,
   },
   send: {
-    backgroundColor: "#3ee68a",
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    width: 44,
+    height: 44,
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    alignItems: "center",
     justifyContent: "center",
   },
-  sendText: { color: "#000", fontWeight: "700" },
 });

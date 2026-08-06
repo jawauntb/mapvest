@@ -1,13 +1,19 @@
-import { AppSidebar } from "@/components/AppSidebar";
 import { useSession } from "@/auth/session";
+import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, useSidebar } from "@/nav/SidebarContext";
-import { colors } from "@/theme/tokens";
+import { colors, motion } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useEffect } from "react";
+import { ActivityIndicator, Pressable, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+
+type IconName = keyof typeof Ionicons.glyphMap;
 
 /**
  * Slim bottom bar: Home (watchlist) · Map · Camera · List.
- * Research, Saved, Settings live in the ChatGPT-style sidebar (☰).
+ * Research, Saved, Settings live in the ChatGPT-style sidebar (≡).
  */
 export default function TabsLayout() {
   const { ready } = useSession();
@@ -47,12 +53,22 @@ function TabsInner() {
         headerTitleStyle: { fontWeight: "700" },
         headerLeft: () => (
           <Pressable
-            onPress={openSidebar}
+            onPress={() => {
+              hapticSelect();
+              openSidebar();
+            }}
             hitSlop={12}
-            style={{ paddingHorizontal: 14 }}
+            style={{
+              paddingHorizontal: 14,
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            accessibilityRole="button"
             accessibilityLabel="Open menu"
           >
-            <Text style={{ color: colors.fg, fontSize: 20, fontWeight: "700" }}>☰</Text>
+            <Ionicons name="menu-outline" size={24} color={colors.fg} />
           </Pressable>
         ),
         tabBarStyle: {
@@ -61,29 +77,74 @@ function TabsInner() {
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.fgDim,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         lazy: true,
         freezeOnBlur: true,
+      }}
+      screenListeners={{
+        tabPress: () => hapticSelect(),
       }}
     >
       <Tabs.Screen
         name="home"
         options={{
           title: "Home",
-          headerShown: false, // custom top bar with burger
-          tabBarIcon: ({ color }) => <TabDot color={color} label="⌂" />,
+          headerShown: false, // custom top bar with menu button
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              color={color}
+              focused={focused}
+              iconOn="home"
+              iconOff="home-outline"
+              accessibilityLabel="Home"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="map"
-        options={{ title: "Map", tabBarIcon: ({ color }) => <TabDot color={color} label="M" /> }}
+        options={{
+          title: "Map",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              color={color}
+              focused={focused}
+              iconOn="map"
+              iconOff="map-outline"
+              accessibilityLabel="Map"
+            />
+          ),
+        }}
       />
       <Tabs.Screen
         name="camera"
-        options={{ title: "Camera", tabBarIcon: ({ color }) => <TabDot color={color} label="C" /> }}
+        options={{
+          title: "Camera",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              color={color}
+              focused={focused}
+              iconOn="camera"
+              iconOff="camera-outline"
+              accessibilityLabel="Camera"
+            />
+          ),
+        }}
       />
       <Tabs.Screen
         name="list"
-        options={{ title: "List", tabBarIcon: ({ color }) => <TabDot color={color} label="≡" /> }}
+        options={{
+          title: "List",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              color={color}
+              focused={focused}
+              iconOn="list"
+              iconOff="list-outline"
+              accessibilityLabel="List"
+            />
+          ),
+        }}
       />
       {/* Sidebar destinations — hidden from tab bar */}
       <Tabs.Screen name="research" options={{ href: null, title: "Research" }} />
@@ -94,27 +155,62 @@ function TabsInner() {
         options={{
           title: "Admin",
           href: isAdmin ? "/(tabs)/admin" : null,
-          tabBarIcon: ({ color }) => <TabDot color={color} label="⚙" />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              color={color}
+              focused={focused}
+              iconOn="shield-checkmark"
+              iconOff="shield-checkmark-outline"
+              accessibilityLabel="Admin"
+            />
+          ),
         }}
       />
     </Tabs>
   );
 }
 
-function TabDot({ color, label }: { color: string; label: string }) {
+function TabIcon({
+  color,
+  focused,
+  iconOn,
+  iconOff,
+  accessibilityLabel,
+}: {
+  color: string;
+  focused: boolean;
+  iconOn: IconName;
+  iconOff: IconName;
+  accessibilityLabel: string;
+}) {
+  const scale = useSharedValue(focused ? 1.08 : 1);
+
+  useEffect(() => {
+    scale.value = withSpring(focused ? 1.1 : 1, motion.springSnappy);
+  }, [focused, scale]);
+
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <View
-      style={{
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        borderColor: color,
-        borderWidth: 1,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+    <Animated.View
+      style={[
+        {
+          width: 30,
+          height: 30,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        animStyle,
+      ]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
     >
-      <Text style={{ color, fontSize: 12, fontWeight: "700" }}>{label}</Text>
-    </View>
+      <Ionicons
+        name={focused ? iconOn : iconOff}
+        size={24}
+        color={color}
+        accessibilityLabel={accessibilityLabel}
+      />
+    </Animated.View>
   );
 }
