@@ -203,6 +203,27 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
               <Text style={styles.headerBtnText}>Save</Text>
             </Pressable>
           ) : null}
+          {/* Manual refresh — the server never caches outage briefs, but a
+              successful outage-body 200 gets cached client-side for 6h. This
+              button lets the user force a re-run when the server says the
+              research service is temporarily unavailable. */}
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              void briefQ.refetch();
+            }}
+            hitSlop={10}
+            style={styles.chevronBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh brief"
+            disabled={briefQ.isFetching}
+          >
+            <Ionicons
+              name="refresh"
+              size={16}
+              color={briefQ.isFetching ? colors.fgDim : colors.fgMuted}
+            />
+          </Pressable>
           <Pressable
             onPress={() => {
               hapticSelect();
@@ -228,9 +249,19 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.busyLabel}>{statusLabel}</Text>
         </View>
-      ) : briefQ.isError ? (
+      ) : briefQ.isError ||
+        // Outage-body detection. The API returns a 200 with a stub payload
+        // when Exa / OpenRouter / Nominatim flakes — treat it like an error
+        // in the UI so the user sees "Retry" instead of the sad stub.
+        (briefQ.data?.paragraphs?.[0] ?? "").startsWith(
+          "The Local Economy Brief service is temporarily unavailable",
+        ) ? (
         <View style={styles.busyBlock}>
-          <Text style={styles.errorLabel}>Couldn't load the brief.</Text>
+          <Text style={styles.errorLabel}>
+            {briefQ.isError
+              ? "Couldn't load the brief."
+              : "Research service was busy — try again."}
+          </Text>
           <Pressable
             onPress={() => {
               hapticSelect();
