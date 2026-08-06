@@ -56,6 +56,10 @@
         "zod": "^3.23.8",
       },
     },
+    "packages/design": {
+      "name": "@mapvest/design",
+      "version": "0.1.0",
+    },
     "packages/finance": {
       "name": "@mapvest/finance",
       "version": "0.1.0-alpha.0",
@@ -158,6 +162,8 @@
     "@mapvest/cli": ["@mapvest/cli@workspace:packages/cli"],
 
     "@mapvest/core": ["@mapvest/core@workspace:packages/core"],
+
+    "@mapvest/design": ["@mapvest/design@workspace:packages/design"],
 
     "@mapvest/finance": ["@mapvest/finance@workspace:packages/finance"],
 
