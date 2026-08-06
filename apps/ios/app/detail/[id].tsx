@@ -443,7 +443,8 @@ function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }
         pressed && styles.badgePressed,
       ]}
     >
-      <Text style={[styles.badgeText, styles.robinhoodBadgeText]}>Open in Robinhood →</Text>
+      <Text style={[styles.badgeText, styles.robinhoodBadgeText]}>Open in Robinhood</Text>
+      <Ionicons name="arrow-forward" size={13} color={colors.accent} />
     </Pressable>
   );
 }
@@ -486,7 +487,8 @@ function OptionsBadge({ ticker, token }: { ticker: string; token?: string }) {
         pressed && ready && styles.badgePressed,
       ]}
     >
-      <Text style={styles.badgeText}>{opt.isLoading ? "Options …" : `Options ${ticker} →`}</Text>
+      <Text style={styles.badgeText}>{opt.isLoading ? "Options …" : `Options ${ticker}`}</Text>
+      {!opt.isLoading ? <Ionicons name="arrow-forward" size={12} color={colors.accent2} /> : null}
     </Pressable>
   );
 }
