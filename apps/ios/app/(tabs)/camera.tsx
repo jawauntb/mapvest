@@ -6,8 +6,8 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
-import { sectorColor } from "@/util/sectors";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -266,7 +266,11 @@ export default function CameraScreen() {
             style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
           >
             {top ? (
-              <Pressable onPress={openDetail} accessibilityRole="button" accessibilityLabel={`Open ${top.brand.name}`}>
+              <Pressable
+                onPress={openDetail}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${top.brand.name}`}
+              >
                 <Text style={styles.resultTitle}>{top.brand.name}</Text>
                 <Text style={styles.resultSubtitle}>
                   {ticker ? `$${ticker}` : "private"} · {top.confidence}

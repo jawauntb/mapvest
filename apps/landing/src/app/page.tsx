@@ -1,25 +1,25 @@
-import type { Metadata } from 'next';
-import { probeApiSafe, type ApiState } from '@/lib/status';
-import { CopyableCurl } from './CopyableCurl';
-import { Reveal } from './Reveal';
-import { HeroBackdrop } from './HeroBackdrop';
-import { HowItWorksDiagram } from './HowItWorksDiagram';
+import { type ApiState, probeApiSafe } from "@/lib/status";
+import type { Metadata } from "next";
+import { CopyableCurl } from "./CopyableCurl";
+import { HeroBackdrop } from "./HeroBackdrop";
+import { HowItWorksDiagram } from "./HowItWorksDiagram";
+import { Reveal } from "./Reveal";
 
 export const metadata: Metadata = {
-  title: 'Point at a place. See what’s investable.',
+  title: "Point at a place. See what’s investable.",
 };
 
 // TestFlight isn't live yet. The visual CTA stays so the page shape is
 // unchanged, but the href intentionally does NOT go to the placeholder
 // join URL — anyone who clicks lands back on the page with a #coming-soon
 // anchor instead of a broken TestFlight join screen.
-const API_BASE_URL = 'https://api-production-4b27.up.railway.app';
-const API_DOCS_URL = '/docs';
+const API_BASE_URL = "https://api-production-4b27.up.railway.app";
+const API_DOCS_URL = "/docs";
 
 // Force this page to be statically rendered at build time. The API probe
 // runs once during `next build` — never at request time — which matches
 // the task requirement (fetches at build time only).
-export const dynamic = 'force-static';
+export const dynamic = "force-static";
 export const revalidate = false;
 
 // Small hand-authored icons — no icon library. 24x24 viewBox, stroke-based,
@@ -78,18 +78,18 @@ function IconCompare() {
 const features = [
   {
     icon: <IconMapPin />,
-    title: 'Map',
-    body: 'Every pin on the map is a public brand, a private-brand comparable, or an ETF with material exposure. Pan the world, see what you can own.',
+    title: "Map",
+    body: "Every pin on the map is a public brand, a private-brand comparable, or an ETF with material exposure. Pan the world, see what you can own.",
   },
   {
     icon: <IconCamera />,
-    title: 'Camera',
-    body: 'Point your phone at a shelf, a storefront, a chocolate bar. Mapvest identifies the brand and returns the ticker plus sources, in seconds.',
+    title: "Camera",
+    body: "Point your phone at a shelf, a storefront, a chocolate bar. Mapvest identifies the brand and returns the ticker plus sources, in seconds.",
   },
   {
     icon: <IconCompare />,
-    title: 'Comparable',
-    body: 'Private company? We resolve the nearest public comparable, the sector ETF, and a confidence score — so the map is never a dead end.',
+    title: "Comparable",
+    body: "Private company? We resolve the nearest public comparable, the sector ETF, and a confidence score — so the map is never a dead end.",
   },
 ];
 
@@ -102,45 +102,45 @@ const features = [
 // drops straight into the `.phone` device frame without letterboxing.
 const screenshots = [
   {
-    key: 'auth',
-    label: 'Sign in',
-    src: '/screenshots/auth.svg',
-    alt: 'Mapvest sign-in — magic-link email input over the wordmark',
+    key: "auth",
+    label: "Sign in",
+    src: "/screenshots/auth.svg",
+    alt: "Mapvest sign-in — magic-link email input over the wordmark",
     caption:
-      'One tap, one link. Magic-link email — no passwords, no OAuth carousel — gets you into the alpha.',
+      "One tap, one link. Magic-link email — no passwords, no OAuth carousel — gets you into the alpha.",
   },
   {
-    key: 'map',
-    label: 'Map view',
-    src: '/screenshots/map.svg',
-    alt: 'Mapvest map view — five public brand pins and two private-brand comparables around a selected Hershey’s location',
+    key: "map",
+    label: "Map view",
+    src: "/screenshots/map.svg",
+    alt: "Mapvest map view — five public brand pins and two private-brand comparables around a selected Hershey’s location",
     caption:
-      'Pin the world. Green pins are public tickers; orange pins are private brands resolved to comparables.',
+      "Pin the world. Green pins are public tickers; orange pins are private brands resolved to comparables.",
   },
   {
-    key: 'camera',
-    label: 'Camera',
-    src: '/screenshots/camera.svg',
-    alt: 'Mapvest camera view — a Hershey’s bar is identified and returned as HSY $179.04 +0.77%',
+    key: "camera",
+    label: "Camera",
+    src: "/screenshots/camera.svg",
+    alt: "Mapvest camera view — a Hershey’s bar is identified and returned as HSY $179.04 +0.77%",
     caption:
-      'Point at a shelf. Multimodal vision resolves the brand and returns the ticker with confidence and sources.',
+      "Point at a shelf. Multimodal vision resolves the brand and returns the ticker with confidence and sources.",
   },
   {
-    key: 'detail',
-    label: 'Detail sheet',
-    src: '/screenshots/detail.svg',
-    alt: 'Hershey Company detail sheet — three comparables, four ETFs, and source citations',
+    key: "detail",
+    label: "Detail sheet",
+    src: "/screenshots/detail.svg",
+    alt: "Hershey Company detail sheet — three comparables, four ETFs, and source citations",
     caption:
-      'HSY header, sector, three comparables, four ETFs with weights, and the sources that produced every number.',
+      "HSY header, sector, three comparables, four ETFs with weights, and the sources that produced every number.",
   },
 ] as const;
 
 // Map an API state to a badge label. Landing is always "up" from the
 // perspective of anyone who can read this page.
-function stateLabel(state: ApiState, upWord = 'live'): string {
-  if (state === 'up') return upWord;
-  if (state === 'down') return 'down';
-  return 'unknown';
+function stateLabel(state: ApiState, upWord = "live"): string {
+  if (state === "up") return upWord;
+  if (state === "down") return "down";
+  return "unknown";
 }
 
 export default async function HomePage() {
@@ -149,7 +149,7 @@ export default async function HomePage() {
   const status = await probeApiSafe();
   const apiState: ApiState = status.api;
   const apiBadgeLabel =
-    apiState === 'up' ? 'API: live' : apiState === 'down' ? 'API: down' : 'API: unknown';
+    apiState === "up" ? "API: live" : apiState === "down" ? "API: down" : "API: unknown";
 
   const curlHealth = `curl -sS ${API_BASE_URL}/v1/health`;
   const curlNearby = `curl -sS "${API_BASE_URL}/v1/nearby?lat=37.7749&lng=-122.4194&radius_m=500"`;
@@ -161,7 +161,7 @@ export default async function HomePage() {
     <>
       {/* If JS never loads, scroll-reveal content must still be visible. */}
       <noscript>
-        <style>{'.reveal{opacity:1!important;transform:none!important;}'}</style>
+        <style>{".reveal{opacity:1!important;transform:none!important;}"}</style>
       </noscript>
 
       <section className="hero" id="testflight-coming-soon">
@@ -175,8 +175,8 @@ export default async function HomePage() {
             Point at a place. See what’s <span className="accent">investable</span>.
           </p>
           <p className="hero__sub">
-            Storefronts and shelves become tickers, comparables, and ETF exposure —
-            with sources — on map, camera, and research.
+            Storefronts and shelves become tickers, comparables, and ETF exposure — with sources —
+            on map, camera, and research.
           </p>
           <div className="hero__ctas">
             <a className="btn btn--primary" href="/app">
@@ -220,9 +220,9 @@ export default async function HomePage() {
             Four surfaces, one loop: sign in, see it, name it, invest it.
           </h2>
           <p className="section__lead">
-            Renderings from the iOS alpha. Every number, ticker, and confidence
-            score you’ll see in the real app is backed by a resolver that
-            returns its sources — the map is never a dead end.
+            Renderings from the iOS alpha. Every number, ticker, and confidence score you’ll see in
+            the real app is backed by a resolver that returns its sources — the map is never a dead
+            end.
           </p>
         </Reveal>
 
@@ -230,7 +230,6 @@ export default async function HomePage() {
           className="shots__scroller"
           role="region"
           aria-label="Screenshot gallery — scroll horizontally"
-          tabIndex={0}
         >
           <div className="shots__track">
             {screenshots.map((s) => (
@@ -266,9 +265,9 @@ export default async function HomePage() {
             From a real-world signal to a citation-backed idea.
           </h2>
           <p className="section__lead">
-            Mapvest fuses multimodal vision, brand search, and finance resolvers
-            into one API. Every answer comes back with the sources that produced
-            it — nothing is hallucinated on your behalf.
+            Mapvest fuses multimodal vision, brand search, and finance resolvers into one API. Every
+            answer comes back with the sources that produced it — nothing is hallucinated on your
+            behalf.
           </p>
         </Reveal>
 
@@ -276,7 +275,7 @@ export default async function HomePage() {
           <HowItWorksDiagram />
         </Reveal>
 
-        <div className="hero__ctas" style={{ justifyContent: 'flex-start', marginTop: 28 }}>
+        <div className="hero__ctas" style={{ justifyContent: "flex-start", marginTop: 28 }}>
           <a className="btn btn--ghost" href="/docs">
             Read the docs →
           </a>
@@ -290,27 +289,14 @@ export default async function HomePage() {
             Copy. Paste. Get sourced answers.
           </h2>
           <p className="section__lead">
-            The API is live at{' '}
-            <code>{API_BASE_URL}</code>. Three requests are enough to feel the
+            The API is live at <code>{API_BASE_URL}</code>. Three requests are enough to feel the
             product — health, nearby brands, and a comparable resolver.
           </p>
 
           <div className="curl-stack">
-            <CopyableCurl
-              label="health"
-              path="/v1/health"
-              command={curlHealth}
-            />
-            <CopyableCurl
-              label="nearby"
-              path="/v1/nearby"
-              command={curlNearby}
-            />
-            <CopyableCurl
-              label="resolve"
-              path="/v1/resolve-comparable"
-              command={curlResolve}
-            />
+            <CopyableCurl label="health" path="/v1/health" command={curlHealth} />
+            <CopyableCurl label="nearby" path="/v1/nearby" command={curlNearby} />
+            <CopyableCurl label="resolve" path="/v1/resolve-comparable" command={curlResolve} />
           </div>
         </Reveal>
       </section>
@@ -322,17 +308,15 @@ export default async function HomePage() {
             What’s up right now.
           </h2>
           <p className="section__lead">
-            Probed at build time from this static page. For live status hit{' '}
-            <code>/api/status</code>.
+            Probed at build time from this static page. For live status hit <code>/api/status</code>
+            .
           </p>
 
-          <ul className="status-list" role="list">
+          <ul className="status-list">
             <li className={`status-row status-row--${apiState}`}>
               <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
               <span className="status-row__name">api</span>
-              <code className="status-row__host">
-                {API_BASE_URL.replace(/^https?:\/\//, '')}
-              </code>
+              <code className="status-row__host">{API_BASE_URL.replace(/^https?:\/\//, "")}</code>
               <span className="status-row__state">{stateLabel(apiState)}</span>
             </li>
             <li className="status-row status-row--up">
@@ -343,8 +327,7 @@ export default async function HomePage() {
             </li>
           </ul>
           <p className="status-note">
-            Last checked{' '}
-            <time dateTime={status.checkedAt}>{status.checkedAt}</time>.
+            Last checked <time dateTime={status.checkedAt}>{status.checkedAt}</time>.
           </p>
         </Reveal>
       </section>

@@ -1,17 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
-import { AppSidebar } from "@/components/AppSidebar";
 import { useSession } from "@/auth/session";
+import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, useSidebar } from "@/nav/SidebarContext";
 import { colors, motion } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -62,7 +58,13 @@ function TabsInner() {
               openSidebar();
             }}
             hitSlop={12}
-            style={{ paddingHorizontal: 14, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
+            style={{
+              paddingHorizontal: 14,
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
             accessibilityRole="button"
             accessibilityLabel="Open menu"
           >

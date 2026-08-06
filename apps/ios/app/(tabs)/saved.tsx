@@ -101,182 +101,182 @@ export default function SavedScreen() {
         </Text>
       </View>
       <ScreenFade>
-      {!session?.token ? (
-        <EmptyState
-          icon="lock-closed-outline"
-          title="Sign in to save tickers"
-          subtitle="Your watchlist, memos, and Robinhood MCP key are tied to your account. Map, Camera, and Research all work without one."
-        >
-          <PrimaryButton
-            label="Sign in"
-            onPress={() => router.push("/auth")}
-            style={{ marginTop: 4, alignSelf: "stretch" }}
+        {!session?.token ? (
+          <EmptyState
+            icon="lock-closed-outline"
+            title="Sign in to save tickers"
+            subtitle="Your watchlist, memos, and Robinhood MCP key are tied to your account. Map, Camera, and Research all work without one."
+          >
+            <PrimaryButton
+              label="Sign in"
+              onPress={() => router.push("/auth")}
+              style={{ marginTop: 4, alignSelf: "stretch" }}
+            />
+          </EmptyState>
+        ) : q.isLoading ? (
+          <SkeletonList rows={6} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon="bookmark-outline"
+            title="Nothing saved yet"
+            subtitle="On any detail sheet, tap Save to add a ticker here. Generate an investment memo and save it too."
           />
-        </EmptyState>
-      ) : q.isLoading ? (
-        <SkeletonList rows={6} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon="bookmark-outline"
-          title="Nothing saved yet"
-          subtitle="On any detail sheet, tap Save to add a ticker here. Generate an investment memo and save it too."
-        />
-      ) : (
-        <FlatList
-          style={{ flex: 1 }}
-          data={items}
-          keyExtractor={(e) => e.ticker}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          ListHeaderComponent={
-            <View style={styles.panel}>
-              <View style={styles.actionRow}>
-                <Pressable
-                  style={[styles.actionBtn, cockpitM.isPending && { opacity: 0.5 }]}
-                  disabled={cockpitM.isPending || !session?.token}
-                  onPress={() => {
-                    hapticSelect();
-                    cockpitM.mutate();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cockpit view"
-                >
-                  <Ionicons name="speedometer-outline" size={15} color={colors.fg} />
-                  <Text style={styles.actionBtnText}>
-                    {cockpitM.isPending ? "Cockpit…" : "Cockpit"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.actionBtn, alertsM.isPending && { opacity: 0.5 }]}
-                  disabled={alertsM.isPending || !session?.token}
-                  onPress={() => {
-                    hapticSelect();
-                    alertsM.mutate();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Alerts"
-                >
-                  <Ionicons name="notifications-outline" size={15} color={colors.fg} />
-                  <Text style={styles.actionBtnText}>
-                    {alertsM.isPending ? "Alerts…" : "Alerts"}
-                  </Text>
-                </Pressable>
-              </View>
-              <Text style={styles.hint}>up to 10 · Underlying Analyzer</Text>
-              {panelErr ? <Text style={styles.err}>{panelErr}</Text> : null}
-              {cockpit ? (
-                <View style={styles.card}>
-                  <Text style={styles.panelTitle}>Cockpit</Text>
-                  <ScrollView horizontal>
-                    <View>
-                      <View style={styles.tableRow}>
-                        {["#", "Ticker", "Lane", "Score", "Ridge", "Flow"].map((h) => (
-                          <Text key={h} style={[styles.cell, styles.cellHead]}>
-                            {h}
-                          </Text>
+        ) : (
+          <FlatList
+            style={{ flex: 1 }}
+            data={items}
+            keyExtractor={(e) => e.ticker}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            ListHeaderComponent={
+              <View style={styles.panel}>
+                <View style={styles.actionRow}>
+                  <Pressable
+                    style={[styles.actionBtn, cockpitM.isPending && { opacity: 0.5 }]}
+                    disabled={cockpitM.isPending || !session?.token}
+                    onPress={() => {
+                      hapticSelect();
+                      cockpitM.mutate();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cockpit view"
+                  >
+                    <Ionicons name="speedometer-outline" size={15} color={colors.fg} />
+                    <Text style={styles.actionBtnText}>
+                      {cockpitM.isPending ? "Cockpit…" : "Cockpit"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionBtn, alertsM.isPending && { opacity: 0.5 }]}
+                    disabled={alertsM.isPending || !session?.token}
+                    onPress={() => {
+                      hapticSelect();
+                      alertsM.mutate();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Alerts"
+                  >
+                    <Ionicons name="notifications-outline" size={15} color={colors.fg} />
+                    <Text style={styles.actionBtnText}>
+                      {alertsM.isPending ? "Alerts…" : "Alerts"}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.hint}>up to 10 · Underlying Analyzer</Text>
+                {panelErr ? <Text style={styles.err}>{panelErr}</Text> : null}
+                {cockpit ? (
+                  <View style={styles.card}>
+                    <Text style={styles.panelTitle}>Cockpit</Text>
+                    <ScrollView horizontal>
+                      <View>
+                        <View style={styles.tableRow}>
+                          {["#", "Ticker", "Lane", "Score", "Ridge", "Flow"].map((h) => (
+                            <Text key={h} style={[styles.cell, styles.cellHead]}>
+                              {h}
+                            </Text>
+                          ))}
+                        </View>
+                        {cockpit.map((r, i) => (
+                          <Pressable
+                            key={`${r.ticker}-${i}`}
+                            style={styles.tableRow}
+                            onPress={() =>
+                              router.push({
+                                pathname: "/detail/[id]",
+                                params: { id: r.ticker },
+                              })
+                            }
+                          >
+                            <Text style={styles.cell}>{r.rank ?? i + 1}</Text>
+                            <Text style={[styles.cell, styles.cellTicker]}>${r.ticker}</Text>
+                            <Text style={styles.cell}>{r.lane ?? "—"}</Text>
+                            <Text style={styles.cell}>
+                              {r.score != null ? Number(r.score).toFixed(2) : "—"}
+                            </Text>
+                            <Text style={styles.cell}>{r.ridge ?? "—"}</Text>
+                            <Text style={styles.cell}>{r.flow ?? "—"}</Text>
+                          </Pressable>
                         ))}
                       </View>
-                      {cockpit.map((r, i) => (
-                        <Pressable
-                          key={`${r.ticker}-${i}`}
-                          style={styles.tableRow}
-                          onPress={() =>
-                            router.push({
-                              pathname: "/detail/[id]",
-                              params: { id: r.ticker },
-                            })
-                          }
-                        >
-                          <Text style={styles.cell}>{r.rank ?? i + 1}</Text>
-                          <Text style={[styles.cell, styles.cellTicker]}>${r.ticker}</Text>
-                          <Text style={styles.cell}>{r.lane ?? "—"}</Text>
-                          <Text style={styles.cell}>
-                            {r.score != null ? Number(r.score).toFixed(2) : "—"}
+                    </ScrollView>
+                  </View>
+                ) : null}
+                {alerts ? (
+                  <View style={styles.card}>
+                    <Text style={styles.panelTitle}>Alerts</Text>
+                    {alerts.length === 0 ? (
+                      <Text style={styles.hint}>No alerts for this set.</Text>
+                    ) : (
+                      alerts.map((a, i) => (
+                        <View key={i} style={styles.alertRow}>
+                          <Text style={styles.alertTitle}>
+                            {a.ticker ? `$${a.ticker}` : "—"}
+                            {a.title ? ` · ${a.title}` : ""}
                           </Text>
-                          <Text style={styles.cell}>{r.ridge ?? "—"}</Text>
-                          <Text style={styles.cell}>{r.flow ?? "—"}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </View>
-              ) : null}
-              {alerts ? (
-                <View style={styles.card}>
-                  <Text style={styles.panelTitle}>Alerts</Text>
-                  {alerts.length === 0 ? (
-                    <Text style={styles.hint}>No alerts for this set.</Text>
-                  ) : (
-                    alerts.map((a, i) => (
-                      <View key={i} style={styles.alertRow}>
-                        <Text style={styles.alertTitle}>
-                          {a.ticker ? `$${a.ticker}` : "—"}
-                          {a.title ? ` · ${a.title}` : ""}
-                        </Text>
-                        <Text style={styles.hint}>{a.summary ?? a.message ?? ""}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-              ) : null}
-            </View>
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={q.isRefetching}
-              onRefresh={() => q.refetch()}
-              tintColor={colors.fgMuted}
-            />
-          }
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
-          renderItem={({ item }) => {
-            const quote = quotes[item.ticker.toUpperCase()];
-            const up = (quote?.change ?? 0) >= 0;
-            return (
-              <ScalePressable
-                style={styles.row}
-                onPress={() => onOpen(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${item.ticker}`}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTicker}>{item.ticker}</Text>
-                  <Text style={styles.rowSub}>
-                    {item.name ? `${item.name} · ` : ""}
-                    {item.sector ?? "—"}
-                  </Text>
-                  {item.memo ? (
-                    <View style={styles.memoBadge}>
-                      <Ionicons name="document-text-outline" size={11} color={colors.accent} />
-                      <Text style={styles.memoBadgeText} numberOfLines={1}>
-                        {item.memoProvider ?? "memo"} · {item.memo.length} chars
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={styles.priceCol}>
-                  {quote ? (
-                    <>
-                      <Text style={styles.price}>${quote.price.toFixed(2)}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                        <Ionicons
-                          name={up ? "caret-up" : "caret-down"}
-                          size={10}
-                          color={up ? colors.accent : colors.danger}
-                        />
-                        <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12 }}>
-                          {quote.changePct.toFixed(2)}%
+                          <Text style={styles.hint}>{a.summary ?? a.message ?? ""}</Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                ) : null}
+              </View>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={q.isRefetching}
+                onRefresh={() => q.refetch()}
+                tintColor={colors.fgMuted}
+              />
+            }
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+            renderItem={({ item }) => {
+              const quote = quotes[item.ticker.toUpperCase()];
+              const up = (quote?.change ?? 0) >= 0;
+              return (
+                <ScalePressable
+                  style={styles.row}
+                  onPress={() => onOpen(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${item.ticker}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTicker}>{item.ticker}</Text>
+                    <Text style={styles.rowSub}>
+                      {item.name ? `${item.name} · ` : ""}
+                      {item.sector ?? "—"}
+                    </Text>
+                    {item.memo ? (
+                      <View style={styles.memoBadge}>
+                        <Ionicons name="document-text-outline" size={11} color={colors.accent} />
+                        <Text style={styles.memoBadgeText} numberOfLines={1}>
+                          {item.memoProvider ?? "memo"} · {item.memo.length} chars
                         </Text>
                       </View>
-                    </>
-                  ) : (
-                    <Ionicons name="chevron-forward" size={16} color={colors.fgDim} />
-                  )}
-                </View>
-              </ScalePressable>
-            );
-          }}
-        />
-      )}
+                    ) : null}
+                  </View>
+                  <View style={styles.priceCol}>
+                    {quote ? (
+                      <>
+                        <Text style={styles.price}>${quote.price.toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                          <Ionicons
+                            name={up ? "caret-up" : "caret-down"}
+                            size={10}
+                            color={up ? colors.accent : colors.danger}
+                          />
+                          <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12 }}>
+                            {quote.changePct.toFixed(2)}%
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Ionicons name="chevron-forward" size={16} color={colors.fgDim} />
+                    )}
+                  </View>
+                </ScalePressable>
+              );
+            }}
+          />
+        )}
       </ScreenFade>
     </SafeAreaView>
   );

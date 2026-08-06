@@ -1,6 +1,6 @@
+import { motion } from "@/theme/tokens";
 import { Pressable, type PressableProps } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import { motion } from "@/theme/tokens";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

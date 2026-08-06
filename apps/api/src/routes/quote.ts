@@ -1,5 +1,5 @@
-import { Hono } from "hono";
 import { getQuote } from "@mapvest/finance";
+import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const quote = new Hono();

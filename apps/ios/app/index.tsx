@@ -8,7 +8,12 @@ export default function Gate() {
   if (!ready) {
     return (
       <View
-        style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.bg,
+        }}
       >
         <ActivityIndicator color={colors.accent} />
       </View>

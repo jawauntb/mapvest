@@ -26,6 +26,7 @@ export function HeroBackdrop() {
         viewBox="0 0 800 260"
         preserveAspectRatio="xMidYMid slice"
         focusable="false"
+        aria-hidden="true"
       >
         <defs>
           <pattern id="hero-grid" width="28" height="28" patternUnits="userSpaceOnUse">
@@ -56,8 +57,8 @@ export function HeroBackdrop() {
           {pins.map((p, i) => (
             <g
               key={i}
-              className={`hero__pin ${i % 2 === 0 ? 'hero__pin--jade' : 'hero__pin--blue'}`}
-              style={{ ['--pin-delay' as string]: `${p.delay}s` }}
+              className={`hero__pin ${i % 2 === 0 ? "hero__pin--jade" : "hero__pin--blue"}`}
+              style={{ ["--pin-delay" as string]: `${p.delay}s` }}
               transform={`translate(${p.x} ${p.y})`}
             >
               <circle className="hero__pin-ring" r="10" />

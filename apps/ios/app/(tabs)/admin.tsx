@@ -1,19 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { Redirect } from "expo-router";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { adminMetrics } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { ScreenFade } from "@/components/ScreenFade";
 import { colors, elevation, radii, type } from "@/theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import { Redirect } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AdminScreen() {
   const { session, user, isAdmin, signOut } = useSession();
@@ -29,34 +22,34 @@ export default function AdminScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <ScreenFade>
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-        <Text style={styles.h1}>Admin</Text>
-        <Text style={styles.sub}>
-          Signed in as {user?.email} · scopes: {user?.scopes.join(", ")}
-        </Text>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+          <Text style={styles.h1}>Admin</Text>
+          <Text style={styles.sub}>
+            Signed in as {user?.email} · scopes: {user?.scopes.join(", ")}
+          </Text>
 
-        {q.isLoading ? (
-          <ActivityIndicator color={colors.fg} />
-        ) : q.isError ? (
-          <Text style={styles.err}>{(q.error as Error).message}</Text>
-        ) : q.data ? (
-          <View style={styles.grid}>
-            <Stat label="Requests / 24h" value={q.data.requests24h} icon="pulse-outline" />
-            <Stat label="Identify / 24h" value={q.data.identify24h} icon="camera-outline" />
-            <Stat label="Active users" value={q.data.activeUsers} icon="people-outline" />
-          </View>
-        ) : null}
+          {q.isLoading ? (
+            <ActivityIndicator color={colors.fg} />
+          ) : q.isError ? (
+            <Text style={styles.err}>{(q.error as Error).message}</Text>
+          ) : q.data ? (
+            <View style={styles.grid}>
+              <Stat label="Requests / 24h" value={q.data.requests24h} icon="pulse-outline" />
+              <Stat label="Identify / 24h" value={q.data.identify24h} icon="camera-outline" />
+              <Stat label="Active users" value={q.data.activeUsers} icon="people-outline" />
+            </View>
+          ) : null}
 
-        <Pressable
-          style={styles.signOut}
-          onPress={signOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-        >
-          <Ionicons name="log-out-outline" size={15} color={colors.fg} />
-          <Text style={styles.signOutText}>Sign out</Text>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            style={styles.signOut}
+            onPress={signOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Ionicons name="log-out-outline" size={15} color={colors.fg} />
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        </ScrollView>
       </ScreenFade>
     </SafeAreaView>
   );

@@ -1,3 +1,6 @@
+import { colors, radii } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useRef, useState } from "react";
@@ -12,9 +15,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { colors, radii } from "@/theme/tokens";
-import { hapticSelect } from "@/util/haptics";
 
 /**
  * Photo chart viewer: inline preview, fullscreen pinch-zoom, Save PNG.
@@ -140,7 +140,11 @@ export function ChartMedia({
             <Pressable
               onPress={() => void savePng()}
               disabled={saving}
-              style={({ pressed }) => [styles.toolBtn, styles.toolBtnAccent, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.toolBtn,
+                styles.toolBtnAccent,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Save chart as PNG"
             >

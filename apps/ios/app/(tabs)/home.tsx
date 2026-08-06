@@ -1,15 +1,10 @@
-import {
-  type Quote,
-  type WatchEntry,
-  fetchQuotesMap,
-  listWatchlist,
-} from "@/api/client";
+import { type Quote, type WatchEntry, fetchQuotesMap, listWatchlist } from "@/api/client";
+import { useSession } from "@/auth/session";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
-import { useSession } from "@/auth/session";
 import { useSidebar } from "@/nav/SidebarContext";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -122,7 +117,12 @@ export default function HomeScreen() {
             <View>
               <View style={styles.searchRow}>
                 <View style={styles.searchWrap}>
-                  <Ionicons name="search-outline" size={17} color={colors.fgDim} style={{ marginLeft: 12 }} />
+                  <Ionicons
+                    name="search-outline"
+                    size={17}
+                    color={colors.fgDim}
+                    style={{ marginLeft: 12 }}
+                  />
                   <TextInput
                     ref={searchRef}
                     style={styles.search}
@@ -234,9 +234,7 @@ export default function HomeScreen() {
             <WatchRow
               entry={item}
               quote={quotes[item.ticker.toUpperCase()]}
-              onPress={() =>
-                router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })
-              }
+              onPress={() => router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })}
             />
           )}
         />
@@ -278,7 +276,13 @@ function WatchRow({
                 size={10}
                 color={up ? colors.accent : colors.danger}
               />
-              <Text style={{ color: up ? colors.accent : colors.danger, fontSize: 12, fontWeight: "700" }}>
+              <Text
+                style={{
+                  color: up ? colors.accent : colors.danger,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
                 {quote.changePct.toFixed(2)}%
               </Text>
             </View>
@@ -369,7 +373,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroTitle: { color: colors.accentInk, ...type.h3, fontSize: 17 },
-  heroSub: { color: colors.accentInk, opacity: 0.85, fontSize: 12, marginTop: 2, fontWeight: "600" },
+  heroSub: {
+    color: colors.accentInk,
+    opacity: 0.85,
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "600",
+  },
   widgets: {
     flexDirection: "row",
     gap: 8,

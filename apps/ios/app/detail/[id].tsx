@@ -20,7 +20,14 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { ChartMedia } from "@/components/ChartMedia";
+import { RichText } from "@/components/RichText";
+import { ScreenFade } from "@/components/ScreenFade";
+import { colors, elevation, radii, type } from "@/theme/tokens";
 import { API_URL } from "@/util/env";
+import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -31,13 +38,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { ChartMedia } from "@/components/ChartMedia";
-import { RichText } from "@/components/RichText";
-import { ScreenFade } from "@/components/ScreenFade";
-import { colors, elevation, radii, type } from "@/theme/tokens";
-import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { ResearchSheet } from "../ResearchSheet";
 
 const CHART_CHIPS = [
@@ -178,215 +178,223 @@ export default function DetailSheet() {
 
   return (
     <ScreenFade>
-    <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
-      <Stack.Screen
-        options={{
-          title: "Investable",
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.replace("/(tabs)/home")}
-              hitSlop={12}
-              style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, minHeight: 44 }}
-              accessibilityRole="button"
-              accessibilityLabel="Back to home"
-            >
-              <Ionicons name="chevron-back" size={20} color={colors.fg} />
-              <Text style={{ color: colors.fg, fontSize: 17, fontWeight: "600" }}>Home</Text>
-            </Pressable>
-          ),
-        }}
-      />
-      <View>
-        <Text style={styles.h1}>{data.brand.name}</Text>
-        <Text style={styles.sub}>
-          {data.brand.isPublic
-            ? `${data.brand.ticker?.symbol ?? ""}${
-                data.brand.ticker?.exchange ? ` · ${data.brand.ticker.exchange}` : ""
-              }`
-            : "private"}
-          {data.brand.sector ? ` · ${data.brand.sector}` : ""}
-        </Text>
-        {quote ? (
-          <View style={styles.quoteRow}>
-            <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
-            <Text
-              style={[styles.quoteChange, { color: quote.change >= 0 ? colors.accent : colors.danger }]}
-            >
-              {quote.change >= 0 ? "+" : ""}
-              {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
-            </Text>
-          </View>
-        ) : null}
-        {/* Above-the-fold: Open in Robinhood must not wait on agent overview. */}
-        {ticker && session?.token ? (
-          <View style={[styles.badgeRow, { marginTop: 12 }]}>
-            <RobinhoodOpenBadge ticker={ticker} token={session.token} />
-          </View>
-        ) : null}
-        <View style={styles.tabRow}>
-          {(["overview", "advanced"] as TabKey[]).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => {
-                hapticSelect();
-                setTab(t);
-              }}
-              style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === t }}
-              accessibilityLabel={t === "overview" ? "Overview" : "Advanced"}
-            >
-              <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
-                {t === "overview" ? "Overview" : "Advanced"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      {tab === "overview" ? (
-        <>
-          {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
-
-          {ticker ? (
-            <Section title={`Auction · $${ticker} · 1mo`}>
-              <ChartImageBlock
-                q={chartQ}
-                ticker={ticker}
-                label="Auction"
-                showLevels
-                chartType="auction"
-                period="1mo"
-              />
-            </Section>
-          ) : null}
-
-          {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
-
-          {ticker ? (
-            <View style={{ gap: 10 }}>
+      <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
+        <Stack.Screen
+          options={{
+            title: "Investable",
+            headerLeft: () => (
               <Pressable
-                onPress={() => {
-                  hapticTap();
-                  setResearchOpen(true);
+                onPress={() => router.replace("/(tabs)/home")}
+                hitSlop={12}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 8,
+                  minHeight: 44,
                 }}
-                style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
                 accessibilityRole="button"
-                accessibilityLabel={`Research $${ticker}`}
+                accessibilityLabel="Back to home"
               >
-                <LinearGradient
-                  colors={colors.gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.researchBtnGrad}
-                >
-                  <Ionicons name="sparkles" size={18} color={colors.accentInk} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.researchBtnText}>Research…</Text>
-                    <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
-                  </View>
-                </LinearGradient>
+                <Ionicons name="chevron-back" size={20} color={colors.fg} />
+                <Text style={{ color: colors.fg, fontSize: 17, fontWeight: "600" }}>Home</Text>
               </Pressable>
-              <WatchlistActions
-                ticker={ticker}
-                name={data.brand.name}
-                sector={data.brand.sector}
-                token={session?.token}
-              />
-              <View style={styles.badgeRow}>
-                {publicTicker ? (
-                  <OptionsBadge ticker={publicTicker} token={session?.token} />
-                ) : (
-                  <UnderlyingBadge
-                    brand={data.brand.name}
-                    sector={data.brand.sector}
-                    token={session?.token}
-                  />
-                )}
-              </View>
-              <ResearchSheet
-                ticker={ticker}
-                visible={researchOpen}
-                onClose={() => setResearchOpen(false)}
-              />
+            ),
+          }}
+        />
+        <View>
+          <Text style={styles.h1}>{data.brand.name}</Text>
+          <Text style={styles.sub}>
+            {data.brand.isPublic
+              ? `${data.brand.ticker?.symbol ?? ""}${
+                  data.brand.ticker?.exchange ? ` · ${data.brand.ticker.exchange}` : ""
+                }`
+              : "private"}
+            {data.brand.sector ? ` · ${data.brand.sector}` : ""}
+          </Text>
+          {quote ? (
+            <View style={styles.quoteRow}>
+              <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
+              <Text
+                style={[
+                  styles.quoteChange,
+                  { color: quote.change >= 0 ? colors.accent : colors.danger },
+                ]}
+              >
+                {quote.change >= 0 ? "+" : ""}
+                {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+              </Text>
             </View>
           ) : null}
-
-          <Section title="Comparables">
-            {data.comparables.length === 0 ? (
-              <Text style={styles.muted}>No public comparables resolved.</Text>
-            ) : (
-              data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
-            )}
-          </Section>
-
-          <Section title="ETF exposure">
-            {data.etfs.length === 0 ? (
-              <Text style={styles.muted}>No ETFs matched.</Text>
-            ) : (
-              data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
-            )}
-          </Section>
-
-          <Section title="Sources">
-            <SourceList
-              sources={dedupeSources([
-                ...data.comparables.flatMap((c) => c.sources),
-                ...data.etfs.map((e) => e.source),
-              ])}
-            />
-          </Section>
-        </>
-      ) : (
-        <>
-          {ticker ? (
-            <ChartStrip
-              q={chartQ}
-              ticker={ticker}
-              chartType={chartType}
-              period={period}
-              onType={setChartType}
-              onPeriod={setPeriod}
-            />
+          {/* Above-the-fold: Open in Robinhood must not wait on agent overview. */}
+          {ticker && session?.token ? (
+            <View style={[styles.badgeRow, { marginTop: 12 }]}>
+              <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+            </View>
           ) : null}
+          <View style={styles.tabRow}>
+            {(["overview", "advanced"] as TabKey[]).map((t) => (
+              <Pressable
+                key={t}
+                onPress={() => {
+                  hapticSelect();
+                  setTab(t);
+                }}
+                style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === t }}
+                accessibilityLabel={t === "overview" ? "Overview" : "Advanced"}
+              >
+                <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
+                  {t === "overview" ? "Overview" : "Advanced"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
-          {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
+        {tab === "overview" ? (
+          <>
+            {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
 
-          {ticker ? (
-            <Section title="SEC filings">
-              {secQ.isLoading ? (
-                <ActivityIndicator color={colors.fg} />
-              ) : secQ.isError ? (
-                <Text style={styles.muted}>SEC pack unavailable.</Text>
-              ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
-                secQ.data!.Citations.slice(0, 8).map((c, i) => (
-                  <Pressable
-                    key={`${c.URL}-${i}`}
-                    onPress={() => Linking.openURL(c.URL)}
-                    style={styles.row}
+            {ticker ? (
+              <Section title={`Auction · $${ticker} · 1mo`}>
+                <ChartImageBlock
+                  q={chartQ}
+                  ticker={ticker}
+                  label="Auction"
+                  showLevels
+                  chartType="auction"
+                  period="1mo"
+                />
+              </Section>
+            ) : null}
+
+            {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
+
+            {ticker ? (
+              <View style={{ gap: 10 }}>
+                <Pressable
+                  onPress={() => {
+                    hapticTap();
+                    setResearchOpen(true);
+                  }}
+                  style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Research $${ticker}`}
+                >
+                  <LinearGradient
+                    colors={colors.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.researchBtnGrad}
                   >
-                    <Text style={styles.link}>
-                      {c.Form} · {c.Label}
-                    </Text>
-                  </Pressable>
-                ))
+                    <Ionicons name="sparkles" size={18} color={colors.accentInk} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.researchBtnText}>Research…</Text>
+                      <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
+                    </View>
+                  </LinearGradient>
+                </Pressable>
+                <WatchlistActions
+                  ticker={ticker}
+                  name={data.brand.name}
+                  sector={data.brand.sector}
+                  token={session?.token}
+                />
+                <View style={styles.badgeRow}>
+                  {publicTicker ? (
+                    <OptionsBadge ticker={publicTicker} token={session?.token} />
+                  ) : (
+                    <UnderlyingBadge
+                      brand={data.brand.name}
+                      sector={data.brand.sector}
+                      token={session?.token}
+                    />
+                  )}
+                </View>
+                <ResearchSheet
+                  ticker={ticker}
+                  visible={researchOpen}
+                  onClose={() => setResearchOpen(false)}
+                />
+              </View>
+            ) : null}
+
+            <Section title="Comparables">
+              {data.comparables.length === 0 ? (
+                <Text style={styles.muted}>No public comparables resolved.</Text>
               ) : (
-                <Text style={styles.muted}>No filings returned.</Text>
+                data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
               )}
             </Section>
-          ) : null}
 
-          <Section title="Sources">
-            <SourceList
-              sources={dedupeSources([
-                ...data.comparables.flatMap((c) => c.sources),
-                ...data.etfs.map((e) => e.source),
-              ])}
-            />
-          </Section>
-        </>
-      )}
-    </ScrollView>
+            <Section title="ETF exposure">
+              {data.etfs.length === 0 ? (
+                <Text style={styles.muted}>No ETFs matched.</Text>
+              ) : (
+                data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
+              )}
+            </Section>
+
+            <Section title="Sources">
+              <SourceList
+                sources={dedupeSources([
+                  ...data.comparables.flatMap((c) => c.sources),
+                  ...data.etfs.map((e) => e.source),
+                ])}
+              />
+            </Section>
+          </>
+        ) : (
+          <>
+            {ticker ? (
+              <ChartStrip
+                q={chartQ}
+                ticker={ticker}
+                chartType={chartType}
+                period={period}
+                onType={setChartType}
+                onPeriod={setPeriod}
+              />
+            ) : null}
+
+            {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
+
+            {ticker ? (
+              <Section title="SEC filings">
+                {secQ.isLoading ? (
+                  <ActivityIndicator color={colors.fg} />
+                ) : secQ.isError ? (
+                  <Text style={styles.muted}>SEC pack unavailable.</Text>
+                ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
+                  secQ.data!.Citations.slice(0, 8).map((c, i) => (
+                    <Pressable
+                      key={`${c.URL}-${i}`}
+                      onPress={() => Linking.openURL(c.URL)}
+                      style={styles.row}
+                    >
+                      <Text style={styles.link}>
+                        {c.Form} · {c.Label}
+                      </Text>
+                    </Pressable>
+                  ))
+                ) : (
+                  <Text style={styles.muted}>No filings returned.</Text>
+                )}
+              </Section>
+            ) : null}
+
+            <Section title="Sources">
+              <SourceList
+                sources={dedupeSources([
+                  ...data.comparables.flatMap((c) => c.sources),
+                  ...data.etfs.map((e) => e.source),
+                ])}
+              />
+            </Section>
+          </>
+        )}
+      </ScrollView>
     </ScreenFade>
   );
 }
@@ -417,9 +425,7 @@ function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }
   // when /v1/robinhood flakes — connection state lives on settings.
   const url =
     rh.data?.linkOut ??
-    (configured
-      ? `https://robinhood.com/us/en/stocks/${encodeURIComponent(ticker)}/`
-      : null);
+    (configured ? `https://robinhood.com/us/en/stocks/${encodeURIComponent(ticker)}/` : null);
 
   if (!url) return null;
 
@@ -1017,7 +1023,11 @@ function WatchlistActions({
             <ActivityIndicator color={colors.fg} />
           ) : (
             <>
-              <Ionicons name={memo ? "refresh-outline" : "document-text-outline"} size={15} color={colors.fg} />
+              <Ionicons
+                name={memo ? "refresh-outline" : "document-text-outline"}
+                size={15}
+                color={colors.fg}
+              />
               <Text style={styles.actionBtnText}>{memo ? "Regenerate memo" : "Memo"}</Text>
             </>
           )}

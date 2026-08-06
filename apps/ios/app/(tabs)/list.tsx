@@ -1,15 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
+import { type Quote, fetchNearby, fetchQuotesMap } from "@/api/client";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { EmptyState } from "@/components/EmptyState";
@@ -20,6 +9,12 @@ import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import * as Location from "expo-location";
+import { useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type SortKey = "distance" | "sector" | "public";
 
@@ -51,8 +46,7 @@ export default function ListScreen() {
 
   const q = useQuery({
     queryKey: ["nearby-list", origin.lat.toFixed(3), origin.lng.toFixed(3)],
-    queryFn: () =>
-      fetchNearby({ ...origin, radius: 1500, limit: 80 }, { token: session?.token }),
+    queryFn: () => fetchNearby({ ...origin, radius: 1500, limit: 80 }, { token: session?.token }),
     staleTime: 60_000,
   });
 
@@ -67,10 +61,8 @@ export default function ListScreen() {
         case "distance":
           return a.d - b.d;
         case "sector":
-          return (
-            (a.i.investable?.brand.sector ?? "zzz").localeCompare(
-              b.i.investable?.brand.sector ?? "zzz",
-            )
+          return (a.i.investable?.brand.sector ?? "zzz").localeCompare(
+            b.i.investable?.brand.sector ?? "zzz",
           );
         case "public": {
           const av = a.i.investable?.brand.isPublic ? 0 : 1;
@@ -86,8 +78,7 @@ export default function ListScreen() {
   const tickers = useMemo(() => {
     const out: string[] = [];
     for (const i of items) {
-      const t =
-        i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker;
+      const t = i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker;
       if (t && !out.includes(t)) out.push(t);
       if (out.length >= 20) break;
     }
@@ -117,7 +108,11 @@ export default function ListScreen() {
             accessibilityState={{ selected: sort === key }}
             accessibilityLabel={`Sort by ${label}`}
           >
-            <Ionicons name={icon} size={13} color={sort === key ? colors.accentInk : colors.fgMuted} />
+            <Ionicons
+              name={icon}
+              size={13}
+              color={sort === key ? colors.accentInk : colors.fgMuted}
+            />
             <Text style={[styles.chipText, sort === key && styles.chipTextOn]}>{label}</Text>
           </ScalePressable>
         ))}
@@ -145,8 +140,7 @@ export default function ListScreen() {
             keyExtractor={(i) => i.place.id}
             renderItem={({ item }) => {
               const t =
-                item.investable?.brand.ticker?.symbol ??
-                item.investable?.comparables?.[0]?.ticker;
+                item.investable?.brand.ticker?.symbol ?? item.investable?.comparables?.[0]?.ticker;
               const quote = t ? quotes[t.toUpperCase()] : undefined;
               const accent = item.investable?.brand.isPublic
                 ? sectorColor(item.investable.brand.sector)
@@ -166,8 +160,7 @@ export default function ListScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{listTitle(item)}</Text>
                     <Text style={styles.sub}>
-                      {formatItem(item)} ·{" "}
-                      {formatDistance(haversine(origin, item.place.location))}
+                      {formatItem(item)} · {formatDistance(haversine(origin, item.place.location))}
                     </Text>
                   </View>
                   <View style={styles.priceCol}>
@@ -212,8 +205,7 @@ function listTitle(i: NearbyItem): string {
 function formatItem(i: NearbyItem): string {
   const inv = i.investable;
   if (!inv) return i.place.types[0] ?? "unlisted";
-  if (inv.brand.isPublic)
-    return `${inv.brand.sector ?? "public"}`;
+  if (inv.brand.isPublic) return `${inv.brand.sector ?? "public"}`;
   if (inv.comparables.length > 0) {
     return `private · ≈ ${inv.comparables.map((c) => c.ticker).join(", ")}`;
   }
@@ -229,19 +221,14 @@ function pinColor(i: NearbyItem): string {
   });
 }
 
-function haversine(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
+function haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000;
   const toRad = (v: number) => (v * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const s =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) *
-      Math.cos(toRad(b.lat)) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 

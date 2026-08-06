@@ -1,20 +1,15 @@
-import { Hono } from "hono";
 import type { IdentifyResponse, Investable, PhotoIdentification, Source } from "@mapvest/core";
-import { identifyFromImageWithUsage } from "@mapvest/vision";
-import {
-  getQuote,
-  resolveComparable,
-  resolveEtfExposure,
-  resolveTicker,
-} from "@mapvest/finance";
 import type { Quote } from "@mapvest/core";
-import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { getQuote, resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
+import { identifyFromImageWithUsage } from "@mapvest/vision";
+import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
+import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { sanitizeOcrString } from "../lib/sanitize.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
-import { sanitizeOcrString } from "../lib/sanitize.js";
 
 const identify = new Hono<Partial<AuthEnv>>();
 
@@ -97,9 +92,7 @@ identify.post("/", async (c) => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const location = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
 
-    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
-      "user",
-    );
+    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get("user");
     span.setAttributes({
       image_size_bytes: bytes.byteLength,
       has_location: Boolean(location),
@@ -107,10 +100,9 @@ identify.post("/", async (c) => {
     });
 
     const started = performance.now();
-    const { identification: rawIdentification, usage } = await identifyFromImageWithUsage(
-      bytes,
-      { location },
-    );
+    const { identification: rawIdentification, usage } = await identifyFromImageWithUsage(bytes, {
+      location,
+    });
     const identification = sanitizeIdentification(rawIdentification);
     const latencyMs = Math.round(performance.now() - started);
 

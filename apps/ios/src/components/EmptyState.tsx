@@ -1,7 +1,7 @@
-import type { ComponentProps } from "react";
-import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
 import { colors, type } from "@/theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
+import { StyleSheet, Text, View } from "react-native";
 
 /**
  * View-based empty-state illustration — a soft ringed icon badge instead of

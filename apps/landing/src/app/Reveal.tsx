@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 
 /**
  * Fade/slide-up-on-scroll wrapper for static, server-rendered sections.
@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
  */
 export function Reveal({
   children,
-  className = '',
+  className = "",
   delay = 0,
 }: {
   children: ReactNode;
@@ -28,7 +28,7 @@ export function Reveal({
     if (!el) return;
 
     // No IntersectionObserver support (very old browsers) — just show it.
-    if (typeof IntersectionObserver === 'undefined') {
+    if (typeof IntersectionObserver === "undefined") {
       setVisible(true);
       return;
     }
@@ -42,20 +42,18 @@ export function Reveal({
           }
         }
       },
-      { threshold: 0.12, rootMargin: '0px 0px -8% 0px' },
+      { threshold: 0.12, rootMargin: "0px 0px -8% 0px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  const style: CSSProperties | undefined = delay
-    ? { transitionDelay: `${delay}ms` }
-    : undefined;
+  const style: CSSProperties | undefined = delay ? { transitionDelay: `${delay}ms` } : undefined;
 
   return (
     <div
       ref={ref}
-      className={`reveal${visible ? ' reveal--visible' : ''}${className ? ` ${className}` : ''}`}
+      className={`reveal${visible ? " reveal--visible" : ""}${className ? ` ${className}` : ""}`}
       style={style}
     >
       {children}

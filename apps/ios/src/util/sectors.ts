@@ -20,7 +20,7 @@ const SECTOR_COLORS: Record<string, string> = {
   "real estate": "#E8A0BF",
   "communication services": "#7AD7F0",
   communications: "#7AD7F0",
-  "communication": "#7AD7F0",
+  communication: "#7AD7F0",
 };
 
 export function sectorColor(sector?: string | null): string {

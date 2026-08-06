@@ -13,38 +13,38 @@ type Node = {
   step: string;
   title: string;
   lines: string[];
-  variant: 'jade' | 'blue';
-  icon: 'pin' | 'eye' | 'bars' | 'check';
+  variant: "jade" | "blue";
+  icon: "pin" | "eye" | "bars" | "check";
 };
 
 const nodes: Node[] = [
   {
-    step: '01',
-    title: 'Photo / Location',
-    lines: ['Point the camera or', 'drop a pin on the map'],
-    variant: 'jade',
-    icon: 'pin',
+    step: "01",
+    title: "Photo / Location",
+    lines: ["Point the camera or", "drop a pin on the map"],
+    variant: "jade",
+    icon: "pin",
   },
   {
-    step: '02',
-    title: 'Vision',
-    lines: ['Multimodal model IDs', 'the brand or storefront'],
-    variant: 'blue',
-    icon: 'eye',
+    step: "02",
+    title: "Vision",
+    lines: ["Multimodal model IDs", "the brand or storefront"],
+    variant: "blue",
+    icon: "eye",
   },
   {
-    step: '03',
-    title: 'Finance resolver',
-    lines: ['Ticker, private comparable,', 'or nearest sector ETF'],
-    variant: 'jade',
-    icon: 'bars',
+    step: "03",
+    title: "Finance resolver",
+    lines: ["Ticker, private comparable,", "or nearest sector ETF"],
+    variant: "jade",
+    icon: "bars",
   },
   {
-    step: '04',
-    title: 'Answer + Sources',
-    lines: ['A cited result —', 'nothing hallucinated'],
-    variant: 'blue',
-    icon: 'check',
+    step: "04",
+    title: "Answer + Sources",
+    lines: ["A cited result —", "nothing hallucinated"],
+    variant: "blue",
+    icon: "check",
   },
 ];
 
@@ -63,37 +63,37 @@ function leftX(i: number) {
   return MARGIN + i * (NODE_W + GAP);
 }
 
-function Icon({ kind }: { kind: Node['icon'] }) {
+function Icon({ kind }: { kind: Node["icon"] }) {
   const common = {
-    fill: 'none',
-    stroke: 'currentColor',
+    fill: "none",
+    stroke: "currentColor",
     strokeWidth: 1.7,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
   };
   switch (kind) {
-    case 'pin':
+    case "pin":
       return (
         <g {...common}>
           <path d="M12 21s7-7.6 7-12.6A7 7 0 0 0 5 8.4C5 13.4 12 21 12 21Z" />
           <circle cx="12" cy="8.4" r="2.5" />
         </g>
       );
-    case 'eye':
+    case "eye":
       return (
         <g {...common}>
           <path d="M2.2 12S6 5.3 12 5.3 21.8 12 21.8 12 18 18.7 12 18.7 2.2 12 2.2 12Z" />
           <circle cx="12" cy="12" r="3.1" />
         </g>
       );
-    case 'bars':
+    case "bars":
       return (
         <g {...common}>
           <path d="M3 20h18" />
           <path d="M6.5 20v-6M12 20V7.5M17.5 20v-9.5" />
         </g>
       );
-    case 'check':
+    case "check":
       return (
         <g {...common}>
           <circle cx="12" cy="12" r="8.6" />
@@ -117,11 +117,10 @@ export function HowItWorksDiagram() {
       >
         <title id="diagram-title">How Mapvest turns a signal into a sourced idea</title>
         <desc id="diagram-desc">
-          A four-step pipeline diagram. Step one, photo or location: point the camera or drop a
-          pin on the map. Step two, vision: a multimodal model identifies the brand or
-          storefront. Step three, finance resolver: returns a ticker, a private-company
-          comparable, or the nearest sector ETF. Step four, answer and sources: a cited result,
-          nothing hallucinated.
+          A four-step pipeline diagram. Step one, photo or location: point the camera or drop a pin
+          on the map. Step two, vision: a multimodal model identifies the brand or storefront. Step
+          three, finance resolver: returns a ticker, a private-company comparable, or the nearest
+          sector ETF. Step four, answer and sources: a cited result, nothing hallucinated.
         </desc>
 
         <defs>
@@ -156,7 +155,7 @@ export function HowItWorksDiagram() {
                 <circle
                   r="4"
                   className="diagram__dot"
-                  style={{ ['--flow-delay' as string]: `${i * 0.5}s` }}
+                  style={{ ["--flow-delay" as string]: `${i * 0.5}s` }}
                 />
               </g>
             </g>

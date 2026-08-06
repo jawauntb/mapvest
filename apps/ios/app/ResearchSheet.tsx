@@ -1,3 +1,9 @@
+import { type ResearchArticle, agentChat } from "@/api/client";
+import { useSession } from "@/auth/session";
+import { RichText } from "@/components/RichText";
+import { colors, radii } from "@/theme/tokens";
+import { hapticSelect, hapticTap } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,12 +15,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { agentChat, type ResearchArticle } from "@/api/client";
-import { useSession } from "@/auth/session";
-import { RichText } from "@/components/RichText";
-import { colors, radii } from "@/theme/tokens";
-import { hapticSelect, hapticTap } from "@/util/haptics";
 
 /** Ticker-bound research brief — not a top-level Chat tab. */
 export function ResearchSheet({
@@ -73,7 +73,12 @@ export function ResearchSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <View style={styles.root}>
         <View style={styles.bar}>
           <View style={{ flex: 1 }}>

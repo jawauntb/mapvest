@@ -1,6 +1,14 @@
-import { RichText } from "@/components/RichText";
+import {
+  type AgentThread,
+  type ResearchArticle,
+  agentChat,
+  getAgentThread,
+  listAgentThreads,
+} from "@/api/client";
+import { useSession } from "@/auth/session";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { RichText } from "@/components/RichText";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
@@ -23,14 +31,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  agentChat,
-  getAgentThread,
-  listAgentThreads,
-  type AgentThread,
-  type ResearchArticle,
-} from "@/api/client";
-import { useSession } from "@/auth/session";
 
 /**
  * ChatGPT-like research surface — thread list + article briefs.
@@ -91,7 +91,9 @@ export default function ResearchChatScreen() {
     if (params.intent === "thread" && params.id) {
       void openThread({ id: params.id, title: "Research", preview: "" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // biome-ignore lint/correctness/useExhaustiveDependencies: newChat is a
+    // plain (unmemoized) function recreated every render — this effect must
+    // key off the URL params only, or it would re-fire on every render.
   }, [params.intent, params.id, openThread]);
 
   async function onSend() {
@@ -150,46 +152,46 @@ export default function ResearchChatScreen() {
           Article-style briefs · Derivation tools behind the scenes · not advice
         </Text>
         <ScreenFade>
-        {threadsQ.isLoading ? (
-          <SkeletonList rows={5} />
-        ) : threads.length === 0 ? (
-          <EmptyState
-            icon="sparkles-outline"
-            title="No briefs yet"
-            subtitle="Start a chat, or open a ticker → Research…"
-          >
-            <PrimaryButton label="Start research" onPress={newChat} style={{ marginTop: 4 }} />
-          </EmptyState>
-        ) : (
-          <FlatList
-            style={{ flex: 1 }}
-            data={threads}
-            keyExtractor={(t) => t.id}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            ItemSeparatorComponent={() => <View style={styles.sep} />}
-            renderItem={({ item }) => (
-              <ScalePressable
-                style={styles.row}
-                onPress={() => void openThread(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open research thread: ${item.title}`}
-              >
-                <View style={styles.rowIcon}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.rowSub} numberOfLines={2}>
-                    {item.preview || "—"}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.fgDim} />
-              </ScalePressable>
-            )}
-          />
-        )}
+          {threadsQ.isLoading ? (
+            <SkeletonList rows={5} />
+          ) : threads.length === 0 ? (
+            <EmptyState
+              icon="sparkles-outline"
+              title="No briefs yet"
+              subtitle="Start a chat, or open a ticker → Research…"
+            >
+              <PrimaryButton label="Start research" onPress={newChat} style={{ marginTop: 4 }} />
+            </EmptyState>
+          ) : (
+            <FlatList
+              style={{ flex: 1 }}
+              data={threads}
+              keyExtractor={(t) => t.id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              ItemSeparatorComponent={() => <View style={styles.sep} />}
+              renderItem={({ item }) => (
+                <ScalePressable
+                  style={styles.row}
+                  onPress={() => void openThread(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open research thread: ${item.title}`}
+                >
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.rowSub} numberOfLines={2}>
+                      {item.preview || "—"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.fgDim} />
+                </ScalePressable>
+              )}
+            />
+          )}
         </ScreenFade>
       </SafeAreaView>
     );
@@ -218,7 +220,12 @@ export default function ResearchChatScreen() {
           <Text style={styles.chatTitle} numberOfLines={1}>
             {title}
           </Text>
-          <Pressable onPress={newChat} style={styles.back} accessibilityRole="button" accessibilityLabel="New chat">
+          <Pressable
+            onPress={newChat}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="New chat"
+          >
             <Text style={styles.backText}>New</Text>
           </Pressable>
         </View>
@@ -255,9 +262,7 @@ export default function ResearchChatScreen() {
                   </Pressable>
                 ))}
                 {t.toolsUsed.length ? (
-                  <Text style={styles.tools}>
-                    Tools · {t.toolsUsed.slice(0, 5).join(" · ")}
-                  </Text>
+                  <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
                 ) : null}
               </View>
             ),
@@ -322,7 +327,13 @@ const styles = StyleSheet.create({
     minHeight: 36,
   },
   newBtnText: { color: colors.accentInk, fontWeight: "800", fontSize: 14 },
-  hint: { color: colors.fgMuted, fontSize: 13, paddingHorizontal: 20, marginBottom: 12, lineHeight: 18 },
+  hint: {
+    color: colors.fgMuted,
+    fontSize: 13,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 20 },
   row: {
     flexDirection: "row",

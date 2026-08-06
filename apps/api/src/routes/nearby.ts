@@ -1,11 +1,8 @@
-import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import type { NearbyResponse } from "@mapvest/core";
 import { resolveTicker } from "@mapvest/finance";
-import {
-  readBrandTickerCacheMany,
-  writeBrandTickerCache,
-} from "../lib/brand-ticker-cache.js";
+import { Hono } from "hono";
+import { readBrandTickerCacheMany, writeBrandTickerCache } from "../lib/brand-ticker-cache.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { readNearbyPlacesCache, writeNearbyPlacesCache } from "../lib/nearby-cache.js";
 
@@ -184,11 +181,7 @@ async function tryOverpassMirror(
  * Race all Overpass mirrors in parallel. First non-empty success wins;
  * empty-but-OK responses are kept as a fallback so ZERO_RESULTS still works.
  */
-async function queryOverpass(
-  lat: number,
-  lng: number,
-  radius: number,
-): Promise<PlacesPayload> {
+async function queryOverpass(lat: number, lng: number, radius: number): Promise<PlacesPayload> {
   const errs: string[] = [];
   let emptyOk: PlacesPayload | undefined;
 
@@ -259,11 +252,7 @@ type PhotonFeature = {
   properties?: { name?: string; osm_id?: number; osm_type?: string; type?: string };
 };
 
-async function queryPhoton(
-  lat: number,
-  lng: number,
-  radius: number,
-): Promise<PlacesPayload> {
+async function queryPhoton(lat: number, lng: number, radius: number): Promise<PlacesPayload> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 8000);
   try {
@@ -340,7 +329,11 @@ function prioritizeBrandish(results: PlacesResult[]): PlacesResult[] {
     if (types.has("store") || types.has("supermarket") || types.has("pharmacy")) score += 2;
     if (types.has("bank") || types.has("gas_station") || types.has("gym") || types.has("lodging"))
       score += 2;
-    if (/\b(mcdonald|starbucks|dunkin|subway|chipotle|walmart|target|cvs|walgreens|chase)\b/i.test(p.name))
+    if (
+      /\b(mcdonald|starbucks|dunkin|subway|chipotle|walmart|target|cvs|walgreens|chase)\b/i.test(
+        p.name,
+      )
+    )
       score += 5;
     return score;
   };
@@ -403,9 +396,7 @@ nearby.get("/", async (c) => {
       return c.json({ error: "lat/lng required" }, 400);
     }
 
-    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
-      "user",
-    );
+    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get("user");
     span.setAttributes({
       lat,
       lng,
@@ -421,8 +412,7 @@ nearby.get("/", async (c) => {
     const mockPath = process.env.MOCK_PLACES;
     const useMock =
       mockPath &&
-      (process.env.NODE_ENV !== "production" ||
-        process.env.MOCK_PLACES_ALLOW_PROD === "1");
+      (process.env.NODE_ENV !== "production" || process.env.MOCK_PLACES_ALLOW_PROD === "1");
 
     let data: PlacesPayload;
     const started = performance.now();

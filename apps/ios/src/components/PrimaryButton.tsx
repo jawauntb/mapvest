@@ -1,8 +1,8 @@
+import { colors, motion, radii, type } from "@/theme/tokens";
+import { hapticTap } from "@/util/haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import { colors, motion, radii, type } from "@/theme/tokens";
-import { hapticTap } from "@/util/haptics";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

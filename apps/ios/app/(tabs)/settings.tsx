@@ -141,7 +141,11 @@ export default function SettingsScreen() {
               accessibilityRole="button"
               accessibilityLabel={showToken ? "Hide token" : "Show token"}
             >
-              <Ionicons name={showToken ? "eye-off-outline" : "eye-outline"} size={15} color={colors.fg} />
+              <Ionicons
+                name={showToken ? "eye-off-outline" : "eye-outline"}
+                size={15}
+                color={colors.fg}
+              />
               <Text style={styles.btnText}>{showToken ? "Hide" : "Show"}</Text>
             </Pressable>
             <Pressable

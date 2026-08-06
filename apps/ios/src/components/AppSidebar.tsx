@@ -1,4 +1,4 @@
-import { listAgentThreads, type AgentThread } from "@/api/client";
+import { type AgentThread, listAgentThreads } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { useSidebar } from "@/nav/SidebarContext";
 import { colors, elevation, motion, radii, type } from "@/theme/tokens";
@@ -8,15 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  Dimensions,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
@@ -173,7 +165,9 @@ export function AppSidebar() {
                     onPress={() => {
                       hapticSelect();
                       closeSidebar();
-                      router.push(`/(tabs)/research?intent=thread&id=${encodeURIComponent(t.id)}` as never);
+                      router.push(
+                        `/(tabs)/research?intent=thread&id=${encodeURIComponent(t.id)}` as never,
+                      );
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={`Open research thread: ${t.title || "Research"}`}
@@ -212,7 +206,10 @@ export function AppSidebar() {
             </Pressable>
           </Animated.View>
         </GestureDetector>
-        <Animated.View style={[StyleSheet.absoluteFillObject, scrimStyle]} pointerEvents={open ? "auto" : "none"}>
+        <Animated.View
+          style={[StyleSheet.absoluteFillObject, scrimStyle]}
+          pointerEvents={open ? "auto" : "none"}
+        >
           <Pressable
             style={styles.scrim}
             onPress={closeSidebar}

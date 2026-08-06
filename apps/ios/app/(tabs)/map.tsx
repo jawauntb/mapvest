@@ -1,3 +1,7 @@
+import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/client";
+import type { NearbyItem } from "@/api/types";
+import { useSession } from "@/auth/session";
+import { colors, radii } from "@/theme/tokens";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
@@ -5,10 +9,6 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
-import { fetchChart, fetchNearby, fetchQuotesMap, type Quote } from "@/api/client";
-import type { NearbyItem } from "@/api/types";
-import { useSession } from "@/auth/session";
-import { colors, radii } from "@/theme/tokens";
 
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,

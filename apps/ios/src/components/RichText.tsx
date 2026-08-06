@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View, type TextStyle } from "react-native";
 import { colors } from "@/theme/tokens";
+import { StyleSheet, Text, type TextStyle, View } from "react-native";
 
 /**
  * Lightweight article formatter for agent briefs.
@@ -62,7 +62,10 @@ function splitBlocks(raw: string): Block[] {
 
   const out: Block[] = [];
   for (const chunk of chunks) {
-    const lines = chunk.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = chunk
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (lines.length > 1 && lines.every((l) => /^([-*•]|\d+\.)\s+/.test(l))) {
       for (const l of lines) {
         out.push({ kind: "li", text: l.replace(/^([-*•]|\d+\.)\s+/, "") });
@@ -82,7 +85,10 @@ function splitBlocks(raw: string): Block[] {
         continue;
       }
       // Section labels like "Business & competitive position:"
-      if (/^[A-Z][^.]{2,48}:\s*$/.test(line) || /^(Lede|Business|Catalysts|Risks|Valuation|What to watch)/i.test(line)) {
+      if (
+        /^[A-Z][^.]{2,48}:\s*$/.test(line) ||
+        /^(Lede|Business|Catalysts|Risks|Valuation|What to watch)/i.test(line)
+      ) {
         out.push({ kind: "h", text: line.replace(/:$/, "") });
         continue;
       }

@@ -1,5 +1,6 @@
+import { colors, radii } from "@/theme/tokens";
 import { useEffect } from "react";
-import { StyleSheet, View, type DimensionValue, type ViewStyle } from "react-native";
+import { type DimensionValue, StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -8,7 +9,6 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import { colors, radii } from "@/theme/tokens";
 
 /**
  * Soft pulsing placeholder — replaces bare ActivityIndicator spinners for
