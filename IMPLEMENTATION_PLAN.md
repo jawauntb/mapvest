@@ -121,7 +121,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - Android build via EAS
 - Options-derivation integration (link out to sibling `option_derivation` repo)
 - Underlying-Analyzer integration (private-firm sector proxies)
-- Watchlist sync (per-user portfolios)
+- Watchlist portfolio analytics (basic ★ Save is now Postgres-backed via `user_watchlist`)
 - Push notifications when a nearby brand hits an earnings window
 
 ---

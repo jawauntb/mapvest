@@ -20,7 +20,7 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |
-| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, nearby_cache, brand_ticker_cache, usage/entitlements |
+| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, nearby_cache, brand_ticker_cache, usage/entitlements |
 | `STRIPE_SECRET_KEY` | Stripe (**Artesanato Poesia** `acct_1Pj15wKwhiITC0uV`) — Mapvest only, not objetdart | Checkout + portal (Phase 8 Slice E). Railway API currently uses test-mode `sk_test_…` until live keys have `product_write`. |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `POST /v1/billing/webhook` | Subscription webhooks |
 | `STRIPE_PRICE_ID_MONTHLY` | Stripe Price **Mapvest Pro** $20/mo (`price_…`) on Artesanato Poesia | Checkout line item |

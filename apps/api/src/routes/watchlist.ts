@@ -1,46 +1,32 @@
 import { Hono } from "hono";
 import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import {
+  attachWatchMemo,
+  listWatchEntries,
+  removeWatchEntry,
+  upsertWatchEntry,
+  type WatchEntry,
+} from "../lib/watchlist-store.js";
 
 /**
- * Per-user watchlist. In-memory for v0.1 — Redis/Postgres when we scale
- * (D11 in docs/SYSTEM_DESIGN.md). All routes require a bearer session.
- *
- * Entries include the ticker, human name, source screen ("camera" | "map"
- * | "list" | "manual"), and any memo saved by the client.
+ * Per-user watchlist. Persisted in Postgres when POSTGRES_URL is set
+ * (Railway); in-memory fallback for local tests. All routes require a
+ * bearer session.
  */
 
-export type WatchEntry = {
-  ticker: string;
-  name?: string;
-  sector?: string;
-  source: "camera" | "map" | "list" | "manual" | "detail" | "live" | "web";
-  memo?: string;
-  memoProvider?: string;
-  createdAt: string; // ISO
-};
-
-const perUser = new Map<string, Map<string, WatchEntry>>();
-
-function bucket(userId: string): Map<string, WatchEntry> {
-  let m = perUser.get(userId);
-  if (!m) {
-    m = new Map();
-    perUser.set(userId, m);
-  }
-  return m;
-}
+export type { WatchEntry };
 
 const watchlist = new Hono<AuthEnv>();
 watchlist.use("*", bearerAuth);
 
 /** GET /v1/watchlist → { items: WatchEntry[] } */
-watchlist.get("/", (c) => {
-  return safeExecuteWithSpan("http.watchlist.list", (span) => {
+watchlist.get("/", async (c) => {
+  return safeExecuteWithSpan("http.watchlist.list", async (span) => {
     const user = c.get("user");
-    const m = bucket(user.id);
-    span.setAttributes({ user_id: user.id, items_count: m.size });
-    return c.json({ items: [...m.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+    const items = await listWatchEntries(user.id);
+    span.setAttributes({ user_id: user.id, items_count: items.length });
+    return c.json({ items });
   });
 });
 
@@ -51,25 +37,23 @@ watchlist.post("/add", async (c) => {
     const ticker = (body.ticker ?? "").toString().trim().toUpperCase();
     if (!ticker) return c.json({ error: "ticker required" }, 400);
     const user = c.get("user");
-    const entry: WatchEntry = {
+    const entry = await upsertWatchEntry(user.id, {
       ticker,
       name: body.name,
       sector: body.sector,
       source: (body.source as WatchEntry["source"]) ?? "manual",
-      createdAt: new Date().toISOString(),
-    };
-    bucket(user.id).set(ticker, entry);
+    });
     span.setAttributes({ user_id: user.id, ticker, source: entry.source });
     return c.json({ entry });
   });
 });
 
 /** DELETE /v1/watchlist/:ticker */
-watchlist.delete("/:ticker", (c) => {
-  return safeExecuteWithSpan("http.watchlist.remove", (span) => {
+watchlist.delete("/:ticker", async (c) => {
+  return safeExecuteWithSpan("http.watchlist.remove", async (span) => {
     const ticker = c.req.param("ticker").trim().toUpperCase();
     const user = c.get("user");
-    const removed = bucket(user.id).delete(ticker);
+    const removed = await removeWatchEntry(user.id, ticker);
     span.setAttributes({ user_id: user.id, ticker, removed });
     return c.json({ ok: true, removed });
   });
@@ -90,13 +74,10 @@ watchlist.post("/:ticker/memo", async (c) => {
       return c.json({ error: "memo required (min 20 chars)" }, 400);
     }
     const user = c.get("user");
-    const m = bucket(user.id);
-    const existing = m.get(ticker);
-    if (!existing) return c.json({ error: "ticker not in watchlist" }, 404);
-    existing.memo = body.memo;
-    existing.memoProvider = body.provider;
+    const entry = await attachWatchMemo(user.id, ticker, body.memo, body.provider);
+    if (!entry) return c.json({ error: "ticker not in watchlist" }, 404);
     span.setAttributes({ user_id: user.id, ticker, memo_len: body.memo.length });
-    return c.json({ entry: existing });
+    return c.json({ entry });
   });
 });
 

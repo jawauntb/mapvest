@@ -85,7 +85,24 @@ export async function initDb(): Promise<void> {
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS brand_ticker_cache_expires_idx ON brand_ticker_cache (expires_at)`;
-    console.log("[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, usage_events)");
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_watchlist (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        ticker TEXT NOT NULL,
+        name TEXT,
+        sector TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        memo TEXT,
+        memo_provider TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, ticker)
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS user_watchlist_user_idx ON user_watchlist (user_id, created_at DESC)`;
+    console.log(
+      "[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, usage_events, watchlist)",
+    );
   })();
   return initPromise;
 }

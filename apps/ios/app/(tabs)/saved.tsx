@@ -9,8 +9,8 @@ import {
   listWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +26,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SavedScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
   const [cockpit, setCockpit] = useState<CockpitRow[] | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
@@ -37,6 +38,15 @@ export default function SavedScreen() {
     enabled: !!session?.token,
     staleTime: 5_000,
   });
+
+  // Refetch every time Saved is focused — catches saves from detail/camera.
+  useFocusEffect(
+    useCallback(() => {
+      if (!session?.token) return;
+      void qc.invalidateQueries({ queryKey: ["watchlist", session.token] });
+    }, [qc, session?.token]),
+  );
+
   const items = q.data?.items ?? [];
   const tickers = items.map((i) => i.ticker).slice(0, 10);
 
