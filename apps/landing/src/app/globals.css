@@ -168,7 +168,10 @@ blockquote {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 60px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0;
+  min-height: 60px;
 }
 
 .brand {
@@ -195,7 +198,8 @@ blockquote {
 
 .nav {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 8px 18px;
   align-items: center;
   font-size: 14px;
 }
@@ -206,6 +210,22 @@ blockquote {
 
 .nav a:hover {
   color: var(--fg);
+}
+
+/* Small phones: the wordmark + 4 nav items no longer fit one row at
+   14px/20px gaps — wrap onto their own row instead of overlapping. */
+@media (max-width: 560px) {
+  .site-header__inner {
+    justify-content: center;
+    text-align: center;
+    padding: 10px 0;
+  }
+  .nav {
+    width: 100%;
+    justify-content: center;
+    gap: 6px 14px;
+    font-size: 13px;
+  }
 }
 
 .site-footer {
@@ -484,21 +504,27 @@ blockquote {
 
 .hero__brand {
   font-family: var(--font-display);
-  font-size: clamp(48px, 10vw, 96px);
+  /* Floor was a fixed 48px regardless of viewport — on phones under ~430px
+     the icon + "mapvest" no longer fit one row and (with overflow: visible
+     on a flex row) the text visibly clipped past the viewport edge without
+     ever triggering a scrollbar. Floor now scales down too; flex-wrap is a
+     safety net for anything narrower still. */
+  font-size: clamp(32px, 11vw, 96px);
   font-weight: 800;
   letter-spacing: -0.05em;
   line-height: 0.95;
   color: var(--fg);
   margin: 0 auto 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px 16px;
 }
 
 .hero__brand img {
-  width: clamp(48px, 8vw, 72px);
-  height: clamp(48px, 8vw, 72px);
+  width: clamp(32px, 9vw, 72px);
+  height: clamp(32px, 9vw, 72px);
 }
 
 .hero__eyebrow {

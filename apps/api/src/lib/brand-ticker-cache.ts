@@ -57,10 +57,14 @@ export async function readBrandTickerCacheMany(
   }
   const keys = [...keyToNames.keys()];
 
+  // Bun's SQL.array() defaults to binding as a JSON array unless the
+  // element type is given explicitly — without "text" here, Postgres sees
+  // `brand_key = ANY($1::json)` and fails with "operator does not exist:
+  // text = json". brand_key is TEXT PRIMARY KEY, so bind as text[].
   const rows = await sql`
     SELECT brand_key, payload
     FROM brand_ticker_cache
-    WHERE brand_key = ANY(${sql.array(keys)})
+    WHERE brand_key = ANY(${sql.array(keys, "text")})
       AND expires_at > now()
   `;
   for (const row of rows as Array<{
