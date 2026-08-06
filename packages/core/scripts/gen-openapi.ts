@@ -59,6 +59,11 @@ const S = {
   NearbyRequest: component("NearbyRequest", raw.NearbyRequest),
   NearbyItem: component("NearbyItem", raw.NearbyItem),
   NearbyResponse: component("NearbyResponse", raw.NearbyResponse),
+  WidgetNearbyItem: component("WidgetNearbyItem", raw.WidgetNearbyItem),
+  WidgetNearbyResponse: component(
+    "WidgetNearbyResponse",
+    raw.WidgetNearbyResponse,
+  ),
   ResolveComparableRequest: component(
     "ResolveComparableRequest",
     raw.ResolveComparableRequest,
@@ -189,6 +194,49 @@ registry.registerPath({
       content: { "application/json": { schema: S.NearbyResponse } },
     },
     ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/widget/nearby",
+  summary: "Trimmed nearby payload for home-screen widgets",
+  description:
+    "Same places cascade + brand join as `/v1/nearby`, capped small (max 12) with quotes attached for up to 6 tickers. Built for the iOS WidgetKit and Android home-screen widgets, which refresh on a timeline rather than on demand. No auth required.",
+  tags: ["widget"],
+  request: {
+    query: raw.NearbyRequest,
+  },
+  responses: {
+    200: {
+      description: "Widget-sized nearby items resolved.",
+      content: { "application/json": { schema: S.WidgetNearbyResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/widget/map-snapshot",
+  summary: "Static map PNG for home-screen widgets",
+  description:
+    "Server-rendered Google Static Maps PNG with a pin for the origin and one per nearby investable, labeled by ticker. Proxies the request so `GOOGLE_MAPS_API_KEY` never reaches a widget extension (see docs/SECRETS.md). Returns 501 when no key is configured.",
+  tags: ["widget"],
+  request: {
+    query: raw.NearbyRequest.extend({
+      width: z.coerce.number().optional().describe("PNG width in px, capped at 640."),
+      height: z.coerce.number().optional().describe("PNG height in px, capped at 640."),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Map snapshot PNG.",
+      content: { "image/png": { schema: z.string().openapi({ type: "string", format: "binary" }) } },
+    },
+    400: errorResponses[400],
+    501: errorResponse("Map snapshot not configured (GOOGLE_MAPS_API_KEY unset)."),
+    502: errorResponse("Upstream places lookup or static map request failed."),
   },
 });
 
@@ -515,6 +563,7 @@ const document = generator.generateDocument({
     { name: "system", description: "Health + system endpoints" },
     { name: "identify", description: "Photo → investable identification" },
     { name: "nearby", description: "Location-driven place lookup" },
+    { name: "widget", description: "Home-screen widget data (iOS WidgetKit / Android App Widget)" },
     { name: "finance", description: "Ticker / comparable / ETF resolution" },
     { name: "auth", description: "Passwordless email sign-in" },
     { name: "admin", description: "Requires the `admin` scope" },

@@ -54,6 +54,7 @@ bun run dev            # runs api, landing, and expo start
 - [`docs/SECRETS.md`](docs/SECRETS.md)
 - [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)
+- [`docs/SHARE_AND_WIDGETS.md`](docs/SHARE_AND_WIDGETS.md) — share-to-Mapvest + home-screen widgets
 
 ## License
 

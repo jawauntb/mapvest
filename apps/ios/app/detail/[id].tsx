@@ -32,8 +32,10 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -176,6 +178,30 @@ export default function DetailSheet() {
 
   const quote = quoteQ.data?.quote;
 
+  /**
+   * Native OS share sheet — "Open in Messages / Mail / Notes / any app that
+   * registers a share extension" (Claude, ChatGPT, etc. all show up here on
+   * iOS the same way "Open in…" does for a photo). Mirrors the inbound path:
+   * `apps/ios/app/share-intent.tsx` receives images shared *into* Mapvest;
+   * this is the outbound half, sharing *out of* the detail sheet.
+   */
+  async function onShare() {
+    hapticTap();
+    const label = ticker ? `$${ticker}` : data!.brand.name;
+    const priceLine = quote
+      ? ` — $${quote.price.toFixed(2)} (${quote.change >= 0 ? "+" : ""}${quote.changePct.toFixed(2)}%)`
+      : "";
+    const deepLink = `mapvest://detail/${encodeURIComponent(ticker ?? data!.brand.name)}`;
+    const message = `${data!.brand.name} (${label})${priceLine} — via Mapvest\n${deepLink}`;
+    try {
+      await Share.share(
+        Platform.OS === "ios" ? { message, url: deepLink, title: data!.brand.name } : { message },
+      );
+    } catch {
+      // User cancelled or the share sheet failed to open — nothing to surface.
+    }
+  }
+
   return (
     <ScreenFade>
       <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
@@ -197,6 +223,26 @@ export default function DetailSheet() {
               >
                 <Ionicons name="chevron-back" size={20} color={colors.fg} />
                 <Text style={{ color: colors.fg, fontSize: 17, fontWeight: "600" }}>Home</Text>
+              </Pressable>
+            ),
+            headerRight: () => (
+              <Pressable
+                onPress={() => void onShare()}
+                hitSlop={12}
+                style={{
+                  minWidth: 44,
+                  minHeight: 44,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Share ${data.brand.name}`}
+              >
+                <Ionicons
+                  name={Platform.OS === "ios" ? "share-outline" : "share-social-outline"}
+                  size={20}
+                  color={colors.fg}
+                />
               </Pressable>
             ),
           }}
