@@ -15,6 +15,12 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
+/** Fixed pin canvas — variable-height custom markers mis-anchor on Google Maps. */
+const PIN_W = 104;
+const PIN_H = 86;
+const PLAIN_W = 28;
+const PLAIN_H = 28;
+
 export default function MapScreen() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -22,12 +28,12 @@ export default function MapScreen() {
   const cachedRegion = qc.getQueryData<Region>(["tab-state", "map-region"]);
   const [region, setRegion] = useState<Region>(cachedRegion ?? FALLBACK_REGION);
   const [permErr, setPermErr] = useState<string | null>(null);
-  /** Keep custom marker bitmaps fresh until quotes land, then freeze for perf. */
+  /** Tracks until quotes render into the bitmap, then freezes for perf. */
   const [trackMarkers, setTrackMarkers] = useState(true);
 
   useEffect(() => {
     (async () => {
-      if (cachedRegion) return; // keep continuity; don't jump map on every visit
+      if (cachedRegion) return;
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setPermErr("Location permission denied. Showing San Francisco.");
@@ -78,12 +84,13 @@ export default function MapScreen() {
   const quotes = quotesQuery.data ?? {};
 
   useEffect(() => {
+    // Re-rasterize markers when items/quotes change, then freeze.
     setTrackMarkers(true);
-    const t = setTimeout(() => setTrackMarkers(false), quotesQuery.isFetched ? 400 : 1200);
+    const delay = quotesQuery.isFetching ? 1600 : 700;
+    const t = setTimeout(() => setTrackMarkers(false), delay);
     return () => clearTimeout(t);
-  }, [items, quotesQuery.isFetched, quotesQuery.dataUpdatedAt]);
+  }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt]);
 
-  // Warm auction charts for top public tickers so detail opens faster.
   useEffect(() => {
     for (const t of pinTickers.slice(0, 4)) {
       void qc.prefetchQuery({
@@ -117,6 +124,7 @@ export default function MapScreen() {
         {items.map((item) => {
           const pin = resolvePinTicker(item);
           const quote = pin ? quotes[pin.symbol] : undefined;
+          const hasTicker = !!pin;
           return (
             <Marker
               key={item.place.id}
@@ -125,7 +133,9 @@ export default function MapScreen() {
                 longitude: item.place.location.lng,
               }}
               tracksViewChanges={trackMarkers}
+              // Bottom-center of the fixed canvas sits on the lat/lng.
               anchor={{ x: 0.5, y: 1 }}
+              zIndex={hasTicker ? 2 : 1}
               onPress={() => openItem(item)}
             >
               <TickerPin
@@ -156,7 +166,6 @@ export default function MapScreen() {
 
 type PinTicker = {
   symbol: string;
-  /** true = brand's own listing; false = closest public comparable */
   isPublic: boolean;
 };
 
@@ -183,28 +192,29 @@ function TickerPin({
 }) {
   if (!pin) {
     return (
-      <View style={styles.plainPinWrap}>
+      <View style={styles.plainCanvas} collapsable={false}>
         <View style={[styles.plainDot, { backgroundColor: accentHex(accent) }]} />
-        <View style={styles.plainStem} />
       </View>
     );
   }
 
   const up = (quote?.change ?? 0) >= 0;
   return (
-    <View style={styles.pinWrap}>
+    // Fixed canvas so Google's marker bitmap + anchor stay aligned to lat/lng.
+    <View style={styles.pinCanvas} collapsable={false}>
       <View style={[styles.bubble, { borderColor: accentHex(accent) }]}>
-        <Text style={styles.tickerText}>
-          {pin.isPublic ? "" : "≈"}${pin.symbol}
+        <Text style={styles.tickerText} numberOfLines={1}>
+          {pin.isPublic ? "$" : "≈"}
+          {pin.symbol}
         </Text>
         {quote ? (
-          <>
-            <Text style={styles.priceText}>${quote.price.toFixed(2)}</Text>
-            <Text style={[styles.chgText, { color: up ? "#3ECF8E" : "#ff6b6b" }]}>
+          <Text style={styles.priceText} numberOfLines={1}>
+            ${quote.price.toFixed(2)}{" "}
+            <Text style={{ color: up ? "#3ECF8E" : "#ff6b6b" }}>
               {up ? "+" : ""}
-              {quote.changePct.toFixed(2)}%
+              {quote.changePct.toFixed(1)}%
             </Text>
-          </>
+          </Text>
         ) : (
           <Text style={styles.priceMuted}>…</Text>
         )}
@@ -273,43 +283,47 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     fontSize: 12,
   },
-  pinWrap: { alignItems: "center", maxWidth: 120 },
+  pinCanvas: {
+    width: PIN_W,
+    height: PIN_H,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
   bubble: {
-    backgroundColor: "rgba(12, 14, 16, 0.92)",
+    width: PIN_W - 4,
+    backgroundColor: "rgba(12, 14, 16, 0.94)",
     borderWidth: 1.5,
     borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     alignItems: "center",
-    minWidth: 72,
   },
   tickerText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   priceText: {
     color: "#eee",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     marginTop: 1,
   },
-  priceMuted: { color: "#666", fontSize: 11, marginTop: 1 },
-  chgText: { fontSize: 10, fontWeight: "700", marginTop: 1 },
+  priceMuted: { color: "#666", fontSize: 10, marginTop: 1 },
   placeHint: {
     color: "#888",
     fontSize: 9,
-    marginTop: 2,
-    maxWidth: 100,
+    marginTop: 1,
+    maxWidth: PIN_W - 12,
     textAlign: "center",
   },
   stem: {
     width: 0,
     height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 8,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 7,
     borderLeftColor: "transparent",
     borderRightColor: "transparent",
     marginTop: -1,
@@ -322,18 +336,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#fff",
   },
-  plainPinWrap: { alignItems: "center" },
+  plainCanvas: {
+    width: PLAIN_W,
+    height: PLAIN_H,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
   plainDot: {
     width: 14,
     height: 14,
     borderRadius: 7,
     borderWidth: 2,
     borderColor: "#fff",
-  },
-  plainStem: {
-    width: 2,
-    height: 8,
-    backgroundColor: "#555",
-    marginTop: -1,
+    marginBottom: 2,
   },
 });

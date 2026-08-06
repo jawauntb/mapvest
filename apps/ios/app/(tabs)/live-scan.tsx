@@ -5,6 +5,7 @@ import { sectorColor } from "@/util/sectors";
 import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
+import { useIsFocused } from "@react-navigation/native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -22,6 +23,7 @@ type LiveCache = {
 
 /** Live scan stops when you leave the tab or hit Stop — camera does not run forever. */
 export default function LiveScanScreen() {
+  const focused = useIsFocused();
   const router = useRouter();
   const qc = useQueryClient();
   const [perm, requestPerm] = useCameraPermissions();
@@ -31,6 +33,7 @@ export default function LiveScanScreen() {
   const [err, setErr] = useState<string | null>(cached?.err ?? null);
   const [frames, setFrames] = useState(cached?.frames ?? 0);
   const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+  const readyRef = useRef(false);
 
   function persistLive(next: Partial<LiveCache>) {
     const prev = qc.getQueryData<LiveCache>(LIVE_CACHE_KEY) ?? {
@@ -61,11 +64,13 @@ export default function LiveScanScreen() {
     })();
   }, []);
 
-  // Hard stop when navigating away — kills the green status-bar camera dot.
+  // Hard stop when navigating away — release camera for Camera tab.
   useFocusEffect(
     useCallback(() => {
       return () => {
         setRunning(false);
+        readyRef.current = false;
+        cameraRef.current = null;
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
@@ -75,7 +80,14 @@ export default function LiveScanScreen() {
   );
 
   useEffect(() => {
-    if (!running) {
+    if (!focused) {
+      readyRef.current = false;
+      cameraRef.current = null;
+    }
+  }, [focused]);
+
+  useEffect(() => {
+    if (!running || !focused) {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
       return;
@@ -86,15 +98,17 @@ export default function LiveScanScreen() {
       timerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+  }, [running, focused]);
 
   async function tick() {
-    if (inFlight.current || !cameraRef.current) return;
+    if (inFlight.current || !cameraRef.current || !readyRef.current || !focused) return;
     inFlight.current = true;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.4,
-        skipProcessing: true,
+        quality: 0.45,
+        skipProcessing: false,
+        exif: false,
+        shutterSound: false,
       });
       if (!photo?.uri) return;
       setFrames((n) => {
@@ -176,13 +190,25 @@ export default function LiveScanScreen() {
 
   return (
     <View style={styles.root}>
-      <CameraView
-        ref={(r) => {
-          cameraRef.current = r;
-        }}
-        style={StyleSheet.absoluteFillObject}
-        facing="back"
-      />
+      {focused ? (
+        <CameraView
+          ref={(r) => {
+            cameraRef.current = r;
+          }}
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          mode="picture"
+          onCameraReady={() => {
+            readyRef.current = true;
+          }}
+          onMountError={(e) => {
+            readyRef.current = false;
+            setErr(e.message || "Camera failed to start");
+          }}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#000" }]} />
+      )}
       <SafeAreaView style={styles.hud} edges={["top", "bottom"]}>
         <View style={styles.topBar}>
           <Text style={styles.status}>

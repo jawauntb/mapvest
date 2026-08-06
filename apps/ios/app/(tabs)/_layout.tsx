@@ -79,11 +79,20 @@ function TabsInner() {
       />
       <Tabs.Screen
         name="camera"
-        options={{ title: "Camera", tabBarIcon: ({ color }) => <TabDot color={color} label="C" /> }}
+        options={{
+          title: "Camera",
+          tabBarIcon: ({ color }) => <TabDot color={color} label="C" />,
+          // Full unmount so Live cannot keep a frozen camera session.
+          unmountOnBlur: true,
+        }}
       />
       <Tabs.Screen
         name="live-scan"
-        options={{ title: "Live", tabBarIcon: ({ color }) => <TabDot color={color} label="L" /> }}
+        options={{
+          title: "Live",
+          tabBarIcon: ({ color }) => <TabDot color={color} label="L" />,
+          unmountOnBlur: true,
+        }}
       />
       <Tabs.Screen
         name="list"

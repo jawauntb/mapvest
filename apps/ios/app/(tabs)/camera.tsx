@@ -4,11 +4,12 @@ import { useSession } from "@/auth/session";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { sectorColor } from "@/util/sectors";
+import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -24,8 +25,10 @@ const CAMERA_CACHE_KEY = ["tab-state", "camera"] as const;
 
 /** Capture freezes the frame with the ticker — camera does not stay live. */
 export default function CameraScreen() {
+  const focused = useIsFocused();
   const [perm, requestPerm] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
+  const readyRef = useRef(false);
   const router = useRouter();
   const qc = useQueryClient();
   const { session } = useSession();
@@ -37,6 +40,14 @@ export default function CameraScreen() {
   const [err, setErr] = useState<string | null>(cached?.err ?? null);
   const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
   const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+
+  // Drop stale ready flag when CameraView unmounts (tab blur / frozen frame).
+  useEffect(() => {
+    if (!focused || frozenUri) {
+      readyRef.current = false;
+      cameraRef.current = null;
+    }
+  }, [focused, frozenUri]);
 
   function persistCamera(next: Partial<CameraCache>) {
     const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
@@ -81,19 +92,30 @@ export default function CameraScreen() {
   }
 
   async function capture() {
-    if (!cameraRef.current || busy) return;
+    if (busy) return;
+    if (!focused) {
+      setErr("Camera tab not active — try again.");
+      return;
+    }
+    if (!cameraRef.current || !readyRef.current) {
+      setErr("Camera still starting — wait a sec and tap again.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     setResult(null);
     setQueuedNote(null);
     setSavedNote(null);
     try {
+      // Live scan can hold the camera if both tabs stay mounted — we unmount
+      // CameraView when unfocused. Prefer processed JPEG for a reliable still.
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
-        skipProcessing: true,
+        quality: 0.75,
+        skipProcessing: false,
+        exif: false,
+        shutterSound: false,
       });
       if (!photo?.uri) throw new Error("No photo captured.");
-      // Freeze immediately so the camera does not stay live.
       setFrozenUri(photo.uri);
       persistCamera({ frozenUri: photo.uri, result: null, err: null, queuedNote: null });
       const location = await currentLocation();
@@ -122,7 +144,7 @@ export default function CameraScreen() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErr(msg);
+      setErr(msg || "Capture failed");
       persistCamera({ err: msg });
     } finally {
       setBusy(false);
@@ -135,6 +157,7 @@ export default function CameraScreen() {
     setErr(null);
     setQueuedNote(null);
     setSavedNote(null);
+    readyRef.current = false;
     persistCamera({
       frozenUri: null,
       result: null,
@@ -177,28 +200,44 @@ export default function CameraScreen() {
     else if (top?.brand.name) router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
   }
 
+  // Only mount the camera while this tab is focused — otherwise Live/Camera
+  // fight for the same hardware session and shutter silently fails.
+  const showLivePreview = focused && !frozenUri;
+
   return (
     <View style={styles.root}>
       {frozenUri ? (
         <Image source={{ uri: frozenUri }} style={StyleSheet.absoluteFillObject} />
-      ) : (
+      ) : showLivePreview ? (
         <CameraView
           ref={(r) => {
             cameraRef.current = r;
           }}
           style={StyleSheet.absoluteFillObject}
           facing="back"
+          mode="picture"
+          onCameraReady={() => {
+            readyRef.current = true;
+          }}
+          onMountError={(e) => {
+            readyRef.current = false;
+            setErr(e.message || "Camera failed to start");
+          }}
         />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, styles.center]}>
+          <Text style={styles.msg}>Opening camera…</Text>
+        </View>
       )}
-      <SafeAreaView style={styles.hud} edges={["top", "bottom"]}>
-        <View style={styles.statusRow}>
+      <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
+        <View style={styles.statusRow} pointerEvents="none">
           <Text style={styles.status}>
             {frozenUri ? "Frozen" : online ? "Online" : "Offline"}{" "}
             {pending.length ? `· ${pending.length} queued` : ""}
           </Text>
         </View>
 
-        <View style={styles.center}>
+        <View style={styles.center} pointerEvents="none">
           {busy ? <ActivityIndicator color="#fff" size="large" /> : null}
         </View>
 
@@ -232,6 +271,10 @@ export default function CameraScreen() {
             {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
             {err ? <Text style={styles.err}>{err}</Text> : null}
           </View>
+        ) : err ? (
+          <View style={styles.resultCard}>
+            <Text style={styles.err}>{err}</Text>
+          </View>
         ) : null}
 
         <View style={styles.controls}>
@@ -243,6 +286,7 @@ export default function CameraScreen() {
             <Pressable
               onPress={() => void capture()}
               disabled={busy}
+              accessibilityLabel="Capture photo"
               style={[styles.shutter, busy && { opacity: 0.5 }]}
             />
           )}
