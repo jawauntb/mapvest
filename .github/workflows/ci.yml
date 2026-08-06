@@ -28,7 +28,7 @@ jobs:
         run: bun test
 
       - name: Build api (best-effort — api is scaffold-only until Phase 2)
-        run: bun run --filter api build || true
+        run: bun run --filter '@mapvest/api' build || true
 
       - name: Build landing (must succeed)
-        run: bun run --filter landing build
+        run: bun run --filter '@mapvest/landing' build
