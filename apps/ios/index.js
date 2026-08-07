@@ -1,15 +1,46 @@
-// Custom entry point (replaces the default "expo-router/entry" `main`).
+// BUILD 17 BARE-APPREGISTRY + iOS26 TURBOMODULE PATCH — ACTIVE ENTRY.
 //
-// react-native-android-widget needs a headless task registered before the
-// app registers its main component, and that registration has to live
-// outside of expo-router's file-based routes. `expo-router/entry` still
-// does the actual app bootstrapping — this file just adds the widget task
-// registration alongside it. iOS's WidgetKit extension doesn't need
-// anything from this file: it's a fully separate native target that never
-// runs the RN/JS bundle (see targets/widget/).
-import "expo-router/entry";
+// Build 14 shipped the red-screen `_layout.tsx` (verified: "ROOT MOUNTED"
+// is inside main.jsbundle) but the device still solid-blacked. That means
+// either (a) expo-router's eager route import graph (RNGH / Reanimated /
+// worklets / share-intent) hangs before the root layout can paint, or
+// (b) the JS runtime never reaches a successful React mount at all.
+//
+// This entry bypasses expo-router entirely — no route context, no widget
+// task handler, no provider chain. Registers a single red View as `main`
+// (matches AppDelegate.moduleName). Discriminating test:
+//
+//   Red on device → JS + React + native view attach work; killer is in
+//   expo-router / route-module eval / provider chain. Restore
+//   `index.full.js` and bisect.
+//
+//   Still black → failure is below our JS (Hermes / New Arch / native
+//   bridge). Next: `newArchEnabled: false`.
+//
+// Prior entry kept at `index.full.js`.
+import { AppRegistry, Text, View } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 
-import { registerWidgetTaskHandler } from "react-native-android-widget";
-import { widgetTaskHandler } from "./src/widgets/widget-task-handler";
+SplashScreen.hideAsync().catch(() => {});
 
-registerWidgetTaskHandler(widgetTaskHandler);
+function BareRedScreen() {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "red",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ color: "white", fontSize: 24, fontWeight: "800" }}>
+        ROOT MOUNTED
+      </Text>
+      <Text style={{ color: "white", fontSize: 14, marginTop: 12 }}>
+        build 17 patched RN + bare AppRegistry
+      </Text>
+    </View>
+  );
+}
+
+AppRegistry.registerComponent("main", () => BareRedScreen);

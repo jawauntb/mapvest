@@ -17,7 +17,7 @@
     "preview": {
       "distribution": "internal",
       "ios": {
-        "simulator": false
+        "simulator": true
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-production-4b27.up.railway.app"
