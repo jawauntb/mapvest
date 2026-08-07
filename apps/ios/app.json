@@ -7,11 +7,11 @@
     "icon": "./assets/icon.png",
     "scheme": "mapvest",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0C0E10"
+      "backgroundColor": "#00FF00"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -113,6 +113,7 @@
         "expo-build-properties",
         {
           "ios": {
+            "newArchEnabled": false,
             "buildReactNativeFromSource": true
           }
         }

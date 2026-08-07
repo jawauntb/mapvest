@@ -2,8 +2,8 @@ module.exports = function (api) {
   api.cache(true);
   return {
     presets: [["babel-preset-expo", { jsxImportSource: "react" }]],
-    // Reanimated 4 moved its Babel plugin to react-native-worklets/plugin.
+    // Reanimated 3 plugin (New Arch off for iOS 26 Release stability).
     // MUST be listed last.
-    plugins: ["react-native-worklets/plugin"],
+    plugins: ["react-native-reanimated/plugin"],
   };
 };

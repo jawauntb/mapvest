@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
-index 2a67797..dc28dfc 100644
+index 2a67797..b7a3c1d 100644
 --- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 +++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 @@ -435,7 +435,11 @@ void ObjCTurboModule::performVoidMethodInvocation(
@@ -7,11 +7,11 @@ index 2a67797..dc28dfc 100644
        [inv invokeWithTarget:strongModule];
      } @catch (NSException *exception) {
 -      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
-+      // Void methods are always async-dispatched; nothing can catch a C++ JSError
-+      // rethrow here. On iOS 26 this hard-aborts Release builds at cold start
-+      // (facebook/react-native#54859). Mirror the async path in
-+      // performMethodInvocation (see also #56694 / #56265).
-+      @throw exception;
++      // iOS 26: do NOT convertNSExceptionToJSError (wrong-thread Hermes corruption)
++      // and do NOT @throw (uncaught on GCD → SIGABRT). Log and continue so Release
++      // cold start can paint. See RN #54859 / #55390 / community patches.
++      RCTLogError(@"[TurboModule] Exception in void method %s.%s: %@", moduleName, methodName, exception);
++      return;
      } @finally {
        [retainedObjectsForInvocation removeAllObjects];
      }
