@@ -6,10 +6,10 @@ podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties
 
 ENV['RCT_NEW_ARCH_ENABLED'] = podfile_properties['newArchEnabled'] == 'true' ? '1' : '0'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] = podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
-# Prefer prebuilt RN/deps. Required when New Arch is off — building from source
-# hits 'folly/coro/Coroutine.h' file not found on EAS Xcode images.
-ENV['RCT_USE_PREBUILT_RNCORE'] ||= '1'
-ENV['RCT_USE_RN_DEP'] ||= '1'
+# Prebuilt RN + New Arch OFF = duplicate RCTRootViewFactory headers (EAS 25).
+# Build from source instead; Folly coro is disabled in AppDelegate.h + post_install.
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+ENV['RCT_USE_RN_DEP'] = '0'
 
 platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',

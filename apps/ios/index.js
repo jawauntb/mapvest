@@ -25,7 +25,7 @@ function BareRedScreen() {
         ROOT MOUNTED
       </Text>
       <Text style={{ color: "white", fontSize: 14, marginTop: 12 }}>
-        local Release · newArch OFF
+        build 26 · newArch OFF · from source
       </Text>
     </View>
   );
