@@ -64,5 +64,12 @@
     "@types/react": "~19.1.10",
     "patch-package": "^8.0.1",
     "typescript": "^5.6.3"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native-reanimated"
+      ]
+    }
   }
 }
