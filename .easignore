@@ -15,6 +15,14 @@ dist/
 build/
 out/
 
+# Native build artifacts — EAS runs pod install / xcodebuild itself.
+# Including these bloats the tarball (120MB → 306MB) and can corrupt unpack.
+apps/ios/ios/Pods/
+apps/ios/ios/build/
+apps/ios/ios/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+
 # Drop docs / postman that just bloat the tarball
 docs/
 postman.json

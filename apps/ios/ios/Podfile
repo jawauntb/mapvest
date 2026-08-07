@@ -79,6 +79,17 @@ target 'Mapvest' do
         defs = [defs] unless defs.is_a?(Array)
         defs << 'FOLLY_CFG_NO_COROUTINES=1' unless defs.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+        # Local Xcode 16.2 + React-Core-prebuilt: umbrella headers pull
+        # non-modular React/*.h under -Werror. EAS Xcode 26 may not need this.
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+    end
+
+    installer.generated_projects.each do |project|
+      project.targets.each do |target|
+        target.build_configurations.each do |config|
+          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        end
       end
     end
   end
