@@ -113,8 +113,7 @@
         "expo-build-properties",
         {
           "ios": {
-            "newArchEnabled": false,
-            "buildReactNativeFromSource": true
+            "newArchEnabled": false
           }
         }
       ]
