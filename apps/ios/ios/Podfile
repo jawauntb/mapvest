@@ -70,19 +70,43 @@ target 'Mapvest' do
       end
     end
 
-    # Avoid 'folly/coro/Coroutine.h' file not found when Folly headers are
-    # pulled without coroutine sources (common on RN 0.81 / Expo SDK 54).
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |config|
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
-        defs = [defs] unless defs.is_a?(Array)
-        defs << 'FOLLY_CFG_NO_COROUTINES=1' unless defs.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
-        # Local Xcode 16.2 + React-Core-prebuilt: umbrella headers pull
-        # non-modular React/*.h under -Werror. EAS Xcode 26 may not need this.
-        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    # Xcode 26 enables C++ coroutines → Folly sets FOLLY_HAS_COROUTINES=1 and
+    # includes <folly/coro/Coroutine.h>, which is absent from the prebuilt
+    # ReactNativeDependencies headers. EAS build 24 failed compiling
+    # AppDelegate.mm (app target) — Pods-only flags were not enough.
+    folly_no_coro = lambda do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+      defs = [defs] unless defs.is_a?(Array)
+      unless defs.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
+        defs << 'FOLLY_CFG_NO_COROUTINES=1'
       end
+      unless defs.any? { |d| d.to_s.include?('FOLLY_HAS_COROUTINES') }
+        defs << 'FOLLY_HAS_COROUTINES=0'
+      end
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      # ALSO inject via OTHER_CPLUSPLUSFLAGS — some ObjC++ compiles only pick these up.
+      flags = config.build_settings['OTHER_CPLUSPLUSFLAGS']
+      flags = ['$(inherited)'] if flags.nil?
+      flags = [flags] unless flags.is_a?(Array)
+      %w[-DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAS_COROUTINES=0].each do |flag|
+        flags << flag unless flags.any? { |f| f.to_s.include?(flag.delete_prefix('-D').split('=').first) }
+      end
+      config.build_settings['OTHER_CPLUSPLUSFLAGS'] = flags
+    end
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each { |config| folly_no_coro.call(config) }
+    end
+
+    installer.aggregate_targets.each do |aggregate_target|
+      user_project = aggregate_target.user_project
+      next unless user_project
+      user_project.native_targets.each do |target|
+        target.build_configurations.each { |config| folly_no_coro.call(config) }
+      end
+      user_project.save
     end
 
     installer.generated_projects.each do |project|
