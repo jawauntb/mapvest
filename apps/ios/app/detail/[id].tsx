@@ -19,14 +19,15 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
-import { useSidebar } from "@/nav/SidebarContext";
-import { openChatAbout } from "@/nav/chatAbout";
-import { ChatAboutButton } from "@/components/ChatAboutButton";
-import { SetAlertButton } from "@/components/SetAlertButton";
-import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { ChartMedia } from "@/components/ChartMedia";
+import { ChatAboutButton } from "@/components/ChatAboutButton";
+import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
+import { SetAlertButton } from "@/components/SetAlertButton";
+import { TickerNewsSection } from "@/components/TickerNewsSection";
+import { useSidebar } from "@/nav/SidebarContext";
+import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { API_URL } from "@/util/env";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
@@ -291,14 +292,6 @@ export default function DetailSheet() {
               </Text>
             </View>
           ) : null}
-          {/* Above-the-fold: Open in Robinhood + Set alert must not wait on
-              agent overview. Both are pure user-actions with no LLM latency. */}
-          {ticker && session?.token ? (
-            <View style={[styles.badgeRow, { marginTop: 12 }]}>
-              <RobinhoodOpenBadge ticker={ticker} token={session.token} />
-              <SetAlertButton ticker={ticker} />
-            </View>
-          ) : null}
           <View style={styles.tabRow}>
             {(["overview", "advanced"] as TabKey[]).map((t) => (
               <Pressable
@@ -310,10 +303,10 @@ export default function DetailSheet() {
                 style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: tab === t }}
-                accessibilityLabel={t === "overview" ? "Overview" : "Advanced"}
+                accessibilityLabel={t === "overview" ? "Overview" : "More"}
               >
                 <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
-                  {t === "overview" ? "Overview" : "Advanced"}
+                  {t === "overview" ? "Overview" : "More"}
                 </Text>
               </Pressable>
             ))}
@@ -322,74 +315,6 @@ export default function DetailSheet() {
 
         {tab === "overview" ? (
           <>
-            {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
-
-            {ticker ? (
-              <Section title={`Auction · $${ticker} · 1mo`}>
-                <ChartImageBlock
-                  q={chartQ}
-                  ticker={ticker}
-                  label="Auction"
-                  showLevels
-                  chartType="auction"
-                  period="1mo"
-                />
-              </Section>
-            ) : null}
-
-            {ticker ? <TickerNewsSection ticker={ticker} token={session?.token} /> : null}
-
-            {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
-
-            {ticker ? (
-              <View style={{ gap: 10 }}>
-                <Pressable
-                  onPress={() => {
-                    hapticTap();
-                    setResearchOpen(true);
-                  }}
-                  style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Research $${ticker}`}
-                >
-                  <LinearGradient
-                    colors={colors.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.researchBtnGrad}
-                  >
-                    <Ionicons name="sparkles" size={18} color={colors.accentInk} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.researchBtnText}>Research…</Text>
-                      <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
-                    </View>
-                  </LinearGradient>
-                </Pressable>
-                <WatchlistActions
-                  ticker={ticker}
-                  name={data.brand.name}
-                  sector={data.brand.sector}
-                  token={session?.token}
-                />
-                <View style={styles.badgeRow}>
-                  {publicTicker ? (
-                    <OptionsBadge ticker={publicTicker} token={session?.token} />
-                  ) : (
-                    <UnderlyingBadge
-                      brand={data.brand.name}
-                      sector={data.brand.sector}
-                      token={session?.token}
-                    />
-                  )}
-                </View>
-                <ResearchSheet
-                  ticker={ticker}
-                  visible={researchOpen}
-                  onClose={() => setResearchOpen(false)}
-                />
-              </View>
-            ) : null}
-
             <Section title="Comparables">
               {data.comparables.length === 0 ? (
                 <Text style={styles.muted}>No public comparables resolved.</Text>
@@ -414,6 +339,86 @@ export default function DetailSheet() {
                 ])}
               />
             </Section>
+
+            {ticker ? (
+              <Section title="Price">
+                <NativePriceChart ticker={ticker} token={session?.token} />
+              </Section>
+            ) : null}
+
+            {ticker ? (
+              <Section title={`Auction · $${ticker} · 1mo`}>
+                <ChartImageBlock
+                  q={chartQ}
+                  ticker={ticker}
+                  label="Auction"
+                  showLevels
+                  chartType="auction"
+                  period="1mo"
+                />
+              </Section>
+            ) : null}
+
+            {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
+
+            {ticker ? (
+              <View style={{ gap: 10 }}>
+                <WatchlistActions
+                  ticker={ticker}
+                  name={data.brand.name}
+                  sector={data.brand.sector}
+                  token={session?.token}
+                />
+                <Pressable
+                  onPress={() => {
+                    hapticTap();
+                    setResearchOpen(true);
+                  }}
+                  style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Research $${ticker}`}
+                >
+                  <LinearGradient
+                    colors={colors.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.researchBtnGrad}
+                  >
+                    <Ionicons name="sparkles" size={18} color={colors.accentInk} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.researchBtnText}>Research…</Text>
+                      <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
+                    </View>
+                  </LinearGradient>
+                </Pressable>
+                <View style={styles.badgeRow}>
+                  {publicTicker ? (
+                    <OptionsBadge ticker={publicTicker} token={session?.token} />
+                  ) : (
+                    <UnderlyingBadge
+                      brand={data.brand.name}
+                      sector={data.brand.sector}
+                      token={session?.token}
+                    />
+                  )}
+                </View>
+                {session?.token ? (
+                  <View style={styles.badgeRow}>
+                    <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+                    <SetAlertButton ticker={ticker} />
+                  </View>
+                ) : null}
+                <ResearchSheet
+                  ticker={ticker}
+                  visible={researchOpen}
+                  onClose={() => setResearchOpen(false)}
+                />
+              </View>
+            ) : null}
+
+            {ticker ? <TickerNewsSection ticker={ticker} token={session?.token} /> : null}
+
+            {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
           </>
         ) : (
           <>

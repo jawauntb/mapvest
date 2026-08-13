@@ -172,6 +172,21 @@ export type ResolveComparableResponse = z.infer<
   typeof ResolveComparableResponse
 >;
 
+/** Daily Yahoo close for the native Overview price chart. `ts` is unix seconds. */
+export const QuoteHistoryPoint = z.object({
+  ts: z.number(),
+  close: z.number(),
+});
+export type QuoteHistoryPoint = z.infer<typeof QuoteHistoryPoint>;
+
+export const QuoteHistoryResponse = z.object({
+  ticker: z.string(),
+  period: z.enum(["1mo", "3mo", "6mo", "1y"]),
+  points: z.array(QuoteHistoryPoint),
+  sources: z.array(Source),
+});
+export type QuoteHistoryResponse = z.infer<typeof QuoteHistoryResponse>;
+
 // -------- auth --------
 
 export const User = z.object({
