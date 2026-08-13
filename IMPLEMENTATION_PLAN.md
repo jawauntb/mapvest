@@ -109,6 +109,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] Cost telemetry per request (OpenRouter model, image size, resolution ms)
 - [x] Prompt-injection guard on OCR'd text
 - [x] Load test: 50 rps identify, 200 rps nearby — ran `scripts/loadtest.ts` against the deployed API on 2026-08-05 (`docs/loadtest-v0.1.0.md`). Substituted `/v1/resolve-comparable` for `/v1/identify` (skips OpenRouter cost per run) and `/v1/health` for `/v1/nearby` (I/O-only baseline) — the layer boundary being proven (Bun/Hono ingress + rate-limit middleware + finance path) is the point. Application path posted p95 = 180 ms / p99 = 193 ms on the 58 requests that survived the guardrail; the 60 rpm per-IP limiter dominated the rest of the run and is documented as a known limitation in `docs/SYSTEM_DESIGN.md` §D11 with follow-ups tracked there.
+- [x] Client UX mean: Home / Map / Camera loop; briefs after first save; sources on ticker overview
 - [ ] Landing page polish + docs pass
 - [ ] "Ship" tag `v0.1.0`, GitHub Release notes
 

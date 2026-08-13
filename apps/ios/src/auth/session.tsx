@@ -4,6 +4,24 @@ import * as SecureStore from "expo-secure-store";
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const KEY = "mapvest.session.v1";
+const STORE: SecureStore.SecureStoreOptions = {
+  keychainService: "com.mapvest.app",
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+const STORE_MS = 800;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then((v) => {
+      clearTimeout(t);
+      resolve(v);
+    }).catch(() => {
+      clearTimeout(t);
+      resolve(null);
+    });
+  });
+}
 
 type Stored = { session: Session; user: User };
 
@@ -26,11 +44,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const raw = await SecureStore.getItemAsync(KEY);
+        const raw = await withTimeout(SecureStore.getItemAsync(KEY, STORE), STORE_MS);
         if (!raw) return;
         const parsed = JSON.parse(raw) as Stored;
         if (new Date(parsed.session.expiresAt).getTime() < Date.now()) {
-          await SecureStore.deleteItemAsync(KEY);
+          await SecureStore.deleteItemAsync(KEY, STORE);
           return;
         }
         if (!cancelled) setState(parsed);
@@ -49,7 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             e.status === 401 &&
             /unknown user|invalid token/i.test(e.message)
           ) {
-            await SecureStore.deleteItemAsync(KEY);
+            await SecureStore.deleteItemAsync(KEY, STORE);
             if (!cancelled) setState(null);
           }
           // else: keep the cached session/user; retry on next app foreground.
@@ -71,11 +89,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isAdmin: !!state?.user?.scopes?.includes("admin"),
       async signIn(session, user) {
         const next = { session, user };
-        await SecureStore.setItemAsync(KEY, JSON.stringify(next));
+        try {
+          await SecureStore.setItemAsync(KEY, JSON.stringify(next), STORE);
+        } catch (e) {
+          console.warn("[session] persist failed (in-memory only):", e);
+        }
         setState(next);
       },
       async signOut() {
-        await SecureStore.deleteItemAsync(KEY);
+        try {
+          await SecureStore.deleteItemAsync(KEY, STORE);
+        } catch {
+          /* keychain miss is fine */
+        }
         setState(null);
       },
     }),

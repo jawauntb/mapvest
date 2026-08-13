@@ -1,34 +1,15 @@
-// BUILD 19 DIAGNOSTIC — bare AppRegistry + New Arch OFF + swallow TurboModule patch.
+// Custom entry point (replaces the default "expo-router/entry" `main`).
 //
-// Device evidence (build 18 on iPhone 15 Pro / iOS 26.5.2):
-//   - Process stays alive (no .ips crash)
-//   - Console: only UIBackgroundModes warnings — no JS / RN logs
-//   - UI: solid black (splash bg #0C0E10)
-// Conclusion: hung before paint, not a hard SIGABRT. Community workaround
-// that removes this class of failure: newArchEnabled=false (no TurboModules).
-// Also upgrade patch from @throw → RCTLogError+return (swallow).
-//
-// Splash bg set to bright lime so a stuck splash is obvious vs black void.
-import { AppRegistry, Text, View } from "react-native";
+// react-native-android-widget needs a headless task registered before the
+// app registers its main component, and that registration has to live
+// outside of expo-router's file-based routes. `expo-router/entry` still
+// does the actual app bootstrapping — this file just adds the widget task
+// registration alongside it. iOS's WidgetKit extension doesn't need
+// anything from this file: it's a fully separate native target that never
+// runs the RN/JS bundle (see targets/widget/).
+import "expo-router/entry";
 
-function BareRedScreen() {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: "red",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={{ color: "white", fontSize: 24, fontWeight: "800" }}>
-        ROOT MOUNTED
-      </Text>
-      <Text style={{ color: "white", fontSize: 14, marginTop: 12 }}>
-        build 26 · newArch OFF · from source
-      </Text>
-    </View>
-  );
-}
+import { registerWidgetTaskHandler } from "react-native-android-widget";
+import { widgetTaskHandler } from "./src/widgets/widget-task-handler";
 
-AppRegistry.registerComponent("main", () => BareRedScreen);
+registerWidgetTaskHandler(widgetTaskHandler);

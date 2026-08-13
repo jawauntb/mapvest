@@ -355,18 +355,27 @@ export default function CameraScreen() {
         <CameraDetectionOverlay detections={detections} containerSize={previewSize} />
       ) : null}
       <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
-        <View style={styles.statusRow} pointerEvents="none">
-          <BlurView intensity={40} tint="dark" style={styles.statusPill}>
-            <Ionicons
-              name={frozenUri ? "image" : online ? "wifi" : "cloud-offline-outline"}
-              size={12}
-              color={colors.fg}
-            />
-            <Text style={styles.status}>
-              {frozenUri ? "Frozen" : online ? "Online" : "Offline"}
-              {pending.length ? ` · ${pending.length} queued` : ""}
-            </Text>
-          </BlurView>
+        <View pointerEvents="none">
+          <View style={styles.statusRow}>
+            <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+              <Ionicons
+                name={frozenUri ? "image" : online ? "wifi" : "cloud-offline-outline"}
+                size={12}
+                color={colors.fg}
+              />
+              <Text style={styles.status}>
+                {frozenUri ? "Frozen" : online ? "Online" : "Offline"}
+                {pending.length ? ` · ${pending.length} queued` : ""}
+              </Text>
+            </BlurView>
+          </View>
+          {!frozenUri && !result && !busy && !err ? (
+            <View style={styles.lessonRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Text style={styles.status}>Point at a brand. Snap to see the ticker.</Text>
+              </BlurView>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.center} pointerEvents="none">
@@ -529,6 +538,11 @@ const styles = StyleSheet.create({
   hud: { flex: 1, justifyContent: "space-between" },
   statusRow: {
     alignItems: "flex-end",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  lessonRow: {
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 8,
   },

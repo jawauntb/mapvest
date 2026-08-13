@@ -108,13 +108,31 @@ export function AppSidebar() {
             <NavRow
               icon="home-outline"
               label="Home"
-              hint="Watchlist · map · camera"
+              hint="Your saved tickers"
               onPress={() => go("/(tabs)/home")}
             />
             <NavRow
+              icon="map-outline"
+              label="Map"
+              hint="Places around you"
+              onPress={() => go("/(tabs)/map")}
+            />
+            <NavRow
+              icon="camera-outline"
+              label="Camera"
+              hint="Snap a brand"
+              onPress={() => go("/(tabs)/camera")}
+            />
+            <NavRow
+              icon="list-outline"
+              label="Nearby list"
+              hint="Places around you, sorted"
+              onPress={() => go("/(tabs)/list")}
+            />
+            <NavRow
               icon="star-outline"
-              label="Watchlists"
-              hint="Your lists · saved tickers"
+              label="Lists"
+              hint="Named watchlists"
               onPress={() => go("/watchlists")}
             />
             <NavRow

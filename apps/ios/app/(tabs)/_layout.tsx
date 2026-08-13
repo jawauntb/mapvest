@@ -5,7 +5,7 @@ import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
@@ -17,27 +17,11 @@ import Animated, {
 type IconName = keyof typeof Ionicons.glyphMap;
 
 /**
- * Slim bottom bar: Home (watchlist) · Map · Camera · List.
- * Research, Saved, Settings live in the ChatGPT-style sidebar (≡).
+ * Slim bottom bar: Home · Map · Camera.
+ * List is a map-mode route (nearby, sorted). Research, Saved, Settings
+ * live in the sidebar (≡).
  */
 export default function TabsLayout() {
-  const { ready } = useSession();
-
-  if (!ready) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: colors.bg,
-        }}
-      >
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
   // SidebarProvider + AppSidebar now live at the root _layout.tsx so detail
   // screens (which are siblings of the tabs layout) also have access to
   // useSidebar. This screen just uses the provider from above.
@@ -171,21 +155,13 @@ function TabsInner() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="list"
-        options={{
-          title: "List",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              color={color}
-              focused={focused}
-              iconOn="list"
-              iconOff="list-outline"
-              accessibilityLabel="List"
-            />
-          ),
-        }}
-      />
+        <Tabs.Screen
+          name="list"
+          options={{
+            href: null,
+            title: "Nearby",
+          }}
+        />
       {/* Sidebar destinations — hidden from tab bar */}
       <Tabs.Screen
         name="research"

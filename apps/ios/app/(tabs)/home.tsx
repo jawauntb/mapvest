@@ -9,21 +9,20 @@ import {
   removeFromWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
-import { EmptyState } from "@/components/EmptyState";
-import { PrimaryButton } from "@/components/PrimaryButton";
-import { ScalePressable } from "@/components/ScalePressable";
 import { BacktestCard } from "@/components/BacktestCard";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
-import { RichText } from "@/components/RichText";
+import { EmptyState } from "@/components/EmptyState";
 import { LocalEconomyBriefCard } from "@/components/LocalEconomyBriefCard";
+import { RichText } from "@/components/RichText";
+import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
-import { shareBriefText } from "@/util/share";
-import { openChatAbout } from "@/nav/chatAbout";
 import { useSidebar } from "@/nav/SidebarContext";
+import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { shareBriefText } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,8 +50,8 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 
 /**
- * Default Home — watchlist + map/camera shortcuts + ticker search.
- * Settings / research / saved chats live in the sidebar menu.
+ * Home is the watchlist. Camera is the hero loop; Map is one quiet link.
+ * Briefs and movers wait until something is saved. Settings live in ≡.
  */
 export default function HomeScreen() {
   const router = useRouter();
@@ -89,10 +88,7 @@ export default function HomeScreen() {
   const wl = useQuery({
     queryKey: ["watchlist", session?.token, selectedListId ?? "default"],
     queryFn: () =>
-      listWatchlist(
-        { token: session!.token },
-        selectedListId ? { listId: selectedListId } : {},
-      ),
+      listWatchlist({ token: session!.token }, selectedListId ? { listId: selectedListId } : {}),
     enabled: !!session?.token,
     staleTime: 5_000,
   });
@@ -132,9 +128,12 @@ export default function HomeScreen() {
         }
         case "price":
           // Missing quotes sink to the bottom; otherwise high → low.
-          return (qb?.price ?? -Infinity) - (qa?.price ?? -Infinity);
+          return (qb?.price ?? Number.NEGATIVE_INFINITY) - (qa?.price ?? Number.NEGATIVE_INFINITY);
         case "changePct":
-          return (qb?.changePct ?? -Infinity) - (qa?.changePct ?? -Infinity);
+          return (
+            (qb?.changePct ?? Number.NEGATIVE_INFINITY) -
+            (qa?.changePct ?? Number.NEGATIVE_INFINITY)
+          );
         default:
           return 0;
       }
@@ -157,10 +156,7 @@ export default function HomeScreen() {
     },
     onError: (_err, _ticker, ctx) => {
       if (ctx?.previous) {
-        qc.setQueryData(
-          ["watchlist", session?.token, selectedListId ?? "default"],
-          ctx.previous,
-        );
+        qc.setQueryData(["watchlist", session?.token, selectedListId ?? "default"], ctx.previous);
       }
       Alert.alert("Couldn't remove", "The ticker is still on your list. Try again.");
     },
@@ -277,42 +273,37 @@ export default function HomeScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.heroTitle}>Snap a brand</Text>
-                    <Text style={styles.heroSub}>Point your camera — see what's investable</Text>
+                    <Text style={styles.heroSub}>Point the camera — get the ticker</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
                 </LinearGradient>
               </ScalePressable>
 
-              <View style={styles.widgets}>
-                <ScalePressable
-                  style={[styles.widget, elevation.sm]}
-                  onPress={() => router.push("/(tabs)/map")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open map — nearby brands"
-                >
-                  <View style={styles.widgetIcon}>
-                    <Ionicons name="map-outline" size={18} color={colors.accent} />
-                  </View>
-                  <Text style={styles.widgetTitle}>Map</Text>
-                  <Text style={styles.widgetSub}>Nearby brands</Text>
-                </ScalePressable>
-                <ScalePressable
-                  style={[styles.widget, elevation.sm]}
-                  onPress={() => router.push("/(tabs)/list")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open list — nearby sorted"
-                >
-                  <View style={styles.widgetIcon}>
-                    <Ionicons name="list-outline" size={18} color={colors.accent} />
-                  </View>
-                  <Text style={styles.widgetTitle}>List</Text>
-                  <Text style={styles.widgetSub}>Nearby sorted</Text>
-                </ScalePressable>
-              </View>
+              <Pressable
+                onPress={() => {
+                  hapticSelect();
+                  router.push("/(tabs)/map");
+                }}
+                style={styles.mapLink}
+                accessibilityRole="button"
+                accessibilityLabel="Open map — nearby brands"
+              >
+                <Ionicons name="map-outline" size={16} color={colors.accent} />
+                <Text style={styles.mapLinkText}>Or walk the map</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
+              </Pressable>
 
-              {session?.token && lists.length > 0 ? (
+              {session?.token && lists.length >= 2 ? (
                 <FlatList
-                  data={[{ id: "__all__", name: "All", isDefault: false, tickerCount: 0 } as WatchlistSummary, ...lists]}
+                  data={[
+                    {
+                      id: "__all__",
+                      name: "All",
+                      isDefault: false,
+                      tickerCount: 0,
+                    } as WatchlistSummary,
+                    ...lists,
+                  ]}
                   keyExtractor={(l) => l.id}
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -378,9 +369,7 @@ export default function HomeScreen() {
                       hitSlop={10}
                       style={styles.collapseBtn}
                       accessibilityRole="button"
-                      accessibilityLabel={
-                        wlCollapsed ? "Expand watchlist" : "Collapse watchlist"
-                      }
+                      accessibilityLabel={wlCollapsed ? "Expand watchlist" : "Collapse watchlist"}
                       accessibilityState={{ expanded: !wlCollapsed }}
                     >
                       <Ionicons
@@ -396,7 +385,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
 
-              {session?.token && items.length > 1 && !wlCollapsed ? (
+              {session?.token && items.length >= 3 && !wlCollapsed ? (
                 <View style={styles.sortRow}>
                   {SORTS.map((s) => {
                     const active = s.key === sortKey;
@@ -422,17 +411,19 @@ export default function HomeScreen() {
               ) : null}
 
               {!session?.token ? (
-                <EmptyState
-                  icon="star-outline"
-                  title="Sign in to keep a watchlist"
-                  subtitle="Browse map and camera as a guest. Sign in to save tickers and research threads."
-                >
-                  <PrimaryButton
-                    label="Sign in"
+                <View style={styles.guestHint}>
+                  <Text style={styles.guestHintText}>
+                    Snap a storefront or open Map. Sign in when you want to keep a ticker.
+                  </Text>
+                  <Pressable
                     onPress={() => router.push("/auth")}
-                    style={{ marginTop: 4, alignSelf: "stretch" }}
-                  />
-                </EmptyState>
+                    accessibilityRole="button"
+                    accessibilityLabel="Sign in"
+                    hitSlop={8}
+                  >
+                    <Text style={styles.guestSignIn}>Sign in</Text>
+                  </Pressable>
+                </View>
               ) : wl.isLoading ? (
                 <SkeletonList rows={4} />
               ) : items.length === 0 ? (
@@ -454,16 +445,15 @@ export default function HomeScreen() {
             />
           )}
           ListFooterComponent={
-            session?.token ? (
+            session?.token && items.length > 0 ? (
               <View style={{ marginTop: 20 }}>
-                <DailyBriefCard
-                  token={session.token}
-                  tickers={rawItems.map((i) => i.ticker)}
-                />
+                <DailyBriefCard token={session.token} tickers={rawItems.map((i) => i.ticker)} />
                 <LocalEconomyBriefCard token={session.token} />
-                <TopMoversCard items={rawItems} quotes={quotes} onOpen={(t) =>
-                  router.push({ pathname: "/detail/[id]", params: { id: t } })
-                } />
+                <TopMoversCard
+                  items={rawItems}
+                  quotes={quotes}
+                  onOpen={(t) => router.push({ pathname: "/detail/[id]", params: { id: t } })}
+                />
                 <BacktestCard tickers={rawItems.map((i) => i.ticker)} token={session.token} />
               </View>
             ) : null
@@ -481,10 +471,15 @@ export default function HomeScreen() {
  */
 function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }) {
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
   // Fingerprint the ticker set so the query key stays stable when the user
   // re-orders their watchlist but changes when they add/remove.
   const fp = useMemo(
-    () => [...tickers].map((t) => t.toUpperCase()).sort().join(","),
+    () =>
+      [...tickers]
+        .map((t) => t.toUpperCase())
+        .sort()
+        .join(","),
     [tickers],
   );
   const briefQ = useQuery<{ headline: string; body: string; generatedAt: string }>({
@@ -519,31 +514,50 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
           Mapvest Daily ·{" "}
           {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}
         </Text>
-        {hasBrief ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <ChatAboutButton
-              onPress={() =>
-                openChatAbout(router, {
-                  kind: "brief",
-                  title: briefQ.data!.headline,
-                  body: briefQ.data!.body,
-                })
-              }
-              accessibilityLabel="Chat about this brief"
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {!collapsed && hasBrief ? (
+            <>
+              <ChatAboutButton
+                onPress={() =>
+                  openChatAbout(router, {
+                    kind: "brief",
+                    title: briefQ.data!.headline,
+                    body: briefQ.data!.body,
+                  })
+                }
+                accessibilityLabel="Chat about this brief"
+              />
+              <ShareButton
+                onPress={() =>
+                  void shareBriefText({
+                    headline: briefQ.data!.headline,
+                    body: briefQ.data!.body,
+                  })
+                }
+                accessibilityLabel="Share daily brief"
+              />
+            </>
+          ) : null}
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              setCollapsed((v) => !v);
+            }}
+            hitSlop={10}
+            style={styles.collapseBtn}
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? "Expand daily brief" : "Collapse daily brief"}
+            accessibilityState={{ expanded: !collapsed }}
+          >
+            <Ionicons
+              name={collapsed ? "chevron-down" : "chevron-up"}
+              size={16}
+              color={colors.fgMuted}
             />
-            <ShareButton
-              onPress={() =>
-                void shareBriefText({
-                  headline: briefQ.data!.headline,
-                  body: briefQ.data!.body,
-                })
-              }
-              accessibilityLabel="Share daily brief"
-            />
-          </View>
-        ) : null}
+          </Pressable>
+        </View>
       </View>
-      {hasBrief ? (
+      {collapsed ? null : hasBrief ? (
         <>
           <Text style={styles.briefHeadline}>{briefQ.data!.headline}</Text>
           {/* RichText parses paragraphs + auto-links $TICKER mentions to
@@ -601,7 +615,7 @@ function TopMoversCard({
           accessibilityLabel={`Open ${i.ticker}, up ${q!.changePct.toFixed(2)} percent`}
         >
           <View style={styles.moverLeft}>
-            <Text style={styles.moverTicker}>${i.ticker}</Text>
+            <Text style={styles.moverTicker}>{i.ticker}</Text>
             <Text style={styles.moverName} numberOfLines={1}>
               {i.name ?? "—"}
             </Text>
@@ -621,7 +635,7 @@ function TopMoversCard({
             accessibilityLabel={`Open ${i.ticker}, down ${Math.abs(q!.changePct).toFixed(2)} percent`}
           >
             <View style={styles.moverLeft}>
-              <Text style={styles.moverTicker}>${i.ticker}</Text>
+              <Text style={styles.moverTicker}>{i.ticker}</Text>
               <Text style={styles.moverName} numberOfLines={1}>
                 {i.name ?? "—"}
               </Text>
@@ -682,7 +696,7 @@ function WatchRow({
         accessibilityLabel={`Open ${entry.ticker}. Swipe left to remove.`}
       >
         <View style={{ flex: 1 }}>
-          <Text style={styles.rowTicker}>${entry.ticker}</Text>
+          <Text style={styles.rowTicker}>{entry.ticker}</Text>
           <Text style={styles.rowName} numberOfLines={1}>
             {entry.name ?? entry.sector ?? "—"}
           </Text>
@@ -802,32 +816,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: "600",
   },
-  widgets: {
+  mapLink: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
-  },
-  widget: {
-    flex: 1,
-    backgroundColor: colors.bgElevated,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.lg,
+    backgroundColor: colors.bgElevated,
+  },
+  mapLinkText: { flex: 1, color: colors.fg, fontSize: 14, fontWeight: "600" },
+  guestHint: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
     padding: 14,
-    gap: 3,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    gap: 8,
   },
-  widgetIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: radii.sm,
-    backgroundColor: colors.bgSunken,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  widgetTitle: { color: colors.fg, ...type.body, fontWeight: "700", fontSize: 14 },
-  widgetSub: { color: colors.fgDim, fontSize: 11 },
+  guestHintText: { color: colors.fgMuted, fontSize: 14, lineHeight: 20 },
+  guestSignIn: { color: colors.accent, fontSize: 14, fontWeight: "700" },
   sectionHead: {
     flexDirection: "row",
     justifyContent: "space-between",
