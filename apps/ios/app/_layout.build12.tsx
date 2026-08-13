@@ -1,9 +1,8 @@
 import { SessionProvider, useSession } from "@/auth/session";
 import { AppSidebar } from "@/components/AppSidebar";
-import { FirstOpenSheet } from "@/components/FirstOpenSheet";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerForPush } from "@/notif/registerForPush";
-import { type NotifData, pathFromNotificationData } from "@/notif/router";
+import { pathFromNotificationData, type NotifData } from "@/notif/router";
 import { colors } from "@/theme/tokens";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -36,7 +35,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 // We also force `SplashScreen.hideAsync()` on mount with a 3s fallback so
 // even in the worst case the splash doesn't stay up forever.
 
-SplashScreen.hideAsync().catch(() => {});
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 try {
   Notifications.setNotificationHandler({
@@ -209,7 +208,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <FirstOpenSheet />
               <AppSidebar />
             </SidebarProvider>
           </SessionProvider>

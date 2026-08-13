@@ -4,13 +4,15 @@ import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, radii } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
 import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 
 const FALLBACK_REGION: Region = {
@@ -116,7 +118,11 @@ export default function MapScreen() {
   return (
     <View style={styles.root}>
       <MapView
-        provider={Platform.OS === "ios" ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
+        // iOS: Apple Maps. PROVIDER_GOOGLE requires GMSServices.provideAPIKey
+        // before GMSMapView is created; our TestFlight binary only has the
+        // `$IOS_GOOGLE_MAPS_API_KEY` placeholder, so Google Maps SIGABRTs on
+        // the map tab right after sign-in. Android still uses Google Maps.
+        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         region={region}
@@ -175,30 +181,137 @@ export default function MapScreen() {
         ) : null}
       </View>
 
-      {/* Floating "Chat about this area" affordance. Lives outside the
-          pointerEvents="none" overlay so it's actually tappable. Only shown
-          when we have nearby pins to seed the chat with. */}
-      {items.length > 0 ? (
-        <View style={styles.chatFab}>
-          <ChatAboutButton
-            label="Chat about this area"
-            accessibilityLabel="Chat about brands visible on the map"
-            onPress={() =>
-              openChatAbout(router, {
-                kind: "map",
-                label: `${items.length} pins on screen`,
-                center: { lat: region.latitude, lng: region.longitude },
-                nearby: items.slice(0, 20).map((i) => {
-                  const pin = resolvePinTicker(i);
-                  return {
-                    ticker: pin?.symbol,
-                    name: i.place.name,
-                  };
-                }),
-              })
-            }
+      <NearbySheet
+        items={items}
+        quotes={quotes}
+        loading={nearbyQuery.isFetching && items.length === 0}
+        onOpen={openItem}
+        onSeeAll={() => router.push("/(tabs)/list")}
+        onChat={() =>
+          openChatAbout(router, {
+            kind: "map",
+            label: `${items.length} pins on screen`,
+            center: { lat: region.latitude, lng: region.longitude },
+            nearby: items.slice(0, 20).map((i) => {
+              const pin = resolvePinTicker(i);
+              return {
+                ticker: pin?.symbol,
+                name: i.place.name,
+              };
+            }),
+          })
+        }
+      />
+    </View>
+  );
+}
+
+function NearbySheet({
+  items,
+  quotes,
+  loading,
+  onOpen,
+  onSeeAll,
+  onChat,
+}: {
+  items: NearbyItem[];
+  quotes: Record<string, Quote>;
+  loading: boolean;
+  onOpen: (item: NearbyItem) => void;
+  onSeeAll: () => void;
+  onChat: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const rows = items.slice(0, 5);
+
+  return (
+    <View style={styles.sheet}>
+      <View style={styles.sheetHead}>
+        <Pressable
+          onPress={() => {
+            hapticSelect();
+            setOpen((v) => !v);
+          }}
+          style={styles.sheetToggle}
+          accessibilityRole="button"
+          accessibilityLabel={open ? "Collapse nearby list" : "Expand nearby list"}
+        >
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>
+            {loading ? "Finding nearby…" : items.length ? `Nearby · ${items.length}` : "Nearby"}
+          </Text>
+          <Ionicons
+            name={open ? "chevron-down" : "chevron-up"}
+            size={16}
+            color={colors.fgMuted}
           />
-        </View>
+        </Pressable>
+        {items.length > 0 ? (
+          <View style={styles.sheetActions}>
+            <ChatAboutButton
+              accessibilityLabel="Chat about brands visible on the map"
+              onPress={onChat}
+            />
+            <Pressable
+              onPress={() => {
+                hapticSelect();
+                onSeeAll();
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="See all nearby places"
+            >
+              <Text style={styles.sheetSeeAll}>See all</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
+      {open ? (
+        rows.length === 0 ? (
+          <Text style={styles.sheetEmpty}>
+            {loading
+              ? "Looking for brands around you."
+              : "Walk around — pins are brands you can open."}
+          </Text>
+        ) : (
+          rows.map((item) => {
+            const pin = resolvePinTicker(item);
+            const quote = pin ? quotes[pin.symbol] : undefined;
+            const up = (quote?.change ?? 0) >= 0;
+            return (
+              <Pressable
+                key={item.place.id}
+                onPress={() => onOpen(item)}
+                style={styles.sheetRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.place.name}`}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetPlace} numberOfLines={1}>
+                    {item.place.name}
+                  </Text>
+                  <Text style={styles.sheetTicker} numberOfLines={1}>
+                    {pin ? `${pin.isPublic ? "$" : "≈"}${pin.symbol}` : "Tap to resolve"}
+                  </Text>
+                </View>
+                {quote ? (
+                  <Text
+                    style={[
+                      styles.sheetQuote,
+                      { color: up ? colors.accent : colors.danger },
+                    ]}
+                  >
+                    {up ? "+" : ""}
+                    {quote.changePct.toFixed(1)}%
+                  </Text>
+                ) : (
+                  <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
+                )}
+              </Pressable>
+            );
+          })
+        )
       ) : null}
     </View>
   );
@@ -318,13 +431,55 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  chatFab: {
-    // Bottom-right so it doesn't collide with Google Maps' own compass /
-    // my-location button that sits top-right on the map surface.
+  sheet: {
     position: "absolute",
-    bottom: 24,
-    right: 16,
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+    gap: 2,
   },
+  sheetHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingBottom: 6,
+  },
+  sheetToggle: { flex: 1, gap: 6 },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+  },
+  sheetTitle: { color: colors.fg, fontSize: 14, fontWeight: "700" },
+  sheetActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sheetSeeAll: { color: colors.accent, fontSize: 13, fontWeight: "700" },
+  sheetEmpty: {
+    color: colors.fgMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingVertical: 8,
+  },
+  sheetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  sheetPlace: { color: colors.fg, fontSize: 14, fontWeight: "600" },
+  sheetTicker: { color: colors.fgMuted, fontSize: 12, marginTop: 1 },
+  sheetQuote: { fontSize: 13, fontWeight: "700" },
   loadingPill: {
     width: 36,
     height: 36,

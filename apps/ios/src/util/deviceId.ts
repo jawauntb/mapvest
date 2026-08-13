@@ -28,13 +28,22 @@ export async function getDeviceId(): Promise<string> {
   if (cached) return cached;
   if (inflight) return inflight;
   inflight = (async () => {
-    const existing = await SecureStore.getItemAsync(KEY);
+    let existing: string | null = null;
+    try {
+      existing = await SecureStore.getItemAsync(KEY);
+    } catch {
+      existing = null;
+    }
     if (existing) {
       cached = existing;
       return existing;
     }
     const next = randomUuidV4();
-    await SecureStore.setItemAsync(KEY, next);
+    try {
+      await SecureStore.setItemAsync(KEY, next);
+    } catch {
+      /* keychain miss — still return a stable-for-this-process id */
+    }
     cached = next;
     return next;
   })();

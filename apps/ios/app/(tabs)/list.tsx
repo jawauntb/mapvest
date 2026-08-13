@@ -122,8 +122,7 @@ export default function ListScreen() {
   const chatSeedItems = useMemo(
     () =>
       items.slice(0, 20).map((i) => ({
-        ticker:
-          i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker,
+        ticker: i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker,
         name: i.place.name,
         sector: i.investable?.brand.sector,
       })),
@@ -132,6 +131,7 @@ export default function ListScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Text style={styles.lesson}>Nearby places — tap one for the ticker.</Text>
       {(q.isLoading || sectorSegments.length > 0) && (
         <View style={styles.ringWrap}>
           <SectorRing segments={sectorSegments} loading={q.isLoading} />
@@ -253,9 +253,9 @@ export default function ListScreen() {
 
 function listTitle(i: NearbyItem): string {
   const t = i.investable?.brand.ticker?.symbol;
-  if (t && i.investable?.brand.isPublic) return `$${t}  ${i.place.name}`;
+  if (t && i.investable?.brand.isPublic) return `${t}  ${i.place.name}`;
   const comp = i.investable?.comparables?.[0]?.ticker;
-  if (comp) return `≈$${comp}  ${i.place.name}`;
+  if (comp) return `≈ ${comp}  ${i.place.name}`;
   return i.place.name;
 }
 
@@ -296,6 +296,13 @@ function formatDistance(m: number): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  lesson: {
+    color: colors.fgMuted,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
   ringWrap: { paddingTop: 8, paddingBottom: 12 },
   chatPillWrap: {
     flexDirection: "row",

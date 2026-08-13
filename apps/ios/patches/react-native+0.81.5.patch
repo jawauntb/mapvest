@@ -1,0 +1,17 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 2a67797..b7a3c1d 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -435,7 +435,11 @@ void ObjCTurboModule::performVoidMethodInvocation(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      // iOS 26: do NOT convertNSExceptionToJSError (wrong-thread Hermes corruption)
++      // and do NOT @throw (uncaught on GCD → SIGABRT). Log and continue so Release
++      // cold start can paint. See RN #54859 / #55390 / community patches.
++      RCTLogError(@"[TurboModule] Exception in void method %s.%s: %@", moduleName, methodName, exception);
++      return;
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

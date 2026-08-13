@@ -4,6 +4,7 @@ import type {
   IdentifyResponse,
   LatLng,
   NearbyResponse,
+  QuoteHistoryResponse,
   ResolveComparableResponse,
   Session,
   User,
@@ -200,6 +201,18 @@ export function fetchQuote(
   opts: FetchOpts = {},
 ): Promise<{ quote?: Quote; error?: string }> {
   return jsonFetch(`/v1/quote?symbol=${encodeURIComponent(symbol)}`, { method: "GET" }, opts);
+}
+
+export type QuoteHistoryPeriod = QuoteHistoryResponse["period"];
+
+/** Daily Yahoo closes for the native Overview price chart. Never invents prices. */
+export function fetchQuoteHistory(
+  symbol: string,
+  period: QuoteHistoryPeriod = "1mo",
+  opts: FetchOpts = {},
+): Promise<QuoteHistoryResponse> {
+  const qs = new URLSearchParams({ symbol, period });
+  return jsonFetch(`/v1/quote-history?${qs.toString()}`, { method: "GET" }, opts);
 }
 
 /** Best-effort parallel quotes for list/map pins (cap 24). */
