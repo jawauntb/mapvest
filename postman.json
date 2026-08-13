@@ -267,6 +267,34 @@
           }
         },
         {
+          "name": "Daily Yahoo price history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/quote-history?symbol=AAPL&period=1mo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "quote-history"
+              ],
+              "query": [
+                {
+                  "key": "symbol",
+                  "value": "AAPL"
+                },
+                {
+                  "key": "period",
+                  "value": "1mo"
+                }
+              ]
+            },
+            "description": "Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable."
+          }
+        },
+        {
           "name": "Underlying Analyzer chart image",
           "request": {
             "method": "GET",

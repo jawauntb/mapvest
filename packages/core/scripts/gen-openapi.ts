@@ -73,6 +73,8 @@ const S = {
     raw.ResolveComparableResponse,
   ),
   ChartResponse: component("ChartResponse", raw.ChartResponse),
+  QuoteHistoryPoint: component("QuoteHistoryPoint", raw.QuoteHistoryPoint),
+  QuoteHistoryResponse: component("QuoteHistoryResponse", raw.QuoteHistoryResponse),
   AnalysisSnapshot: component("AnalysisSnapshot", raw.AnalysisSnapshot),
   CockpitResponse: component("CockpitResponse", raw.CockpitResponse),
   AlertsResponse: component("AlertsResponse", raw.AlertsResponse),
@@ -263,6 +265,30 @@ registry.registerPath({
         "application/json": { schema: S.ResolveComparableResponse },
       },
     },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/quote-history",
+  summary: "Daily Yahoo price history",
+  description:
+    "Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.",
+  tags: ["finance"],
+  request: {
+    query: z.object({
+      symbol: z.string().openapi({ example: "AAPL" }),
+      period: z.enum(["1mo", "3mo", "6mo", "1y"]).optional().openapi({ example: "1mo" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Daily close series with Yahoo source citation.",
+      content: { "application/json": { schema: S.QuoteHistoryResponse } },
+    },
+    400: errorResponses[400],
+    502: errorResponse("Yahoo history unavailable."),
     ...errorResponses,
   },
 });

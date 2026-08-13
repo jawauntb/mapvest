@@ -18,7 +18,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **OpenStreetMap Overpass** | Nearby POI fallback when Google Places is denied/unavailable. Mirrors are raced in parallel; prefer `overpass.openstreetmap.fr`. | No key. Cite as OSM/Overpass. |
 | **Photon (Komoot)** | Last-resort nearby brand search if every Overpass mirror fails. | No key. Shortlist of common public brands only. |
 | **SEC EDGAR** | Parent-company resolution, subsidiary lookup, 10-K brand mentions. | No key, please rate-limit. |
-| **Yahoo Finance** (via `yfinance` server-side) | Realtime quote for a resolved ticker. | Best-effort, do not display live price without a disclaimer. |
+| **Yahoo Finance** (via `yfinance` server-side) | Realtime quote for a resolved ticker, plus daily history for the native Overview price chart (`GET /v1/quote-history`). | Best-effort, do not display live price without a disclaimer. Never invent closes. |
 | **ETF.com** / **Nasdaq holdings** | ETF constituent + weight lookup. | Scraped via Exa (respect robots). |
 | **Wikidata** | Brand → parent company mapping for the seed table. | Public SPARQL. |
 

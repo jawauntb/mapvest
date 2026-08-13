@@ -1491,6 +1491,75 @@ components:
         - ticker
         - period
         - image
+    QuoteHistoryPoint:
+      type: object
+      properties:
+        ts:
+          type: number
+        close:
+          type: number
+      required:
+        - ts
+        - close
+    QuoteHistoryResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        period:
+          type: string
+          enum:
+            - 1mo
+            - 3mo
+            - 6mo
+            - 1y
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              ts:
+                type: number
+              close:
+                type: number
+            required:
+              - ts
+              - close
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - ticker
+        - period
+        - points
+        - sources
     AnalysisSnapshot:
       type: object
       properties:
@@ -2330,6 +2399,67 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/quote-history:
+    get:
+      summary: Daily Yahoo price history
+      description: Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: AAPL
+          required: true
+          name: symbol
+          in: query
+        - schema:
+            type: string
+            enum:
+              - 1mo
+              - 3mo
+              - 6mo
+              - 1y
+            example: 1mo
+          required: false
+          name: period
+          in: query
+      responses:
+        "200":
+          description: Daily close series with Yahoo source citation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteHistoryResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Yahoo history unavailable.
           content:
             application/json:
               schema:
