@@ -495,9 +495,21 @@ export default function CameraScreen() {
                 ) : null}
               </View>
               {top ? (
-                <Text style={styles.findsNote}>
-                  {session?.token ? "Added to your finds" : "Sign in to keep your finds."}
-                </Text>
+                session?.token ? (
+                  <Pressable
+                    onPress={() => {
+                      hapticSelect();
+                      router.push("/universe");
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="View your finds"
+                  >
+                    <Text style={styles.findsNote}>Added to your finds · View</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.findsNote}>Sign in to keep your finds.</Text>
+                )
               ) : null}
               {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
               {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}

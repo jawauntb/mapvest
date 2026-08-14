@@ -64,14 +64,21 @@ trade the name. Mapvest sits on three APIs: location/image → public + private
 identity and comparables; a finance agent with stats tools; and a charts
 stack. First session still teaches one loop: camera or map → one identity →
 one ticker card with sources. Every successful identify is recorded
-server-side as a **find** (`user_finds`, `GET /v1/finds`); for signed-in
-users Home leads with **Your universe** — recent finds and streak — with the
-watchlist under it, still not a second command center. The loop strip under
+server-side as a **find** (`user_finds`, `GET /v1/finds`). Home is
+discovery-first: snap hero → map link → **Your universe** (recent finds and
+streak; the header row is tappable and opens `/universe`) → ticker search →
+Local Economy Brief → watchlist (+ daily brief / movers / backtest after
+saves). Search follows discovery, never precedes it. `/universe` is the full
+finds journal — day-grouped, with Δ since found — reachable from Home’s
+universe header, the sidebar, and the camera result card. The loop strip under
 the snap/map hero is gone, and so is Home’s top-bar camera icon — the
 snap/map hero card remains Home’s camera entry. Map and List are blended (bottom sheet on the map + **View as List** / **View as Map**
 toggles) rather than duplicated as Home widgets. There is **no bottom tab
 bar** — destinations live in the profile drawer (left-sliding) and a camera
-icon sits in the top-right of Map / List. The Local Economy Brief sits
+icon sits in the top-right of Map / List. The sidebar is consolidated to
+Home, Map, Camera, Your universe, Watchlists, Saved places, Research,
+Alerts, Profile — the “Nearby list” and “Find ticker” rows are removed
+(list view lives inside Map; search lives on Home). The Local Economy Brief sits
 above the watchlist on every Home load (featured chrome, always refreshable)
 and is **neighborhood-scoped** (Nominatim zoom 16 + suburb/neighbourhood,
 map viewport center when the user has panned the map — not “New York, New
@@ -84,13 +91,18 @@ OpenRouter (Grok 4.6 → GPT-5.6 Luna → Opus 4.8) and never show the raw code.
 **menu burger** (shared `AppTopBar` or the tab header). Map refetch follows
 zoom (viewport radius + zoom bucket); Apple/Google POIs are hidden so only
 our pins carry tickers; same-brand locations inherit a resolved ticker;
-overlapped chips go to the pin closest to the viewport center. Daily brief, movers, and backtest
-appear only after the user has saved something. Overview
+overlapped chips go to the pin closest to the viewport center. The map
+renders a **My finds** layer — small jade camera badges where the user found
+things — toggleable from the nearby sheet. Overview
 shows a native Yahoo price series; analyzer PNGs live in an Analytics
 section with auction / ridge / regression chips. A listed ticker page is
 ticker → name → chart → save/research/Robinhood/alert → comps → analytics
-→ glance → financials → news → full brief. Comparables lead only when the
-name is actually private. News opens an in-app reader (Safari is optional).
+→ glance → financials → news → full brief. Detail is progressive
+disclosure: Financials, SEC, and Sources collapse by default; Analytics
+stays open with a plain-language explainer per chart type; empty
+Comparables / ETF / Sources sections are hidden entirely for listed names.
+Comparables lead only when the name is actually private. News opens an
+in-app reader (Safari is optional).
 A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
 carousel. Mapvest Daily and Local Economy Brief both collapse behind a
