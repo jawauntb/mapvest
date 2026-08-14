@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -33,6 +34,36 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// ALL-CAPS words that look like tickers in casual questions but aren't.
+const TITLE_STOPWORDS = new Set([
+  "A",
+  "I",
+  "AND",
+  "OR",
+  "THE",
+  "ETF",
+  "ETFS",
+  "VS",
+  "WHY",
+  "HOW",
+  "NYC",
+  "USA",
+  "CEO",
+  "IPO",
+  "GDP",
+]);
+
+/** Thread title from the first message: "$NVDA?" or a bare caps token → "$NVDA brief". */
+function deriveThreadTitle(msg: string): string {
+  const dollar = msg.match(/\$([A-Z]{1,5})\b/)?.[1];
+  if (dollar) return `$${dollar} brief`;
+  for (const m of msg.matchAll(/\b([A-Z]{2,5})\b/g)) {
+    const token = m[1];
+    if (token && !TITLE_STOPWORDS.has(token)) return `$${token} brief`;
+  }
+  return msg.slice(0, 48);
+}
 
 /**
  * ChatGPT-like research surface — thread list + article briefs.
@@ -144,7 +175,7 @@ export default function ResearchChatScreen() {
       const r = await agentChat(msg, { threadId }, { token: session?.token });
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
-      if (title === "New research") setTitle(msg.slice(0, 48));
+      if (title === "New research") setTitle(deriveThreadTitle(msg));
       if (r.article.error) {
         setErr("Research hit a limit — we wrote a shorter brief instead, or try again.");
         setStatus(null);
@@ -271,7 +302,8 @@ export default function ResearchChatScreen() {
         <ScrollView contentContainerStyle={styles.stream} keyboardShouldPersistTaps="handled">
           {turns.length === 0 ? (
             <Text style={styles.hint}>
-              Ask about a ticker or theme. You’ll get a lede + evidence, not a chat dump.
+              Ask about a company, a block, or a theme. You get a brief with evidence, not a chat
+              dump.
             </Text>
           ) : null}
           {turns.map((t) =>
@@ -301,6 +333,36 @@ export default function ResearchChatScreen() {
                 ))}
                 {t.toolsUsed.length ? (
                   <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
+                ) : null}
+                {t.sources?.length ? (
+                  <View style={styles.sourceRow}>
+                    {t.sources.slice(0, 4).map((s) => {
+                      const url = s.url;
+                      return url ? (
+                        <Pressable
+                          key={`${s.label}-${url}`}
+                          onPress={() => {
+                            hapticTap();
+                            void Linking.openURL(url);
+                          }}
+                          style={styles.sourceChip}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Open source: ${s.label}`}
+                        >
+                          <Text style={styles.sourceChipText} numberOfLines={1}>
+                            {s.label}
+                          </Text>
+                          <Ionicons name="open-outline" size={11} color={colors.accent} />
+                        </Pressable>
+                      ) : (
+                        <View key={s.label} style={styles.sourceChip}>
+                          <Text style={styles.sourceChipMuted} numberOfLines={1}>
+                            {s.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 ) : null}
               </View>
             ),
@@ -428,6 +490,21 @@ const styles = StyleSheet.create({
   },
   tickerChipText: { color: colors.accent, fontWeight: "700", fontSize: 13 },
   tools: { color: colors.fgDim, fontSize: 11 },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  sourceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    minHeight: 28,
+  },
+  sourceChipText: { color: colors.accent, fontWeight: "600", fontSize: 12, flexShrink: 1 },
+  sourceChipMuted: { color: colors.fgMuted, fontWeight: "600", fontSize: 12, flexShrink: 1 },
   statusText: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 8 },
   err: { color: colors.danger, marginTop: 8 },
   composer: {

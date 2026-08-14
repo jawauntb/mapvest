@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -212,6 +213,36 @@ export function ResearchSheet({
                 {t.toolsUsed.length ? (
                   <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
                 ) : null}
+                {t.sources?.length ? (
+                  <View style={styles.sourceRow}>
+                    {t.sources.slice(0, 4).map((s) => {
+                      const url = s.url;
+                      return url ? (
+                        <Pressable
+                          key={`${s.label}-${url}`}
+                          onPress={() => {
+                            hapticTap();
+                            void Linking.openURL(url);
+                          }}
+                          style={styles.sourceChip}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Open source: ${s.label}`}
+                        >
+                          <Text style={styles.sourceChipText} numberOfLines={1}>
+                            {s.label}
+                          </Text>
+                          <Ionicons name="open-outline" size={11} color={colors.accent} />
+                        </Pressable>
+                      ) : (
+                        <View key={s.label} style={styles.sourceChip}>
+                          <Text style={styles.sourceChipMuted} numberOfLines={1}>
+                            {s.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </View>
             ),
           )}
@@ -365,6 +396,21 @@ const styles = StyleSheet.create({
   },
   ideaTitle: { color: colors.fg, fontWeight: "600", fontSize: 14 },
   tools: { color: colors.fgDim, fontSize: 11, marginTop: 4 },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  sourceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    minHeight: 28,
+  },
+  sourceChipText: { color: colors.accent, fontWeight: "600", fontSize: 12, flexShrink: 1 },
+  sourceChipMuted: { color: colors.fgMuted, fontWeight: "600", fontSize: 12, flexShrink: 1 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
   statusText: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 8 },
   progressCard: {

@@ -342,7 +342,7 @@ export function fetchAlerts(
   opts: FetchOpts = {},
 ): Promise<{ alerts: AlertItem[]; tickers: string[] }> {
   return jsonFetch(
-    "/v1/alerts",
+    "/v1/underlying-alerts",
     { method: "POST", body: JSON.stringify({ tickers: tickers.slice(0, 10) }) },
     opts,
   );

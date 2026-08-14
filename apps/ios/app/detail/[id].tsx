@@ -290,18 +290,23 @@ export default function DetailSheet() {
               : ["Private", data.brand.sector].filter(Boolean).join(" · ")}
           </Text>
           {quote ? (
-            <View style={styles.quoteRow}>
-              <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
-              <Text
-                style={[
-                  styles.quoteChange,
-                  { color: quote.change >= 0 ? colors.accent : colors.danger },
-                ]}
-              >
-                {quote.change >= 0 ? "+" : ""}
-                {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+            <>
+              <View style={styles.quoteRow}>
+                <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
+                <Text
+                  style={[
+                    styles.quoteChange,
+                    { color: quote.change >= 0 ? colors.accent : colors.danger },
+                  ]}
+                >
+                  {quote.change >= 0 ? "+" : ""}
+                  {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+                </Text>
+              </View>
+              <Text style={styles.quoteDisclaimer}>
+                {quote.disclaimer || "Prices delayed ~15 min · Yahoo Finance"}
               </Text>
-            </View>
+            </>
           ) : null}
         </View>
 
@@ -933,8 +938,14 @@ function WatchlistActions({
     enabled: !!token,
     staleTime: 30_000,
   });
-  const serverSaved = wl.data?.items.some((e) => e.ticker.toUpperCase() === sym) ?? false;
+  const entry = wl.data?.items.find((e) => e.ticker.toUpperCase() === sym);
+  const serverSaved = !!entry;
   const isSaved = optimisticSaved ?? serverSaved;
+  // A memo persisted on the watchlist entry hydrates the card until a fresh
+  // one is generated this session — it's already saved, so offer regenerate.
+  const savedMemo = entry?.memo ? { provider: entry.memoProvider ?? "", text: entry.memo } : null;
+  const displayMemo = memo ?? savedMemo;
+  const displayMemoSaved = memo ? memoSaved : !!savedMemo;
 
   const saveM = useMutation({
     mutationFn: () =>
@@ -975,6 +986,7 @@ function WatchlistActions({
     onMutate: () => setStatusLine("Generating memo…"),
     onSuccess: (r) => {
       setMemo({ provider: r.provider, text: r.memo });
+      setMemoSaved(false);
       setStatusLine("Memo ready");
     },
     onError: (e) => setStatusLine((e as Error).message || "Memo failed"),
@@ -1041,7 +1053,7 @@ function WatchlistActions({
         {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
         {memo ? (
           <View style={styles.memoCard}>
-            <Text style={styles.memoProvider}>{memo.provider}</Text>
+            <Text style={styles.memoProvider}>Mapvest research</Text>
             <Text style={styles.memoText}>{memo.text}</Text>
           </View>
         ) : null}
@@ -1092,18 +1104,18 @@ function WatchlistActions({
             pressed && { opacity: 0.7 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel={memo ? "Regenerate memo" : "Generate memo"}
+          accessibilityLabel={displayMemo ? "Regenerate memo" : "Generate memo"}
         >
           {memoM.isPending ? (
             <ActivityIndicator color={colors.fg} />
           ) : (
             <>
               <Ionicons
-                name={memo ? "refresh-outline" : "document-text-outline"}
+                name={displayMemo ? "refresh-outline" : "document-text-outline"}
                 size={15}
                 color={colors.fg}
               />
-              <Text style={styles.actionBtnText}>{memo ? "Regenerate memo" : "Memo"}</Text>
+              <Text style={styles.actionBtnText}>{displayMemo ? "Regenerate memo" : "Memo"}</Text>
             </>
           )}
         </Pressable>
@@ -1122,16 +1134,16 @@ function WatchlistActions({
 
       {memoM.isError ? <Text style={styles.err}>{(memoM.error as Error).message}</Text> : null}
 
-      {memo ? (
+      {displayMemo ? (
         <View style={styles.memoCard}>
-          <Text style={styles.memoProvider}>{memo.provider} · investment brief</Text>
-          <Text style={styles.memoText}>{memo.text}</Text>
+          <Text style={styles.memoProvider}>Research brief</Text>
+          <Text style={styles.memoText}>{displayMemo.text}</Text>
           <Pressable
             onPress={() => saveMemoM.mutate()}
-            disabled={saveMemoM.isPending || memoSaved}
+            disabled={saveMemoM.isPending || displayMemoSaved}
             style={({ pressed }) => [
               styles.actionBtn,
-              memoSaved && styles.actionBtnActive,
+              displayMemoSaved && styles.actionBtnActive,
               pressed && { opacity: 0.7 },
               { alignSelf: "flex-start" },
             ]}
@@ -1140,15 +1152,15 @@ function WatchlistActions({
           >
             {!saveMemoM.isPending ? (
               <Ionicons
-                name={memoSaved ? "checkmark-circle" : "bookmark-outline"}
+                name={displayMemoSaved ? "checkmark-circle" : "bookmark-outline"}
                 size={15}
-                color={memoSaved ? colors.accentInk : colors.fg}
+                color={displayMemoSaved ? colors.accentInk : colors.fg}
               />
             ) : null}
-            <Text style={[styles.actionBtnText, memoSaved && { color: colors.accentInk }]}>
+            <Text style={[styles.actionBtnText, displayMemoSaved && { color: colors.accentInk }]}>
               {saveMemoM.isPending
                 ? "Saving…"
-                : memoSaved
+                : displayMemoSaved
                   ? "Memo saved"
                   : "Save memo to watchlist"}
             </Text>
@@ -1352,6 +1364,7 @@ const styles = StyleSheet.create({
   quoteRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
   quotePrice: { color: colors.fg, ...type.h1, fontSize: 28 },
   quoteChange: { fontSize: 15, fontWeight: "600" },
+  quoteDisclaimer: { color: colors.fgDim, fontSize: 11, marginTop: 4 },
   tabRow: { flexDirection: "row", gap: 8, marginTop: 14 },
   tabBtn: {
     borderColor: colors.border,
