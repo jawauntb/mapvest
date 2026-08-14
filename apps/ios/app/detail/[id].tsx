@@ -52,6 +52,17 @@ const CHART_CHIPS = [
   { id: "torque", label: "Torque" },
 ] as const;
 
+/** Plain-language one-liners so the analytics PNGs read as more than wall art. */
+const CHART_EXPLAINERS: Record<(typeof CHART_CHIPS)[number]["id"], string> = {
+  auction:
+    "Where trading actually happened. Fat zones are fair value; thin edges are where buyers or sellers gave up.",
+  performance: "How this name historically behaves through the year. Rhythm, not prophecy.",
+  regression: "Trend with bands. Shows how stretched price is from its own path.",
+  "ridge-growth": "Growth trajectory ranked against peers over time.",
+  "flow-compass": "Which way money is leaning — accumulation or distribution.",
+  torque: "How hard price is being pushed off its trend. Momentum's turning force.",
+};
+
 const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
 
 export default function DetailSheet() {
@@ -207,6 +218,10 @@ export default function DetailSheet() {
   const companyName = [quote?.name, analysisQ.data?.name, data.brand.name].find(
     (n) => !!n && n.trim().toUpperCase() !== listedTicker,
   )?.trim();
+  const dedupedSources = dedupeSources([
+    ...data.comparables.flatMap((c) => c.sources),
+    ...data.etfs.map((e) => e.source),
+  ]);
 
   /**
    * Native OS share sheet — "Open in Messages / Mail / Notes / any app that
@@ -370,23 +385,23 @@ export default function DetailSheet() {
           </View>
         ) : null}
 
-        {isListed ? (
+        {isListed && data.comparables.length > 0 ? (
           <Section title="Comparables">
-            {data.comparables.length === 0 ? (
-              <Text style={styles.muted}>No public comparables resolved.</Text>
-            ) : (
-              data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
-            )}
+            {data.comparables.map((c, i) => (
+              <ComparableRow key={`${c.ticker}-${i}`} c={c} />
+            ))}
           </Section>
         ) : null}
 
-        <Section title="ETF exposure">
-          {data.etfs.length === 0 ? (
-            <Text style={styles.muted}>No ETFs matched.</Text>
-          ) : (
-            data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
-          )}
-        </Section>
+        {!isListed || data.etfs.length > 0 ? (
+          <Section title="ETF exposure">
+            {data.etfs.length === 0 ? (
+              <Text style={styles.muted}>No ETFs matched.</Text>
+            ) : (
+              data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
+            )}
+          </Section>
+        ) : null}
 
         {ticker ? (
           <ChartStrip
@@ -394,6 +409,7 @@ export default function DetailSheet() {
             ticker={ticker}
             chartType={chartType}
             period={period}
+            defaultOpen={isListed}
             onType={setChartType}
             onPeriod={setPeriod}
           />
@@ -403,7 +419,7 @@ export default function DetailSheet() {
         {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
 
         {ticker ? (
-          <Section title="SEC filings">
+          <CollapsibleSection title="SEC filings">
             {secQ.isLoading ? (
               <ActivityIndicator color={colors.fg} />
             ) : secQ.isError ? (
@@ -425,7 +441,7 @@ export default function DetailSheet() {
             ) : (
               <Text style={styles.muted}>No filings returned.</Text>
             )}
-          </Section>
+          </CollapsibleSection>
         ) : null}
 
         {stage >= 2 && ticker ? (
@@ -436,14 +452,11 @@ export default function DetailSheet() {
           <AgentOverviewBlock ticker={ticker} token={session?.token} />
         ) : null}
 
-        <Section title="Sources">
-          <SourceList
-            sources={dedupeSources([
-              ...data.comparables.flatMap((c) => c.sources),
-              ...data.etfs.map((e) => e.source),
-            ])}
-          />
-        </Section>
+        {dedupedSources.length > 0 ? (
+          <CollapsibleSection title={`Sources · ${dedupedSources.length}`}>
+            <SourceList sources={dedupedSources} />
+          </CollapsibleSection>
+        ) : null}
       </ScrollView>
     </ScreenFade>
   );
@@ -608,6 +621,45 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/**
+ * Section variant that folds its card away. Collapsed content is unmounted so
+ * heavy children (base64 chart PNGs, filing rows) never render while hidden —
+ * the react-query hooks stay in the parent, only the JSX collapses.
+ */
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  // Track only explicit taps so the default can settle async — e.g. Analytics
+  // pops open once a typed ticker's quote proves the name is listed.
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? defaultOpen;
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        onPress={() => {
+          hapticSelect();
+          setToggled(!open);
+        }}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open }}
+        style={({ pressed }) => [styles.collapseHeader, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={styles.h2}>{title}</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.fgMuted} />
+      </Pressable>
+      {open ? <View style={styles.card}>{children}</View> : null}
+    </View>
+  );
+}
+
 function ChartImageBlock({
   q,
   ticker,
@@ -639,11 +691,16 @@ function ChartImageBlock({
         accessibilityLabel={`${ticker} ${label} chart`}
       />
       {showLevels && data.levels ? (
-        <Text style={styles.muted}>
-          POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
-          {fmtLvl(data.levels.val)}
-          {data.provider ? ` · ${data.provider}` : ""}
-        </Text>
+        <View style={{ gap: 2 }}>
+          <Text style={styles.muted}>
+            POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
+            {fmtLvl(data.levels.val)}
+            {data.provider ? ` · ${data.provider}` : ""}
+          </Text>
+          <Text style={styles.chartExplainer}>
+            POC = busiest price. VAH/VAL = the edges of fair value.
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -745,6 +802,7 @@ function ChartStrip({
   ticker,
   chartType,
   period,
+  defaultOpen,
   onType,
   onPeriod,
 }: {
@@ -752,27 +810,31 @@ function ChartStrip({
   ticker: string;
   chartType: (typeof CHART_CHIPS)[number]["id"];
   period: (typeof PERIODS)[number];
+  defaultOpen: boolean;
   onType: (t: (typeof CHART_CHIPS)[number]["id"]) => void;
   onPeriod: (p: (typeof PERIODS)[number]) => void;
 }) {
   const label = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
   return (
-    <Section title={`Analytics · ${label} · ${period}`}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {CHART_CHIPS.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => onType(c.id)}
-              style={[styles.chip, chartType === c.id && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, chartType === c.id && styles.chipTextActive]}>
-                {c.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+    <CollapsibleSection title={`Analytics · ${label} · ${period}`} defaultOpen={defaultOpen}>
+      <View style={{ gap: 8, marginBottom: 8 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {CHART_CHIPS.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => onType(c.id)}
+                style={[styles.chip, chartType === c.id && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, chartType === c.id && styles.chipTextActive]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+        <Text style={styles.chartExplainer}>{CHART_EXPLAINERS[chartType]}</Text>
+      </View>
       <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
         {PERIODS.map((p) => (
           <Pressable
@@ -792,7 +854,7 @@ function ChartStrip({
         chartType={chartType}
         period={period}
       />
-    </Section>
+    </CollapsibleSection>
   );
 }
 
@@ -843,7 +905,7 @@ function AnalysisAdvancedBlock({
     ["Mkt cap", data.marketCap != null ? String(data.marketCap) : "—"],
   ];
   return (
-    <Section title="Financials">
+    <CollapsibleSection title="Financials">
       {rows.map(([k, v]) => (
         <View key={k} style={styles.finRow}>
           <Text style={styles.finKey}>{k}</Text>
@@ -851,7 +913,7 @@ function AnalysisAdvancedBlock({
         </View>
       ))}
       {data.brief ? <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text> : null}
-    </Section>
+    </CollapsibleSection>
   );
 }
 
@@ -891,7 +953,6 @@ function EtfRow({ e }: { e: EtfExposure }) {
 }
 
 function SourceList({ sources }: { sources: Source[] }) {
-  if (sources.length === 0) return <Text style={styles.muted}>No sources cited.</Text>;
   return (
     <View style={{ gap: 6 }}>
       {sources.map((s, i) => (
@@ -1219,6 +1280,11 @@ const styles = StyleSheet.create({
     gap: 12,
     ...elevation.sm,
   },
+  collapseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   chartZoom: {
     width: "100%",
     height: 260,
@@ -1234,6 +1300,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   chartHint: { color: colors.fgDim, fontSize: 11 },
+  chartExplainer: { color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
   overviewBody: { color: colors.fg, fontSize: 14, lineHeight: 21 },
   errInline: { color: colors.danger, fontSize: 13 },
   loadBriefBtn: {

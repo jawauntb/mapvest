@@ -324,6 +324,116 @@ export default function HomeScreen() {
           }
           ListHeaderComponent={
             <View>
+              {/* Hero card — camera identify is Mapvest's signature loop. */}
+              <ScalePressable
+                onPress={() => router.push("/(tabs)/camera?intent=snap")}
+                accessibilityRole="button"
+                accessibilityLabel="Open camera — identify what's investable"
+                style={[styles.hero, elevation.md]}
+              >
+                <LinearGradient
+                  colors={colors.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroGrad}
+                >
+                  <View style={styles.heroIcon}>
+                    <Ionicons name="camera" size={22} color={colors.accentInk} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.heroTitle}>Snap a brand</Text>
+                    <Text style={styles.heroSub}>
+                      Turn what's in front of you into something you can own.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
+                </LinearGradient>
+              </ScalePressable>
+
+              <Pressable
+                onPress={() => {
+                  hapticSelect();
+                  router.push("/(tabs)/map");
+                }}
+                style={styles.mapLink}
+                accessibilityRole="button"
+                accessibilityLabel="Open map — nearby brands"
+              >
+                <Ionicons name="map-outline" size={16} color={colors.accent} />
+                <Text style={styles.mapLinkText}>Or walk the map</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
+              </Pressable>
+
+              {session?.token && finds.length > 0 ? (
+                <>
+                  <Pressable
+                    onPress={() => {
+                      hapticSelect();
+                      router.push("/universe");
+                    }}
+                    style={styles.sectionHead}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open your universe"
+                  >
+                    <Text style={styles.universeTitle}>Your universe</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={styles.count}>
+                        {finds.length} find{finds.length === 1 ? "" : "s"}
+                        {findStreak >= 2 ? ` · ${findStreak} day streak` : ""}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
+                    </View>
+                  </Pressable>
+                  <FlatList
+                    data={recentFinds}
+                    keyExtractor={(f) => f.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.findRow}
+                    renderItem={({ item }) => {
+                      const sym = (item.ticker ?? item.comparable)?.toUpperCase();
+                      const quote = sym ? findQuotes[sym] : undefined;
+                      const delta =
+                        item.foundPrice && quote
+                          ? ((quote.price - item.foundPrice) / item.foundPrice) * 100
+                          : undefined;
+                      return (
+                        <ScalePressable
+                          style={styles.findChip}
+                          onPress={() => {
+                            hapticSelect();
+                            router.push({
+                              pathname: "/detail/[id]",
+                              params: { id: item.ticker ?? item.comparable ?? item.brand },
+                            });
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open ${item.brand}`}
+                        >
+                          <Text style={styles.findChipSym} numberOfLines={1}>
+                            {item.ticker ?? (item.comparable ? `≈${item.comparable}` : item.brand)}
+                          </Text>
+                          <Text style={styles.findChipBrand} numberOfLines={1}>
+                            {item.brand}
+                          </Text>
+                          {delta !== undefined ? (
+                            <Text
+                              style={[
+                                styles.findChipDelta,
+                                { color: delta >= 0 ? colors.accent : colors.danger },
+                              ]}
+                            >
+                              {delta >= 0 ? "+" : ""}
+                              {delta.toFixed(1)}% since
+                            </Text>
+                          ) : null}
+                        </ScalePressable>
+                      );
+                    }}
+                  />
+                </>
+              ) : null}
+
               <View style={styles.searchRow}>
                 <View style={styles.searchWrap}>
                   <Ionicons
@@ -401,105 +511,6 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
-              ) : null}
-
-              {/* Hero card — camera identify is Mapvest's signature loop. */}
-              <ScalePressable
-                onPress={() => router.push("/(tabs)/camera?intent=snap")}
-                accessibilityRole="button"
-                accessibilityLabel="Open camera — identify what's investable"
-                style={[styles.hero, elevation.md]}
-              >
-                <LinearGradient
-                  colors={colors.gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.heroGrad}
-                >
-                  <View style={styles.heroIcon}>
-                    <Ionicons name="camera" size={22} color={colors.accentInk} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.heroTitle}>Snap a brand</Text>
-                    <Text style={styles.heroSub}>
-                      Turn what's in front of you into something you can own.
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
-                </LinearGradient>
-              </ScalePressable>
-
-              <Pressable
-                onPress={() => {
-                  hapticSelect();
-                  router.push("/(tabs)/map");
-                }}
-                style={styles.mapLink}
-                accessibilityRole="button"
-                accessibilityLabel="Open map — nearby brands"
-              >
-                <Ionicons name="map-outline" size={16} color={colors.accent} />
-                <Text style={styles.mapLinkText}>Or walk the map</Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
-              </Pressable>
-
-              {session?.token && finds.length > 0 ? (
-                <>
-                  <View style={styles.sectionHead}>
-                    <Text style={styles.universeTitle}>Your universe</Text>
-                    <Text style={styles.count}>
-                      {finds.length} find{finds.length === 1 ? "" : "s"}
-                      {findStreak >= 2 ? ` · ${findStreak} day streak` : ""}
-                    </Text>
-                  </View>
-                  <FlatList
-                    data={recentFinds}
-                    keyExtractor={(f) => f.id}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.findRow}
-                    renderItem={({ item }) => {
-                      const sym = (item.ticker ?? item.comparable)?.toUpperCase();
-                      const quote = sym ? findQuotes[sym] : undefined;
-                      const delta =
-                        item.foundPrice && quote
-                          ? ((quote.price - item.foundPrice) / item.foundPrice) * 100
-                          : undefined;
-                      return (
-                        <ScalePressable
-                          style={styles.findChip}
-                          onPress={() => {
-                            hapticSelect();
-                            router.push({
-                              pathname: "/detail/[id]",
-                              params: { id: item.ticker ?? item.comparable ?? item.brand },
-                            });
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Open ${item.brand}`}
-                        >
-                          <Text style={styles.findChipSym} numberOfLines={1}>
-                            {item.ticker ?? (item.comparable ? `≈${item.comparable}` : item.brand)}
-                          </Text>
-                          <Text style={styles.findChipBrand} numberOfLines={1}>
-                            {item.brand}
-                          </Text>
-                          {delta !== undefined ? (
-                            <Text
-                              style={[
-                                styles.findChipDelta,
-                                { color: delta >= 0 ? colors.accent : colors.danger },
-                              ]}
-                            >
-                              {delta >= 0 ? "+" : ""}
-                              {delta.toFixed(1)}% since
-                            </Text>
-                          ) : null}
-                        </ScalePressable>
-                      );
-                    }}
-                  />
-                </>
               ) : null}
 
               <View style={{ marginTop: 8 }}>

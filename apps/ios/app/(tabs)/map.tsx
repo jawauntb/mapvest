@@ -1,4 +1,5 @@
 import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/client";
+import { type Find, listFinds } from "@/api/finds";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
@@ -45,6 +46,8 @@ export default function MapScreen() {
   const [trackMarkers, setTrackMarkers] = useState(true);
   /** First tap on an overlapped cluster elevates this place; second opens detail. */
   const [focusedPlaceId, setFocusedPlaceId] = useState<string | null>(null);
+  /** "Map of your life" — the user's camera finds as a toggleable layer. */
+  const [showFinds, setShowFinds] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -117,6 +120,31 @@ export default function MapScreen() {
 
   const quotes = quotesQuery.data ?? {};
 
+  // Same key/shape as Home so the journal cache is shared across tabs.
+  const findsQuery = useQuery({
+    queryKey: ["finds", session?.token],
+    queryFn: () => listFinds({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+  });
+
+  const geoFinds = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { find: Find; lat: number; lng: number }[] = [];
+    for (const find of findsQuery.data?.finds ?? []) {
+      const { lat, lng } = find;
+      if (typeof lat !== "number" || typeof lng !== "number") continue;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      // Repeat snaps of the same spot collapse into one marker.
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)},${find.ticker ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ find, lat, lng });
+      if (out.length >= 100) break;
+    }
+    return out;
+  }, [findsQuery.data]);
+
   useEffect(() => {
     setTrackMarkers(true);
     // Long enough for the staggered pin-drop springs (~315ms max delay +
@@ -139,6 +167,12 @@ export default function MapScreen() {
   function openItem(item: NearbyItem) {
     const pin = resolvePinTicker(item);
     const id = pin?.symbol ?? item.place.name;
+    router.push(`/detail/${encodeURIComponent(id)}`);
+  }
+
+  function openFind(find: Find) {
+    hapticSelect();
+    const id = find.ticker ?? find.comparable ?? find.brand;
     router.push(`/detail/${encodeURIComponent(id)}`);
   }
 
@@ -219,6 +253,28 @@ export default function MapScreen() {
             </Marker>
           );
         })}
+        {showFinds
+          ? geoFinds.map(({ find, lat, lng }) => (
+              <Marker
+                key={`find-${find.id}`}
+                coordinate={{ latitude: lat, longitude: lng }}
+                tracksViewChanges={trackMarkers}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={1}
+                accessibilityLabel={`Your find: ${find.brand}${find.ticker ? ` — ${find.ticker}` : ""}`}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  openFind(find);
+                }}
+              >
+                {/* Static (no entrance anim) so late-arriving finds rasterize
+                    correctly after the trackMarkers window has closed. */}
+                <View style={styles.findBadge} collapsable={false}>
+                  <Ionicons name="camera" size={10} color={colors.accent} />
+                </View>
+              </Marker>
+            ))
+          : null}
       </MapView>
 
       <View pointerEvents="none" style={styles.overlay}>
@@ -252,6 +308,9 @@ export default function MapScreen() {
         quotes={quotes}
         loading={nearbyQuery.isFetching && items.length === 0}
         focusedPlaceId={focusedPlaceId}
+        showFindsToggle={geoFinds.length > 0}
+        findsVisible={showFinds}
+        onToggleFinds={() => setShowFinds((v) => !v)}
         onOpen={openItem}
         onViewAsList={() => router.push("/(tabs)/list")}
         onChat={() =>
@@ -279,6 +338,9 @@ function NearbySheet({
   quotes,
   loading,
   focusedPlaceId,
+  showFindsToggle,
+  findsVisible,
+  onToggleFinds,
   onOpen,
   onViewAsList,
   onChat,
@@ -288,6 +350,10 @@ function NearbySheet({
   quotes: Record<string, Quote>;
   loading: boolean;
   focusedPlaceId: string | null;
+  /** Finds-layer chip — hidden when the user has no geo-tagged finds. */
+  showFindsToggle: boolean;
+  findsVisible: boolean;
+  onToggleFinds: () => void;
   onOpen: (item: NearbyItem) => void;
   onViewAsList: () => void;
   onChat: () => void;
@@ -319,6 +385,28 @@ function NearbySheet({
               accessibilityLabel="Chat about brands visible on the map"
               onPress={onChat}
             />
+            {showFindsToggle ? (
+              <Pressable
+                onPress={() => {
+                  hapticSelect();
+                  onToggleFinds();
+                }}
+                hitSlop={8}
+                style={styles.viewAsListBtn}
+                accessibilityRole="button"
+                accessibilityState={{ selected: findsVisible }}
+                accessibilityLabel={findsVisible ? "Hide your finds" : "Show your finds"}
+              >
+                <Ionicons
+                  name="camera-outline"
+                  size={14}
+                  color={findsVisible ? colors.accent : colors.fgMuted}
+                />
+                <Text style={[styles.sheetSeeAll, !findsVisible && { color: colors.fgMuted }]}>
+                  Finds
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => {
                 hapticSelect();
@@ -745,5 +833,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.fg,
     marginBottom: 2,
+  },
+  /** 18pt jade-ring camera badge — distinct from the 14pt filled nearby dots. */
+  findBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.bg,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

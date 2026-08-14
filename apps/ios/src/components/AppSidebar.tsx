@@ -25,8 +25,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const PANEL_WIDTH = Math.min(340, Dimensions.get("window").width * 0.82);
 
 /**
- * ChatGPT-style left drawer — watchlist, research chats, settings, ticker
- * search. Slides in from the LEFT (not the iOS Modal default bottom slide).
+ * ChatGPT-style left drawer — home, finds universe, watchlists, research
+ * chats, settings. Slides in from the LEFT (not the iOS Modal default
+ * bottom slide).
  *
  * Built with plain RN Animated + Modal(animationType="none") so child taps
  * stay reliable — earlier Reanimated+Pan iterations blocked presses on iOS.
@@ -150,13 +151,13 @@ export function AppSidebar() {
             <NavRow
               icon="home-outline"
               label="Home"
-              hint="Your saved tickers"
+              hint="Universe · watchlist · briefs"
               onPress={() => go("/(tabs)/home")}
             />
             <NavRow
               icon="map-outline"
               label="Map"
-              hint="Places around you"
+              hint="Nearby pins · list view inside"
               onPress={() => go("/(tabs)/map")}
             />
             <NavRow
@@ -166,40 +167,34 @@ export function AppSidebar() {
               onPress={() => go("/(tabs)/camera?intent=snap")}
             />
             <NavRow
-              icon="list-outline"
-              label="Nearby list"
-              hint="Places around you, sorted"
-              onPress={() => go("/(tabs)/list")}
+              icon="sparkles-outline"
+              label="Your universe"
+              hint="Every find, day by day"
+              onPress={() => go("/universe")}
             />
             <NavRow
               icon="star-outline"
-              label="Lists"
-              hint="Named watchlists"
+              label="Watchlists"
+              hint="Named lists · backtests"
               onPress={() => go("/watchlists")}
             />
             <NavRow
               icon="folder-open-outline"
-              label="Location folder"
-              hint="Saved area briefs"
+              label="Saved places"
+              hint="Neighborhood briefs you kept"
               onPress={() => go("/saved-locations")}
             />
             <NavRow
-              icon="sparkles-outline"
-              label="New research"
-              hint="Start a brief"
-              onPress={() => go("/(tabs)/research?intent=new")}
+              icon="chatbubble-ellipses-outline"
+              label="Research"
+              hint="Briefs and chats"
+              onPress={() => go("/(tabs)/research")}
             />
             <NavRow
               icon="notifications-outline"
               label="Alerts"
               hint="Price + move triggers"
               onPress={() => go("/alerts")}
-            />
-            <NavRow
-              icon="search-outline"
-              label="Find ticker"
-              hint="Search by symbol"
-              onPress={() => go("/(tabs)/home?focus=search")}
             />
             <NavRow
               icon="person-circle-outline"
