@@ -1,5 +1,6 @@
 import { type AgentThread, listAgentThreads } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { BrandMark } from "@/components/BrandMark";
 import { useSidebar } from "@/nav/SidebarContext";
 import { colors, elevation, motion, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -127,14 +128,7 @@ export function AppSidebar() {
         >
           <View style={styles.brandRow}>
             <View style={styles.brandMark}>
-              <LinearGradient
-                colors={colors.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.brandMarkGrad}
-              >
-                <Ionicons name="pin" size={16} color={colors.accentInk} />
-              </LinearGradient>
+              <BrandMark size={28} />
               <Text style={styles.brand}>Mapvest</Text>
             </View>
             <Pressable
@@ -329,13 +323,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   brandMark: { flexDirection: "row", alignItems: "center", gap: 8 },
-  brandMarkGrad: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   brand: { color: colors.fg, ...type.h2, fontSize: 20 },
   closeBtn: {
     width: 36,

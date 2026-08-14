@@ -1,11 +1,11 @@
 import { requestMagicLink, verifyMagicLink } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { BrandMark } from "@/components/BrandMark";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
 import { colors, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -70,14 +70,7 @@ export default function AuthScreen() {
         <ScreenFade>
           <View style={styles.container}>
             <View style={styles.mark}>
-              <LinearGradient
-                colors={colors.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.markGrad}
-              >
-                <Ionicons name="pin" size={22} color={colors.accentInk} />
-              </LinearGradient>
+              <BrandMark size={56} />
             </View>
             <Text style={styles.title}>Mapvest</Text>
             <Text style={styles.subtitle}>
@@ -166,13 +159,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1, paddingHorizontal: 24, justifyContent: "center", gap: 16 },
   mark: { alignSelf: "flex-start", marginBottom: 4 },
-  markGrad: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   title: { color: colors.fg, fontSize: 36, lineHeight: 40, fontWeight: "800", letterSpacing: -0.4 },
   subtitle: { color: colors.fgMuted, fontSize: 15, lineHeight: 20 },
   inputWrap: {

@@ -1,5 +1,5 @@
+import { BrandMark } from "@/components/BrandMark";
 import { colors, radii } from "@/theme/tokens";
-import { LinearGradient } from "expo-linear-gradient";
 import { forwardRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -45,17 +45,9 @@ export const ShareBriefCard = forwardRef<View, ShareBriefCardProps>(
     const dateStr = formatDate(generatedAt);
     return (
       <View ref={ref} collapsable={false} style={styles.card}>
-        {/* Wordmark row: gradient pin + "Mapvest" wordmark, plus optional
-            ticker eyebrow floated right. Keeps the ownership obvious in a
-            paste into Slack or a screenshot in Twitter. */}
         <View style={styles.header}>
           <View style={styles.brand}>
-            <LinearGradient
-              colors={colors.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.pin}
-            />
+            <BrandMark size={22} />
             <Text style={styles.wordmark}>Mapvest</Text>
           </View>
           <Text style={styles.eyebrow}>
@@ -98,11 +90,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  pin: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
   },
   wordmark: {
     color: colors.fg,
