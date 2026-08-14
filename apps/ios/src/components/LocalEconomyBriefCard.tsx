@@ -13,20 +13,17 @@
  *   • Serif body (Georgia), generous line-height
  *   • Collapsible chevron header (mirrors home.tsx `wlCollapsed` pattern)
  *   • Save button → modal for label → confirmation toast (Alert.alert)
- *   • Small footer: "based on N nearby brands · sourced from Exa · <ts>"
+ *   • Small footer: "Read from N nearby businesses · sources cited · research, not advice · <ts>"
  */
 
-import {
-  fetchLocalBrief,
-  saveLocalBrief,
-  type LocalBriefResponse,
-} from "@/api/local-brief";
+import { type LocalBriefResponse, fetchLocalBrief, saveLocalBrief } from "@/api/local-brief";
+import { heartbeatLocation } from "@/notif/prefs";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -138,6 +135,17 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
         ? { lat: loc.lat, lng: loc.lng }
         : null;
 
+  // Heartbeat the resolved coords to the push scheduler once per mount —
+  // powers the "you moved to a new area" local-brief notification.
+  const heartbeatSent = useRef(false);
+  const lat = coords?.lat;
+  const lng = coords?.lng;
+  useEffect(() => {
+    if (heartbeatSent.current || !token || lat === undefined || lng === undefined) return;
+    heartbeatSent.current = true;
+    heartbeatLocation(lat, lng, token).catch(() => {});
+  }, [token, lat, lng]);
+
   const enabled = !!token && !!coords;
 
   const briefQ = useQuery<LocalBriefResponse>({
@@ -218,7 +226,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     return (
       <BriefChrome>
         <Text style={styles.mutedBody}>
-          Sign in to read a live brief on the economic character of wherever you are.
+          Sign in to read a live brief on the economy of wherever you're standing.
         </Text>
       </BriefChrome>
     );
@@ -295,10 +303,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
               color={briefQ.isFetching ? colors.fgDim : colors.accent}
             />
             <Text
-              style={[
-                styles.headerBtnText,
-                briefQ.isFetching ? { color: colors.fgDim } : null,
-              ]}
+              style={[styles.headerBtnText, briefQ.isFetching ? { color: colors.fgDim } : null]}
             >
               Refresh
             </Text>
@@ -323,7 +328,6 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
         </>
       }
     >
-
       {collapsed ? null : busy ? (
         <View style={styles.busyBlock}>
           <ActivityIndicator color={colors.accent} />
@@ -338,9 +342,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
         ) ? (
         <View style={styles.busyBlock}>
           <Text style={styles.errorLabel}>
-            {briefQ.isError
-              ? "Couldn't load the brief."
-              : "Research service was busy — try again."}
+            {briefQ.isError ? "Couldn't load the brief." : "Research service was busy — try again."}
           </Text>
           <Pressable
             onPress={() => {
@@ -359,8 +361,12 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
         <>
           <BriefBody paragraphs={briefQ.data.paragraphs} />
           <Text style={styles.footer}>
-            based on {briefQ.data.nearbyCount} nearby brand
-            {briefQ.data.nearbyCount === 1 ? "" : "s"} · sourced from Exa ·{" "}
+            {briefQ.data.nearbyCount > 0
+              ? `Read from ${briefQ.data.nearbyCount} nearby business${
+                  briefQ.data.nearbyCount === 1 ? "" : "es"
+                }`
+              : "Read from your area"}
+            {" · sources cited · research, not advice · "}
             {new Date(briefQ.data.generatedAt).toLocaleString(undefined, {
               month: "short",
               day: "numeric",
@@ -386,9 +392,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
             // reaching the card while still allowing card taps to work.
           >
             <Text style={styles.modalTitle}>Save to Location folder</Text>
-            <Text style={styles.modalHint}>
-              Give this brief a label so you can find it later.
-            </Text>
+            <Text style={styles.modalHint}>Give this brief a label so you can find it later.</Text>
             <TextInput
               value={labelDraft}
               onChangeText={setLabelDraft}
@@ -472,7 +476,10 @@ function BriefBody({ paragraphs }: { paragraphs: string[] }) {
  * The `outlook` flag downgrades typography for the optional ¶4 closer.
  */
 function ParagraphBlock({ text, outlook }: { text: string; outlook: boolean }) {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   const labelStart = lines.findIndex((l) => THOC_REGEX.test(l));
   const bodyStyle = outlook ? styles.bodyOutlook : styles.body;
 
@@ -489,8 +496,8 @@ function ParagraphBlock({ text, outlook }: { text: string; outlook: boolean }) {
         {labeled.map((line, i) => {
           const m = line.match(THOC_REGEX);
           if (!m) {
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional
             return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: positional
               <Text key={`x${i}`} style={bodyStyle}>
                 {line}
               </Text>
