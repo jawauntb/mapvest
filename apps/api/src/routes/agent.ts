@@ -530,15 +530,48 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
       });
 
       if (!upstream.ok || !upstream.body) {
-        const text = await upstream.text().catch(() => "");
-        await sse.writeSSE({
-          event: "error",
-          data: JSON.stringify({
-            message: `derivation agent ${upstream.status}`,
-            detail: text.slice(0, 300),
-          }),
-        });
-        return;
+        try {
+          const fallback = await openRouterResearchBrief(prompt);
+          await sse.writeSSE({
+            event: "token",
+            data: JSON.stringify({ text: fallback }),
+          });
+          await sse.writeSSE({
+            event: "article",
+            data: JSON.stringify({
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: fallback,
+              createdAt: new Date().toISOString(),
+              interesting: [],
+              ideas: [],
+              toolsUsed: [],
+              sources: [],
+              chartTickers: [
+                ...(ticker ? [ticker] : []),
+                ...tickersFromText(fallback),
+              ]
+                .filter((t, i, a) => a.indexOf(t) === i)
+                .slice(0, 4),
+            }),
+          });
+          await sse.writeSSE({
+            event: "done",
+            data: JSON.stringify({ threadId }),
+          });
+          span.setAttribute("research_fallback", "openrouter");
+          return;
+        } catch {
+          const text = await upstream.text().catch(() => "");
+          await sse.writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              message: `derivation agent ${upstream.status}`,
+              detail: text.slice(0, 300),
+            }),
+          });
+          return;
+        }
       }
 
       // Accumulators for building the final ResearchArticle.
@@ -570,7 +603,7 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
         if (!dataLines.length) return;
         let payload: {
           thread?: UpstreamThread;
-          data?: { type?: string; text?: string; tool?: string; ok?: boolean; arg?: string };
+          data?: { type?: string; text?: string; tool?: string; ok?: boolean; arg?: string; error?: string };
           latest_result?: UpstreamMsg["result"];
         };
         try {
@@ -594,6 +627,10 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
           }
         }
         const inner = payload.data;
+        if (inner?.type === "error") {
+          const code = inner.error || inner.text || "MODEL_BUDGET_EXHAUSTED";
+          if (isMachineErrorText(code) || /budget/i.test(code)) error = code;
+        }
         if (inner?.type === "tool_start" && typeof inner.tool === "string") {
           tools.push(inner.tool);
           openTools.add(inner.tool);
@@ -615,6 +652,10 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
         }
         if (inner?.type === "model_text" && typeof inner.text === "string") {
           texts.push(inner.text);
+          if (isMachineErrorText(inner.text)) {
+            error = inner.text.trim();
+            return;
+          }
           const brief = extractBriefing(inner.text);
           if (brief) latestBriefing = brief;
           // Chunk into ~20-char slices so the client sees a smooth stream even
@@ -669,16 +710,27 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
         return;
       }
 
-      const content =
+      let content =
         latestBriefing ??
         texts
           .map((t) => t.trim())
-          .filter(Boolean)
+          .filter((t) => t && !isMachineErrorText(t))
           .slice(-2)
           .join("\n\n")
           .trim();
 
-      if (!content) {
+      if (!content || isMachineErrorText(content) || error) {
+        try {
+          content = await openRouterResearchBrief(prompt);
+          error = undefined;
+          tokensStreamed = 0;
+          span.setAttribute("research_fallback", "openrouter");
+        } catch (fallbackErr) {
+          span.recordException(fallbackErr);
+        }
+      }
+
+      if (!content || isMachineErrorText(content)) {
         await sse.writeSSE({
           event: "error",
           data: JSON.stringify({

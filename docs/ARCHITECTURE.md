@@ -71,7 +71,7 @@ and is **neighborhood-scoped** (Nominatim zoom 16 + suburb/neighbourhood,
 map viewport center when the user has panned the map — not “New York, New
 York”). Opus writes it first. Research chat proxies Derivation; if that
 service returns a machine error (`MODEL_BUDGET_EXHAUSTED`) we fall back to
-the same OpenRouter stack and never show the raw code. Every screen has a
+OpenRouter (Grok 4.6 → GPT-5.6 Luna → Opus 4.8) and never show the raw code. Every screen has a
 **menu burger** (shared `AppTopBar` or the tab header). Map refetch follows
 zoom (viewport radius + zoom bucket); Apple/Google POIs are hidden so only
 our pins carry tickers; same-brand locations inherit a resolved ticker;

@@ -1,12 +1,14 @@
 /**
  * Derivation Research Console is a separate service (finance-agent tools).
- * When it returns a machine error (MODEL_BUDGET_EXHAUSTED, etc.) we still
- * owe the user a brief — same OpenRouter stack as identify / local brief.
- * No invented prices; prose only.
+ * When it returns MODEL_BUDGET_EXHAUSTED we still owe the user a brief.
+ * Chain: Grok 4.6 → GPT-5.6 Luna → Claude Opus 4.8. No invented prices.
  */
 
-const PRIMARY_MODEL = "openai/gpt-5.6-terra";
-const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
+export const RESEARCH_FALLBACK_MODELS = [
+  "x-ai/grok-4.6",
+  "openai/gpt-5.6-luna",
+  "anthropic/claude-opus-4.8",
+] as const;
 const TIMEOUT_MS = 25_000;
 
 export function isMachineErrorText(s: string | undefined | null): boolean {
@@ -25,7 +27,7 @@ export async function openRouterResearchBrief(message: string): Promise<string> 
   const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
   if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
 
-  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  const models = RESEARCH_FALLBACK_MODELS;
   let lastErr: unknown;
   for (const model of models) {
     try {
@@ -69,7 +71,13 @@ async function requestBrief(
       }),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 402 || res.status === 429 || isMachineErrorText(body)) {
+        throw new Error(`MODEL_BUDGET_EXHAUSTED (${model} ${res.status})`);
+      }
+      throw new Error(`OpenRouter ${model} ${res.status}`);
+    }
     const j = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
