@@ -14,6 +14,17 @@ import { StyleSheet, Text, type TextStyle, View } from "react-native";
  * pattern `$SYM(.SUB)?` where SYM is 1–5 uppercase letters. False positives
  * ($100, $9.99) are excluded by the leading-letter requirement.
  */
+/** Models wrap titles in **bold** even when we ask for plain text. */
+export function stripMdMarks(s: string): string {
+  return s
+    .trim()
+    .replace(/^\*\*(.+)\*\*$/s, "$1")
+    .replace(/^__(.+)__$/s, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .trim();
+}
+
 export function RichText({
   text,
   style,
@@ -29,11 +40,12 @@ export function RichText({
     router.push({ pathname: "/detail/[id]", params: { id: t.toUpperCase() } });
   };
 
-  const blocks = splitBlocks(text);
+  const clean = stripMdMarks(text);
+  const blocks = splitBlocks(clean);
   if (blocks.length === 0) {
     return (
       <Text style={[styles.body, style]} allowFontScaling>
-        {renderInline(text, openTicker)}
+        {renderInline(clean, openTicker)}
       </Text>
     );
   }
