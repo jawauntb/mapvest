@@ -44,6 +44,9 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 
 ## UX mean (client)
 
+Photos → Share → Mapvest is the same identify loop as Camera (`/share-intent`).
+The share extension is native; JS alone cannot appear in the iOS share sheet.
+
 First session teaches one loop: camera or map → one identity → one ticker
 card with sources. Home is a watchlist, not a second command center. Map and
 List are blended (bottom sheet on the map + **View as List** / **View as Map**

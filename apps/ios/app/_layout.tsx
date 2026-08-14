@@ -4,6 +4,7 @@ import { FirstOpenSheet } from "@/components/FirstOpenSheet";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerForPush } from "@/notif/registerForPush";
 import { type NotifData, pathFromNotificationData } from "@/notif/router";
+import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -11,30 +12,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
+import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-// Build 10 log showed the app hangs *after* AppDelegate returns but before
-// React ever renders. Native process is healthy (iOS marks scene Visible,
-// PID alive) — the JS root simply never mounts, so the splash never hides
-// and we see pure black. Two most-likely blockers at the render layer:
-//
-//   1. `<ShareIntentProvider>` — brand-new native module (expo-share-intent)
-//      that wraps the entire tree. Its native init may hang on iOS 26,
-//      leaving all children unmounted. Build 11 removes it entirely; the
-//      inbound share-sheet feature is deferred until we can validate the
-//      module on iOS 26.
-//
-//   2. `PersistQueryClientProvider` — blocks children until AsyncStorage
-//      hydration completes. If hydration stalls, React never renders. We
-//      swap to plain `QueryClientProvider` with a fire-and-forget hydrate
-//      side effect so children mount immediately.
-//
-// We also force `SplashScreen.hideAsync()` on mount with a 3s fallback so
-// even in the worst case the splash doesn't stay up forever.
+// Splash hides immediately so a hung native module cannot leave a black
+// window. ShareIntentProvider used to wrap the tree at boot and could
+// stall first paint on iOS 26 — we mount it after the first frame.
 
 SplashScreen.hideAsync().catch(() => {});
 
@@ -167,55 +154,79 @@ export default function RootLayout() {
   // could gate rendering — we still render regardless.
   void rootReady;
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <NonBlockingPersistProvider client={queryClient}>
-          <SessionProvider>
-            <SidebarProvider>
-              <PushBridge />
-              <StatusBar style="light" />
-              <Stack
-                screenOptions={{
-                  headerShown: false,
+  const tree = (
+    <SafeAreaProvider>
+      <NonBlockingPersistProvider client={queryClient}>
+        <SessionProvider>
+          <SidebarProvider>
+            <PushBridge />
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.bg },
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="auth" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen
+                name="detail/[id]"
+                options={{
+                  presentation: "modal",
+                  headerShown: true,
+                  title: "Mapvest",
+                  headerStyle: { backgroundColor: colors.bgElevated },
+                  headerTintColor: colors.fg,
+                  headerTitleStyle: { fontWeight: "700" },
                   contentStyle: { backgroundColor: colors.bg },
                 }}
-              >
-                <Stack.Screen name="index" />
-                <Stack.Screen name="auth" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen
-                  name="detail/[id]"
-                  options={{
-                    presentation: "modal",
-                    headerShown: true,
-                    title: "Mapvest",
-                    headerStyle: { backgroundColor: colors.bgElevated },
-                    headerTintColor: colors.fg,
-                    headerTitleStyle: { fontWeight: "700" },
-                    contentStyle: { backgroundColor: colors.bg },
-                  }}
-                />
-                <Stack.Screen
-                  name="share-intent"
-                  options={{
-                    presentation: "modal",
-                    headerShown: true,
-                    title: "Shared to Mapvest",
-                    headerStyle: { backgroundColor: colors.bgElevated },
-                    headerTintColor: colors.fg,
-                    headerTitleStyle: { fontWeight: "700" },
-                    contentStyle: { backgroundColor: colors.bg },
-                  }}
-                />
-              </Stack>
-              <FirstOpenSheet />
-              <AppSidebar />
-            </SidebarProvider>
-          </SessionProvider>
-        </NonBlockingPersistProvider>
-      </SafeAreaProvider>
+              />
+              <Stack.Screen
+                name="share-intent"
+                options={{
+                  presentation: "modal",
+                  headerShown: true,
+                  title: "Shared to Mapvest",
+                  headerStyle: { backgroundColor: colors.bgElevated },
+                  headerTintColor: colors.fg,
+                  headerTitleStyle: { fontWeight: "700" },
+                  contentStyle: { backgroundColor: colors.bg },
+                }}
+              />
+            </Stack>
+            <FirstOpenSheet />
+            <AppSidebar />
+          </SidebarProvider>
+        </SessionProvider>
+      </NonBlockingPersistProvider>
+    </SafeAreaProvider>
+  );
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <DeferredShareIntent>{tree}</DeferredShareIntent>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Mount the share-sheet receiver after first paint. Wrapping at boot was
+ * one of the black-screen suspects; delaying keeps Photos → Mapvest without
+ * blocking launch.
+ */
+function DeferredShareIntent({ children }: { children: ReactNode }) {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setOn(true), 800);
+    return () => clearTimeout(t);
+  }, []);
+  if (!on) return children;
+  return (
+    <ShareIntentProvider>
+      <ShareIntentListener />
+      {children}
+    </ShareIntentProvider>
   );
 }
 

@@ -32,10 +32,12 @@ TestFlight/Play build.
   Accepts images, web URLs/pages, and text; only images run through
   `/v1/identify` today (see below).
 - **Receiving flow**:
-  - `apps/ios/app/_layout.tsx` wraps the app in `ShareIntentProvider` and
-    mounts `ShareIntentListener` (`apps/ios/src/share/ShareIntentListener.tsx`),
-    which watches `useShareIntentContext().hasShareIntent` and routes to
-    `/share-intent`.
+  - `apps/ios/app/_layout.tsx` mounts `ShareIntentProvider` after first
+    paint (`DeferredShareIntent`) so a hung native init cannot black-screen
+    launch. `ShareIntentListener` then routes to `/share-intent`.
+  - Build 11–42 shipped **without** the provider (black-screen fix). Those
+    IPAs will not show Mapvest in the iOS share sheet. Need a build after
+    this wiring, plus the share-extension target from `expo prebuild`.
   - `apps/ios/app/share-intent.tsx` reads the shared image, runs it through
     the same `identifyPhoto()` call the Camera tab uses (with a best-effort
     location fix), and shows the same result card (Save / View details).
