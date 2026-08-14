@@ -11,10 +11,11 @@
  *   1. Reverse-geocode (Nominatim) if city/state/zip aren't provided.
  *   2. Pull nearby brands via Overpass (mirrors of the /v1/nearby helper).
  *   3. Ask Exa for area context — 3 targeted queries.
- *   4. Compose an OpenRouter prompt (gpt-5.6-terra → claude-opus-4.8 →
- *      grok-4.6) and parse JSON output.
+ *   4. Compose an OpenRouter prompt (claude-opus-4.8 → gpt-5.6-terra →
+ *      grok-4.6) and parse JSON output. Opus first — neighborhood prose
+ *      needs the slower, better writer.
  *
- * Caching: in-memory, keyed by (rounded lat/lng to 3 decimals + UTC date).
+ * Caching: in-memory, keyed by (v2 + rounded lat/lng to 3 decimals + UTC date).
  * TTL 24h. Same cache pattern used by `watchlist-brief.ts`.
  *
  * Never throws to the caller: on any downstream failure we return
@@ -32,7 +33,7 @@ export type LocalBrief = {
    * which nearby brands most benefit or suffer from those forces.
    */
   paragraphs: string[];
-  place: { city?: string; state?: string; zip?: string };
+  place: GeoPlace;
   nearbyCount: number;
   generatedAt: string; // ISO
 };
@@ -56,7 +57,7 @@ function yyyymmdd(now: Date): string {
 }
 
 function cacheKey(lat: number, lng: number, now: Date): string {
-  return `${lat.toFixed(3)},${lng.toFixed(3)}::${yyyymmdd(now)}`;
+  return `v2:${lat.toFixed(3)},${lng.toFixed(3)}::${yyyymmdd(now)}`;
 }
 
 function readCache(key: string): LocalBrief | null {
@@ -81,11 +82,34 @@ type NominatimAddress = {
   village?: string;
   hamlet?: string;
   suburb?: string;
+  neighbourhood?: string;
+  city_district?: string;
+  borough?: string;
   state?: string;
   postcode?: string;
   county?: string;
   country?: string;
 };
+
+export type GeoPlace = {
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+};
+
+/** Prefer the neighborhood (Astoria) over the city (New York). */
+export function placeFromNominatim(a: NominatimAddress): GeoPlace {
+  const neighborhood =
+    a.neighbourhood || a.suburb || a.city_district || a.borough || a.hamlet || undefined;
+  const city = a.city || a.town || a.village || a.county || undefined;
+  return {
+    neighborhood: neighborhood && neighborhood !== city ? neighborhood : neighborhood || undefined,
+    city: city || undefined,
+    state: a.state || undefined,
+    zip: a.postcode || undefined,
+  };
+}
 
 type NominatimResponse = {
   display_name?: string;
@@ -94,10 +118,7 @@ type NominatimResponse = {
 
 // 24h in-memory reverse-geocode cache.
 const REV_GEO_TTL_MS = 24 * 60 * 60 * 1000;
-const revGeoCache = new Map<
-  string,
-  { expiresAt: number; place: { city?: string; state?: string; zip?: string } }
->();
+const revGeoCache = new Map<string, { expiresAt: number; place: GeoPlace }>();
 
 function revGeoKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)},${lng.toFixed(3)}`;
@@ -106,7 +127,7 @@ function revGeoKey(lat: number, lng: number): string {
 async function reverseGeocode(
   lat: number,
   lng: number,
-): Promise<{ city?: string; state?: string; zip?: string }> {
+): Promise<GeoPlace> {
   const key = revGeoKey(lat, lng);
   const cached = revGeoCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.place;
@@ -115,7 +136,7 @@ async function reverseGeocode(
     url.searchParams.set("format", "json");
     url.searchParams.set("lat", String(lat));
     url.searchParams.set("lon", String(lng));
-    url.searchParams.set("zoom", "12");
+    url.searchParams.set("zoom", "16");
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 6000);
     let res: Response;
@@ -130,13 +151,7 @@ async function reverseGeocode(
     }
     if (!res.ok) throw new Error(`nominatim ${res.status}`);
     const j = (await res.json()) as NominatimResponse;
-    const a = j.address ?? {};
-    const city = a.city ?? a.town ?? a.village ?? a.hamlet ?? a.suburb ?? a.county;
-    const place = {
-      city: city || undefined,
-      state: a.state || undefined,
-      zip: a.postcode || undefined,
-    };
+    const place = placeFromNominatim(j.address ?? {});
     revGeoCache.set(key, { expiresAt: Date.now() + REV_GEO_TTL_MS, place });
     return place;
   } catch {
@@ -262,26 +277,24 @@ type ExaSnippet = { title: string; url: string; snippet: string; bucket: string 
  * cheaper Paragraph-1 material; the last two are the newer municipal-policy
  * and employment-number queries that back Paragraph 2 and 3.
  */
-function exaQueriesFor(city: string, state: string): { bucket: string; query: string }[] {
-  const where = `${city} ${state}`;
+function exaQueriesFor(place: GeoPlace): { bucket: string; query: string }[] {
+  const hood = place.neighborhood;
+  const city = place.city ?? "";
+  const state = place.state ?? "";
+  const local = hood ? `${hood} ${city} ${state}`.trim() : `${city} ${state}`.trim();
+  const metro = `${city} ${state}`.trim();
   return [
-    { bucket: "overview", query: `${where} economy overview 2024 2025` },
-    { bucket: "employers", query: `largest private companies ${where}` },
-    // NEW — real unemployment / labor-force figures for ¶2.
-    { bucket: "employment", query: `${where} unemployment rate labor force 2024 2025` },
-    // NEW — municipal / state government policy for ¶3.
-    { bucket: "policy", query: `${where} business tax credits incentives programs 2024 2025` },
-    // Zoning + regulatory friction — feeds the headwinds/challenges close.
-    { bucket: "regulation", query: `${where} zoning business regulations development 2024 2025` },
+    { bucket: "overview", query: `${local} neighborhood economy retail 2024 2025` },
+    { bucket: "employers", query: `largest employers ${local}` },
+    { bucket: "employment", query: `${metro} unemployment rate labor force 2024 2025` },
+    { bucket: "policy", query: `${local} zoning small business ${metro} incentives 2024 2025` },
+    { bucket: "regulation", query: `${local} development retail mix ${state}` },
   ].slice(0, EXA_MAX_QUERIES);
 }
 
-async function fetchExaSnippets(
-  city: string,
-  state: string,
-): Promise<ExaSnippet[]> {
+async function fetchExaSnippets(place: GeoPlace): Promise<ExaSnippet[]> {
   if (!process.env.EXA_API_KEY) return [];
-  const queries = exaQueriesFor(city, state);
+  const queries = exaQueriesFor(place);
 
   const perQuery = queries.map(async (q): Promise<ExaSnippet[]> => {
     try {
@@ -309,8 +322,8 @@ async function fetchExaSnippets(
 
 // ---------------- LLM prompt (OpenRouter SOTA chain) ----------------
 
-const PRIMARY_MODEL = "openai/gpt-5.6-terra";
-const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
+const PRIMARY_MODEL = "anthropic/claude-opus-4.8";
+const FALLBACK_MODELS = ["openai/gpt-5.6-terra", "x-ai/grok-4.6"] as const;
 const OPENROUTER_TIMEOUT_MS = 25_000;
 
 const SYSTEM_PROMPT = `You are a financial-geography writer producing a "Local Economy Brief" for a private investor.
@@ -321,7 +334,7 @@ Return STRICT JSON only:
   { "paragraphs": string[] }
 The array MUST contain 3 items, or 4 if paragraph 4 adds real value. No prose outside the JSON. Each paragraph is plain text — line breaks INSIDE a paragraph are permitted ONLY for the four T/H/O/C label lines described in paragraph 3.
 
-Paragraph 1 — Area character. Introduce the place (city, state), give a sentence or two on demographics, brand mix, and neighborhood identity. Name 2-4 of the nearby PUBLIC brands by ticker and 1-2 named private/local businesses. Anchor every claim in the provided nearby list — do not invent brands or facts.
+Paragraph 1 — Area character. Name the NEIGHBORHOOD first (e.g. "Astoria, Queens"), not just the city. Write about this stretch of blocks — the brand mix you can see from the nearby list — not a city-wide essay. Name 2-4 nearby PUBLIC brands by ticker and 1-2 named private/local businesses. Anchor every claim in the provided nearby list — do not invent brands or facts.
 
 Paragraph 2 — Employment data. Lead with the unemployment rate if the search excerpts contain one (e.g. "Unemployment stands at 3.8% as of..."). Include labor-force size, dominant industries, and 1-3 named major private employers when they appear in the excerpts. If a hard figure is not surfaced, say so honestly (e.g. "current unemployment figures were not in the surfaced sources") — DO NOT invent numbers.
 
@@ -339,7 +352,7 @@ Rules: never invent statistics; prefer named specifics over adjectives; no bulle
 type LLMOutput = { paragraphs: string[] };
 
 function buildUserContent(input: {
-  place: { city?: string; state?: string; zip?: string };
+  place: GeoPlace;
   brands: NearbyBrand[];
   exa: ExaSnippet[];
 }): string {
@@ -359,7 +372,8 @@ function buildUserContent(input: {
         .join("\n\n")
     : "(no exa snippets)";
   return [
-    `Place: ${place.city ?? "unknown city"}, ${place.state ?? "unknown state"}${place.zip ? ` ${place.zip}` : ""}`,
+    `Place: ${place.neighborhood ? `${place.neighborhood}, ` : ""}${place.city ?? "unknown city"}, ${place.state ?? "unknown state"}${place.zip ? ` ${place.zip}` : ""}`,
+    "Write about THIS neighborhood / these blocks. Do not open with the city name alone.",
     "",
     `Nearby brands within ~800m (max 20):\n${brandLine}`,
     "",
@@ -473,6 +487,7 @@ export const OUTAGE_LOCAL_BRIEF: Omit<LocalBrief, "generatedAt" | "place" | "nea
 export async function generateLocalBrief(input: {
   lat: number;
   lng: number;
+  neighborhood?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -483,15 +498,16 @@ export async function generateLocalBrief(input: {
   const cached = readCache(key);
   if (cached) return cached;
 
-  // Resolve city/state/zip if we weren't handed them.
-  let place: { city?: string; state?: string; zip?: string } = {
+  let place: GeoPlace = {
+    neighborhood: input.neighborhood,
     city: input.city,
     state: input.state,
     zip: input.zip,
   };
-  if (!place.city || !place.state) {
+  if (!place.neighborhood || !place.city || !place.state) {
     const geo = await reverseGeocode(input.lat, input.lng);
     place = {
+      neighborhood: place.neighborhood ?? geo.neighborhood,
       city: place.city ?? geo.city,
       state: place.state ?? geo.state,
       zip: place.zip ?? geo.zip,
@@ -500,11 +516,7 @@ export async function generateLocalBrief(input: {
 
   const brands = await fetchNearbyBrands(input.lat, input.lng, 800);
 
-  // Exa needs at least a city; if we don't have one, skip it.
-  const exa =
-    place.city && place.state
-      ? await fetchExaSnippets(place.city, place.state)
-      : [];
+  const exa = place.city || place.neighborhood ? await fetchExaSnippets(place) : [];
 
   try {
     const output = await callOpenRouter(

@@ -25,6 +25,7 @@ import {
 } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { BacktestCard } from "@/components/BacktestCard";
+import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -162,36 +163,35 @@ export default function WatchlistDetailScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <Stack.Screen options={{ title: displayName }} />
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          style={styles.iconBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.fg} />
-        </Pressable>
-        <View style={styles.titleWrap}>
-          <Text style={styles.title} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {list?.isDefault ? <Text style={styles.titleTag}>Default</Text> : null}
-        </View>
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            setRenameValue(displayName);
-            setRenameOpen(true);
-          }}
-          hitSlop={12}
-          style={styles.iconBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Rename list"
-        >
-          <Ionicons name="pencil-outline" size={18} color={colors.fgMuted} />
-        </Pressable>
-      </View>
+      <AppTopBar
+        title={displayName}
+        leading={
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.fg} />
+          </Pressable>
+        }
+        right={
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              setRenameValue(displayName);
+              setRenameOpen(true);
+            }}
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Rename list"
+          >
+            <Ionicons name="pencil-outline" size={18} color={colors.fgMuted} />
+          </Pressable>
+        }
+      />
 
       <ScreenFade>
         <FlatList

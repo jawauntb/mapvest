@@ -7,6 +7,7 @@
 import { apiFetch, type FetchOpts } from "./http";
 
 export type LocalBriefPlace = {
+  neighborhood?: string;
   city?: string;
   state?: string;
   zip?: string;

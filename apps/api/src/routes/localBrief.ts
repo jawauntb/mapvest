@@ -39,6 +39,7 @@ localBrief.post("/", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       lat?: number;
       lng?: number;
+      neighborhood?: string;
       city?: string;
       state?: string;
       zip?: string;
@@ -60,6 +61,7 @@ localBrief.post("/", async (c) => {
       const brief = await generateLocalBrief({
         lat,
         lng,
+        neighborhood: body.neighborhood,
         city: body.city,
         state: body.state,
         zip: body.zip,

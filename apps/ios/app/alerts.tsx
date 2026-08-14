@@ -20,6 +20,7 @@ import {
   listPriceAlerts,
 } from "@/api/alerts";
 import { useSession } from "@/auth/session";
+import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -101,27 +102,27 @@ export default function AlertsScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <Stack.Screen options={{ title: "Alerts" }} />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Alerts</Text>
-          <Text style={styles.subtitle}>
-            {active.length} active · {triggered.length} triggered
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            setCreating(true);
-          }}
-          style={styles.newBtn}
-          disabled={!session?.token}
-          accessibilityRole="button"
-          accessibilityLabel="New alert"
-        >
-          <Ionicons name="add" size={16} color={colors.accentInk} />
-          <Text style={styles.newBtnText}>New</Text>
-        </Pressable>
-      </View>
+      <AppTopBar
+        title="Alerts"
+        right={
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              setCreating(true);
+            }}
+            style={styles.newBtn}
+            disabled={!session?.token}
+            accessibilityRole="button"
+            accessibilityLabel="New alert"
+          >
+            <Ionicons name="add" size={16} color={colors.accentInk} />
+            <Text style={styles.newBtnText}>New</Text>
+          </Pressable>
+        }
+      />
+      <Text style={[styles.subtitle, { paddingHorizontal: 20, marginBottom: 8 }]}>
+        {active.length} active · {triggered.length} triggered
+      </Text>
 
       <ScreenFade>
         {!session?.token ? (

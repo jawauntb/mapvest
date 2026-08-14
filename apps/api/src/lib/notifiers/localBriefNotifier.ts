@@ -24,9 +24,11 @@ export async function onLocalBriefGenerated(
   if (tokens.length === 0) return;
   if (!shouldSend(tokens, DEDUPE_SLOT, key)) return;
 
-  const placeName = brief.place.city
-    ? `${brief.place.city}${brief.place.state ? `, ${brief.place.state}` : ""}`
-    : "your area";
+  const placeName = brief.place.neighborhood
+    ? `${brief.place.neighborhood}${brief.place.city ? `, ${brief.place.city}` : ""}`
+    : brief.place.city
+      ? `${brief.place.city}${brief.place.state ? `, ${brief.place.state}` : ""}`
+      : "your area";
   const first = brief.paragraphs[0]?.slice(0, 220) ?? "";
 
   await sendPush({

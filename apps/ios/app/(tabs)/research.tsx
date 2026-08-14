@@ -6,6 +6,7 @@ import {
   listAgentThreads,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RichText } from "@/components/RichText";
@@ -144,10 +145,15 @@ export default function ResearchChatScreen() {
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
       if (title === "New research") setTitle(msg.slice(0, 48));
-      const tools = r.article.toolsUsed?.length
-        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
-        : "";
-      setStatus(`Brief ready${tools}`);
+      if (r.article.error) {
+        setErr("Research hit a limit — we wrote a shorter brief instead, or try again.");
+        setStatus(null);
+      } else {
+        const tools = r.article.toolsUsed?.length
+          ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+          : "";
+        setStatus(`Brief ready${tools}`);
+      }
     } catch (e) {
       setErr((e as Error).message);
       setStatus(null);
@@ -160,20 +166,22 @@ export default function ResearchChatScreen() {
     const threads = threadsQ.data?.threads ?? [];
     return (
       <SafeAreaView style={styles.root} edges={["top"]}>
-        <View style={styles.header}>
-          <Text style={styles.h1}>Research</Text>
-          <Pressable
-            style={styles.newBtn}
-            onPress={() => newChat()}
-            accessibilityRole="button"
-            accessibilityLabel="New research chat"
-          >
-            <Ionicons name="add" size={16} color={colors.accentInk} />
-            <Text style={styles.newBtnText}>New</Text>
-          </Pressable>
-        </View>
+        <AppTopBar
+          title="Research"
+          right={
+            <Pressable
+              style={styles.newBtn}
+              onPress={() => newChat()}
+              accessibilityRole="button"
+              accessibilityLabel="New research chat"
+            >
+              <Ionicons name="add" size={16} color={colors.accentInk} />
+              <Text style={styles.newBtnText}>New</Text>
+            </Pressable>
+          }
+        />
         <Text style={styles.hint}>
-          Article-style briefs · Derivation tools behind the scenes · not advice
+          Article-style briefs · not advice
         </Text>
         <ScreenFade>
           {threadsQ.isLoading ? (
@@ -232,31 +240,33 @@ export default function ResearchChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={64}
       >
-        <View style={styles.chatBar}>
-          <Pressable
-            onPress={() => {
-              hapticSelect();
-              setMode("list");
-            }}
-            style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="Back to chats"
-          >
-            <Ionicons name="chevron-back" size={18} color={colors.accent2} />
-            <Text style={styles.backText}>Chats</Text>
-          </Pressable>
-          <Text style={styles.chatTitle} numberOfLines={1}>
-            {title}
-          </Text>
-          <Pressable
-            onPress={() => newChat()}
-            style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="New chat"
-          >
-            <Text style={styles.backText}>New</Text>
-          </Pressable>
-        </View>
+        <AppTopBar
+          title={title}
+          leading={
+            <Pressable
+              onPress={() => {
+                hapticSelect();
+                setMode("list");
+              }}
+              style={styles.back}
+              accessibilityRole="button"
+              accessibilityLabel="Back to chats"
+            >
+              <Ionicons name="chevron-back" size={18} color={colors.accent2} />
+              <Text style={styles.backText}>Chats</Text>
+            </Pressable>
+          }
+          right={
+            <Pressable
+              onPress={() => newChat()}
+              style={styles.back}
+              accessibilityRole="button"
+              accessibilityLabel="New chat"
+            >
+              <Text style={styles.backText}>New</Text>
+            </Pressable>
+          }
+        />
 
         <ScrollView contentContainerStyle={styles.stream} keyboardShouldPersistTaps="handled">
           {turns.length === 0 ? (

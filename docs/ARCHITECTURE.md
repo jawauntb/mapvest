@@ -67,7 +67,15 @@ toggles) rather than duplicated as Home widgets. There is **no bottom tab
 bar** — destinations live in the profile drawer (left-sliding) and a camera
 icon sits in the top-right of Home / Map / List. The Local Economy Brief sits
 above the watchlist on every Home load (featured chrome, always refreshable)
-so the unique local read is never buried. Daily brief, movers, and backtest
+and is **neighborhood-scoped** (Nominatim zoom 16 + suburb/neighbourhood,
+map viewport center when the user has panned the map — not “New York, New
+York”). Opus writes it first. Research chat proxies Derivation; if that
+service returns a machine error (`MODEL_BUDGET_EXHAUSTED`) we fall back to
+the same OpenRouter stack and never show the raw code. Every screen has a
+**menu burger** (shared `AppTopBar` or the tab header). Map refetch follows
+zoom (viewport radius + zoom bucket); Apple/Google POIs are hidden so only
+our pins carry tickers; same-brand locations inherit a resolved ticker;
+overlapped chips go to the pin closest to the viewport center. Daily brief, movers, and backtest
 appear only after the user has saved something. Overview
 shows a native Yahoo price series; analyzer PNGs live in an Analytics
 section with auction / ridge / regression chips. A listed ticker page is
