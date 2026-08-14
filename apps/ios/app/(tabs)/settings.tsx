@@ -102,7 +102,6 @@ export default function SettingsScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        <Text style={styles.h1}>Settings</Text>
         <Text style={styles.sub}>Account · integrations</Text>
 
         <View style={styles.card}>
@@ -376,7 +375,6 @@ function GuestHome() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Settings</Text>
         <Text style={styles.sub}>Account · integrations</Text>
 
         <View style={styles.card}>

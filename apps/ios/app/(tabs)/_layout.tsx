@@ -152,7 +152,7 @@ function TabsInner() {
       <Tabs.Screen name="saved" options={{ href: null, title: "Watchlist" }} />
       <Tabs.Screen
         name="settings"
-        options={{ href: null, title: "Settings", headerShown: false }}
+        options={{ href: null, title: "Settings" }}
       />
       <Tabs.Screen
         name="admin"

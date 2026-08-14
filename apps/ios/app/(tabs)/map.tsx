@@ -69,25 +69,43 @@ export default function MapScreen() {
   }, [cachedRegion, qc]);
 
   const nearbyQuery = useQuery({
-    queryKey: ["nearby", region.latitude.toFixed(3), region.longitude.toFixed(3)],
+    queryKey: [
+      "nearby",
+      region.latitude.toFixed(3),
+      region.longitude.toFixed(3),
+      zoomBucket(region),
+    ],
     queryFn: () =>
       fetchNearby(
-        { lat: region.latitude, lng: region.longitude, radius: 1500, limit: 50 },
+        {
+          lat: region.latitude,
+          lng: region.longitude,
+          radius: viewportRadiusM(region),
+          limit: 50,
+        },
         { token: session?.token },
       ),
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
   });
 
-  const items = useMemo(() => nearbyQuery.data?.items ?? [], [nearbyQuery.data]);
+  const items = useMemo(() => {
+    const raw = nearbyQuery.data?.items ?? [];
+    const center = { lat: region.latitude, lng: region.longitude };
+    return [...raw].sort(
+      (a, b) =>
+        haversineMeters(a.place.location, center) - haversineMeters(b.place.location, center),
+    );
+  }, [nearbyQuery.data, region.latitude, region.longitude]);
+  const brandTickers = useMemo(() => brandTickerIndex(items), [items]);
 
   const pinTickers = useMemo(() => {
     const out: string[] = [];
     for (const item of items) {
-      const t = resolvePinTicker(item);
+      const t = resolvePinTicker(item, brandTickers);
       if (t) out.push(t.symbol);
     }
     return [...new Set(out)];
-  }, [items]);
+  }, [items, brandTickers]);
 
   const quotesQuery = useQuery({
     queryKey: ["map-quotes", pinTickers.join(",")],
@@ -152,16 +170,21 @@ export default function MapScreen() {
           setRegion(r);
           qc.setQueryData(["tab-state", "map-region"], r);
           setFocusedPlaceId(null);
+          setTrackMarkers(true);
+          void saveLastLocationForWidgets({ lat: r.latitude, lng: r.longitude });
         }}
         onPress={() => setFocusedPlaceId(null)}
         showsUserLocation
         showsMyLocationButton
+        showsPointsOfInterest={false}
+        showsBuildings={false}
       >
         {items.map((item) => {
-          const pin = resolvePinTicker(item);
+          const pin = resolvePinTicker(item, brandTickers);
           const quote = pin ? quotes[pin.symbol] : undefined;
           const hasTicker = !!pin;
           const revealed = focusedPlaceId === item.place.id;
+          const showChip = shouldShowChip(item, items, region, focusedPlaceId, brandTickers);
           return (
             <Marker
               key={item.place.id}
@@ -171,7 +194,7 @@ export default function MapScreen() {
               }}
               tracksViewChanges={trackMarkers || revealed}
               anchor={{ x: 0.5, y: 1 }}
-              zIndex={revealed ? 100 : hasTicker ? 2 : 1}
+              zIndex={revealed ? 100 : showChip ? 3 : hasTicker ? 2 : 1}
               onPress={(e) => {
                 e.stopPropagation?.();
                 onPinPress(item);
@@ -179,7 +202,7 @@ export default function MapScreen() {
             >
               <TickerPin
                 placeName={item.place.name}
-                pin={pin}
+                pin={showChip ? pin : null}
                 quote={quote}
                 accent={pinColor(item)}
                 revealed={revealed}
@@ -216,6 +239,7 @@ export default function MapScreen() {
 
       <NearbySheet
         items={items}
+        brandTickers={brandTickers}
         quotes={quotes}
         loading={nearbyQuery.isFetching && items.length === 0}
         focusedPlaceId={focusedPlaceId}
@@ -227,7 +251,7 @@ export default function MapScreen() {
             label: `${items.length} pins on screen`,
             center: { lat: region.latitude, lng: region.longitude },
             nearby: items.slice(0, 20).map((i) => {
-              const pin = resolvePinTicker(i);
+              const pin = resolvePinTicker(i, brandTickers);
               return {
                 ticker: pin?.symbol,
                 name: i.place.name,
@@ -242,6 +266,7 @@ export default function MapScreen() {
 
 function NearbySheet({
   items,
+  brandTickers,
   quotes,
   loading,
   focusedPlaceId,
@@ -250,6 +275,7 @@ function NearbySheet({
   onChat,
 }: {
   items: NearbyItem[];
+  brandTickers: Map<string, PinTicker>;
   quotes: Record<string, Quote>;
   loading: boolean;
   focusedPlaceId: string | null;
@@ -310,7 +336,7 @@ function NearbySheet({
           </Text>
         ) : (
           rows.map((item) => {
-            const pin = resolvePinTicker(item);
+            const pin = resolvePinTicker(item, brandTickers);
             const quote = pin ? quotes[pin.symbol] : undefined;
             const up = (quote?.change ?? 0) >= 0;
             const focused = focusedPlaceId === item.place.id;
@@ -352,7 +378,20 @@ type PinTicker = {
   isPublic: boolean;
 };
 
-function resolvePinTicker(item: NearbyItem): PinTicker | null {
+function brandKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function brandTickerIndex(items: NearbyItem[]): Map<string, PinTicker> {
+  const out = new Map<string, PinTicker>();
+  for (const item of items) {
+    const pin = resolveOwnTicker(item);
+    if (pin) out.set(brandKey(item.place.name), pin);
+  }
+  return out;
+}
+
+function resolveOwnTicker(item: NearbyItem): PinTicker | null {
   const inv = item.investable;
   if (!inv) return null;
   const own = inv.brand.ticker?.symbol?.trim().toUpperCase();
@@ -360,6 +399,53 @@ function resolvePinTicker(item: NearbyItem): PinTicker | null {
   const comp = inv.comparables?.[0]?.ticker?.trim().toUpperCase();
   if (comp) return { symbol: comp, isPublic: false };
   return null;
+}
+
+function resolvePinTicker(
+  item: NearbyItem,
+  brandTickers?: Map<string, PinTicker>,
+): PinTicker | null {
+  return resolveOwnTicker(item) ?? brandTickers?.get(brandKey(item.place.name)) ?? null;
+}
+
+function viewportRadiusM(region: Region): number {
+  const half = (region.latitudeDelta * 111_320) / 2;
+  return Math.round(Math.max(250, Math.min(2500, half)));
+}
+
+function zoomBucket(region: Region): string {
+  const d = region.latitudeDelta;
+  if (d < 0.004) return "street";
+  if (d < 0.012) return "block";
+  if (d < 0.03) return "hood";
+  return "wide";
+}
+
+/** Full chip on the pin closest to the viewport center in an overlap cluster. */
+function shouldShowChip(
+  item: NearbyItem,
+  items: NearbyItem[],
+  region: Region,
+  focusedPlaceId: string | null,
+  brandTickers: Map<string, PinTicker>,
+): boolean {
+  if (focusedPlaceId === item.place.id) return true;
+  if (!resolvePinTicker(item, brandTickers)) return false;
+  const cluster = items.filter(
+    (other) => haversineMeters(item.place.location, other.place.location) <= OVERLAP_METERS,
+  );
+  if (cluster.length <= 1) return true;
+  const center = { lat: region.latitude, lng: region.longitude };
+  let best = cluster[0];
+  let bestD = haversineMeters(best.place.location, center);
+  for (const other of cluster.slice(1)) {
+    const d = haversineMeters(other.place.location, center);
+    if (d < bestD) {
+      best = other;
+      bestD = d;
+    }
+  }
+  return best.place.id === item.place.id;
 }
 
 function TickerPin({

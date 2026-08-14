@@ -9,6 +9,7 @@ import {
   type SavedLocalBrief,
 } from "@/api/local-brief";
 import { useSession } from "@/auth/session";
+import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -68,22 +69,23 @@ export default function SavedLocationsScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <Stack.Screen options={{ title: "Location folder", headerShown: false }} />
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            router.back();
-          }}
-          hitSlop={12}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.fg} />
-        </Pressable>
-        <Text style={styles.title}>Location folder</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <AppTopBar
+        title="Location folder"
+        leading={
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              router.back();
+            }}
+            hitSlop={12}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.fg} />
+          </Pressable>
+        }
+      />
 
       <ScreenFade>
         {!session?.token ? (

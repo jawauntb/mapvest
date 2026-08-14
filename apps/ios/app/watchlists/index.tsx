@@ -16,6 +16,7 @@ import {
   renameWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -123,19 +124,20 @@ export default function WatchlistsIndexScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <Stack.Screen options={{ title: "Watchlists" }} />
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          style={styles.iconBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.fg} />
-        </Pressable>
-        <Text style={styles.title}>Watchlists</Text>
-        <View style={styles.iconBtn} />
-      </View>
+      <AppTopBar
+        title="Watchlists"
+        leading={
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.fg} />
+          </Pressable>
+        }
+      />
 
       <ScreenFade>
         {!session?.token ? (

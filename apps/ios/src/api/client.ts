@@ -358,6 +358,7 @@ export type ResearchArticle = {
   toolsUsed: string[];
   sources: Array<{ label: string; url?: string }>;
   chartTickers: string[];
+  error?: string;
 };
 
 export type AgentThread = {

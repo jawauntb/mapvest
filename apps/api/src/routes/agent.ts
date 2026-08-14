@@ -6,6 +6,11 @@ import {
   derivationReadHeaders,
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import {
+  friendlyResearchPreview,
+  isMachineErrorText,
+  openRouterResearchBrief,
+} from "../lib/research-fallback.js";
 import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
@@ -90,7 +95,9 @@ function tickersFromText(text: string): string[] {
 
 function normalizeMessage(m: UpstreamMsg) {
   const briefing = m.result?.briefing?.trim();
-  const content = (briefing || m.content || "").trim();
+  const rawContent = (briefing || m.content || "").trim();
+  const machine = Boolean(m.result?.error) || isMachineErrorText(rawContent);
+  const content = machine ? friendlyResearchPreview() : rawContent;
   const interesting = Array.isArray(m.result?.interesting)
     ? m.result!.interesting!.filter((x): x is string => typeof x === "string")
     : [];
@@ -140,19 +147,20 @@ function normalizeMessage(m: UpstreamMsg) {
 
 function normalizeThread(t: UpstreamThread) {
   const messages = (t.messages ?? []).map(normalizeMessage);
+  const lastAssistant = messages.filter((m) => m.role === "assistant").at(-1);
+  const rawPreview =
+    lastAssistant?.content?.slice(0, 180) ?? messages.at(-1)?.content?.slice(0, 180) ?? "";
+  const preview =
+    lastAssistant?.error || isMachineErrorText(rawPreview)
+      ? friendlyResearchPreview()
+      : rawPreview;
   return {
     id: t.id,
-    title: t.title ?? "Research",
+    title: t.title && t.title !== "Idea chat" ? t.title : "Research",
     createdAt: t.created_at,
     updatedAt: t.updated_at,
     messages,
-    preview:
-      messages
-        .filter((m) => m.role === "assistant")
-        .at(-1)
-        ?.content?.slice(0, 180) ??
-      messages.at(-1)?.content?.slice(0, 180) ??
-      "",
+    preview,
     safety: {
       liveTradingForbidden: t.safety?.live_trading_forbidden ?? true,
       orderSubmissionAllowed: t.safety?.order_submission_allowed ?? false,
@@ -275,11 +283,44 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
       upstream_latency_ms: Math.round(performance.now() - started),
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return c.json(
-        { error: `derivation agent ${res.status}`, detail: text.slice(0, 300) },
-        502,
-      );
+      try {
+        const fallback = await openRouterResearchBrief(prompt);
+        return c.json({
+          threadId,
+          ticker,
+          article: {
+            id: crypto.randomUUID(),
+            role: "assistant" as const,
+            content: fallback,
+            createdAt: new Date().toISOString(),
+            interesting: [],
+            ideas: [],
+            toolsUsed: [],
+            sources: [],
+            chartTickers: tickersFromText(fallback).slice(0, 4),
+          },
+          userMessage: {
+            id: crypto.randomUUID(),
+            role: "user" as const,
+            content: message,
+            createdAt: new Date().toISOString(),
+            interesting: [],
+            ideas: [],
+            toolsUsed: [],
+            sources: [],
+            chartTickers: ticker ? [ticker] : [],
+          },
+          safety: { liveTradingForbidden: true, orderSubmissionAllowed: false },
+          provider: "openrouter",
+          sourceUrl: `${DERIVATION_URL}/docs`,
+        });
+      } catch {
+        const text = await res.text().catch(() => "");
+        return c.json(
+          { error: `derivation agent ${res.status}`, detail: text.slice(0, 300) },
+          502,
+        );
+      }
     }
 
     const raw = await res.text();
@@ -329,7 +370,7 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
       }
     }
 
-    const content =
+    let content =
       latestBriefing ??
       texts
         .map((t) => t.trim())
@@ -338,7 +379,19 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
         .join("\n\n")
         .trim();
 
-    if (!content) {
+    let provider: "derivation-research-console" | "openrouter" = "derivation-research-console";
+    if (!content || isMachineErrorText(content) || error) {
+      try {
+        content = await openRouterResearchBrief(prompt);
+        error = undefined;
+        provider = "openrouter";
+        span.setAttribute("research_fallback", "openrouter");
+      } catch (fallbackErr) {
+        span.recordException(fallbackErr);
+      }
+    }
+
+    if (!content || isMachineErrorText(content)) {
       return c.json(
         {
           error: "agent returned no text",
@@ -396,7 +449,7 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
         liveTradingForbidden: true,
         orderSubmissionAllowed: false,
       },
-      provider: "derivation-research-console",
+      provider,
       sourceUrl: `${DERIVATION_URL}/docs`,
     });
   });

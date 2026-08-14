@@ -83,7 +83,14 @@ function BriefChrome({
   );
 }
 
+type MapRegion = { latitude: number; longitude: number };
+
 export function LocalEconomyBriefCard({ token }: { token: string | undefined }) {
+  const mapRegion = useQuery<MapRegion | undefined>({
+    queryKey: ["tab-state", "map-region"],
+    enabled: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  }).data;
   const [collapsed, setCollapsed] = useState(false);
   const [loc, setLoc] = useState<LocState>({ kind: "idle" });
   const [settingsHint, setSettingsHint] = useState(false);
@@ -124,19 +131,24 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     }
   }
 
-  const enabled =
-    !!token && loc.kind === "ready" && Number.isFinite(loc.lat) && Number.isFinite(loc.lng);
+  const coords =
+    mapRegion && Number.isFinite(mapRegion.latitude)
+      ? { lat: mapRegion.latitude, lng: mapRegion.longitude }
+      : loc.kind === "ready"
+        ? { lat: loc.lat, lng: loc.lng }
+        : null;
+
+  const enabled = !!token && !!coords;
 
   const briefQ = useQuery<LocalBriefResponse>({
-    queryKey:
-      loc.kind === "ready"
-        ? ["local-brief", loc.lat.toFixed(3), loc.lng.toFixed(3)]
-        : ["local-brief", "idle"],
+    queryKey: coords
+      ? ["local-brief", coords.lat.toFixed(3), coords.lng.toFixed(3)]
+      : ["local-brief", "idle"],
     queryFn: () =>
       fetchLocalBrief(
         {
-          lat: loc.kind === "ready" ? loc.lat : 0,
-          lng: loc.kind === "ready" ? loc.lng : 0,
+          lat: coords?.lat ?? 0,
+          lng: coords?.lng ?? 0,
         },
         { token },
       ),
@@ -160,15 +172,15 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
   const saveM = useMutation({
     mutationFn: () => {
       if (!token) throw new Error("no session");
-      if (loc.kind !== "ready" || !briefQ.data) throw new Error("no brief");
+      if (!coords || !briefQ.data) throw new Error("no brief");
       const label = labelDraft.trim();
       if (!label) throw new Error("label required");
       const briefText = briefQ.data.paragraphs.join("\n\n");
       return saveLocalBrief(
         {
           label,
-          lat: loc.lat,
-          lng: loc.lng,
+          lat: coords.lat,
+          lng: coords.lng,
           brief: briefText,
           place: briefQ.data.place,
         },
@@ -188,7 +200,11 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
   function openSaveModal() {
     if (!briefQ.data) return;
     hapticSelect();
-    const defaultLabel = [briefQ.data.place.city, briefQ.data.place.state]
+    const defaultLabel = [
+      briefQ.data.place.neighborhood,
+      briefQ.data.place.city,
+      briefQ.data.place.state,
+    ]
       .filter(Boolean)
       .join(", ");
     setLabelDraft(defaultLabel || "My spot");
@@ -207,7 +223,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
       </BriefChrome>
     );
   }
-  if (loc.kind === "denied") {
+  if (loc.kind === "denied" && !mapRegion) {
     return (
       <BriefChrome>
         <Text style={styles.mutedBody}>
@@ -264,14 +280,14 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
           <Pressable
             onPress={() => {
               hapticSelect();
-              if (loc.kind !== "ready") return;
+              if (!coords) return;
               void briefQ.refetch();
             }}
             hitSlop={10}
             style={styles.headerBtn}
             accessibilityRole="button"
             accessibilityLabel="Refresh brief"
-            disabled={briefQ.isFetching || loc.kind !== "ready"}
+            disabled={briefQ.isFetching || !coords}
           >
             <Ionicons
               name="refresh"
