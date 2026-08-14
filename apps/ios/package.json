@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@bacons/apple-targets": "^4.0.7",
+    "@expo-google-fonts/syne": "^0.4.2",
     "@expo/ngrok": "^4.1.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",
@@ -32,6 +33,7 @@
     "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-file-system": "~19.0.23",
+    "expo-font": "~14.0.12",
     "expo-haptics": "~15.0.7",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.11",

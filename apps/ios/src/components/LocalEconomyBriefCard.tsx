@@ -18,7 +18,7 @@
 
 import { type LocalBriefResponse, fetchLocalBrief, saveLocalBrief } from "@/api/local-brief";
 import { heartbeatLocation } from "@/notif/prefs";
-import { colors, radii, type } from "@/theme/tokens";
+import { colors, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -555,8 +555,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   exclusiveChipText: {
-    color: colors.fgMuted,
-    fontSize: 9,
+    color: colors.accent,
+    fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.4,
   },
@@ -613,7 +613,7 @@ const styles = StyleSheet.create({
   p1Row: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   dropCap: {
     color: colors.fg,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontSize: 42,
     lineHeight: 42,
     fontWeight: "700",
@@ -622,14 +622,14 @@ const styles = StyleSheet.create({
   },
   body: {
     color: colors.fg,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontSize: 15,
     lineHeight: 24,
   },
   /** Optional ¶4 closer — smaller, lighter, italic to read as an outlook. */
   bodyOutlook: {
     color: colors.fgMuted,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontStyle: "italic",
     fontSize: 13,
     lineHeight: 20,

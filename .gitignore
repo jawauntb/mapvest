@@ -27,3 +27,6 @@ tmp/
 *.tsbuildinfo
 .railway/
 eas-*.log
+
+# iOS build artifacts (never commit)
+*.ipa

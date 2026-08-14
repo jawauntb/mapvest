@@ -52,6 +52,19 @@ function EdgeSwipeOpener() {
   );
 }
 
+/** Same chrome as AppTopBar's burger so native tab headers match custom ones. */
+const headerBtn = {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: colors.border,
+  backgroundColor: colors.bgElevated,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+  marginHorizontal: 10,
+};
+
 function ProfileHeaderButton() {
   const { openSidebar } = useSidebar();
   return (
@@ -61,17 +74,11 @@ function ProfileHeaderButton() {
         openSidebar();
       }}
       hitSlop={12}
-      style={{
-        paddingHorizontal: 14,
-        minWidth: 44,
-        minHeight: 44,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={headerBtn}
       accessibilityRole="button"
       accessibilityLabel="Open menu"
     >
-      <Ionicons name="menu-outline" size={26} color={colors.fg} />
+      <Ionicons name="menu-outline" size={22} color={colors.fg} />
     </Pressable>
   );
 }
@@ -85,17 +92,11 @@ function CameraHeaderButton() {
         router.push("/(tabs)/camera?intent=snap");
       }}
       hitSlop={12}
-      style={{
-        paddingHorizontal: 14,
-        minWidth: 44,
-        minHeight: 44,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={headerBtn}
       accessibilityRole="button"
       accessibilityLabel="Open camera"
     >
-      <Ionicons name="camera-outline" size={24} color={colors.fg} />
+      <Ionicons name="camera-outline" size={22} color={colors.fg} />
     </Pressable>
   );
 }
