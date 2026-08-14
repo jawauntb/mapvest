@@ -2,6 +2,7 @@ import {
   type Quote,
   type WatchEntry,
   type WatchlistSummary,
+  fetchQuote,
   fetchQuotesMap,
   fetchWatchlistBrief,
   listWatchlist,
@@ -29,6 +30,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Pressable,
@@ -49,6 +51,34 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "changePct", label: "% Change" },
 ];
 
+/** Fast local matches while the live quote query catches up. */
+const POPULAR_TICKERS: { symbol: string; name: string }[] = [
+  { symbol: "AAPL", name: "Apple" },
+  { symbol: "MSFT", name: "Microsoft" },
+  { symbol: "GOOGL", name: "Alphabet" },
+  { symbol: "AMZN", name: "Amazon" },
+  { symbol: "META", name: "Meta" },
+  { symbol: "NVDA", name: "NVIDIA" },
+  { symbol: "TSLA", name: "Tesla" },
+  { symbol: "NKE", name: "Nike" },
+  { symbol: "SBUX", name: "Starbucks" },
+  { symbol: "MCD", name: "McDonald's" },
+  { symbol: "YUM", name: "Yum! Brands" },
+  { symbol: "DIS", name: "Disney" },
+  { symbol: "COST", name: "Costco" },
+  { symbol: "WMT", name: "Walmart" },
+  { symbol: "TGT", name: "Target" },
+  { symbol: "KO", name: "Coca-Cola" },
+  { symbol: "PEP", name: "PepsiCo" },
+  { symbol: "HSY", name: "Hershey" },
+  { symbol: "JPM", name: "JPMorgan" },
+  { symbol: "V", name: "Visa" },
+];
+
+function isTickerShape(raw: string): boolean {
+  return /^[A-Z][A-Z0-9.]{0,5}$/.test(raw.trim().toUpperCase().replace(/^\$/, ""));
+}
+
 /**
  * Home is the watchlist. Camera is the hero loop; Map is one quiet link.
  * Briefs and movers wait until something is saved. Settings live in ≡.
@@ -61,6 +91,8 @@ export default function HomeScreen() {
   const params = useLocalSearchParams<{ focus?: string }>();
   const searchRef = useRef<TextInput>(null);
   const [tickerQuery, setTickerQuery] = useState("");
+  /** Debounced copy of tickerQuery — drives live quote suggestions. */
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("added");
   const [wlCollapsed, setWlCollapsed] = useState(false);
   // `null` = "All lists" (server default-list scoping).
@@ -72,6 +104,14 @@ export default function HomeScreen() {
       setTimeout(() => searchRef.current?.focus(), 200);
     }
   }, [params.focus]);
+
+  useEffect(() => {
+    const t = setTimeout(
+      () => setDebouncedQuery(tickerQuery.trim().toUpperCase().replace(/^\$/, "")),
+      180,
+    );
+    return () => clearTimeout(t);
+  }, [tickerQuery]);
 
   // Pull the user's lists so the chip selector can render.
   const listsQ = useQuery({
@@ -111,6 +151,62 @@ export default function HomeScreen() {
     staleTime: 60_000,
   });
   const quotes: Record<string, Quote> = quotesQ.data ?? {};
+
+  // Live quote for whatever the user is typing — makes the search bar feel
+  // responsive instead of "type then hit Go and hope".
+  const liveSearchEnabled =
+    debouncedQuery.length >= 1 && isTickerShape(debouncedQuery) && debouncedQuery.length <= 6;
+  const liveQuoteQ = useQuery({
+    queryKey: ["search-quote", debouncedQuery],
+    queryFn: () => fetchQuote(debouncedQuery, { token: session?.token }),
+    enabled: liveSearchEnabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const searchSuggestions = useMemo(() => {
+    if (!debouncedQuery) return [];
+    const q = debouncedQuery.toLowerCase();
+    const fromWatch = rawItems
+      .filter(
+        (e) => e.ticker.toLowerCase().startsWith(q) || (e.name ?? "").toLowerCase().includes(q),
+      )
+      .map((e) => ({
+        symbol: e.ticker.toUpperCase(),
+        name: e.name ?? e.ticker,
+        source: "watchlist" as const,
+      }));
+    const fromPopular = POPULAR_TICKERS.filter(
+      (p) => p.symbol.toLowerCase().startsWith(q) || p.name.toLowerCase().includes(q),
+    ).map((p) => ({
+      symbol: p.symbol,
+      name: p.name,
+      source: "popular" as const,
+    }));
+    const seen = new Set<string>();
+    const out: { symbol: string; name: string; source: "watchlist" | "popular" | "live" }[] = [];
+    for (const row of [...fromWatch, ...fromPopular]) {
+      if (seen.has(row.symbol)) continue;
+      seen.add(row.symbol);
+      out.push(row);
+      if (out.length >= 6) break;
+    }
+    if (liveSearchEnabled && liveQuoteQ.data?.quote && !seen.has(debouncedQuery)) {
+      out.unshift({
+        symbol: debouncedQuery,
+        name: liveQuoteQ.data.quote.symbol,
+        source: "live",
+      });
+    } else if (
+      liveSearchEnabled &&
+      isTickerShape(debouncedQuery) &&
+      !seen.has(debouncedQuery) &&
+      out.length === 0
+    ) {
+      out.push({ symbol: debouncedQuery, name: debouncedQuery, source: "live" });
+    }
+    return out.slice(0, 6);
+  }, [debouncedQuery, rawItems, liveSearchEnabled, liveQuoteQ.data]);
 
   // Sorted view of the watchlist. "Added" preserves server order; the other
   // sorts derive from name/price/percent-change joined against the quotes map.
@@ -184,19 +280,22 @@ export default function HomeScreen() {
           hitSlop={12}
           style={styles.burger}
           accessibilityRole="button"
-          accessibilityLabel="Open menu"
+          accessibilityLabel="Open profile menu"
         >
-          <Ionicons name="menu-outline" size={20} color={colors.fg} />
+          <Ionicons name="person-circle-outline" size={22} color={colors.fg} />
         </Pressable>
         <Text style={styles.title}>Mapvest</Text>
         <Pressable
-          onPress={() => router.push("/(tabs)/settings")}
+          onPress={() => {
+            hapticSelect();
+            router.push("/(tabs)/camera");
+          }}
           hitSlop={12}
           style={styles.iconBtn}
           accessibilityRole="button"
-          accessibilityLabel="Settings"
+          accessibilityLabel="Open camera"
         >
-          <Ionicons name="settings-outline" size={20} color={colors.fgMuted} />
+          <Ionicons name="camera-outline" size={22} color={colors.fg} />
         </Pressable>
       </View>
 
@@ -243,6 +342,13 @@ export default function HomeScreen() {
                     onSubmitEditing={() => openTicker(tickerQuery)}
                     accessibilityLabel="Find ticker"
                   />
+                  {liveQuoteQ.isFetching ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.fgDim}
+                      style={{ marginRight: 10 }}
+                    />
+                  ) : null}
                 </View>
                 <Pressable
                   style={[styles.goBtn, !tickerQuery.trim() && { opacity: 0.4 }]}
@@ -254,6 +360,45 @@ export default function HomeScreen() {
                   <Ionicons name="arrow-forward" size={18} color={colors.accentInk} />
                 </Pressable>
               </View>
+
+              {searchSuggestions.length > 0 ? (
+                <View style={styles.suggestPanel}>
+                  {searchSuggestions.map((s) => {
+                    const q =
+                      quotes[s.symbol] ??
+                      (s.symbol === debouncedQuery ? liveQuoteQ.data?.quote : undefined);
+                    const up = (q?.change ?? 0) >= 0;
+                    return (
+                      <Pressable
+                        key={`${s.source}-${s.symbol}`}
+                        style={styles.suggestRow}
+                        onPress={() => openTicker(s.symbol)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${s.symbol}`}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.suggestSym}>{s.symbol}</Text>
+                          <Text style={styles.suggestName} numberOfLines={1}>
+                            {s.name}
+                          </Text>
+                        </View>
+                        {q ? (
+                          <Text
+                            style={[
+                              styles.suggestPx,
+                              { color: up ? colors.accent : colors.danger },
+                            ]}
+                          >
+                            ${q.price.toFixed(2)}
+                          </Text>
+                        ) : (
+                          <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
 
               {/* Hero card — camera identify is Mapvest's signature loop. */}
               <ScalePressable
@@ -788,6 +933,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  suggestPanel: {
+    marginHorizontal: 16,
+    marginTop: -8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElevated,
+    overflow: "hidden",
+  },
+  suggestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    minHeight: 48,
+  },
+  suggestSym: { color: colors.fg, fontSize: 15, fontWeight: "700" },
+  suggestName: { color: colors.fgMuted, fontSize: 12, marginTop: 1 },
+  suggestPx: { fontSize: 14, fontWeight: "700" },
   hero: {
     marginHorizontal: 16,
     marginBottom: 12,

@@ -1,30 +1,19 @@
 import { useSession } from "@/auth/session";
 import { useSidebar } from "@/nav/SidebarContext";
-import { colors, motion } from "@/theme/tokens";
+import { colors } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import { useEffect } from "react";
+import { Tabs, useRouter } from "expo-router";
 import { Pressable, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
-
-type IconName = keyof typeof Ionicons.glyphMap;
+import { runOnJS } from "react-native-reanimated";
 
 /**
- * Slim bottom bar: Home · Map · Camera.
- * List is a map-mode route (nearby, sorted). Research, Saved, Settings
- * live in the sidebar (≡).
+ * No bottom tab bar — free the real estate; Home + profile drawer + camera
+ * (map/list header) cover every destination. Tab routes still exist for
+ * deep links / sidebar navigation; they just aren't chrome.
  */
 export default function TabsLayout() {
-  // SidebarProvider + AppSidebar now live at the root _layout.tsx so detail
-  // screens (which are siblings of the tabs layout) also have access to
-  // useSidebar. This screen just uses the provider from above.
   return (
     <>
       <TabsInner />
@@ -41,8 +30,6 @@ export default function TabsLayout() {
 function EdgeSwipeOpener() {
   const { openSidebar } = useSidebar();
   const pan = Gesture.Pan()
-    // Only activate once the finger has moved ≥30pt right — leaves horizontal
-    // list scrolls and taps in front of it untouched.
     .activeOffsetX([30, 30])
     .onEnd((e) => {
       if (e.translationX > 40 && Math.abs(e.velocityX) > 0) {
@@ -65,9 +52,56 @@ function EdgeSwipeOpener() {
   );
 }
 
+function ProfileHeaderButton() {
+  const { openSidebar } = useSidebar();
+  return (
+    <Pressable
+      onPress={() => {
+        hapticSelect();
+        openSidebar();
+      }}
+      hitSlop={12}
+      style={{
+        paddingHorizontal: 14,
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Open profile menu"
+    >
+      <Ionicons name="person-circle-outline" size={26} color={colors.fg} />
+    </Pressable>
+  );
+}
+
+function CameraHeaderButton() {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => {
+        hapticSelect();
+        router.push("/(tabs)/camera");
+      }}
+      hitSlop={12}
+      style={{
+        paddingHorizontal: 14,
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Open camera"
+    >
+      <Ionicons name="camera-outline" size={24} color={colors.fg} />
+    </Pressable>
+  );
+}
+
 function TabsInner() {
   const { isAdmin } = useSession();
-  const { openSidebar } = useSidebar();
 
   return (
     <Tabs
@@ -75,94 +109,42 @@ function TabsInner() {
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.fg,
         headerTitleStyle: { fontWeight: "700" },
-        headerLeft: () => (
-          <Pressable
-            onPress={() => {
-              hapticSelect();
-              openSidebar();
-            }}
-            hitSlop={12}
-            style={{
-              paddingHorizontal: 14,
-              minWidth: 44,
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Open menu"
-          >
-            <Ionicons name="menu-outline" size={24} color={colors.fg} />
-          </Pressable>
-        ),
-        tabBarStyle: {
-          backgroundColor: colors.bg,
-          borderTopColor: colors.border,
-        },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.fgDim,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        headerLeft: () => <ProfileHeaderButton />,
+        tabBarStyle: { display: "none", height: 0 },
+        tabBarButton: () => null,
         lazy: true,
         freezeOnBlur: true,
-      }}
-      screenListeners={{
-        tabPress: () => hapticSelect(),
       }}
     >
       <Tabs.Screen
         name="home"
         options={{
           title: "Home",
-          headerShown: false, // custom top bar with menu button
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              color={color}
-              focused={focused}
-              iconOn="home"
-              iconOff="home-outline"
-              accessibilityLabel="Home"
-            />
-          ),
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
           title: "Map",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              color={color}
-              focused={focused}
-              iconOn="map"
-              iconOff="map-outline"
-              accessibilityLabel="Map"
-            />
-          ),
+          headerRight: () => <CameraHeaderButton />,
         }}
       />
       <Tabs.Screen
         name="camera"
         options={{
           title: "Camera",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              color={color}
-              focused={focused}
-              iconOn="camera"
-              iconOff="camera-outline"
-              accessibilityLabel="Camera"
-            />
-          ),
+          href: null,
         }}
       />
-        <Tabs.Screen
-          name="list"
-          options={{
-            href: null,
-            title: "Nearby",
-          }}
-        />
-      {/* Sidebar destinations — hidden from tab bar */}
+      <Tabs.Screen
+        name="list"
+        options={{
+          href: null,
+          title: "Nearby",
+          headerRight: () => <CameraHeaderButton />,
+        }}
+      />
       <Tabs.Screen
         name="research"
         options={{ href: null, title: "Research", headerShown: false }}
@@ -177,62 +159,8 @@ function TabsInner() {
         options={{
           title: "Admin",
           href: isAdmin ? "/(tabs)/admin" : null,
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              color={color}
-              focused={focused}
-              iconOn="shield-checkmark"
-              iconOff="shield-checkmark-outline"
-              accessibilityLabel="Admin"
-            />
-          ),
         }}
       />
     </Tabs>
-  );
-}
-
-function TabIcon({
-  color,
-  focused,
-  iconOn,
-  iconOff,
-  accessibilityLabel,
-}: {
-  color: string;
-  focused: boolean;
-  iconOn: IconName;
-  iconOff: IconName;
-  accessibilityLabel: string;
-}) {
-  const scale = useSharedValue(focused ? 1.08 : 1);
-
-  useEffect(() => {
-    scale.value = withSpring(focused ? 1.1 : 1, motion.springSnappy);
-  }, [focused, scale]);
-
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  return (
-    <Animated.View
-      style={[
-        {
-          width: 30,
-          height: 30,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-        animStyle,
-      ]}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
-      <Ionicons
-        name={focused ? iconOn : iconOff}
-        size={24}
-        color={color}
-        accessibilityLabel={accessibilityLabel}
-      />
-    </Animated.View>
   );
 }

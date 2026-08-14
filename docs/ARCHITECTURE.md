@@ -46,15 +46,19 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 
 First session teaches one loop: camera or map → one identity → one ticker
 card with sources. Home is a watchlist, not a second command center. Map and
-List are not duplicated as Home widgets. Daily brief, local economy, movers,
-and backtest appear only after the user has saved something. Overview shows a
-native Yahoo price series; analyzer PNGs stay as research images. Advanced
-charts live behind Detail → More. The tab bar is Home / Map / Camera; List is
-a route from the map sheet and the sidebar. A one-screen first-open sheet
+List are blended (bottom sheet on the map + **View as List** / **View as Map**
+toggles) rather than duplicated as Home widgets. There is **no bottom tab
+bar** — destinations live in the profile drawer (left-sliding) and a camera
+icon sits in the top-right of Home / Map / List. Daily brief, local economy,
+movers, and backtest appear only after the user has saved something. Overview
+shows a native Yahoo price series; analyzer PNGs stay as research images.
+Advanced charts live behind Detail → More. A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
 carousel. Mapvest Daily and Local Economy Brief both collapse behind a
 chevron. Leading `$` cashtags stay on map pins and in prose; list rows show
-the ticker without a prefix.
+the ticker without a prefix. Overlapped map tooltips use a two-tap sequence
+(reveal → open summary). Home search suggests tickers as you type. Detail
+staggers section render so the sheet never hangs on a blank spinner.
 
 ## Layering rules
 

@@ -25,8 +25,13 @@ const FALLBACK_REGION: Region = {
 /** Fixed pin canvas — variable-height custom markers mis-anchor on Google Maps. */
 const PIN_W = 104;
 const PIN_H = 86;
+const PIN_W_REVEALED = 128;
+const PIN_H_REVEALED = 102;
 const PLAIN_W = 28;
 const PLAIN_H = 28;
+
+/** ~meters between pins that count as overlapping for two-tap reveal. */
+const OVERLAP_METERS = 55;
 
 export default function MapScreen() {
   const router = useRouter();
@@ -37,6 +42,8 @@ export default function MapScreen() {
   const [permErr, setPermErr] = useState<string | null>(null);
   /** Tracks until quotes render into the bitmap, then freezes for perf. */
   const [trackMarkers, setTrackMarkers] = useState(true);
+  /** First tap on an overlapped cluster elevates this place; second opens detail. */
+  const [focusedPlaceId, setFocusedPlaceId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -92,12 +99,11 @@ export default function MapScreen() {
   const quotes = quotesQuery.data ?? {};
 
   useEffect(() => {
-    // Re-rasterize markers when items/quotes change, then freeze.
     setTrackMarkers(true);
     const delay = quotesQuery.isFetching ? 1600 : 700;
     const t = setTimeout(() => setTrackMarkers(false), delay);
     return () => clearTimeout(t);
-  }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt]);
+  }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt, focusedPlaceId]);
 
   useEffect(() => {
     for (const t of pinTickers.slice(0, 4)) {
@@ -115,13 +121,29 @@ export default function MapScreen() {
     router.push(`/detail/${encodeURIComponent(id)}`);
   }
 
+  /**
+   * Overlapped pins: first tap elevates/reveals the whole tooltip; second tap
+   * (same focused pin) opens the summary. Solo pins open immediately.
+   */
+  function onPinPress(item: NearbyItem) {
+    hapticSelect();
+    const cluster = items.filter(
+      (other) =>
+        other.place.id === item.place.id ||
+        haversineMeters(item.place.location, other.place.location) <= OVERLAP_METERS,
+    );
+    const overlapped = cluster.length > 1;
+    if (overlapped && focusedPlaceId !== item.place.id) {
+      setFocusedPlaceId(item.place.id);
+      return;
+    }
+    setFocusedPlaceId(null);
+    openItem(item);
+  }
+
   return (
     <View style={styles.root}>
       <MapView
-        // iOS: Apple Maps. PROVIDER_GOOGLE requires GMSServices.provideAPIKey
-        // before GMSMapView is created; our TestFlight binary only has the
-        // `$IOS_GOOGLE_MAPS_API_KEY` placeholder, so Google Maps SIGABRTs on
-        // the map tab right after sign-in. Android still uses Google Maps.
         provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
@@ -129,7 +151,9 @@ export default function MapScreen() {
         onRegionChangeComplete={(r) => {
           setRegion(r);
           qc.setQueryData(["tab-state", "map-region"], r);
+          setFocusedPlaceId(null);
         }}
+        onPress={() => setFocusedPlaceId(null)}
         showsUserLocation
         showsMyLocationButton
       >
@@ -137,6 +161,7 @@ export default function MapScreen() {
           const pin = resolvePinTicker(item);
           const quote = pin ? quotes[pin.symbol] : undefined;
           const hasTicker = !!pin;
+          const revealed = focusedPlaceId === item.place.id;
           return (
             <Marker
               key={item.place.id}
@@ -144,17 +169,20 @@ export default function MapScreen() {
                 latitude: item.place.location.lat,
                 longitude: item.place.location.lng,
               }}
-              tracksViewChanges={trackMarkers}
-              // Bottom-center of the fixed canvas sits on the lat/lng.
+              tracksViewChanges={trackMarkers || revealed}
               anchor={{ x: 0.5, y: 1 }}
-              zIndex={hasTicker ? 2 : 1}
-              onPress={() => openItem(item)}
+              zIndex={revealed ? 100 : hasTicker ? 2 : 1}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onPinPress(item);
+              }}
             >
               <TickerPin
                 placeName={item.place.name}
                 pin={pin}
                 quote={quote}
                 accent={pinColor(item)}
+                revealed={revealed}
               />
             </Marker>
           );
@@ -179,14 +207,20 @@ export default function MapScreen() {
             </Text>
           </BlurView>
         ) : null}
+        {focusedPlaceId ? (
+          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
+            <Text style={styles.warn}>Tap again for the summary</Text>
+          </BlurView>
+        ) : null}
       </View>
 
       <NearbySheet
         items={items}
         quotes={quotes}
         loading={nearbyQuery.isFetching && items.length === 0}
+        focusedPlaceId={focusedPlaceId}
         onOpen={openItem}
-        onSeeAll={() => router.push("/(tabs)/list")}
+        onViewAsList={() => router.push("/(tabs)/list")}
         onChat={() =>
           openChatAbout(router, {
             kind: "map",
@@ -210,19 +244,21 @@ function NearbySheet({
   items,
   quotes,
   loading,
+  focusedPlaceId,
   onOpen,
-  onSeeAll,
+  onViewAsList,
   onChat,
 }: {
   items: NearbyItem[];
   quotes: Record<string, Quote>;
   loading: boolean;
+  focusedPlaceId: string | null;
   onOpen: (item: NearbyItem) => void;
-  onSeeAll: () => void;
+  onViewAsList: () => void;
   onChat: () => void;
 }) {
   const [open, setOpen] = useState(true);
-  const rows = items.slice(0, 5);
+  const rows = items.slice(0, 6);
 
   return (
     <View style={styles.sheet}>
@@ -240,11 +276,7 @@ function NearbySheet({
           <Text style={styles.sheetTitle}>
             {loading ? "Finding nearby…" : items.length ? `Nearby · ${items.length}` : "Nearby"}
           </Text>
-          <Ionicons
-            name={open ? "chevron-down" : "chevron-up"}
-            size={16}
-            color={colors.fgMuted}
-          />
+          <Ionicons name={open ? "chevron-down" : "chevron-up"} size={16} color={colors.fgMuted} />
         </Pressable>
         {items.length > 0 ? (
           <View style={styles.sheetActions}>
@@ -255,13 +287,15 @@ function NearbySheet({
             <Pressable
               onPress={() => {
                 hapticSelect();
-                onSeeAll();
+                onViewAsList();
               }}
               hitSlop={8}
+              style={styles.viewAsListBtn}
               accessibilityRole="button"
-              accessibilityLabel="See all nearby places"
+              accessibilityLabel="View as list"
             >
-              <Text style={styles.sheetSeeAll}>See all</Text>
+              <Ionicons name="list-outline" size={14} color={colors.accent} />
+              <Text style={styles.sheetSeeAll}>View as List</Text>
             </Pressable>
           </View>
         ) : null}
@@ -279,11 +313,12 @@ function NearbySheet({
             const pin = resolvePinTicker(item);
             const quote = pin ? quotes[pin.symbol] : undefined;
             const up = (quote?.change ?? 0) >= 0;
+            const focused = focusedPlaceId === item.place.id;
             return (
               <Pressable
                 key={item.place.id}
                 onPress={() => onOpen(item)}
-                style={styles.sheetRow}
+                style={[styles.sheetRow, focused && styles.sheetRowFocused]}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${item.place.name}`}
               >
@@ -296,12 +331,7 @@ function NearbySheet({
                   </Text>
                 </View>
                 {quote ? (
-                  <Text
-                    style={[
-                      styles.sheetQuote,
-                      { color: up ? colors.accent : colors.danger },
-                    ]}
-                  >
+                  <Text style={[styles.sheetQuote, { color: up ? colors.accent : colors.danger }]}>
                     {up ? "+" : ""}
                     {quote.changePct.toFixed(1)}%
                   </Text>
@@ -337,11 +367,13 @@ function TickerPin({
   pin,
   quote,
   accent,
+  revealed,
 }: {
   placeName: string;
   pin: PinTicker | null;
   quote?: Quote;
   accent: string;
+  revealed?: boolean;
 }) {
   if (!pin) {
     return (
@@ -352,16 +384,27 @@ function TickerPin({
   }
 
   const up = (quote?.change ?? 0) >= 0;
+  const w = revealed ? PIN_W_REVEALED : PIN_W;
+  const h = revealed ? PIN_H_REVEALED : PIN_H;
   return (
-    // Fixed canvas so Google's marker bitmap + anchor stay aligned to lat/lng.
-    <View style={styles.pinCanvas} collapsable={false}>
-      <View style={[styles.bubble, { borderColor: accentHex(accent) }]}>
-        <Text style={styles.tickerText} numberOfLines={1}>
+    <View style={[styles.pinCanvas, { width: w, height: h }]} collapsable={false}>
+      <View
+        style={[
+          styles.bubble,
+          {
+            width: w - 4,
+            borderColor: accentHex(accent),
+            borderWidth: revealed ? 2.5 : 1.5,
+            backgroundColor: revealed ? "rgba(12, 14, 16, 0.98)" : "rgba(12, 14, 16, 0.94)",
+          },
+        ]}
+      >
+        <Text style={[styles.tickerText, revealed && { fontSize: 14 }]} numberOfLines={1}>
           {pin.isPublic ? "$" : "≈"}
           {pin.symbol}
         </Text>
         {quote ? (
-          <Text style={styles.priceText} numberOfLines={1}>
+          <Text style={[styles.priceText, revealed && { fontSize: 12 }]} numberOfLines={1}>
             ${quote.price.toFixed(2)}{" "}
             <Text style={{ color: up ? colors.accent : colors.danger }}>
               {up ? "+" : ""}
@@ -371,7 +414,10 @@ function TickerPin({
         ) : (
           <Text style={styles.priceMuted}>…</Text>
         )}
-        <Text style={styles.placeHint} numberOfLines={1}>
+        <Text
+          style={[styles.placeHint, revealed && { fontSize: 11, maxWidth: w - 12 }]}
+          numberOfLines={1}
+        >
           {placeName}
         </Text>
       </View>
@@ -398,8 +444,6 @@ function pinColor(item: NearbyItem): string {
   return "red";
 }
 
-// Categorical pin palette — brand rule: no purple. Distinct from the
-// signature jade/blue accent so investable pins stay visually separate.
 function accentHex(name: string): string {
   switch (name) {
     case "blue":
@@ -419,6 +463,17 @@ function accentHex(name: string): string {
     default:
       return colors.fgDim;
   }
+}
+
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 const styles = StyleSheet.create({
@@ -462,6 +517,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { color: colors.fg, fontSize: 14, fontWeight: "700" },
   sheetActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  viewAsListBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
   sheetSeeAll: { color: colors.accent, fontSize: 13, fontWeight: "700" },
   sheetEmpty: {
     color: colors.fgMuted,
@@ -476,6 +532,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+  },
+  sheetRowFocused: {
+    backgroundColor: colors.bgSunken,
+    marginHorizontal: -6,
+    paddingHorizontal: 6,
+    borderRadius: radii.sm,
   },
   sheetPlace: { color: colors.fg, fontSize: 14, fontWeight: "600" },
   sheetTicker: { color: colors.fgMuted, fontSize: 12, marginTop: 1 },

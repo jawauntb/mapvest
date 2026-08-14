@@ -1,14 +1,17 @@
 import { type AgentThread, listAgentThreads } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { useSidebar } from "@/nav/SidebarContext";
-import { colors, elevation, radii, type } from "@/theme/tokens";
+import { colors, elevation, motion, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Dimensions,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -22,22 +25,70 @@ const PANEL_WIDTH = Math.min(340, Dimensions.get("window").width * 0.82);
 
 /**
  * ChatGPT-style left drawer — watchlist, research chats, settings, ticker
- * search. Deliberately built with plain RN primitives (Modal + Pressable),
- * NO Reanimated + NO GestureDetector: earlier iterations that wrapped the
- * panel in a Pan gesture or laid a full-screen scrim over the panel body
- * both blocked child taps on iOS. Simple wins here.
+ * search. Slides in from the LEFT (not the iOS Modal default bottom slide).
+ *
+ * Built with plain RN Animated + Modal(animationType="none") so child taps
+ * stay reliable — earlier Reanimated+Pan iterations blocked presses on iOS.
  *
  * Layout:
  *   root: flexDirection "row"
  *     └── panel (fixed width, on the left)
  *     └── scrim (flex: 1, to the RIGHT of the panel — tap to close)
- * Scrim and panel never overlap, so panel taps always reach child Pressables.
  */
 export function AppSidebar() {
   const { open, closeSidebar } = useSidebar();
   const router = useRouter();
   const { session, user } = useSession();
   const insets = useSafeAreaInsets();
+  const slideX = useRef(new Animated.Value(-PANEL_WIDTH)).current;
+  const scrimOp = useRef(new Animated.Value(0)).current;
+  /** Keep Modal mounted while the close animation plays. */
+  const [mounted, setMounted] = useState(open);
+
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && mounted) {
+      slideX.setValue(-PANEL_WIDTH);
+      scrimOp.setValue(0);
+      Animated.parallel([
+        Animated.spring(slideX, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: motion.springSnappy.damping,
+          stiffness: motion.springSnappy.stiffness,
+          mass: motion.springSnappy.mass,
+        }),
+        Animated.timing(scrimOp, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+    if (!open && mounted) {
+      Animated.parallel([
+        Animated.timing(slideX, {
+          toValue: -PANEL_WIDTH,
+          duration: 200,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOp, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+  }, [open, mounted, slideX, scrimOp]);
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -55,18 +106,14 @@ export function AppSidebar() {
 
   return (
     <Modal
-      visible={open}
-      // "slide" is horizontal by default on Modals wrapping a row layout;
-      // on iOS this is a native slide-in from the left edge.
-      animationType="slide"
+      visible={mounted}
+      animationType="none"
       transparent
       onRequestClose={closeSidebar}
-      // Absolute must for iOS pageSheet-style overlay behavior — keeps the
-      // parent view visible behind the sidebar.
       presentationStyle="overFullScreen"
     >
       <View style={styles.root}>
-        <View
+        <Animated.View
           style={[
             styles.panel,
             elevation.lg,
@@ -74,6 +121,7 @@ export function AppSidebar() {
               width: PANEL_WIDTH,
               paddingTop: insets.top + 8,
               paddingBottom: insets.bottom + 12,
+              transform: [{ translateX: slideX }],
             },
           ]}
         >
@@ -160,8 +208,8 @@ export function AppSidebar() {
               onPress={() => go("/(tabs)/home?focus=search")}
             />
             <NavRow
-              icon="settings-outline"
-              label="Settings"
+              icon="person-circle-outline"
+              label="Profile & settings"
               hint={user?.email ?? "Account · Robinhood MCP"}
               onPress={() => go("/(tabs)/settings")}
             />
@@ -220,18 +268,16 @@ export function AppSidebar() {
               <Text style={styles.newChatText}>New chat</Text>
             </LinearGradient>
           </Pressable>
-        </View>
+        </Animated.View>
 
-        {/* Scrim ONLY covers the area to the right of the panel. Because it
-            occupies a distinct flex slot (never overlapping the panel), it
-            can NEVER intercept taps inside the panel — the class of bug that
-            broke every previous iteration. */}
-        <Pressable
-          style={styles.scrim}
-          onPress={closeSidebar}
-          accessibilityRole="button"
-          accessibilityLabel="Close menu"
-        />
+        <Animated.View style={[styles.scrim, { opacity: scrimOp }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeSidebar}
+            accessibilityRole="button"
+            accessibilityLabel="Close menu"
+          />
+        </Animated.View>
       </View>
     </Modal>
   );
