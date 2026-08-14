@@ -1,12 +1,12 @@
 import { fetchTickerNews, type NewsItem } from "@/api/news";
+import { InAppReader } from "@/components/InAppReader";
 import { colors, radii, type as typography } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -17,8 +17,8 @@ import {
  * Per-ticker news feed for the detail screen.
  *
  * Renders up to 6 recent headlines with source + relative time, each
- * tappable to open the source URL in the system browser via
- * `Linking.openURL`. Empty and loading states are handled inline so this
+ * tappable to open an in-app reader (Safari is an explicit fallback).
+ * Empty and loading states are handled inline so this
  * component can be dropped in without conditional wrappers upstream.
  *
  * The API endpoint (`/v1/news`) already returns an empty `items` array on
@@ -54,7 +54,7 @@ export function TickerNewsSection({
         ) : q.isError ? (
           <Text style={styles.muted}>News unavailable.</Text>
         ) : items.length === 0 ? (
-          <Text style={styles.muted}>No recent headlines for ${ticker.toUpperCase()}.</Text>
+          <Text style={styles.muted}>No recent headlines for {ticker.toUpperCase()}.</Text>
         ) : (
           <View style={styles.list}>
             {items.map((it, idx) => (
@@ -68,40 +68,45 @@ export function TickerNewsSection({
 }
 
 function NewsRow({ item, isLast }: { item: NewsItem; isLast: boolean }) {
-  const onPress = () => {
-    hapticTap();
-    // Fire-and-forget; RN Linking rejects on invalid URLs which we ignore
-    // so a bad upstream link never crashes the screen.
-    Linking.openURL(item.url).catch(() => {
-      /* swallow — invalid or blocked scheme */
-    });
-  };
+  const [open, setOpen] = useState(false);
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.row,
-        !isLast && styles.rowDivider,
-        pressed && { opacity: 0.7 },
-      ]}
-      accessibilityRole="link"
-      accessibilityLabel={`${item.title} from ${item.source}`}
-    >
-      <View style={{ flex: 1, gap: 4 }}>
-        <Text style={styles.title} numberOfLines={3}>
-          {item.title}
-        </Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {item.source} · {formatRelative(item.publishedAt)}
-        </Text>
-      </View>
-      <Ionicons
-        name="open-outline"
-        size={16}
-        color={colors.fgMuted}
-        style={{ marginTop: 2, marginLeft: 8 }}
+    <>
+      <Pressable
+        onPress={() => {
+          hapticTap();
+          setOpen(true);
+        }}
+        style={({ pressed }) => [
+          styles.row,
+          !isLast && styles.rowDivider,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`Read ${item.title} from ${item.source}`}
+      >
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={styles.title} numberOfLines={3}>
+            {item.title}
+          </Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {item.source} · {formatRelative(item.publishedAt)}
+          </Text>
+        </View>
+        <Ionicons
+          name="book-outline"
+          size={16}
+          color={colors.fgMuted}
+          style={{ marginTop: 2, marginLeft: 8 }}
+        />
+      </Pressable>
+      <InAppReader
+        visible={open}
+        url={item.url}
+        title={item.title}
+        source={item.source}
+        onClose={() => setOpen(false)}
       />
-    </Pressable>
+    </>
   );
 }
 

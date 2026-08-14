@@ -393,11 +393,19 @@ function WatchRow({
   onDelete: () => void;
 }) {
   const up = (quote?.change ?? 0) >= 0;
+  const tickerKey = entry.ticker.toLowerCase();
+  const quoteName = (quote as { name?: string } | undefined)?.name;
+  const subline =
+    quoteName && quoteName.toLowerCase() !== tickerKey
+      ? quoteName
+      : entry.name && entry.name.toLowerCase() !== tickerKey
+        ? entry.name
+        : (entry.sector ?? undefined);
 
   const renderRightActions = () => (
     <Pressable
       onPress={() => {
-        Alert.alert("Remove from list?", `$${entry.ticker} will be removed.`, [
+        Alert.alert("Remove from list?", `${entry.ticker} will be removed.`, [
           { text: "Cancel", style: "cancel" },
           { text: "Remove", style: "destructive", onPress: onDelete },
         ]);
@@ -425,10 +433,12 @@ function WatchRow({
         accessibilityLabel={`Open ${entry.ticker}. Swipe left to remove.`}
       >
         <View style={{ flex: 1 }}>
-          <Text style={styles.rowTicker}>${entry.ticker}</Text>
-          <Text style={styles.rowName} numberOfLines={1}>
-            {entry.name ?? entry.sector ?? "—"}
-          </Text>
+          <Text style={styles.rowTicker}>{entry.ticker}</Text>
+          {subline ? (
+            <Text style={styles.rowName} numberOfLines={1}>
+              {subline}
+            </Text>
+          ) : null}
         </View>
         {quote ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { fetchArticle } from "../lib/news-read.js";
 import { fetchTickerNews } from "../lib/news-source.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
@@ -48,6 +49,24 @@ news.get("/", optionalAuth, async (c) => {
       provider,
       ts: new Date().toISOString(),
     });
+  });
+});
+
+news.get("/read", optionalAuth, async (c) => {
+  return safeExecuteWithSpan("http.news_read", async (span) => {
+    const url = (c.req.query("url") ?? "").trim();
+    if (!url) {
+      span.setAttribute("error.kind", "missing_url");
+      return c.json({ error: "url required" }, 400);
+    }
+    span.setAttribute("article_url", url.slice(0, 200));
+    const article = await fetchArticle(url);
+    span.setAttributes({
+      has_text: article.text.length > 0,
+      read_error: article.error ?? "",
+    });
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+    return c.json(article);
   });
 });
 

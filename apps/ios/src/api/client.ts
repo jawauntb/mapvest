@@ -194,7 +194,22 @@ export type Quote = {
   currency: string;
   ts: string;
   disclaimer: string;
+  name?: string;
 };
+
+/** Company line for list rows. Never invents a name; never repeats the ticker. */
+export function companyLabel(
+  ticker: string,
+  name?: string,
+  quoteName?: string,
+): string | undefined {
+  const sym = ticker.trim().toUpperCase();
+  for (const raw of [quoteName, name]) {
+    const n = raw?.trim();
+    if (n && n.toUpperCase() !== sym) return n;
+  }
+  return undefined;
+}
 
 export function fetchQuote(
   symbol: string,

@@ -82,7 +82,7 @@ function CameraHeaderButton() {
     <Pressable
       onPress={() => {
         hapticSelect();
-        router.push("/(tabs)/camera");
+        router.push("/(tabs)/camera?intent=snap");
       }}
       hitSlop={12}
       style={{

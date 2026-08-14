@@ -12,14 +12,14 @@ import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { pickFromLibrary } from "@/util/pickImage";
 import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
-import { useIsFocused } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -49,12 +49,14 @@ export default function CameraScreen() {
   const readyRef = useRef(false);
   const readySinceRef = useRef<number | null>(null);
   const router = useRouter();
+  const params = useLocalSearchParams<{ intent?: string }>();
   const qc = useQueryClient();
   const { session } = useSession();
-  const { online, pending } = useNetworkSync({ token: session?.token });
+  const { online } = useNetworkSync({ token: session?.token });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
-  const [frozenUri, setFrozenUri] = useState<string | null>(cached?.frozenUri ?? null);
+  // Never restore a frozen frame on mount — Camera means take a new picture.
+  const [frozenUri, setFrozenUri] = useState<string | null>(null);
   const [result, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
   const [err, setErr] = useState<string | null>(cached?.err ?? null);
   const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
@@ -109,6 +111,30 @@ export default function CameraScreen() {
     };
     qc.setQueryData<CameraCache>(CAMERA_CACHE_KEY, { ...prev, ...next });
   }
+
+  const resetToLive = useCallback(() => {
+    setFrozenUri(null);
+    setPendingUri(null);
+    setBusy(false);
+    setErr(null);
+    setResult(null);
+    persistCamera({ frozenUri: null, err: null });
+  }, [qc]);
+
+  // Opening Camera always means "take a new picture". Last identify stays
+  // in the query cache as a Last snap chip, not as a stuck frozen frame.
+  useFocusEffect(
+    useCallback(() => {
+      resetToLive();
+    }, [resetToLive]),
+  );
+
+  useEffect(() => {
+    if (params.intent === "snap") {
+      resetToLive();
+      router.setParams({ intent: undefined } as never);
+    }
+  }, [params.intent, resetToLive, router]);
 
   if (!perm) {
     return (
@@ -281,7 +307,7 @@ export default function CameraScreen() {
       router.push("/auth");
       return;
     }
-    setSavedNote(`Saving $${ticker}…`);
+    setSavedNote(`Saving ${ticker}…`);
     try {
       await addToWatchlist(
         {
@@ -293,7 +319,7 @@ export default function CameraScreen() {
         { token: session.token },
       );
       hapticSuccess();
-      setSavedNote(`Saved $${ticker}`);
+      setSavedNote(`Saved ${ticker}`);
     } catch (e) {
       setSavedNote(null);
       setErr(e instanceof Error ? e.message : "save failed");
@@ -356,19 +382,14 @@ export default function CameraScreen() {
       ) : null}
       <SafeAreaView style={styles.hud} edges={["top", "bottom"]} pointerEvents="box-none">
         <View pointerEvents="none">
-          <View style={styles.statusRow}>
-            <BlurView intensity={40} tint="dark" style={styles.statusPill}>
-              <Ionicons
-                name={frozenUri ? "image" : online ? "wifi" : "cloud-offline-outline"}
-                size={12}
-                color={colors.fg}
-              />
-              <Text style={styles.status}>
-                {frozenUri ? "Frozen" : online ? "Online" : "Offline"}
-                {pending.length ? ` · ${pending.length} queued` : ""}
-              </Text>
-            </BlurView>
-          </View>
+          {!online ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="cloud-offline-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>Offline — snaps save until you're back</Text>
+              </BlurView>
+            </View>
+          ) : null}
           {!frozenUri && !result && !busy && !err ? (
             <View style={styles.lessonRow}>
               <BlurView intensity={40} tint="dark" style={styles.statusPill}>
@@ -396,7 +417,9 @@ export default function CameraScreen() {
               >
                 <Text style={styles.resultTitle}>{top.brand.name}</Text>
                 <Text style={styles.resultSubtitle}>
-                  {ticker ? `$${ticker}` : "private"} · {top.confidence}
+                  {ticker ? ticker : "Private"}
+                  {" · "}
+                  {confidenceLabel(top.confidence)}
                   {top.brand.sector ? ` · ${top.brand.sector}` : ""}
                 </Text>
               </Pressable>
@@ -424,15 +447,6 @@ export default function CameraScreen() {
                   <Text style={styles.miniBtnText}>Research</Text>
                 </Pressable>
               ) : null}
-              <Pressable
-                style={styles.miniBtn}
-                onPress={retake}
-                accessibilityRole="button"
-                accessibilityLabel="Retake photo"
-              >
-                <Ionicons name="refresh-outline" size={13} color={colors.accent} />
-                <Text style={styles.miniBtnText}>Retake</Text>
-              </Pressable>
             </View>
             {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
             {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
@@ -500,6 +514,12 @@ export default function CameraScreen() {
  * Map the categorical `Confidence` enum to a numeric [0,1] value so
  * synthesized detections can drive the overlay's opacity ramp.
  */
+function confidenceLabel(c: Confidence | undefined): string {
+  if (c === "high") return "High confidence";
+  if (c === "low") return "Low confidence";
+  return "Medium confidence";
+}
+
 function confidenceToNumber(c: Confidence | undefined): number {
   if (c === "high") return 0.9;
   if (c === "medium") return 0.65;

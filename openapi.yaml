@@ -403,6 +403,8 @@ components:
               type: string
             disclaimer:
               type: string
+            name:
+              type: string
           required:
             - symbol
             - price
@@ -712,6 +714,8 @@ components:
                     type: string
                   disclaimer:
                     type: string
+                  name:
+                    type: string
                 required:
                   - symbol
                   - price
@@ -959,6 +963,8 @@ components:
                   type: string
                 disclaimer:
                   type: string
+                name:
+                  type: string
               required:
                 - symbol
                 - price
@@ -1193,6 +1199,8 @@ components:
                       ts:
                         type: string
                       disclaimer:
+                        type: string
+                      name:
                         type: string
                     required:
                       - symbol

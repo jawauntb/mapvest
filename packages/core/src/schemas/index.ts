@@ -68,6 +68,7 @@ export const Quote = z.object({
   currency: z.string(),
   ts: z.string(), // ISO
   disclaimer: z.string(),
+  name: z.string().optional(),
 });
 export type Quote = z.infer<typeof Quote>;
 

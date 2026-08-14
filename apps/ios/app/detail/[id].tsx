@@ -1,8 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-// v0.1.1: use RN Linking (built-in) instead of expo-web-browser (native module,
-// needs pod install + rebuild). Same UX: taps open the URL in Safari.
-const WebBrowser = { openBrowserAsync: (url: string) => Linking.openURL(url) };
 import {
   addToWatchlist,
   agentChat,
@@ -29,7 +26,6 @@ import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
-import { API_URL } from "@/util/env";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -57,53 +53,6 @@ const CHART_CHIPS = [
 ] as const;
 
 const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
-type TabKey = "overview" | "advanced";
-
-type OptionsLink = { ticker: string; linkOut: string; note: string };
-type UnderlyingLink = {
-  brand?: string;
-  sector?: string;
-  linkOut: string;
-  note: string;
-};
-
-/**
- * v0.1 link-out fetcher. Kept inline here (not in `@/api/client`) because
- * this endpoint is a scaffold for v0.2 and hasn't earned a top-level client
- * helper yet. See docs/SYSTEM_DESIGN.md D10.
- */
-async function fetchOptionsLink(ticker: string, token?: string): Promise<OptionsLink> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_URL}/v1/options?ticker=${encodeURIComponent(ticker)}`, {
-    method: "GET",
-    headers,
-  });
-  if (!res.ok) throw new Error(`options ${res.status}`);
-  return (await res.json()) as OptionsLink;
-}
-
-/**
- * v0.1 link-out fetcher for the sibling `the-underlying-analyzer-reboot`
- * repo. Same shape/rationale as `fetchOptionsLink` — inline until v0.2
- * promotes it into `@/api/client`. See docs/SYSTEM_DESIGN.md D10.
- */
-async function fetchUnderlyingLink(
-  brand: string,
-  sector: string | undefined,
-  token?: string,
-): Promise<UnderlyingLink> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const qs = new URLSearchParams({ brand });
-  if (sector) qs.set("sector", sector);
-  const res = await fetch(`${API_URL}/v1/underlying?${qs.toString()}`, {
-    method: "GET",
-    headers,
-  });
-  if (!res.ok) throw new Error(`underlying ${res.status}`);
-  return (await res.json()) as UnderlyingLink;
-}
 
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -125,7 +74,6 @@ export default function DetailSheet() {
   // Never let a comparable steal charts for a typed ticker like MCD.
   const ticker = q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
 
-  const [tab, setTab] = useState<TabKey>("overview");
   const [researchOpen, setResearchOpen] = useState(false);
   const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
@@ -146,9 +94,8 @@ export default function DetailSheet() {
     };
   }, [brand]);
 
-  // Overview always loads auction 1mo; Advanced loads selected chip/period.
-  const activeType = tab === "overview" ? "auction" : chartType;
-  const activePeriod = tab === "overview" ? "1mo" : period;
+  const activeType = chartType;
+  const activePeriod = period;
 
   const quoteQ = useQuery({
     queryKey: ["quote", ticker],
@@ -173,7 +120,7 @@ export default function DetailSheet() {
 
   const secQ = useQuery({
     queryKey: ["sec", ticker],
-    enabled: !!ticker && tab === "advanced" && stage >= 2,
+    enabled: !!ticker && stage >= 2,
     queryFn: () => secFilings(ticker!, { token: session?.token }),
     staleTime: 30 * 60_000,
   });
@@ -252,8 +199,14 @@ export default function DetailSheet() {
   if (!data) return null;
 
   const publicTicker = data.brand.ticker?.symbol;
-
   const quote = quoteQ.data?.quote;
+  const listedTicker = (publicTicker ?? urlTicker)?.toUpperCase();
+  const isListed = Boolean(
+    (data.brand.isPublic && publicTicker) || (listedTicker && quote),
+  );
+  const companyName = [quote?.name, analysisQ.data?.name, data.brand.name].find(
+    (n) => !!n && n.trim().toUpperCase() !== listedTicker,
+  )?.trim();
 
   /**
    * Native OS share sheet — "Open in Messages / Mail / Notes / any app that
@@ -329,14 +282,12 @@ export default function DetailSheet() {
           }}
         />
         <View>
-          <Text style={styles.h1}>{data.brand.name}</Text>
+          <Text style={styles.h1}>{listedTicker ?? data.brand.name}</Text>
+          {companyName ? <Text style={styles.sub}>{companyName}</Text> : null}
           <Text style={styles.sub}>
-            {data.brand.isPublic
-              ? `${data.brand.ticker?.symbol ?? ""}${
-                  data.brand.ticker?.exchange ? ` · ${data.brand.ticker.exchange}` : ""
-                }`
-              : "private"}
-            {data.brand.sector ? ` · ${data.brand.sector}` : ""}
+            {isListed
+              ? [data.brand.ticker?.exchange, data.brand.sector].filter(Boolean).join(" · ")
+              : ["Private", data.brand.sector].filter(Boolean).join(" · ")}
           </Text>
           {quote ? (
             <View style={styles.quoteRow}>
@@ -352,192 +303,142 @@ export default function DetailSheet() {
               </Text>
             </View>
           ) : null}
-          <View style={styles.tabRow}>
-            {(["overview", "advanced"] as TabKey[]).map((t) => (
-              <Pressable
-                key={t}
-                onPress={() => {
-                  hapticSelect();
-                  setTab(t);
-                }}
-                style={[styles.tabBtn, tab === t && styles.tabBtnOn]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: tab === t }}
-                accessibilityLabel={t === "overview" ? "Overview" : "More"}
-              >
-                <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
-                  {t === "overview" ? "Overview" : "More"}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
         </View>
 
-        {tab === "overview" ? (
-          <>
-            <Section title="Comparables">
-              {data.comparables.length === 0 ? (
-                <Text style={styles.muted}>No public comparables resolved.</Text>
-              ) : (
-                data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
-              )}
-            </Section>
+        {!isListed ? (
+          <Section title="Comparables">
+            {data.comparables.length === 0 ? (
+              <Text style={styles.muted}>No public comparables resolved.</Text>
+            ) : (
+              data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
+            )}
+          </Section>
+        ) : null}
 
-            <Section title="ETF exposure">
-              {data.etfs.length === 0 ? (
-                <Text style={styles.muted}>No ETFs matched.</Text>
-              ) : (
-                data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
-              )}
-            </Section>
+        {stage >= 1 && ticker ? (
+          <Section title="Price">
+            <NativePriceChart ticker={ticker} token={session?.token} />
+          </Section>
+        ) : null}
 
-            <Section title="Sources">
-              <SourceList
-                sources={dedupeSources([
-                  ...data.comparables.flatMap((c) => c.sources),
-                  ...data.etfs.map((e) => e.source),
-                ])}
-              />
-            </Section>
-
-            {stage >= 1 && ticker ? (
-              <Section title="Price">
-                <NativePriceChart ticker={ticker} token={session?.token} />
-              </Section>
-            ) : null}
-
-            {stage >= 1 && ticker ? (
-              <Section title={`Auction · $${ticker} · 1mo`}>
-                <ChartImageBlock
-                  q={chartQ}
-                  ticker={ticker}
-                  label="Auction"
-                  showLevels
-                  chartType="auction"
-                  period="1mo"
-                />
-              </Section>
-            ) : null}
-
-            {stage >= 1 && analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
-
-            {stage >= 2 && ticker ? (
-              <View style={{ gap: 10 }}>
-                <WatchlistActions
-                  ticker={ticker}
-                  name={data.brand.name}
-                  sector={data.brand.sector}
-                  token={session?.token}
-                />
-                <Pressable
-                  onPress={() => {
-                    hapticTap();
-                    setResearchOpen(true);
-                  }}
-                  style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Research $${ticker}`}
-                >
-                  <LinearGradient
-                    colors={colors.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.researchBtnGrad}
-                  >
-                    <Ionicons name="sparkles" size={18} color={colors.accentInk} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.researchBtnText}>Research…</Text>
-                      <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
-                    </View>
-                  </LinearGradient>
-                </Pressable>
-                <View style={styles.badgeRow}>
-                  {publicTicker ? (
-                    <OptionsBadge ticker={publicTicker} token={session?.token} />
-                  ) : (
-                    <UnderlyingBadge
-                      brand={data.brand.name}
-                      sector={data.brand.sector}
-                      token={session?.token}
-                    />
-                  )}
+        {stage >= 2 && ticker ? (
+          <View style={{ gap: 10 }}>
+            <WatchlistActions
+              ticker={ticker}
+              name={companyName ?? listedTicker ?? data.brand.name}
+              sector={data.brand.sector}
+              token={session?.token}
+            />
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                setResearchOpen(true);
+              }}
+              style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Research ${ticker}`}
+            >
+              <LinearGradient
+                colors={colors.gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.researchBtnGrad}
+              >
+                <Ionicons name="sparkles" size={18} color={colors.accentInk} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.researchBtnText}>Research…</Text>
+                  <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
                 </View>
-                {session?.token ? (
-                  <View style={styles.badgeRow}>
-                    <RobinhoodOpenBadge ticker={ticker} token={session.token} />
-                    <SetAlertButton ticker={ticker} />
-                  </View>
-                ) : null}
-                <ResearchSheet
-                  ticker={ticker}
-                  visible={researchOpen}
-                  onClose={() => setResearchOpen(false)}
-                />
+              </LinearGradient>
+            </Pressable>
+            {session?.token ? (
+              <View style={styles.badgeRow}>
+                <RobinhoodOpenBadge ticker={ticker} token={session.token} />
+                <SetAlertButton ticker={ticker} />
               </View>
             ) : null}
+            <ResearchSheet
+              ticker={ticker}
+              visible={researchOpen}
+              onClose={() => setResearchOpen(false)}
+            />
+          </View>
+        ) : null}
 
-            {stage >= 2 && ticker ? (
-              <TickerNewsSection ticker={ticker} token={session?.token} />
-            ) : null}
+        {isListed ? (
+          <Section title="Comparables">
+            {data.comparables.length === 0 ? (
+              <Text style={styles.muted}>No public comparables resolved.</Text>
+            ) : (
+              data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
+            )}
+          </Section>
+        ) : null}
 
-            {stage >= 2 && ticker ? (
-              <AgentOverviewBlock ticker={ticker} token={session?.token} />
-            ) : null}
-          </>
-        ) : (
-          <>
-            {ticker ? (
-              <ChartStrip
-                q={chartQ}
-                ticker={ticker}
-                chartType={chartType}
-                period={period}
-                onType={setChartType}
-                onPeriod={setPeriod}
-              />
-            ) : null}
+        <Section title="ETF exposure">
+          {data.etfs.length === 0 ? (
+            <Text style={styles.muted}>No ETFs matched.</Text>
+          ) : (
+            data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
+          )}
+        </Section>
 
-            {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
+        {ticker ? (
+          <ChartStrip
+            q={chartQ}
+            ticker={ticker}
+            chartType={chartType}
+            period={period}
+            onType={setChartType}
+            onPeriod={setPeriod}
+          />
+        ) : null}
 
-            {ticker ? (
-              <Section title="SEC filings">
-                {secQ.isLoading ? (
-                  <ActivityIndicator color={colors.fg} />
-                ) : secQ.isError ? (
-                  <Text style={styles.muted}>SEC pack unavailable.</Text>
-                ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
-                  secQ.data!.Citations.slice(0, 8).map((c, i) => (
-                    <Pressable
-                      key={`${c.URL}-${i}`}
-                      onPress={() => Linking.openURL(c.URL)}
-                      style={styles.row}
-                    >
-                      {/* `flex: 1` wrapper is required — `styles.row` is
-                          `flexDirection: "row"`, and without it a long
-                          `Form · Label` line pushes right off the card. */}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.link}>
-                          {c.Form} · {c.Label}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  ))
-                ) : (
-                  <Text style={styles.muted}>No filings returned.</Text>
-                )}
-              </Section>
-            ) : null}
+        {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
+        {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
 
-            <Section title="Sources">
-              <SourceList
-                sources={dedupeSources([
-                  ...data.comparables.flatMap((c) => c.sources),
-                  ...data.etfs.map((e) => e.source),
-                ])}
-              />
-            </Section>
-          </>
-        )}
+        {ticker ? (
+          <Section title="SEC filings">
+            {secQ.isLoading ? (
+              <ActivityIndicator color={colors.fg} />
+            ) : secQ.isError ? (
+              <Text style={styles.muted}>SEC pack unavailable.</Text>
+            ) : (secQ.data?.Citations?.length ?? 0) > 0 ? (
+              secQ.data!.Citations.slice(0, 8).map((c, i) => (
+                <Pressable
+                  key={`${c.URL}-${i}`}
+                  onPress={() => Linking.openURL(c.URL)}
+                  style={styles.row}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.link}>
+                      {c.Form} · {c.Label}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))
+            ) : (
+              <Text style={styles.muted}>No filings returned.</Text>
+            )}
+          </Section>
+        ) : null}
+
+        {stage >= 2 && ticker ? (
+          <TickerNewsSection ticker={ticker} token={session?.token} />
+        ) : null}
+
+        {stage >= 2 && ticker ? (
+          <AgentOverviewBlock ticker={ticker} token={session?.token} />
+        ) : null}
+
+        <Section title="Sources">
+          <SourceList
+            sources={dedupeSources([
+              ...data.comparables.flatMap((c) => c.sources),
+              ...data.etfs.map((e) => e.source),
+            ])}
+          />
+        </Section>
       </ScrollView>
     </ScreenFade>
   );
@@ -693,104 +594,6 @@ function RobinhoodOpenBadge({ ticker, token }: { ticker: string; token: string }
   );
 }
 
-/**
- * v0.1 link-out to the sibling `option_derivation` repo. Hits
- * GET /v1/options?ticker=… which today returns a `linkOut` URL and a note;
- * v0.2 will proxy to the deployed sibling service. See
- * docs/SYSTEM_DESIGN.md D10 for the boundary decision.
- */
-function OptionsBadge({ ticker, token }: { ticker: string; token?: string }) {
-  const opt = useQuery({
-    queryKey: ["options-link", ticker],
-    queryFn: () => fetchOptionsLink(ticker, token),
-    staleTime: 60 * 60_000,
-  });
-
-  const onPress = async () => {
-    const url = opt.data?.linkOut;
-    if (!url) return;
-    try {
-      await WebBrowser.openBrowserAsync(url);
-    } catch {
-      // Fallback to system browser if the in-app browser is unavailable.
-      Linking.openURL(url).catch(() => {});
-    }
-  };
-
-  const ready = !!opt.data?.linkOut;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!ready}
-      accessibilityRole="link"
-      accessibilityLabel={`Options for ${ticker}`}
-      style={({ pressed }) => [
-        styles.badge,
-        !ready && styles.badgeDisabled,
-        pressed && ready && styles.badgePressed,
-      ]}
-    >
-      <Text style={styles.badgeText}>{opt.isLoading ? "Options …" : `Options ${ticker}`}</Text>
-      {!opt.isLoading ? <Ionicons name="arrow-forward" size={12} color={colors.accent2} /> : null}
-    </Pressable>
-  );
-}
-
-/**
- * v0.1 link-out to the sibling `the-underlying-analyzer-reboot` repo. Only
- * rendered when the investable is private (no ticker resolved). Hits
- * GET /v1/underlying?brand=…&sector=… which today returns `{ linkOut, note }`;
- * v0.2 will proxy to the deployed sibling. See docs/SYSTEM_DESIGN.md D10.
- */
-function UnderlyingBadge({
-  brand,
-  sector,
-  token,
-}: {
-  brand: string;
-  sector?: string;
-  token?: string;
-}) {
-  const link = useQuery({
-    queryKey: ["underlying-link", brand, sector ?? ""],
-    queryFn: () => fetchUnderlyingLink(brand, sector, token),
-    staleTime: 60 * 60_000,
-  });
-
-  const onPress = async () => {
-    const url = link.data?.linkOut;
-    if (!url) return;
-    try {
-      await WebBrowser.openBrowserAsync(url);
-    } catch {
-      // Fallback to system browser if the in-app browser is unavailable.
-      Linking.openURL(url).catch(() => {});
-    }
-  };
-
-  const ready = !!link.data?.linkOut;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!ready}
-      accessibilityRole="link"
-      accessibilityLabel={`Underlying analyzer for ${brand}`}
-      style={({ pressed }) => [
-        styles.badge,
-        !ready && styles.badgeDisabled,
-        pressed && ready && styles.badgePressed,
-      ]}
-    >
-      <Text style={styles.badgeText}>
-        {link.isLoading ? "Underlying analyzer …" : "Underlying analyzer"}
-      </Text>
-      {!link.isLoading ? <Ionicons name="arrow-forward" size={12} color={colors.accent2} /> : null}
-    </Pressable>
-  );
-}
-
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={{ gap: 8 }}>
@@ -871,7 +674,7 @@ function AgentOverviewBlock({
 
   if (!wantBrief) {
     return (
-      <Section title={`Overview · $${ticker}`}>
+      <Section title="Full brief">
         <Pressable
           onPress={() => {
             hapticSelect();
@@ -881,16 +684,18 @@ function AgentOverviewBlock({
           accessibilityRole="button"
           accessibilityLabel="Load full agent brief"
         >
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.loadBriefText}>Load full brief</Text>
+            <Text style={styles.loadBriefSub}>~5–15s · fresh from the research agent</Text>
+          </View>
           <Ionicons name="sparkles-outline" size={16} color={colors.accent} />
-          <Text style={styles.loadBriefText}>Load full brief</Text>
-          <Text style={styles.loadBriefSub}>~5–15s · fresh from the research agent</Text>
         </Pressable>
       </Section>
     );
   }
 
   return (
-    <Section title={`Overview · $${ticker}`}>
+    <Section title="Full brief">
       {overviewQ.isLoading || overviewQ.isFetching ? (
         <View style={{ gap: 8 }}>
           <ActivityIndicator color={colors.accent} />
@@ -947,7 +752,7 @@ function ChartStrip({
 }) {
   const label = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
   return (
-    <Section title={`${label} · $${ticker} · ${period}`}>
+    <Section title={`Analytics · ${label} · ${period}`}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
         <View style={{ flexDirection: "row", gap: 6 }}>
           {CHART_CHIPS.map((c) => (
@@ -1058,7 +863,7 @@ function ComparableRow({ c }: { c: Comparable }) {
     >
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>
-          ${c.ticker} · {c.name}
+          {c.ticker} · {c.name}
         </Text>
         <Text style={styles.rowSub}>{c.reasoning}</Text>
       </View>
@@ -1422,7 +1227,7 @@ const styles = StyleSheet.create({
   loadBriefBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     padding: 14,
     borderRadius: 10,
     borderWidth: 1,
@@ -1430,7 +1235,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
   },
   loadBriefText: { color: colors.accent, fontWeight: "700", fontSize: 14 },
-  loadBriefSub: { color: colors.fgDim, fontSize: 11, marginLeft: "auto" },
+  loadBriefSub: { color: colors.fgDim, fontSize: 11, flexShrink: 1 },
   miniBtn: {
     flexDirection: "row",
     alignItems: "center",

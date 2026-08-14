@@ -65,6 +65,28 @@ export async function enrichTicker(query: string): Promise<SearchResult[]> {
   return results;
 }
 
+export type ArticleContents = {
+  title?: string;
+  url: string;
+  text?: string;
+};
+
+/** Exa /contents — article text for the in-app news reader. Never invents prose. */
+export async function getContents(url: string): Promise<ArticleContents> {
+  const j = await exa<{
+    results?: Array<{ title?: string; url?: string; text?: string; id?: string }>;
+  }>("/contents", {
+    ids: [url],
+    text: true,
+  });
+  const hit = j.results?.[0];
+  return {
+    title: hit?.title,
+    url: hit?.url ?? url,
+    text: hit?.text,
+  };
+}
+
 export function toSource(r: SearchResult, confidence: "high" | "medium" | "low" = "medium"): Source {
   return {
     provider: "exa",
