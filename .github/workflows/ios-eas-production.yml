@@ -1,0 +1,46 @@
+# .github/workflows/ios-eas-production.yml
+name: ios-eas-production
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ios-eas-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eas-ios:
+    name: eas build + auto-submit (ios production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install monorepo dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS build + submit (non-blocking)
+        working-directory: apps/ios
+        run: >
+          eas build
+          --platform ios
+          --profile production
+          --auto-submit
+          --non-interactive
+          --no-wait

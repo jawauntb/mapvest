@@ -69,10 +69,19 @@ Bundle id: `com.mapvest.app` (change if the Apple team requires).
 # Preview / internal
 eas build --platform ios --profile preview
 
-# Production TestFlight
-eas build --platform ios --profile production
-eas submit --platform ios --latest
+# Production TestFlight (local / cloud agent with EXPO_TOKEN)
+cd apps/ios
+eas build --platform ios --profile production --auto-submit --non-interactive
 ```
+
+### CI (preferred)
+
+GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`):
+
+- **Manual:** Actions → `ios-eas-production` → Run workflow (on `main`)
+- **Tag:** `git tag v0.1.0 && git push origin v0.1.0`
+
+Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. The job uses `--no-wait` so CI returns once EAS accepts the build.
 
 The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload.
 
