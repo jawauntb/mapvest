@@ -48,9 +48,21 @@ Photos → Share → Mapvest is the same identify loop as Camera (`/share-intent
 The share extension is native; JS alone cannot appear in the iOS share sheet.
 Camera always opens a live shutter (last snap is not the landing state).
 
-First session teaches one loop: camera or map → one identity → one ticker
-card with sources. Home is a watchlist, not a second command center. Map and
-List are blended (bottom sheet on the map + **View as List** / **View as Map**
+The product is four layers, in this order: **(A) identify** anything around
+you via camera or map (public ticker, or private → public comparable + ETF)
+so the user builds an investable universe from the world; **(B) agentic
+research** on that company or the local economy (regional quirks that make a
+street better or worse for a business); **(C) a finance agent** with tools
+that writes briefs and memos, with saved chats and Chat about / Chat with on
+the map and everywhere else; **(D) analytics and charts** (trends, levels,
+auction / ridge / regression) so they can think about how and why to own or
+trade the name. Mapvest sits on three APIs: location/image → public + private
+identity and comparables; a finance agent with stats tools; and a charts
+stack. First session still teaches one loop: camera or map → one identity →
+one ticker card with sources. Home is a watchlist, not a second command
+center. A quiet Identify · Local brief · Research · Analytics strip sits
+under the snap/map hero so the rest of the loop is visible without a
+carousel. Map and List are blended (bottom sheet on the map + **View as List** / **View as Map**
 toggles) rather than duplicated as Home widgets. There is **no bottom tab
 bar** — destinations live in the profile drawer (left-sliding) and a camera
 icon sits in the top-right of Home / Map / List. The Local Economy Brief sits

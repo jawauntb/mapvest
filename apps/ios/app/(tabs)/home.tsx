@@ -441,6 +441,10 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
               </Pressable>
 
+              <Text style={styles.loopStrip}>
+                Identify · Local brief · Research · Analytics
+              </Text>
+
               <View style={{ marginTop: 8 }}>
                 <LocalEconomyBriefCard token={session?.token} />
               </View>
@@ -1014,6 +1018,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
   },
   mapLinkText: { flex: 1, color: colors.fg, fontSize: 14, fontWeight: "600" },
+  loopStrip: {
+    color: colors.fgDim,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
   guestHint: {
     marginHorizontal: 16,
     marginTop: 4,

@@ -568,7 +568,7 @@ blockquote {
 
 .features__grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
 }
 
@@ -1459,6 +1459,22 @@ blockquote {
   gap: 0.75rem 1.25rem;
   align-items: center;
   border-bottom: 1px solid var(--border);
+}
+.app-tf-banner {
+  display: block;
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  color: var(--fg-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.app-tf-banner:hover {
+  color: var(--fg);
+  border-color: var(--accent);
 }
 .app-brand {
   font-weight: 700;

@@ -33,6 +33,7 @@ import {
   setSession as saveSession,
   verifyCode,
 } from "@/lib/mapvest-api";
+import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -232,6 +233,14 @@ function Home({
           </button>
         )}
       </header>
+      <a
+        className="app-tf-banner"
+        href={TESTFLIGHT_URL}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        The iPhone app is the product — get TestFlight
+      </a>
       <main className="app-main">
         {tab === "home" ? (
           <HomeSettingsTab user={user} onSignedIn={onSignedIn} onSignOut={onSignOut} />

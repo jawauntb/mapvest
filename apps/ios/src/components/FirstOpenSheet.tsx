@@ -56,8 +56,12 @@ export function FirstOpenSheet() {
         <View style={[styles.card, elevation.lg]}>
           <Text style={styles.title}>See a brand. Get the ticker.</Text>
           <Text style={styles.body}>
-            Snap a storefront or tap a place on the map. If it's public, you get the stock. If it's
-            private, you get the closest public cousin and an ETF. Sources are on the card.
+            Snap a storefront or tap a place. Public → the stock. Private → the closest public
+            cousin and an ETF. Sources are on the card.
+          </Text>
+          <Text style={styles.body}>
+            Then research the company or the local economy, get a brief, save the chat, and read the
+            charts before you decide to own or trade it.
           </Text>
           <PrimaryButton
             label="Snap a brand"

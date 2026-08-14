@@ -85,9 +85,11 @@ Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submi
 
 The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload.
 
+Public join URL (landing CTA): https://testflight.apple.com/join/yvYrrxbM
+
 ### Demo group
 
-Set up an **internal testing** group `mapvest-demo` and add teammates by Apple ID. They receive a TestFlight invite via email and install through the TestFlight app.
+Set up an **internal testing** group `mapvest-demo` and add teammates by Apple ID. They receive a TestFlight invite via email and install through the TestFlight app. Testers can also use the public join link above.
 
 ## Landing page → Docs
 

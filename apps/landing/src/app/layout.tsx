@@ -1,3 +1,4 @@
+import { TESTFLIGHT_URL } from "@/lib/site";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Syne } from "next/font/google";
@@ -26,13 +27,13 @@ const plexMono = IBM_Plex_Mono({
 
 const SITE_NAME = "Mapvest";
 const SITE_DESCRIPTION =
-  "Point at a place. See what’s investable. Mapvest turns storefronts and shelves into tickers, comparables, and ETF exposure.";
+  "See a brand. Get the ticker. Then research the company, the local economy, and the charts — so you can decide whether to own or trade it.";
 const SITE_URL = "https://mapvest.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} — Point at a place. See what’s investable.`,
+    default: `${SITE_NAME} — See a brand. Get the ticker.`,
     template: `%s · ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
@@ -52,7 +53,7 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: SITE_NAME,
-    title: `${SITE_NAME} — Point at a place. See what’s investable.`,
+    title: `${SITE_NAME} — See a brand. Get the ticker.`,
     description: SITE_DESCRIPTION,
     images: [
       {
@@ -66,7 +67,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} — Point at a place. See what’s investable.`,
+    title: `${SITE_NAME} — See a brand. Get the ticker.`,
     description: SITE_DESCRIPTION,
     images: ["/og.svg"],
   },
@@ -119,7 +120,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               mapvest
             </a>
             <nav className="nav" aria-label="Primary">
-              <a href="/app">Open app</a>
+              <a href="/app">Web preview</a>
               <a href="/docs">Docs</a>
               <a
                 href="https://github.com/jawauntb/mapvest"
@@ -129,13 +130,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 GitHub
               </a>
               <a
-                className="btn btn--primary btn--disabled"
-                href="/#testflight-coming-soon"
-                aria-disabled="true"
-                role="link"
+                className="btn btn--primary"
+                href={TESTFLIGHT_URL}
+                target="_blank"
+                rel="noreferrer noopener"
                 style={{ padding: "8px 14px", fontSize: 13 }}
               >
-                TestFlight (soon)
+                Get TestFlight
               </a>
             </nav>
           </div>
