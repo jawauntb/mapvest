@@ -14,7 +14,7 @@ import { BacktestCard } from "@/components/BacktestCard";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { EmptyState } from "@/components/EmptyState";
 import { LocalEconomyBriefCard } from "@/components/LocalEconomyBriefCard";
-import { RichText } from "@/components/RichText";
+import { RichText, stripMdMarks } from "@/components/RichText";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
@@ -676,7 +676,7 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
                 onPress={() =>
                   openChatAbout(router, {
                     kind: "brief",
-                    title: briefQ.data!.headline,
+                    title: stripMdMarks(briefQ.data!.headline),
                     body: briefQ.data!.body,
                   })
                 }
@@ -685,7 +685,7 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
               <ShareButton
                 onPress={() =>
                   void shareBriefText({
-                    headline: briefQ.data!.headline,
+                    headline: stripMdMarks(briefQ.data!.headline),
                     body: briefQ.data!.body,
                   })
                 }
@@ -714,7 +714,7 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
       </View>
       {collapsed ? null : hasBrief ? (
         <>
-          <Text style={styles.briefHeadline}>{briefQ.data!.headline}</Text>
+          <Text style={styles.briefHeadline}>{stripMdMarks(briefQ.data!.headline)}</Text>
           {/* RichText parses paragraphs + auto-links $TICKER mentions to
               the detail page. Was previously a plain Text which left every
               inline ticker un-clickable and every paragraph mashed together. */}

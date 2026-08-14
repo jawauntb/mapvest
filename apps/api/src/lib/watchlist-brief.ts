@@ -36,6 +36,17 @@ export function _clearBriefCache(): void {
   briefCache.clear();
 }
 
+/** Models wrap headlines in **bold** even when we ask for plain text. */
+export function stripMdMarks(s: string): string {
+  return s
+    .trim()
+    .replace(/^\*\*(.+)\*\*$/s, "$1")
+    .replace(/^__(.+)__$/s, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .trim();
+}
+
 function yyyymmdd(now: Date): string {
   const y = now.getUTCFullYear();
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
@@ -58,7 +69,11 @@ function readCache(key: string): DailyBrief | null {
     briefCache.delete(key);
     return null;
   }
-  return hit.brief;
+  return {
+    ...hit.brief,
+    headline: stripMdMarks(hit.brief.headline),
+    body: stripMdMarks(hit.brief.body),
+  };
 }
 
 function writeCache(key: string, brief: DailyBrief): void {
@@ -182,9 +197,9 @@ function headlinesContext(rows: Array<{ ticker: string; items: NewsItem[] }>): s
 
 const SYSTEM_PROMPT = `You are a Financial Times market columnist writing a compact daily briefing for a private investor.
 Style: authoritative, third-person, hedged language ("appears to", "traders suggest", "the tape hints"), no exclamation marks, no emojis, no bullet lists.
-Structure: one bold headline (10 words max) and one single paragraph body of 120-180 words.
+Structure: one headline (10 words max, plain text — no markdown, no asterisks) and one single paragraph body of 120-180 words.
 Reference each ticker as "$SYM" inline (e.g. "$AAPL"). Prefer commentary anchored in the provided price/change data AND the provided headlines. You may cite a headline's angle when relevant, but do not invent facts beyond what is supplied. Write about the tape: dispersion, sector rotation, relative strength, notable moves — and let the headlines shape the narrative when they exist.
-Return STRICT JSON only, matching: { "headline": string, "body": string }. No prose outside the JSON. The body is plain text, no markdown.`;
+Return STRICT JSON only, matching: { "headline": string, "body": string }. No prose outside the JSON. Headline and body are plain text — never wrap them in ** or other markdown.`;
 
 type LLMOutput = { headline: string; body: string };
 
@@ -240,8 +255,9 @@ async function requestOpenRouter(
     const last = stripped.lastIndexOf("}");
     const slice = first !== -1 && last > first ? stripped.slice(first, last + 1) : stripped;
     const parsed = JSON.parse(slice) as Partial<LLMOutput>;
-    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
-    const paragraph = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    const headline =
+      typeof parsed.headline === "string" ? stripMdMarks(parsed.headline) : "";
+    const paragraph = typeof parsed.body === "string" ? stripMdMarks(parsed.body) : "";
     if (!headline || !paragraph) {
       throw new Error("LLM returned unexpected shape (missing headline/body)");
     }
