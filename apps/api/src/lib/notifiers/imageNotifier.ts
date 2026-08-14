@@ -22,14 +22,13 @@ export async function onIdentifyFinished(
   const key = `${ymdh()}-${(brand ?? ticker ?? "unknown").toLowerCase()}`;
   if (!shouldSend(tokens, DEDUPE_SLOT, key)) return;
 
-  const label = brand ?? ticker ?? "your photo";
   const body = ticker
-    ? `${label} maps to $${ticker.toUpperCase()}. Tap to open.`
-    : `${label} identified — no public ticker match.`;
+    ? `$${ticker.toUpperCase()} — ${brand ?? ticker.toUpperCase()}`
+    : `No public match for ${brand ?? "your photo"} — see its cousins.`;
 
   await sendPush({
     tokens: tokens.map((t) => t.expoToken),
-    title: "Photo identified",
+    title: "Found it",
     body,
     data: {
       kind: "identify_done",

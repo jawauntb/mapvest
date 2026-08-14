@@ -74,6 +74,41 @@
               ]
             }
           }
+        },
+        {
+          "name": "Finds journal for the signed-in user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/finds?limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "finds"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "Max finds to return. Default 100, capped at 200."
+                }
+              ]
+            },
+            "description": "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         }
       ]
     },

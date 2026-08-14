@@ -116,7 +116,7 @@ memo.post("/", optionalAuth, requireGenerationQuota("memo"), async (c) => {
       "user",
     );
     if (memoUser?.id) {
-      onMemoFinished(memoUser.id, ticker, provider).catch(() => {});
+      onMemoFinished(memoUser.id, ticker).catch(() => {});
     }
     return c.json({
       ticker,

@@ -25,7 +25,7 @@ export async function onAgentResponseReady(
 
   await sendPush({
     tokens: tokens.map((t) => t.expoToken),
-    title: "Research ready",
+    title: "Your research is ready",
     body: (articleTitle || "Your research thread has a new response.").slice(0, 240),
     data: {
       kind: "agent_response",

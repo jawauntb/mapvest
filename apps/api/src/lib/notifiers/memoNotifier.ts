@@ -10,11 +10,7 @@ import { commitSend, shouldSend, ymd } from "./dedupe.js";
 
 const DEDUPE_SLOT = "memo_finished";
 
-export async function onMemoFinished(
-  userId: string,
-  ticker: string,
-  provider?: string,
-): Promise<void> {
+export async function onMemoFinished(userId: string, ticker: string): Promise<void> {
   const tokens = await listTokensForUserAndEvent(userId, "memo_finished");
   if (tokens.length === 0) return;
   const key = `${ymd()}-${ticker.toUpperCase()}`;
@@ -22,10 +18,8 @@ export async function onMemoFinished(
 
   await sendPush({
     tokens: tokens.map((t) => t.expoToken),
-    title: `Memo ready — $${ticker.toUpperCase()}`,
-    body: provider
-      ? `Your ${provider} memo for $${ticker.toUpperCase()} finished writing.`
-      : `Your investment memo for $${ticker.toUpperCase()} is ready to read.`,
+    title: `Your $${ticker.toUpperCase()} brief is ready`,
+    body: `Your investment memo for $${ticker.toUpperCase()} is ready to read.`,
     data: { kind: "memo_finished", ticker: ticker.toUpperCase() },
   });
   await commitSend(tokens, DEDUPE_SLOT, key);

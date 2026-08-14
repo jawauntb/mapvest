@@ -1,9 +1,11 @@
 import type { IdentifyResponse, Investable, PhotoIdentification, Source } from "@mapvest/core";
 import type { Quote } from "@mapvest/core";
+import { LatLng } from "@mapvest/core";
 import { getQuote, resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
 import { identifyFromImageWithUsage } from "@mapvest/vision";
 import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
+import { recordFind } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onIdentifyFinished } from "../lib/notifiers/imageNotifier.js";
 import { sanitizeOcrString } from "../lib/sanitize.js";
@@ -46,6 +48,66 @@ async function bestEffortQuote(symbol: string, timeoutMs = 500): Promise<Quote |
   }
 }
 
+/** Max user-supplied hint length forwarded to the vision prompt. */
+const MAX_HINT_CHARS = 140;
+
+/**
+ * Location arrives either as a `location` JSON field ({lat,lng}, what the iOS
+ * client sends) or as legacy `lat`/`lng` form fields. Validated against the
+ * core LatLng schema; anything malformed is treated as absent.
+ */
+function parseLocationFields(form: FormData): LatLng | undefined {
+  const locationField = form.get("location");
+  if (typeof locationField === "string" && locationField) {
+    try {
+      const parsed = LatLng.safeParse(JSON.parse(locationField));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // malformed JSON — fall through to the legacy fields
+    }
+  }
+  const lat = form.get("lat");
+  const lng = form.get("lng");
+  if (typeof lat === "string" && typeof lng === "string" && lat && lng) {
+    const parsed = LatLng.safeParse({ lat: Number(lat), lng: Number(lng) });
+    if (parsed.success) return parsed.data;
+  }
+  return undefined;
+}
+
+/**
+ * Region-of-interest: a JSON object of normalized 0..1 numbers. The iOS
+ * client sends {xN,yN,rN} (center + radius); {x,y,w,h} is accepted too.
+ * Recorded on the span only — cropping is a follow-up.
+ */
+function parseRoiField(form: FormData): Record<string, number> | undefined {
+  const field = form.get("roi");
+  if (typeof field !== "string" || !field) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(field);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 0) return undefined;
+    const roi: Record<string, number> = {};
+    for (const [key, value] of entries) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+        return undefined;
+      }
+      roi[key] = value;
+    }
+    return roi;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseHintField(form: FormData): string | undefined {
+  const field = form.get("hint");
+  if (typeof field !== "string") return undefined;
+  const trimmed = field.trim().slice(0, MAX_HINT_CHARS);
+  return trimmed || undefined;
+}
+
 function sanitizeIdentification(id: PhotoIdentification): PhotoIdentification {
   return {
     ...id,
@@ -74,8 +136,6 @@ identify.post("/", async (c) => {
 
     const form = await c.req.formData();
     const file = form.get("image");
-    const lat = form.get("lat");
-    const lng = form.get("lng");
     if (!(file instanceof File)) {
       span.setAttribute("error.kind", "missing_image");
       return c.json({ error: "image required" }, 400);
@@ -91,18 +151,23 @@ identify.post("/", async (c) => {
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const location = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
+    const location = parseLocationFields(form);
+    const hint = parseHintField(form);
+    const roi = parseRoiField(form);
 
     const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get("user");
     span.setAttributes({
       image_size_bytes: bytes.byteLength,
       has_location: Boolean(location),
+      has_hint: Boolean(hint),
+      roi_present: Boolean(roi),
       user_id: user?.id,
     });
 
     const started = performance.now();
     const { identification: rawIdentification, usage } = await identifyFromImageWithUsage(bytes, {
       location,
+      hint,
     });
     const identification = sanitizeIdentification(rawIdentification);
     const latencyMs = Math.round(performance.now() - started);
@@ -191,6 +256,20 @@ identify.post("/", async (c) => {
       const brand = top?.brand.name;
       const ticker = top?.brand.ticker?.symbol;
       onIdentifyFinished(user.id, brand, ticker).catch(() => {});
+      // Fire-and-forget finds-journal entry for the top investable —
+      // recording must never block or fail the identify response.
+      if (top) {
+        recordFind(user.id, {
+          brand: top.brand.name,
+          ticker: top.brand.isPublic ? top.brand.ticker?.symbol : undefined,
+          isPublic: top.brand.isPublic,
+          comparable: top.brand.isPublic ? undefined : top.comparables[0]?.ticker,
+          confidence: top.confidence,
+          lat: location?.lat,
+          lng: location?.lng,
+          foundPrice: top.quote?.price,
+        }).catch(() => {});
+      }
     }
     const resp: IdentifyResponse = { identification, investables };
     return c.json(resp);

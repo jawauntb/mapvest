@@ -731,6 +731,80 @@ components:
       required:
         - identification
         - investables
+    Find:
+      type: object
+      properties:
+        id:
+          type: string
+        brand:
+          type: string
+        ticker:
+          type: string
+        isPublic:
+          type: boolean
+        comparable:
+          type: string
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        lat:
+          type: number
+        lng:
+          type: number
+        foundPrice:
+          type: number
+        createdAt:
+          type: string
+      required:
+        - id
+        - brand
+        - confidence
+        - createdAt
+    FindsResponse:
+      type: object
+      properties:
+        finds:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              brand:
+                type: string
+              ticker:
+                type: string
+              isPublic:
+                type: boolean
+              comparable:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+              lat:
+                type: number
+              lng:
+                type: number
+              foundPrice:
+                type: number
+              createdAt:
+                type: string
+            required:
+              - id
+              - brand
+              - confidence
+              - createdAt
+        count:
+          type: number
+      required:
+        - finds
+        - count
     NearbyRequest:
       type: object
       properties:
@@ -2147,6 +2221,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IdentifyResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/finds:
+    get:
+      summary: Finds journal for the signed-in user
+      description: Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type:
+              - number
+              - "null"
+            description: Max finds to return. Default 100, capped at 200.
+            example: 100
+          required: false
+          description: Max finds to return. Default 100, capped at 200.
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Finds returned newest-first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindsResponse"
         "400":
           description: Bad request — validation failed against the zod schema.
           content:
