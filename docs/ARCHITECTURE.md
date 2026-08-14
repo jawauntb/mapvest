@@ -52,8 +52,10 @@ card with sources. Home is a watchlist, not a second command center. Map and
 List are blended (bottom sheet on the map + **View as List** / **View as Map**
 toggles) rather than duplicated as Home widgets. There is **no bottom tab
 bar** — destinations live in the profile drawer (left-sliding) and a camera
-icon sits in the top-right of Home / Map / List. Daily brief, local economy,
-movers, and backtest appear only after the user has saved something. Overview
+icon sits in the top-right of Home / Map / List. The Local Economy Brief sits
+above the watchlist on every Home load (featured chrome, always refreshable)
+so the unique local read is never buried. Daily brief, movers, and backtest
+appear only after the user has saved something. Overview
 shows a native Yahoo price series; analyzer PNGs stay as research images.
 Advanced charts live behind Detail → More. A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a

@@ -2,8 +2,8 @@
  * FT-style daily watchlist briefing.
  *
  * Pulls quotes for every ticker on the user's watchlist, builds a compact
- * price/change context string, and asks Claude Sonnet 5 (via OpenRouter — the
- * codebase's existing gateway to Anthropic; see packages/vision and
+ * price/change context string, and asks OpenRouter (gpt-5.6-terra, then
+ * claude-opus-4.8, then grok-4.6; see packages/vision and
  * packages/finance/comparable) to produce a Financial Times-style column.
  *
  * Results are cached in-process for 24h keyed by
@@ -24,7 +24,8 @@ export type DailyBrief = {
 };
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-5";
+const PRIMARY_MODEL = "openai/gpt-5.6-terra";
+const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
 const OPENROUTER_TIMEOUT_MS = 20_000;
 
 type CacheEntry = { expiresAt: number; brief: DailyBrief };
@@ -187,16 +188,15 @@ Return STRICT JSON only, matching: { "headline": string, "body": string }. No pr
 
 type LLMOutput = { headline: string; body: string };
 
-async function callOpenRouter(
+async function requestOpenRouter(
+  model: string,
+  apiKey: string,
+  baseUrl: string,
   userContext: string,
   headlinesBlock: string,
 ): Promise<LLMOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
-
   const body = {
-    model: OPENROUTER_MODEL,
+    model,
     response_format: { type: "json_object" as const },
     temperature: 0.4,
     messages: [
@@ -227,7 +227,7 @@ async function callOpenRouter(
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`OpenRouter ${OPENROUTER_MODEL} ${res.status}`);
+    if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
     const j = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
@@ -249,6 +249,27 @@ async function callOpenRouter(
   } finally {
     clearTimeout(t);
   }
+}
+
+async function callOpenRouter(
+  userContext: string,
+  headlinesBlock: string,
+): Promise<LLMOutput> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
+
+  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      return await requestOpenRouter(model, apiKey, baseUrl, userContext, headlinesBlock);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[watchlist-brief] model ${model} failed, trying next:`, err);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /** Canned fallback shapes exported for consistent messaging + tests. */

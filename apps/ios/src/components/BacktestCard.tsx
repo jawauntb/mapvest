@@ -10,11 +10,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  * BacktestCard — Home footer widget answering "if I'd equal-weighted this
  * watchlist N months ago, what would have happened?".
  *
- * Chart-library free: renders the sparkline as a strip of variable-height
- * bars (react-native-svg is not a dependency in apps/ios and adding it just
- * for one widget isn't worth the pod). The bars quantize the normalized
- * portfolio value against min/max of the window, so the visual expresses
- * shape rather than absolute magnitude.
+ * Chart-library free: renders a price LINE of portfolio value (rotated View
+ * segments + last-print dot — same technique as NativePriceChart, no svg).
+ * Jade when the window is up, red when down. The line is shape, not candles.
  *
  * Positioning: I recommend dropping this into home.tsx's ListFooterComponent
  * right AFTER <TopMoversCard /> — same signed-in gate, same container.
@@ -28,7 +26,7 @@ const PERIODS: { key: BacktestPeriod; label: string }[] = [
 ];
 
 const SPARKLINE_HEIGHT = 40;
-const BAR_MIN_HEIGHT = 3;
+const LINE_WIDTH = 2;
 
 export function BacktestCard({ tickers, token }: { tickers: string[]; token?: string }) {
   const [period, setPeriod] = useState<BacktestPeriod>("3mo");
@@ -91,6 +89,7 @@ export function BacktestCard({ tickers, token }: { tickers: string[]; token?: st
 }
 
 function BacktestBody({ data }: { data: BacktestResponse }) {
+  const [sparkWidth, setSparkWidth] = useState(0);
   const up = data.totalReturn >= 0;
   const spreadUp = data.spread >= 0;
   return (
@@ -105,8 +104,13 @@ function BacktestBody({ data }: { data: BacktestResponse }) {
             {formatPct(data.totalReturn)}
           </Text>
         </View>
-        <View style={styles.sparkWrap}>
-          <Sparkline series={data.series} positive={up} />
+        <View
+          style={styles.sparkWrap}
+          onLayout={(e) => setSparkWidth(e.nativeEvent.layout.width)}
+        >
+          {sparkWidth > 0 ? (
+            <Sparkline series={data.series} width={sparkWidth} positive={up} />
+          ) : null}
         </View>
       </View>
 
@@ -189,44 +193,83 @@ function ContributorPill({
 }
 
 /**
- * Bar-strip "sparkline". Height per bar = normalized [close - min] / [max - min]
- * so we visualize shape, not the numeric range. Positive-total baskets shade
- * jade; negative baskets shade red. If the range is degenerate (< 1e-9) every
- * bar renders at the minimum height so the strip still reads as flat.
+ * Close-to-close polyline of portfolio value — looks like a price line, not
+ * a volume histogram. Jade when the window is up, red when down. Degenerate
+ * range (< 1e-9) still draws a flat line so the widget doesn't go empty.
  */
-function Sparkline({ series, positive }: { series: number[]; positive: boolean }) {
-  const { min, max } = useMemo(() => {
-    if (series.length === 0) return { min: 0, max: 1 };
+function Sparkline({
+  series,
+  width,
+  positive,
+}: {
+  series: number[];
+  width: number;
+  positive: boolean;
+}) {
+  const pts = useMemo(() => {
+    if (series.length < 2 || width <= 0) return [];
     let mn = series[0] ?? 0;
     let mx = series[0] ?? 1;
     for (const v of series) {
       if (v < mn) mn = v;
       if (v > mx) mx = v;
     }
-    return { min: mn, max: mx };
-  }, [series]);
+    const range = Math.max(mx - mn, 1e-9);
+    const pad = 4;
+    const innerH = SPARKLINE_HEIGHT - pad * 2;
+    const innerW = Math.max(width - pad * 2, 1);
+    return series.map((v, i) => ({
+      x: pad + (i / (series.length - 1)) * innerW,
+      y: pad + (1 - (v - mn) / range) * innerH,
+    }));
+  }, [series, width]);
 
   const color = positive ? colors.accent : colors.danger;
-  const range = Math.max((max ?? 1) - (min ?? 0), 1e-9);
+  const last = pts[pts.length - 1];
+  if (pts.length < 2 || !last) return null;
+
   return (
-    <View style={styles.spark} accessibilityLabel="Portfolio value sparkline">
-      {series.map((v, i) => {
-        const norm = (v - (min ?? 0)) / range;
-        const h = Math.max(BAR_MIN_HEIGHT, Math.round(norm * SPARKLINE_HEIGHT));
+    <View
+      style={{ width, height: SPARKLINE_HEIGHT }}
+      pointerEvents="none"
+      accessibilityLabel="Portfolio value line"
+    >
+      {pts.slice(0, -1).map((a, i) => {
+        const b = pts[i + 1];
+        if (!b) return null;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
         return (
           <View
             // biome-ignore lint/suspicious/noArrayIndexKey: series index is stable per query
             key={i}
             style={{
-              width: 3,
-              height: h,
+              position: "absolute",
+              left: a.x,
+              top: a.y,
+              width: Math.max(len, 1),
+              height: LINE_WIDTH,
               backgroundColor: color,
-              opacity: 0.55 + 0.45 * (i / Math.max(series.length - 1, 1)),
               borderRadius: 1,
+              transform: [{ rotate: `${deg}deg` }],
+              transformOrigin: "left center",
             }}
           />
         );
       })}
+      <View
+        style={{
+          position: "absolute",
+          left: last.x - 3.5,
+          top: last.y - 3.5,
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: color,
+        }}
+      />
     </View>
   );
 }
@@ -300,20 +343,10 @@ const styles = StyleSheet.create({
   },
   headline: { fontSize: 26, fontWeight: "800", letterSpacing: -0.4 },
   sparkWrap: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-    // flexShrink lets the sparkline get squeezed on narrower screens instead
-    // of pushing the row wider than the card.
-    flexShrink: 1,
-  },
-  spark: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 1,
+    flex: 1,
+    minWidth: 96,
     height: SPARKLINE_HEIGHT,
-    // 20 bars × 3pt + 19 gaps × 1pt = 79pt — fits inside the 14pt-padded
-    // card with room to spare. overflow: hidden clips any future overrun.
-    width: 84,
+    justifyContent: "center",
     overflow: "hidden",
   },
   vsRow: {

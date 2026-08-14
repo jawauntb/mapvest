@@ -14,8 +14,8 @@ const PERIODS: { key: QuoteHistoryPeriod; label: string }[] = [
 ];
 
 const CHART_HEIGHT = 148;
-const BAR_MIN_HEIGHT = 4;
-const DISPLAY_BARS = 64;
+const LINE_POINTS = 80;
+const LINE_WIDTH = 2.5;
 
 type Props = {
   ticker: string;
@@ -81,7 +81,7 @@ function ChartBody({
 }) {
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
-  const bars = useMemo(() => resampleCloses(data, DISPLAY_BARS), [data]);
+  const line = useMemo(() => resampleCloses(data, LINE_POINTS), [data]);
 
   const first = data[0];
   const last = data[data.length - 1];
@@ -127,7 +127,9 @@ function ChartBody({
         accessibilityLabel="Price history chart. Drag to read a date and close."
         accessibilityRole="adjustable"
       >
-        <BarSparkline series={bars} positive={up} />
+        {chartWidth > 0 ? (
+          <LineSparkline series={line} width={chartWidth} height={CHART_HEIGHT} positive={up} />
+        ) : null}
         {scrubIndex !== null && chartWidth > 0 ? (
           <View
             pointerEvents="none"
@@ -144,41 +146,77 @@ function ChartBody({
   );
 }
 
-function BarSparkline({ series, positive }: { series: number[]; positive: boolean }) {
-  const { min, max } = useMemo(() => {
-    if (series.length === 0) return { min: 0, max: 1 };
+/** Close-to-close polyline — looks like a stock line, not a volume histogram. */
+function LineSparkline({
+  series,
+  width,
+  height,
+  positive,
+}: {
+  series: number[];
+  width: number;
+  height: number;
+  positive: boolean;
+}) {
+  const pts = useMemo(() => {
+    if (series.length < 2 || width <= 0) return [];
     let mn = series[0] ?? 0;
     let mx = series[0] ?? 1;
     for (const v of series) {
       if (v < mn) mn = v;
       if (v > mx) mx = v;
     }
-    return { min: mn, max: mx };
-  }, [series]);
+    const range = Math.max(mx - mn, 1e-9);
+    const pad = 8;
+    const innerH = height - pad * 2;
+    return series.map((v, i) => ({
+      x: (i / (series.length - 1)) * width,
+      y: pad + (1 - (v - mn) / range) * innerH,
+    }));
+  }, [series, width, height]);
 
   const color = positive ? colors.accent : colors.danger;
-  const range = Math.max((max ?? 1) - (min ?? 0), 1e-9);
+  const last = pts[pts.length - 1];
+  if (pts.length < 2 || !last) return null;
 
   return (
-    <View style={styles.spark}>
-      {series.map((v, i) => {
-        const norm = (v - (min ?? 0)) / range;
-        const h = Math.max(BAR_MIN_HEIGHT, Math.round(norm * CHART_HEIGHT));
+    <View style={{ width, height }} pointerEvents="none">
+      {pts.slice(0, -1).map((a, i) => {
+        const b = pts[i + 1];
+        if (!b) return null;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
         return (
           <View
             // biome-ignore lint/suspicious/noArrayIndexKey: series index is stable per query
             key={i}
             style={{
-              flex: 1,
-              height: h,
+              position: "absolute",
+              left: a.x,
+              top: a.y,
+              width: Math.max(len, 1),
+              height: LINE_WIDTH,
               backgroundColor: color,
-              opacity: 0.4 + 0.6 * (i / Math.max(series.length - 1, 1)),
-              borderTopLeftRadius: 1,
-              borderTopRightRadius: 1,
+              borderRadius: 1,
+              transform: [{ rotate: `${deg}deg` }],
+              transformOrigin: "left center",
             }}
           />
         );
       })}
+      <View
+        style={{
+          position: "absolute",
+          left: last.x - 3.5,
+          top: last.y - 3.5,
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: color,
+        }}
+      />
     </View>
   );
 }
@@ -265,13 +303,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: radii.sm,
     backgroundColor: colors.bgSunken,
-  },
-  spark: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 1,
-    height: CHART_HEIGHT,
-    width: "100%",
   },
   scrubLine: {
     position: "absolute",

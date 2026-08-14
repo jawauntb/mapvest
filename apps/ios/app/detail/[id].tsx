@@ -608,7 +608,7 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
         }}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel="Open profile menu"
+        accessibilityLabel="Open menu"
         style={{
           width: 34,
           height: 34,
@@ -617,7 +617,7 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
           justifyContent: "center",
         }}
       >
-        <Ionicons name="person-circle-outline" size={24} color={colors.fg} />
+        <Ionicons name="menu-outline" size={24} color={colors.fg} />
       </Pressable>
     </View>
   );
