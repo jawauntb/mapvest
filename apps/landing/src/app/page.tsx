@@ -276,15 +276,12 @@ export default async function HomePage() {
         <Reveal>
           <div className="section__eyebrow">How it works</div>
           <h2 id="how-title" className="section__title">
-            Three APIs, one loop from the street to a position.
+            From a place or a photo to a decision.
           </h2>
           <p className="section__lead">
-            Mapvest sits on three APIs: one that matches a location or image to public and private
-            companies (and public comparables for both), a finance agent with stats tools and a
-            mathy system prompt that writes briefs and memos, and a charts stack for trends and
-            levels. You log in, build an investable universe from the world, learn the companies and
-            the regional quirks, then use analytics to think about owning or trading them. Every
-            answer cites its sources.
+            See what’s around you and turn it into an investable universe. Research the company or
+            the local economy, get a brief, then look at the charts before you decide whether to own
+            or trade it. Sources stay on the card.
           </p>
         </Reveal>
 
@@ -299,7 +296,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="section container" aria-labelledby="api-playground-title">
+      {/* Hidden for now — visitors don't need curl samples on the marketing page. */}
+      <section
+        hidden
+        className="section container"
+        aria-labelledby="api-playground-title"
+        aria-hidden="true"
+      >
         <Reveal>
           <div className="section__eyebrow">API playground</div>
           <h2 id="api-playground-title" className="section__title">
