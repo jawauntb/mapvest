@@ -84,7 +84,7 @@ const features = [
   {
     icon: <IconCamera />,
     title: "Identify anything around you",
-    body: "Camera or map. Public brand → the ticker. Private → the closest public comparable and an ETF with real exposure. That’s how you build an investable universe out of the world.",
+    body: "Camera or map. Public brand → the ticker. Private → the closest public comparable and an ETF with real exposure. Every find is kept — your universe grows as you move through the world.",
   },
   {
     icon: <IconResearch />,
@@ -185,8 +185,8 @@ export default async function HomePage() {
             See a brand. Get the <span className="accent">ticker</span>.
           </p>
           <p className="hero__sub">
-            Identify what’s around you. Research the company or the local economy. Get a brief.
-            Read the charts. Then decide whether you want to own or trade it.
+            Everything you find builds a universe — companies you’ve seen with your own eyes,
+            researched like you mean it.
           </p>
           <div className="hero__ctas">
             <a
@@ -235,8 +235,9 @@ export default async function HomePage() {
             Log in. Learn what’s around you. Build a universe from it.
           </h2>
           <p className="section__lead">
-            The iPhone app is the product. Identify a place or a photo, then research, brief, and
-            chart the name — every ticker and comparable comes back with sources.
+            The iPhone app is the product. Identify a place or a photo and it’s saved as a find
+            automatically. Then research, brief, and chart the name — every ticker and comparable
+            comes back with sources.
           </p>
         </Reveal>
 

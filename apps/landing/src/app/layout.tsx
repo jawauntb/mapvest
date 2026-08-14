@@ -27,7 +27,7 @@ const plexMono = IBM_Plex_Mono({
 
 const SITE_NAME = "Mapvest";
 const SITE_DESCRIPTION =
-  "See a brand. Get the ticker. Then research the company, the local economy, and the charts — so you can decide whether to own or trade it.";
+  "See a brand. Get the ticker. Every find builds your universe — with neighborhood-level research, agent briefs, and charts, all with sources.";
 const SITE_URL = "https://mapvest.app";
 
 export const metadata: Metadata = {

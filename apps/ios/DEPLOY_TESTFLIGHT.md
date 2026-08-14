@@ -72,10 +72,19 @@ and its investable ticker. Private goods get matched to public comparables +
 ETFs with meaningful exposure.
 
 Try:
-- Camera tab: photograph any storefront (McDonald's, Starbucks, CVS, etc.)
-- Live-scan tab: point the phone at aisle products at 1 frame/sec
-- Map tab: pins around your location, colored by publicness
-- List tab: sort by distance, market cap, or sector
+- Camera: snap anything with a name on it — instant identify, no circle step.
+  The card shows what it means ("you can own this" / "closest public cousin"),
+  price, confidence, and source chips. Refine lets you circle + hint.
+- Home: "Your universe" shows your recent finds and streak; watchlist counts
+  read "companies"; camera-found tickers show a camera mark.
+- Map: pins carry tickers; unresolved rows say "Tap to look up"; zoom
+  refreshes.
+- Local Economy Brief: names your neighborhood; footer says "sources cited ·
+  research, not advice."
+- Research: briefs show source chips; threads name themselves after the
+  ticker.
+- Notifications (if opted in): morning read, movers ("it's in your universe"),
+  found-it pushes.
 
 Feedback → jawaun@generalintelligencecompany.com
 ```
