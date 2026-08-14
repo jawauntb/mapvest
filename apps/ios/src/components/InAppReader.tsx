@@ -1,5 +1,5 @@
 import { fetchNewsRead } from "@/api/news";
-import { colors, radii, type } from "@/theme/tokens";
+import { colors, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -139,13 +139,13 @@ const styles = StyleSheet.create({
   body: { padding: 20, gap: 14, paddingBottom: 40 },
   headline: {
     color: colors.fg,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontSize: 26,
     lineHeight: 32,
     fontWeight: "700",
   },
   byline: { color: colors.fgMuted, fontSize: 12, fontWeight: "600" },
-  p: { color: colors.fg, fontFamily: "Georgia", fontSize: 17, lineHeight: 26 },
+  p: { color: colors.fg, fontFamily: fonts.serif, fontSize: 17, lineHeight: 26 },
   muted: { color: colors.fgMuted, fontSize: 14, textAlign: "center" },
   retry: {
     marginTop: 8,

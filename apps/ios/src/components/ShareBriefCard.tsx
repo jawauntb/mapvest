@@ -1,5 +1,5 @@
 import { BrandMark } from "@/components/BrandMark";
-import { colors, radii } from "@/theme/tokens";
+import { colors, fonts, radii } from "@/theme/tokens";
 import { forwardRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   },
   headline: {
     color: colors.fg,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontSize: 26,
     lineHeight: 32,
     fontWeight: "800",
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   },
   body: {
     color: colors.fgMuted,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
     fontSize: 15,
     lineHeight: 22,
   },

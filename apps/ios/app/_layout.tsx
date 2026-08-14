@@ -6,10 +6,12 @@ import { registerForPush } from "@/notif/registerForPush";
 import { type NotifData, pathFromNotificationData } from "@/notif/router";
 import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
+import { Syne_700Bold, Syne_800ExtraBold } from "@expo-google-fonts/syne";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import { ShareIntentProvider } from "expo-share-intent";
@@ -94,6 +96,10 @@ function PushBridge() {
 }
 
 export default function RootLayout() {
+  // Brand display font (Syne) loads in the background — rendering is never
+  // gated on it. Until it lands, brand moments fall back to system sans.
+  useFonts({ Syne_700Bold, Syne_800ExtraBold });
+
   const queryClient = useMemo(
     () =>
       new QueryClient({

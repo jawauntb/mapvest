@@ -3,7 +3,7 @@ import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { openChatAbout } from "@/nav/chatAbout";
-import { colors, radii } from "@/theme/tokens";
+import { colors, motion, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const FALLBACK_REGION: Region = {
   latitude: 37.7749,
@@ -118,7 +119,9 @@ export default function MapScreen() {
 
   useEffect(() => {
     setTrackMarkers(true);
-    const delay = quotesQuery.isFetching ? 1600 : 700;
+    // Long enough for the staggered pin-drop springs (~315ms max delay +
+    // ~500ms spring) to finish before markers rasterize.
+    const delay = quotesQuery.isFetching ? 1600 : 1100;
     const t = setTimeout(() => setTrackMarkers(false), delay);
     return () => clearTimeout(t);
   }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt, focusedPlaceId]);
@@ -179,7 +182,7 @@ export default function MapScreen() {
         showsPointsOfInterest={false}
         showsBuildings={false}
       >
-        {items.map((item) => {
+        {items.map((item, idx) => {
           const pin = resolvePinTicker(item, brandTickers);
           const quote = pin ? quotes[pin.symbol] : undefined;
           const hasTicker = !!pin;
@@ -195,6 +198,11 @@ export default function MapScreen() {
               tracksViewChanges={trackMarkers || revealed}
               anchor={{ x: 0.5, y: 1 }}
               zIndex={revealed ? 100 : showChip ? 3 : hasTicker ? 2 : 1}
+              accessibilityLabel={
+                pin
+                  ? `${item.place.name} — ${pin.isPublic ? "" : "comparable "}${pin.symbol}`
+                  : item.place.name
+              }
               onPress={(e) => {
                 e.stopPropagation?.();
                 onPinPress(item);
@@ -206,6 +214,7 @@ export default function MapScreen() {
                 quote={quote}
                 accent={pinColor(item)}
                 revealed={revealed}
+                dropDelay={(idx % 10) * 35}
               />
             </Marker>
           );
@@ -454,17 +463,22 @@ function TickerPin({
   quote,
   accent,
   revealed,
+  dropDelay = 0,
 }: {
   placeName: string;
   pin: PinTicker | null;
   quote?: Quote;
   accent: string;
   revealed?: boolean;
+  /** Staggered entrance so pins land like a wave, not a wall. */
+  dropDelay?: number;
 }) {
   if (!pin) {
     return (
       <View style={styles.plainCanvas} collapsable={false}>
-        <View style={[styles.plainDot, { backgroundColor: accentHex(accent) }]} />
+        <Animated.View entering={FadeIn.duration(220).delay(dropDelay)}>
+          <View style={[styles.plainDot, { backgroundColor: accentHex(accent) }]} />
+        </Animated.View>
       </View>
     );
   }
@@ -474,41 +488,60 @@ function TickerPin({
   const h = revealed ? PIN_H_REVEALED : PIN_H;
   return (
     <View style={[styles.pinCanvas, { width: w, height: h }]} collapsable={false}>
-      <View
-        style={[
-          styles.bubble,
-          {
-            width: w - 4,
-            borderColor: accentHex(accent),
-            borderWidth: revealed ? 2.5 : 1.5,
-            backgroundColor: revealed ? "rgba(12, 14, 16, 0.98)" : "rgba(12, 14, 16, 0.94)",
-          },
-        ]}
+      <Animated.View
+        entering={FadeInDown.springify()
+          .damping(motion.springSnappy.damping)
+          .stiffness(motion.springSnappy.stiffness)
+          .delay(dropDelay)}
+        style={{ alignItems: "center" }}
       >
-        <Text style={[styles.tickerText, revealed && { fontSize: 14 }]} numberOfLines={1}>
-          {pin.isPublic ? "$" : "≈"}
-          {pin.symbol}
-        </Text>
-        {quote ? (
-          <Text style={[styles.priceText, revealed && { fontSize: 12 }]} numberOfLines={1}>
-            ${quote.price.toFixed(2)}{" "}
-            <Text style={{ color: up ? colors.accent : colors.danger }}>
-              {up ? "+" : ""}
-              {quote.changePct.toFixed(1)}%
-            </Text>
-          </Text>
-        ) : (
-          <Text style={styles.priceMuted}>…</Text>
-        )}
-        <Text
-          style={[styles.placeHint, revealed && { fontSize: 11, maxWidth: w - 12 }]}
-          numberOfLines={1}
+        <View
+          style={[
+            styles.bubble,
+            {
+              width: w - 4,
+              borderColor: accentHex(accent),
+              borderWidth: revealed ? 2.5 : 1.5,
+              backgroundColor: revealed ? "rgba(12, 14, 16, 0.98)" : "rgba(12, 14, 16, 0.94)",
+            },
+          ]}
         >
-          {placeName}
-        </Text>
-      </View>
-      <View style={[styles.stem, { borderTopColor: accentHex(accent) }]} />
-      <View style={[styles.dot, { backgroundColor: accentHex(accent) }]} />
+          <Text
+            style={[styles.tickerText, revealed && { fontSize: 14 }]}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
+            {pin.isPublic ? "$" : "≈"}
+            {pin.symbol}
+          </Text>
+          {quote ? (
+            <Text
+              style={[styles.priceText, revealed && { fontSize: 12 }]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
+              ${quote.price.toFixed(2)}{" "}
+              <Text style={{ color: up ? colors.accent : colors.danger }}>
+                {up ? "+" : ""}
+                {quote.changePct.toFixed(1)}%
+              </Text>
+            </Text>
+          ) : (
+            <Text style={styles.priceMuted} allowFontScaling={false}>
+              …
+            </Text>
+          )}
+          <Text
+            style={[styles.placeHint, revealed && { fontSize: 11, maxWidth: w - 12 }]}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
+            {placeName}
+          </Text>
+        </View>
+        <View style={[styles.stem, { borderTopColor: accentHex(accent) }]} />
+        <View style={[styles.dot, { backgroundColor: accentHex(accent) }]} />
+      </Animated.View>
     </View>
   );
 }
@@ -676,7 +709,7 @@ const styles = StyleSheet.create({
   priceMuted: { color: colors.fgDim, fontSize: 10, marginTop: 1 },
   placeHint: {
     color: colors.fgMuted,
-    fontSize: 9,
+    fontSize: 10,
     marginTop: 1,
     maxWidth: PIN_W - 12,
     textAlign: "center",

@@ -10,7 +10,9 @@ export const colors = {
   bgGlass: "rgba(22, 26, 31, 0.66)",
   fg: "#F2F4F5",
   fgMuted: "#8B939C",
-  fgDim: "#5C6570",
+  // Lightened from #5C6570 — 9–11pt captions on near-black were below
+  // comfortable contrast. Still clearly quieter than fgMuted.
+  fgDim: "#6E7883",
   accent: "#14C4A6",
   accentHover: "#52D99C",
   accentMuted: "#1F6B4A",
@@ -26,6 +28,31 @@ export const colors = {
   border: "#242A32",
   borderStrong: "#323A45",
   glassBorder: "rgba(242, 244, 245, 0.08)",
+} as const;
+
+/**
+ * Font roles. `display` (Syne) is for brand moments ONLY — wordmark, the
+ * Your universe header — never body copy. `serif` is the editorial voice
+ * for briefs and readers. Everything else stays system sans.
+ * Syne loads at runtime via useFonts in app/_layout.tsx; until it lands the
+ * system falls back gracefully.
+ */
+export const fonts = {
+  display: "Syne_700Bold",
+  displayHeavy: "Syne_800ExtraBold",
+  serif: "Georgia",
+} as const;
+
+/** Spacing scale — mirror of @mapvest/design `space`. Use instead of one-off paddings. */
+export const space = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  "2xl": 32,
+  "3xl": 48,
+  "4xl": 64,
 } as const;
 
 export const type = {
@@ -76,4 +103,4 @@ export const motion = {
   springSoft: { damping: 20, stiffness: 140, mass: 1 },
 } as const;
 
-export const theme = { colors, radii, type, elevation, motion } as const;
+export const theme = { colors, radii, type, fonts, space, elevation, motion } as const;

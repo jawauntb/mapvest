@@ -2,7 +2,7 @@ import { type AgentThread, listAgentThreads } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { BrandMark } from "@/components/BrandMark";
 import { useSidebar } from "@/nav/SidebarContext";
-import { colors, elevation, motion, radii, type } from "@/theme/tokens";
+import { colors, elevation, fonts, motion, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   brandMark: { flexDirection: "row", alignItems: "center", gap: 8 },
-  brand: { color: colors.fg, ...type.h2, fontSize: 20 },
+  brand: { color: colors.fg, fontFamily: fonts.display, fontSize: 20, letterSpacing: -0.2 },
   closeBtn: {
     width: 36,
     height: 36,

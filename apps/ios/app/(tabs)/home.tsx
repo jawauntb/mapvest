@@ -20,9 +20,9 @@ import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
-import { useSidebar } from "@/nav/SidebarContext";
+import { AppTopBar } from "@/components/AppTopBar";
 import { openChatAbout } from "@/nav/chatAbout";
-import { colors, elevation, radii, type } from "@/theme/tokens";
+import { colors, elevation, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { shareBriefText } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
@@ -89,7 +89,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { session } = useSession();
-  const { openSidebar } = useSidebar();
   const params = useLocalSearchParams<{ focus?: string }>();
   const searchRef = useRef<TextInput>(null);
   const [tickerQuery, setTickerQuery] = useState("");
@@ -298,23 +297,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            openSidebar();
-          }}
-          hitSlop={12}
-          style={styles.burger}
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
-        >
-          <Ionicons name="menu-outline" size={22} color={colors.fg} />
-        </Pressable>
-        <Text style={styles.title}>Mapvest</Text>
-        {/* Right slot stays empty — the hero card below is the camera entry. */}
-        <View style={styles.iconBtn} />
-      </View>
+      <AppTopBar title="Mapvest" brandTitle />
 
       <ScreenFade>
         <FlatList
@@ -463,7 +446,7 @@ export default function HomeScreen() {
               {session?.token && finds.length > 0 ? (
                 <>
                   <View style={styles.sectionHead}>
-                    <Text style={styles.sectionTitle}>Your universe</Text>
+                    <Text style={styles.universeTitle}>Your universe</Text>
                     <Text style={styles.count}>
                       {finds.length} find{finds.length === 1 ? "" : "s"}
                       {findStreak >= 2 ? ` · ${findStreak} day streak` : ""}
@@ -986,30 +969,6 @@ function WatchRow({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  burger: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.bgElevated,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: { color: colors.fg, ...type.h3, fontSize: 20 },
   searchRow: {
     flexDirection: "row",
     gap: 8,
@@ -1145,6 +1104,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionTitle: { color: colors.fg, ...type.h3, fontSize: 18 },
+  universeTitle: { color: colors.fg, fontFamily: fonts.display, fontSize: 18, letterSpacing: -0.2 },
   count: { color: colors.fgDim, fontSize: 13 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 16 },
   row: {
@@ -1250,13 +1210,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     lineHeight: 24,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
   },
   briefBody: {
     color: colors.fgMuted,
     fontSize: 14,
     lineHeight: 21,
-    fontFamily: "Georgia",
+    fontFamily: fonts.serif,
   },
   briefFooter: {
     color: colors.fgDim,
