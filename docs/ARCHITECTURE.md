@@ -46,6 +46,7 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 
 Photos → Share → Mapvest is the same identify loop as Camera (`/share-intent`).
 The share extension is native; JS alone cannot appear in the iOS share sheet.
+Camera always opens a live shutter (last snap is not the landing state).
 
 First session teaches one loop: camera or map → one identity → one ticker
 card with sources. Home is a watchlist, not a second command center. Map and
@@ -56,8 +57,12 @@ icon sits in the top-right of Home / Map / List. The Local Economy Brief sits
 above the watchlist on every Home load (featured chrome, always refreshable)
 so the unique local read is never buried. Daily brief, movers, and backtest
 appear only after the user has saved something. Overview
-shows a native Yahoo price series; analyzer PNGs stay as research images.
-Advanced charts live behind Detail → More. A one-screen first-open sheet
+shows a native Yahoo price series; analyzer PNGs live in an Analytics
+section with auction / ridge / regression chips. A listed ticker page is
+ticker → name → chart → save/research/Robinhood/alert → comps → analytics
+→ glance → financials → news → full brief. Comparables lead only when the
+name is actually private. News opens an in-app reader (Safari is optional).
+A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
 carousel. Mapvest Daily and Local Economy Brief both collapse behind a
 chevron. Leading `$` cashtags stay on map pins and in prose; list rows show

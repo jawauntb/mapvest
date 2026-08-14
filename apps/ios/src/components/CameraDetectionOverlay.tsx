@@ -268,7 +268,7 @@ export function layoutDetections(
       glowOpacity,
       topPill: pills.top,
       bottomPill: pills.bottom,
-      labelText: `$${det.ticker.toUpperCase()} · ${pct}%`,
+      labelText: `${det.ticker.toUpperCase()} · ${pct}%`,
       bottomText: det.name,
     });
   }

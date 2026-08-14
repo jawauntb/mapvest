@@ -21,6 +21,8 @@ export type Quote = {
   ts: string;
   /** Verbatim disclaimer per Yahoo TOS. */
   disclaimer: string;
+  /** Yahoo shortName / longName when the chart meta includes it. Never invented. */
+  name?: string;
 };
 
 export const QUOTE_DISCLAIMER = "delayed by 15 min, source: Yahoo Finance";
@@ -40,6 +42,8 @@ type YahooChartMeta = {
   chartPreviousClose?: number;
   previousClose?: number;
   regularMarketTime?: number;
+  shortName?: string;
+  longName?: string;
 };
 type YahooChartResponse = {
   chart?: {
@@ -112,6 +116,10 @@ export function parseYahooChart(sym: string, json: YahooChartResponse): Quote | 
   const tsSec = numberOrNull(meta.regularMarketTime);
   const ts = tsSec !== null ? new Date(tsSec * 1000).toISOString() : new Date().toISOString();
 
+  const name = [meta.shortName, meta.longName].find(
+    (n) => typeof n === "string" && n.trim().length > 0,
+  )?.trim();
+
   return {
     symbol: meta.symbol ?? sym,
     price,
@@ -120,6 +128,7 @@ export function parseYahooChart(sym: string, json: YahooChartResponse): Quote | 
     currency: meta.currency ?? "USD",
     ts,
     disclaimer: QUOTE_DISCLAIMER,
+    ...(name ? { name } : {}),
   };
 }
 

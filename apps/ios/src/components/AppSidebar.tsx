@@ -169,7 +169,7 @@ export function AppSidebar() {
               icon="camera-outline"
               label="Camera"
               hint="Snap a brand"
-              onPress={() => go("/(tabs)/camera")}
+              onPress={() => go("/(tabs)/camera?intent=snap")}
             />
             <NavRow
               icon="list-outline"

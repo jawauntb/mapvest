@@ -58,6 +58,12 @@ describe("parseYahooChart", () => {
     expect(q!.disclaimer).toBe(QUOTE_DISCLAIMER);
   });
 
+  test("uses Yahoo shortName as quote.name when present", () => {
+    const q = parseYahooChart("RLX", chartPayload({ symbol: "RLX", shortName: "RLX Technology" }));
+    expect(q).not.toBeNull();
+    expect(q!.name).toBe("RLX Technology");
+  });
+
   test("falls back to previousClose when chartPreviousClose is absent", () => {
     const payload = chartPayload({ chartPreviousClose: undefined, previousClose: 100 });
     const q = parseYahooChart("X", payload);

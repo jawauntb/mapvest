@@ -72,6 +72,20 @@ async function jsonGet<T>(path: string, opts: FetchOpts): Promise<T> {
  * indicates the upstream provider errored or returned nothing — callers
  * should render an empty state, not an error.
  */
+export type NewsRead = {
+  title?: string;
+  url: string;
+  text: string;
+  source: "exa";
+  fetchedAt: string;
+  error?: "unavailable";
+};
+
+export function fetchNewsRead(url: string, opts: FetchOpts = {}): Promise<NewsRead> {
+  const params = new URLSearchParams({ url });
+  return jsonGet<NewsRead>(`/v1/news/read?${params.toString()}`, opts);
+}
+
 export function fetchTickerNews(
   ticker: string,
   opts: FetchOpts & { limit?: number } = {},

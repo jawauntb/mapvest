@@ -1,7 +1,10 @@
 import type { Brand, Source, Ticker } from "@mapvest/core";
 import { searchBrand, toSource } from "@mapvest/search";
 import { normalizeBrand, normalizeParent } from "./normalize.js";
+import { getQuote } from "./quote.js";
 import { seedBrands, type SeedEntry } from "./seed.js";
+
+const TICKER_RE = /^[A-Z][A-Z0-9.]{0,5}$/;
 
 export type TickerResolution = {
   brand: Brand;
@@ -50,7 +53,8 @@ function matchSeedSubstring(normalized: string): SeedEntry | undefined {
  *      instead of "Hershey's", scan seed values for a parent whose
  *      `normalizeParent` form matches the input's. Seed key still wins
  *      when both would match, so brand-short-forms are preferred.
- *   4. Exa search + LLM extraction (deferred to caller if needed).
+ *   4. Ticker-shaped input + Yahoo quote hit → listed.
+ *   5. Exa search + LLM extraction (deferred to caller if needed).
  */
 export async function resolveTicker(brandInput: string): Promise<TickerResolution> {
   // (1) direct seed-key match
@@ -76,7 +80,31 @@ export async function resolveTicker(brandInput: string): Promise<TickerResolutio
     }
   }
 
-  // (4) Runtime lookup via Exa. LLM extraction is deferred to the API layer,
+  // (4) Ticker-shaped input with a live Yahoo quote → listed, not private.
+  // This is how /detail/RLX stops being labeled "private" when the chart works.
+  const asTicker = brandInput.trim().toUpperCase();
+  if (TICKER_RE.test(asTicker)) {
+    const quote = await getQuote(asTicker);
+    if (quote) {
+      return {
+        brand: {
+          name: quote.name ?? brandInput,
+          isPublic: true,
+          ticker: { symbol: quote.symbol },
+        },
+        sources: [
+          {
+            provider: "yahoo",
+            url: `https://finance.yahoo.com/quote/${encodeURIComponent(quote.symbol)}`,
+            fetchedAt: quote.ts,
+            confidence: "high",
+          },
+        ],
+      };
+    }
+  }
+
+  // (5) Runtime lookup via Exa. LLM extraction is deferred to the API layer,
   // which already holds the OpenRouter client. This function returns the raw
   // hits; callers decide whether to promote to a ticker.
   let hits: Awaited<ReturnType<typeof searchBrand>> = [];

@@ -288,7 +288,7 @@ export default function HomeScreen() {
         <Pressable
           onPress={() => {
             hapticSelect();
-            router.push("/(tabs)/camera");
+            router.push("/(tabs)/camera?intent=snap");
           }}
           hitSlop={12}
           style={styles.iconBtn}
@@ -405,7 +405,7 @@ export default function HomeScreen() {
 
               {/* Hero card — camera identify is Mapvest's signature loop. */}
               <ScalePressable
-                onPress={() => router.push("/(tabs)/camera")}
+                onPress={() => router.push("/(tabs)/camera?intent=snap")}
                 accessibilityRole="button"
                 accessibilityLabel="Open camera — identify what's investable"
                 style={[styles.hero, elevation.md]}
@@ -813,13 +813,21 @@ function WatchRow({
   onDelete: () => void;
 }) {
   const up = (quote?.change ?? 0) >= 0;
+  const tickerKey = entry.ticker.toLowerCase();
+  const quoteName = (quote as { name?: string } | undefined)?.name;
+  const subline =
+    quoteName && quoteName.toLowerCase() !== tickerKey
+      ? quoteName
+      : entry.name && entry.name.toLowerCase() !== tickerKey
+        ? entry.name
+        : (entry.sector ?? undefined);
 
   // Right-side action revealed on swipe-left. Confirming before delete because
   // a stray gesture shouldn't nuke a watched ticker.
   const renderRightActions = () => (
     <Pressable
       onPress={() => {
-        Alert.alert("Remove from watchlist?", `$${entry.ticker} will be removed.`, [
+        Alert.alert("Remove from watchlist?", `${entry.ticker} will be removed.`, [
           { text: "Cancel", style: "cancel" },
           { text: "Remove", style: "destructive", onPress: onDelete },
         ]);
@@ -848,9 +856,11 @@ function WatchRow({
       >
         <View style={{ flex: 1 }}>
           <Text style={styles.rowTicker}>{entry.ticker}</Text>
-          <Text style={styles.rowName} numberOfLines={1}>
-            {entry.name ?? entry.sector ?? "—"}
-          </Text>
+          {subline ? (
+            <Text style={styles.rowName} numberOfLines={1}>
+              {subline}
+            </Text>
+          ) : null}
         </View>
         {quote ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
