@@ -15,6 +15,6 @@
     <path d="M24 98h8l11-16 12 10 16-24 9 8 16-22" stroke="#F2F4F5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <text x="240" y="230" fill="#F2F4F5" font-family="Syne, Avenir Next, Segoe UI, sans-serif" font-size="92" font-weight="700" letter-spacing="-0.04em">mapvest</text>
-  <text x="240" y="300" fill="#8B939C" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="36">Point at a place. See what’s investable.</text>
-  <text x="240" y="420" fill="#14C4A6" font-family="IBM Plex Mono, Menlo, monospace" font-size="22">MAP · CAMERA · RESEARCH · TICKERS</text>
+  <text x="240" y="300" fill="#8B939C" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="36">See a brand. Get the ticker.</text>
+  <text x="240" y="420" fill="#14C4A6" font-family="IBM Plex Mono, Menlo, monospace" font-size="22">IDENTIFY · RESEARCH · BRIEFS · ANALYTICS</text>
 </svg>

@@ -20,29 +20,29 @@ type Node = {
 const nodes: Node[] = [
   {
     step: "01",
-    title: "Photo / Location",
-    lines: ["Point the camera or", "drop a pin on the map"],
+    title: "Identify",
+    lines: ["Camera or map → public", "ticker or private comparable"],
     variant: "jade",
     icon: "pin",
   },
   {
     step: "02",
-    title: "Vision",
-    lines: ["Multimodal model IDs", "the brand or storefront"],
+    title: "Local research",
+    lines: ["Company from the image,", "or the local economy"],
     variant: "blue",
     icon: "eye",
   },
   {
     step: "03",
-    title: "Finance resolver",
-    lines: ["Ticker, private comparable,", "or nearest sector ETF"],
+    title: "Finance agent",
+    lines: ["Briefs, memos, saved chats", "on names you care about"],
     variant: "jade",
     icon: "bars",
   },
   {
     step: "04",
-    title: "Answer + Sources",
-    lines: ["A cited result —", "nothing hallucinated"],
+    title: "Analytics",
+    lines: ["Trends and levels so you", "can think about a position"],
     variant: "blue",
     icon: "check",
   },
@@ -115,12 +115,13 @@ export function HowItWorksDiagram() {
         role="img"
         aria-labelledby="diagram-title diagram-desc"
       >
-        <title id="diagram-title">How Mapvest turns a signal into a sourced idea</title>
+        <title id="diagram-title">How Mapvest turns the world into a researched position</title>
         <desc id="diagram-desc">
-          A four-step pipeline diagram. Step one, photo or location: point the camera or drop a pin
-          on the map. Step two, vision: a multimodal model identifies the brand or storefront. Step
-          three, finance resolver: returns a ticker, a private-company comparable, or the nearest
-          sector ETF. Step four, answer and sources: a cited result, nothing hallucinated.
+          A four-step product loop. Step one, identify: camera or map matches a place or photo to a
+          public ticker or a private-company comparable. Step two, local research: agentic research
+          on the company or the local economy. Step three, finance agent: briefs, memos, and saved
+          chats. Step four, analytics: charts for trends and levels so you can think about a
+          position.
         </desc>
 
         <defs>

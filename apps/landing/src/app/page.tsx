@@ -1,3 +1,4 @@
+import { TESTFLIGHT_URL } from "@/lib/site";
 import { type ApiState, probeApiSafe } from "@/lib/status";
 import type { Metadata } from "next";
 import { CopyableCurl } from "./CopyableCurl";
@@ -6,15 +7,10 @@ import { HowItWorksDiagram } from "./HowItWorksDiagram";
 import { Reveal } from "./Reveal";
 
 export const metadata: Metadata = {
-  title: "Point at a place. See what’s investable.",
+  title: "See a brand. Get the ticker.",
 };
 
-// TestFlight isn't live yet. The visual CTA stays so the page shape is
-// unchanged, but the href intentionally does NOT go to the placeholder
-// join URL — anyone who clicks lands back on the page with a #coming-soon
-// anchor instead of a broken TestFlight join screen.
 const API_BASE_URL = "https://api-production-4b27.up.railway.app";
-const API_DOCS_URL = "/docs";
 
 // Force this page to be statically rendered at build time. The API probe
 // runs once during `next build` — never at request time — which matches
@@ -24,21 +20,6 @@ export const revalidate = false;
 
 // Small hand-authored icons — no icon library. 24x24 viewBox, stroke-based,
 // sized down to 22px via .feature__icon svg in globals.css.
-function IconMapPin() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 21s7-7.6 7-12.6A7 7 0 0 0 5 8.4C5 13.4 12 21 12 21Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="8.4" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
 function IconCamera() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -54,22 +35,46 @@ function IconCamera() {
   );
 }
 
-function IconCompare() {
+function IconResearch() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
-        d="M6 8h11.5M17.5 8 14 4.5M17.5 8 14 11.5"
+        d="M8 5.5h8M8 9.5h8M8 13.5h5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
       <path
-        d="M18 16H6.5M6.5 16 10 12.5M6.5 16 10 19.5"
+        d="M5 3.5h14A1.5 1.5 0 0 1 20.5 5v14A1.5 1.5 0 0 1 19 20.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function IconChat() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M5 6.5h14A1.5 1.5 0 0 1 20.5 8v7A1.5 1.5 0 0 1 19 16.5H9.5L5 20.2V8A1.5 1.5 0 0 1 6.5 6.5H5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconChart() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 19.5h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M6.5 16V11M12 16V7.5M17.5 16v-5.5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -77,19 +82,24 @@ function IconCompare() {
 
 const features = [
   {
-    icon: <IconMapPin />,
-    title: "Map",
-    body: "Every pin on the map is a public brand, a private-brand comparable, or an ETF with material exposure. Pan the world, see what you can own.",
-  },
-  {
     icon: <IconCamera />,
-    title: "Camera",
-    body: "Point your phone at a shelf, a storefront, a chocolate bar. Mapvest identifies the brand and returns the ticker plus sources, in seconds.",
+    title: "Identify anything around you",
+    body: "Camera or map. Public brand → the ticker. Private → the closest public comparable and an ETF with real exposure. That’s how you build an investable universe out of the world.",
   },
   {
-    icon: <IconCompare />,
-    title: "Comparable",
-    body: "Private company? We resolve the nearest public comparable, the sector ETF, and a confidence score — so the map is never a dead end.",
+    icon: <IconResearch />,
+    title: "Agentic local research",
+    body: "Once a place or photo has an identity, research the company — or the local economy around it. Regional quirks that make a street better or worse for a business show up in the brief.",
+  },
+  {
+    icon: <IconChat />,
+    title: "Finance agent, briefs, chats",
+    body: "A finance agent with tools writes memos on names you care about. Save chats. Chat about / Chat with a ticker from the map and everywhere else.",
+  },
+  {
+    icon: <IconChart />,
+    title: "Analytics that inform a position",
+    body: "Charts and modules for trends and levels — so you can think about how and why to own, trade, or structure a position around the asset. Not just a name on a card.",
   },
 ];
 
@@ -164,7 +174,7 @@ export default async function HomePage() {
         <style>{".reveal{opacity:1!important;transform:none!important;}"}</style>
       </noscript>
 
-      <section className="hero" id="testflight-coming-soon">
+      <section className="hero" id="get-testflight">
         <HeroBackdrop />
         <div className="container">
           <h1 className="hero__brand">
@@ -172,18 +182,23 @@ export default async function HomePage() {
             mapvest
           </h1>
           <p className="hero__title">
-            Point at a place. See what’s <span className="accent">investable</span>.
+            See a brand. Get the <span className="accent">ticker</span>.
           </p>
           <p className="hero__sub">
-            Storefronts and shelves become tickers, comparables, and ETF exposure — with sources —
-            on map, camera, and research.
+            Identify what’s around you. Research the company or the local economy. Get a brief.
+            Read the charts. Then decide whether you want to own or trade it.
           </p>
           <div className="hero__ctas">
-            <a className="btn btn--primary" href="/app">
-              Open app
+            <a
+              className="btn btn--primary"
+              href={TESTFLIGHT_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Get TestFlight
             </a>
-            <a className="btn btn--ghost" href={API_DOCS_URL}>
-              Docs
+            <a className="btn btn--ghost" href="/app">
+              Open in browser
             </a>
             <span
               className={`status-badge status-badge--${apiState}`}
@@ -217,12 +232,11 @@ export default async function HomePage() {
         <Reveal className="container">
           <div className="section__eyebrow">Screenshots</div>
           <h2 id="shots-title" className="section__title">
-            Four surfaces, one loop: sign in, see it, name it, invest it.
+            Log in. Learn what’s around you. Build a universe from it.
           </h2>
           <p className="section__lead">
-            Renderings from the iOS alpha. Every number, ticker, and confidence score you’ll see in
-            the real app is backed by a resolver that returns its sources — the map is never a dead
-            end.
+            The iPhone app is the product. Identify a place or a photo, then research, brief, and
+            chart the name — every ticker and comparable comes back with sources.
           </p>
         </Reveal>
 
@@ -262,12 +276,15 @@ export default async function HomePage() {
         <Reveal>
           <div className="section__eyebrow">How it works</div>
           <h2 id="how-title" className="section__title">
-            From a real-world signal to a citation-backed idea.
+            Three APIs, one loop from the street to a position.
           </h2>
           <p className="section__lead">
-            Mapvest fuses multimodal vision, brand search, and finance resolvers into one API. Every
-            answer comes back with the sources that produced it — nothing is hallucinated on your
-            behalf.
+            Mapvest sits on three APIs: one that matches a location or image to public and private
+            companies (and public comparables for both), a finance agent with stats tools and a
+            mathy system prompt that writes briefs and memos, and a charts stack for trends and
+            levels. You log in, build an investable universe from the world, learn the companies and
+            the regional quirks, then use analytics to think about owning or trading them. Every
+            answer cites its sources.
           </p>
         </Reveal>
 
