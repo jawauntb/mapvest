@@ -56,17 +56,17 @@ export function FirstOpenSheet() {
         <View style={[styles.card, elevation.lg]}>
           <Text style={styles.title}>See a brand. Get the ticker.</Text>
           <Text style={styles.body}>
-            Snap a storefront or tap a place. Public → the stock. Private → the closest public
-            cousin and an ETF. Sources are on the card.
+            Snap a storefront or tap a place. Public → the stock. Private → its closest public
+            cousin. Every answer shows its sources.
           </Text>
           <Text style={styles.body}>
-            Then research the company or the local economy, get a brief, save the chat, and read the
-            charts before you decide to own or trade it.
+            Everything you find builds your universe — the map of companies in your world, with the
+            research to actually understand them.
           </Text>
           <PrimaryButton
-            label="Snap a brand"
+            label="Find your first one"
             onPress={() => void finish("/(tabs)/camera")}
-            accessibilityLabel="Snap a brand"
+            accessibilityLabel="Find your first one"
             style={{ alignSelf: "stretch" }}
           />
           <Pressable

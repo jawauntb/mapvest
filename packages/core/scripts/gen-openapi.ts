@@ -50,28 +50,18 @@ const S = {
   EtfExposure: component("EtfExposure", raw.EtfExposure),
   Comparable: component("Comparable", raw.Comparable),
   Investable: component("Investable", raw.Investable),
-  PhotoIdentification: component(
-    "PhotoIdentification",
-    raw.PhotoIdentification,
-  ),
+  PhotoIdentification: component("PhotoIdentification", raw.PhotoIdentification),
   IdentifyRequest: component("IdentifyRequest", raw.IdentifyRequest),
   IdentifyResponse: component("IdentifyResponse", raw.IdentifyResponse),
+  Find: component("Find", raw.Find),
+  FindsResponse: component("FindsResponse", raw.FindsResponse),
   NearbyRequest: component("NearbyRequest", raw.NearbyRequest),
   NearbyItem: component("NearbyItem", raw.NearbyItem),
   NearbyResponse: component("NearbyResponse", raw.NearbyResponse),
   WidgetNearbyItem: component("WidgetNearbyItem", raw.WidgetNearbyItem),
-  WidgetNearbyResponse: component(
-    "WidgetNearbyResponse",
-    raw.WidgetNearbyResponse,
-  ),
-  ResolveComparableRequest: component(
-    "ResolveComparableRequest",
-    raw.ResolveComparableRequest,
-  ),
-  ResolveComparableResponse: component(
-    "ResolveComparableResponse",
-    raw.ResolveComparableResponse,
-  ),
+  WidgetNearbyResponse: component("WidgetNearbyResponse", raw.WidgetNearbyResponse),
+  ResolveComparableRequest: component("ResolveComparableRequest", raw.ResolveComparableRequest),
+  ResolveComparableResponse: component("ResolveComparableResponse", raw.ResolveComparableResponse),
   ChartResponse: component("ChartResponse", raw.ChartResponse),
   QuoteHistoryPoint: component("QuoteHistoryPoint", raw.QuoteHistoryPoint),
   QuoteHistoryResponse: component("QuoteHistoryResponse", raw.QuoteHistoryResponse),
@@ -126,8 +116,7 @@ registry.registerPath({
   method: "get",
   path: "/v1/health",
   summary: "Health check",
-  description:
-    "Liveness probe. Returns 200 while the API is accepting traffic.",
+  description: "Liveness probe. Returns 200 while the API is accepting traffic.",
   tags: ["system"],
   responses: {
     200: {
@@ -174,6 +163,32 @@ registry.registerPath({
     200: {
       description: "Identification succeeded.",
       content: { "application/json": { schema: S.IdentifyResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/finds",
+  summary: "Finds journal for the signed-in user",
+  description:
+    "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      limit: z.coerce
+        .number()
+        .optional()
+        .openapi({ example: 100 })
+        .describe("Max finds to return. Default 100, capped at 200."),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Finds returned newest-first.",
+      content: { "application/json": { schema: S.FindsResponse } },
     },
     ...errorResponses,
   },
@@ -234,7 +249,9 @@ registry.registerPath({
   responses: {
     200: {
       description: "Map snapshot PNG.",
-      content: { "image/png": { schema: z.string().openapi({ type: "string", format: "binary" }) } },
+      content: {
+        "image/png": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+      },
     },
     400: errorResponses[400],
     501: errorResponse("Map snapshot not configured (GOOGLE_MAPS_API_KEY unset)."),
@@ -302,12 +319,10 @@ registry.registerPath({
   tags: ["finance"],
   request: {
     params: z.object({
-      type: z
-        .string()
-        .openapi({
-          param: { name: "type", in: "path" },
-          example: "auction",
-        }),
+      type: z.string().openapi({
+        param: { name: "type", in: "path" },
+        example: "auction",
+      }),
     }),
     query: z.object({
       ticker: z.string().openapi({ example: "MCD" }),
@@ -328,7 +343,8 @@ registry.registerPath({
   method: "get",
   path: "/v1/analysis/{ticker}",
   summary: "Underlying Analyzer snapshot",
-  description: "Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo.",
+  description:
+    "Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo.",
   tags: ["finance"],
   request: {
     params: z.object({
@@ -493,9 +509,7 @@ registry.registerPath({
             code: z
               .string()
               .optional()
-              .describe(
-                "Magic-link code from the email. Omit on the first call to trigger send.",
-              ),
+              .describe("Magic-link code from the email. Omit on the first call to trigger send."),
           }),
         },
       },

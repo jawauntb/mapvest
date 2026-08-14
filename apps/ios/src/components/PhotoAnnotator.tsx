@@ -14,11 +14,7 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 /**
@@ -56,9 +52,7 @@ type ImageRect = { x: number; y: number; width: number; height: number };
  */
 export function PhotoAnnotator({ imageUri, onCancel, onConfirm }: PhotoAnnotatorProps) {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(
-    null,
-  );
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [hint, setHint] = useState("");
   // Committed circle (post-release). Kept in CONTAINER-space coordinates
   // (pt values inside the layout box); we convert to normalized image
@@ -201,10 +195,7 @@ export function PhotoAnnotator({ imageUri, onCancel, onConfirm }: PhotoAnnotator
       width: size,
       height: size,
       borderRadius: Math.max(0, r.value),
-      transform: [
-        { translateX: cx.value - r.value },
-        { translateY: cy.value - r.value },
-      ],
+      transform: [{ translateX: cx.value - r.value }, { translateY: cy.value - r.value }],
     };
   });
 
@@ -265,7 +256,7 @@ export function PhotoAnnotator({ imageUri, onCancel, onConfirm }: PhotoAnnotator
           >
             <Ionicons name="close" size={22} color={colors.fg} />
           </Pressable>
-          <Text style={styles.headerTitle}>Circle the object</Text>
+          <Text style={styles.headerTitle}>Circle what you meant</Text>
           <View style={styles.headerBtn} />
         </View>
 

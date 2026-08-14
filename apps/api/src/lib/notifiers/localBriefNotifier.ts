@@ -34,7 +34,7 @@ export async function onLocalBriefGenerated(
   await sendPush({
     tokens: tokens.map((t) => t.expoToken),
     title: `Local economy — ${placeName}`,
-    body: first || "A fresh local economy brief is ready.",
+    body: first || `What's investable in ${placeName} right now.`,
     data: {
       kind: "local_brief",
       lat: location.lat,

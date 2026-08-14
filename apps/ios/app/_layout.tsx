@@ -8,7 +8,7 @@ import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
@@ -42,6 +42,16 @@ const persister = createAsyncStoragePersister({
   storage: AsyncStorage,
   key: "mapvest.rq.v1",
 });
+
+// PersistQueryClientProvider renders children immediately while restoring
+// (it only pauses query fetching until hydration settles), so it cannot
+// re-introduce the boot black-screen. Restore failures are swallowed by the
+// provider and just leave a fresh cache — fail-open.
+const persistOptions = {
+  persister,
+  maxAge: 1000 * 60 * 60 * 24,
+  buster: "v2",
+};
 
 /**
  * One-time push registration + tap-through router. Mounted inside
@@ -83,41 +93,6 @@ function PushBridge() {
   return null;
 }
 
-/**
- * Non-blocking wrapper around the persister. React Query's official
- * `PersistQueryClientProvider` blocks children until hydration resolves;
- * on a hung AsyncStorage read that means the app is stuck on splash forever.
- * We fire hydration in the background and always render children.
- *
- * The tradeoff: on cold start users briefly see a fresh cache before
- * hydration lands. Better than never rendering at all.
- */
-function NonBlockingPersistProvider({
-  client,
-  children,
-}: {
-  client: QueryClient;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const raw = await persister.restoreClient();
-        if (cancelled || !raw) return;
-        // React Query will merge dehydrated state on demand.
-      } catch (e) {
-        console.warn("[rq] hydrate failed (non-fatal):", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-}
-
 export default function RootLayout() {
   const queryClient = useMemo(
     () =>
@@ -156,7 +131,7 @@ export default function RootLayout() {
 
   const tree = (
     <SafeAreaProvider>
-      <NonBlockingPersistProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <SessionProvider>
           <SidebarProvider>
             <PushBridge />
@@ -199,7 +174,7 @@ export default function RootLayout() {
             <AppSidebar />
           </SidebarProvider>
         </SessionProvider>
-      </NonBlockingPersistProvider>
+      </PersistQueryClientProvider>
     </SafeAreaProvider>
   );
 
@@ -229,7 +204,3 @@ function DeferredShareIntent({ children }: { children: ReactNode }) {
     </ShareIntentProvider>
   );
 }
-
-// PersistQueryClientProvider is still imported so downstream code that
-// references the exported symbol doesn't break; unused here for build 11.
-void PersistQueryClientProvider;

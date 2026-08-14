@@ -10,10 +10,7 @@
  */
 import { getQuote } from "@mapvest/finance";
 import { sendPush } from "../push-dispatcher.js";
-import {
-  listTokensForEvent,
-  type PushToken,
-} from "../push-tokens-store.js";
+import { type PushToken, listTokensForEvent } from "../push-tokens-store.js";
 import { listWatchEntries } from "../watchlist-store.js";
 import { commitSend, shouldSend, ymd } from "./dedupe.js";
 
@@ -42,10 +39,11 @@ async function pushMover(
   const key = `${ymd()}-${ticker.toUpperCase()}`;
   if (!shouldSend(userTokens, DEDUPE_SLOT, key)) return;
   const sign = changePct >= 0 ? "+" : "";
+  const direction = changePct >= 0 ? "up" : "down";
   await sendPush({
     tokens: userTokens.map((t) => t.expoToken),
     title: `$${ticker.toUpperCase()} ${sign}${changePct.toFixed(1)}%`,
-    body: `Watchlist mover: $${ticker.toUpperCase()} is up ${changePct >= 0 ? "up" : "down"} ${Math.abs(changePct).toFixed(1)}% intraday.`,
+    body: `$${ticker.toUpperCase()} is ${direction} ${Math.abs(changePct).toFixed(1)}% today — it's in your universe.`,
     data: {
       kind: "watchlist_mover",
       ticker: ticker.toUpperCase(),

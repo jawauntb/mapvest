@@ -1,12 +1,14 @@
 # Mapvest
 
-A Google-Maps/Zillow-style investable-brand explorer.
+The world is your watchlist.
 
-**What it does.** Point your phone at a place, a shelf, or an object and Mapvest tells you what's investable:
-- The **map view** shows nearby brands whose parent companies are publicly tradeable (with tickers).
-- The **camera view** identifies the brand or product in a photo — a chocolate bar becomes `HSY`, a McDonald's storefront becomes `MCD`.
-- For **private goods**, Mapvest finds the closest **public comparable** or an **ETF** that has meaningful exposure.
-- The **list view** ranks nearby investables by proximity, market cap, or theme.
+**What it does.** See a brand. Get the ticker. Mapvest is four layers on one loop:
+- **(A) Identify** anything around you via camera or map — a public brand returns its ticker; a private one resolves to the closest public cousin plus an ETF with real exposure. Sources, always.
+- **(B) Agentic research** on the company you found — or the local economy around it.
+- **(C) Finance agent** briefs, memos, and saved chats on the names you care about.
+- **(D) Analytics** to think about positions — charts and modules for how and why to own or trade a name.
+
+Every identify is kept as a **find** — your universe of companies you've seen with your own eyes, growing as you move through the world.
 
 ## Repo layout
 

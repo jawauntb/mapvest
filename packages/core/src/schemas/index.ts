@@ -111,6 +111,32 @@ export const IdentifyResponse = z.object({
 });
 export type IdentifyResponse = z.infer<typeof IdentifyResponse>;
 
+/**
+ * One entry in a signed-in user's "finds journal". Recorded server-side after
+ * every successful /v1/identify (top investable only); read back newest-first
+ * via GET /v1/finds. `ticker` is set for public brands, `comparable` for
+ * private brands (closest public comparable's ticker).
+ */
+export const Find = z.object({
+  id: z.string(),
+  brand: z.string(),
+  ticker: z.string().optional(),
+  isPublic: z.boolean().optional(),
+  comparable: z.string().optional(),
+  confidence: Confidence,
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  foundPrice: z.number().optional(),
+  createdAt: z.string(), // ISO
+});
+export type Find = z.infer<typeof Find>;
+
+export const FindsResponse = z.object({
+  finds: z.array(Find),
+  count: z.number(),
+});
+export type FindsResponse = z.infer<typeof FindsResponse>;
+
 export const NearbyRequest = z.object({
   lat: z.number(),
   lng: z.number(),
@@ -242,15 +268,17 @@ export const AnalysisSnapshot = z.object({
 });
 export type AnalysisSnapshot = z.infer<typeof AnalysisSnapshot>;
 
-export const CockpitRow = z.object({
-  rank: z.number().optional(),
-  ticker: z.string(),
-  score: z.number().optional(),
-  lane: z.string().optional(),
-  ridge: z.union([z.string(), z.number()]).optional(),
-  flow: z.union([z.string(), z.number()]).optional(),
-  auction: z.union([z.string(), z.number()]).optional(),
-}).passthrough();
+export const CockpitRow = z
+  .object({
+    rank: z.number().optional(),
+    ticker: z.string(),
+    score: z.number().optional(),
+    lane: z.string().optional(),
+    ridge: z.union([z.string(), z.number()]).optional(),
+    flow: z.union([z.string(), z.number()]).optional(),
+    auction: z.union([z.string(), z.number()]).optional(),
+  })
+  .passthrough();
 export type CockpitRow = z.infer<typeof CockpitRow>;
 
 export const CockpitResponse = z.object({
@@ -261,13 +289,15 @@ export const CockpitResponse = z.object({
 });
 export type CockpitResponse = z.infer<typeof CockpitResponse>;
 
-export const AlertItem = z.object({
-  ticker: z.string().optional(),
-  title: z.string().optional(),
-  severity: z.union([z.string(), z.number()]).optional(),
-  summary: z.string().optional(),
-  message: z.string().optional(),
-}).passthrough();
+export const AlertItem = z
+  .object({
+    ticker: z.string().optional(),
+    title: z.string().optional(),
+    severity: z.union([z.string(), z.number()]).optional(),
+    summary: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
 export type AlertItem = z.infer<typeof AlertItem>;
 
 export const AlertsResponse = z.object({
@@ -303,9 +333,7 @@ export const ResearchArticle = z.object({
     )
     .default([]),
   toolsUsed: z.array(z.string()).default([]),
-  sources: z
-    .array(z.object({ label: z.string(), url: z.string().url().optional() }))
-    .default([]),
+  sources: z.array(z.object({ label: z.string(), url: z.string().url().optional() })).default([]),
   chartTickers: z.array(z.string()).default([]),
   mode: z.string().optional(),
   error: z.string().optional(),

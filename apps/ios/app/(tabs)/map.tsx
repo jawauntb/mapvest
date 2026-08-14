@@ -232,7 +232,7 @@ export default function MapScreen() {
         ) : null}
         {focusedPlaceId ? (
           <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
-            <Text style={styles.warn}>Tap again for the summary</Text>
+            <Text style={styles.warn}>Tap again to open</Text>
           </BlurView>
         ) : null}
       </View>
@@ -332,7 +332,7 @@ function NearbySheet({
           <Text style={styles.sheetEmpty}>
             {loading
               ? "Looking for brands around you."
-              : "Walk around — pins are brands you can open."}
+              : "Walk around — every pin is a company you can look inside."}
           </Text>
         ) : (
           rows.map((item) => {
@@ -353,7 +353,7 @@ function NearbySheet({
                     {item.place.name}
                   </Text>
                   <Text style={styles.sheetTicker} numberOfLines={1}>
-                    {pin ? `${pin.isPublic ? "$" : "≈"}${pin.symbol}` : "Tap to resolve"}
+                    {pin ? `${pin.isPublic ? "$" : "≈"}${pin.symbol}` : "Tap to look up"}
                   </Text>
                 </View>
                 {quote ? (

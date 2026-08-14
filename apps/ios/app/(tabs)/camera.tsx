@@ -1,8 +1,8 @@
-import { addToWatchlist, identifyPhoto } from "@/api/client";
-import type { Confidence, Detection, IdentifyResponse, LatLng } from "@/api/types";
+import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
+import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { captureStill } from "@/camera/captureStill";
-import { CameraDetectionOverlay } from "@/components/CameraDetectionOverlay";
+import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { enqueuePhoto } from "@/queue/photoQueue";
@@ -19,16 +19,18 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   type LayoutChangeEvent,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type CameraCache = {
@@ -65,9 +67,9 @@ export default function CameraScreen() {
     width: 0,
     height: 0,
   });
-  // `pendingUri` gates the annotator. When set, we render <PhotoAnnotator>
-  // full-screen over the camera and only kick off identify once the user
-  // confirms. Applies to BOTH capture and library-picked photos.
+  // `pendingUri` gates the optional Refine annotator. When set, we render
+  // <PhotoAnnotator> full-screen seeded with the frozen photo; its Scan
+  // re-runs identify with roi + hint. Cancel returns to the result card.
   const [pendingUri, setPendingUri] = useState<string | null>(null);
 
   function onPreviewLayout(e: LayoutChangeEvent) {
@@ -85,7 +87,7 @@ export default function CameraScreen() {
     }
   }, [focused, frozenUri]);
 
-  // Coerce the identify response into a `Detection[]`. If the API already
+  // Coerce the identify response into overlay detections. If the API already
   // returns `detections` (forward-compat path), use them; otherwise synthesize
   // a single centered detection from the top investable so users still get the
   // glow-box treatment.
@@ -96,10 +98,7 @@ export default function CameraScreen() {
   // before ever calling this hook, so as soon as perm loaded React tripped
   // "Rendered more hooks than during the previous render." That crash is what
   // made the camera tab appear "broken" after the PhotoAnnotator wiring.
-  const detections = useMemo<Detection[]>(
-    () => coerceDetections(result),
-    [result],
-  );
+  const detections = useMemo<OverlayDetection[]>(() => coerceDetections(result), [result]);
 
   function persistCamera(next: Partial<CameraCache>) {
     const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
@@ -191,9 +190,7 @@ export default function CameraScreen() {
     setSavedNote(null);
     try {
       const photo = await captureStill(cam, { readySince: readySinceRef.current });
-      // Hand off to the annotator instead of identifying immediately —
-      // the user gets to draw an ROI + type a hint before we upload.
-      setPendingUri(photo.uri);
+      await runIdentify({ imageUri: photo.uri });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setErr(msg || "Capture failed");
@@ -209,22 +206,16 @@ export default function CameraScreen() {
     try {
       const uri = await pickFromLibrary();
       if (!uri) return;
-      // Same annotator flow as fresh capture.
-      setErr(null);
-      setResult(null);
-      setQueuedNote(null);
-      setSavedNote(null);
-      setPendingUri(uri);
+      await runIdentify({ imageUri: uri });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not open library");
     }
   }
 
   /**
-   * Run identify with optional ROI + hint. Shared by the annotator's Scan
-   * path for both freshly captured and library-picked photos. Falls back to
-   * enqueue on network failure / offline just like the original inline
-   * flow did.
+   * Run identify for a captured or library-picked photo. Fresh snaps call
+   * this immediately with just the uri; the Refine annotator re-runs it
+   * with roi + hint. Falls back to enqueue on network failure / offline.
    */
   async function runIdentify(args: {
     imageUri: string;
@@ -247,7 +238,7 @@ export default function CameraScreen() {
     try {
       if (!online) {
         await enqueuePhoto({ imageUri: args.imageUri, location });
-        const note = "Offline — queued. Will upload when back online.";
+        const note = "Queued — finishing when you're back online.";
         setQueuedNote(note);
         persistCamera({ queuedNote: note });
         return;
@@ -264,15 +255,15 @@ export default function CameraScreen() {
         );
         setResult(resp);
         persistCamera({ result: resp, err: null });
+        if (resp.investables.length > 0) hapticSuccess();
       } catch (e) {
         await enqueuePhoto({ imageUri: args.imageUri, location });
         const msg = e instanceof Error ? e.message : String(e);
-        setQueuedNote("Upload failed — queued for retry.");
+        const failNote =
+          "That didn't go through. Your snap is queued and will finish on its own — or retake now.";
+        setQueuedNote(failNote);
         setErr(msg);
-        persistCamera({
-          queuedNote: "Upload failed — queued for retry.",
-          err: msg,
-        });
+        persistCamera({ queuedNote: failNote, err: msg });
       }
     } finally {
       setBusy(false);
@@ -300,6 +291,10 @@ export default function CameraScreen() {
   const top = result?.investables[0];
   const ticker = top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
   const accent = sectorColor(top?.brand.sector);
+  // `quote` is attached best-effort by /v1/identify (packages/core schema);
+  // the local Investable re-declaration doesn't carry the field yet.
+  const quote = top ? (top as Investable & { quote?: Quote }).quote : undefined;
+  const meaning = meaningLine(top);
 
   async function onSave() {
     if (!ticker || !top) return;
@@ -334,9 +329,8 @@ export default function CameraScreen() {
   // Only mount while focused so blurred tabs cannot hold the camera session.
   const showLivePreview = focused && !frozenUri;
 
-  // Full-screen annotator takes over once we have a pending photo (captured
-  // or library-picked). Returning early keeps the CameraView unmounted
-  // while the modal is up, which frees the AVFoundation session.
+  // Full-screen Refine annotator. Returning early keeps the CameraView
+  // unmounted while it's up, which frees the AVFoundation session.
   if (pendingUri) {
     return (
       <PhotoAnnotator
@@ -386,14 +380,16 @@ export default function CameraScreen() {
             <View style={styles.statusRow}>
               <BlurView intensity={40} tint="dark" style={styles.statusPill}>
                 <Ionicons name="cloud-offline-outline" size={12} color={colors.fg} />
-                <Text style={styles.status}>Offline — snaps save until you're back</Text>
+                <Text style={styles.status}>
+                  Offline — we'll finish this find when you're back.
+                </Text>
               </BlurView>
             </View>
           ) : null}
           {!frozenUri && !result && !busy && !err ? (
             <View style={styles.lessonRow}>
               <BlurView intensity={40} tint="dark" style={styles.statusPill}>
-                <Text style={styles.status}>Point at a brand. Snap to see the ticker.</Text>
+                <Text style={styles.status}>Point at anything with a name on it.</Text>
               </BlurView>
             </View>
           ) : null}
@@ -404,54 +400,110 @@ export default function CameraScreen() {
         </View>
 
         {result || err || queuedNote ? (
-          <BlurView
-            intensity={50}
-            tint="dark"
-            style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
-          >
-            {top ? (
-              <Pressable
-                onPress={openDetail}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${top.brand.name}`}
-              >
-                <Text style={styles.resultTitle}>{top.brand.name}</Text>
-                <Text style={styles.resultSubtitle}>
-                  {ticker ? ticker : "Private"}
-                  {" · "}
-                  {confidenceLabel(top.confidence)}
-                  {top.brand.sector ? ` · ${top.brand.sector}` : ""}
-                </Text>
-              </Pressable>
-            ) : null}
-            <View style={styles.cardActions}>
-              {ticker ? (
-                <Pressable
-                  style={styles.miniBtn}
-                  onPress={() => void onSave()}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Save ${ticker} to watchlist`}
-                >
-                  <Ionicons name="star-outline" size={13} color={colors.accent} />
-                  <Text style={styles.miniBtnText}>Save</Text>
-                </Pressable>
-              ) : null}
+          <CardEntrance>
+            <BlurView
+              intensity={50}
+              tint="dark"
+              style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
+            >
               {top ? (
                 <Pressable
-                  style={styles.miniBtn}
                   onPress={openDetail}
                   accessibilityRole="button"
-                  accessibilityLabel="Open research"
+                  accessibilityLabel={`Open ${top.brand.name}`}
                 >
-                  <Ionicons name="document-text-outline" size={13} color={colors.accent} />
-                  <Text style={styles.miniBtnText}>Research</Text>
+                  <View style={styles.titleRow}>
+                    <Text style={styles.resultTitle} numberOfLines={1}>
+                      {top.brand.name}
+                    </Text>
+                    <View style={styles.confidencePill}>
+                      <Text style={styles.confidencePillText}>
+                        {confidenceLabel(top.confidence)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.resultSubtitle}>
+                    {ticker ? ticker : "Private"}
+                    {top.brand.sector ? ` · ${top.brand.sector}` : ""}
+                  </Text>
+                  {meaning ? <Text style={styles.meaning}>{meaning}</Text> : null}
+                  {quote ? (
+                    <Text style={styles.priceLine}>
+                      ${quote.price.toFixed(2)}{" "}
+                      <Text style={{ color: quote.change >= 0 ? colors.accent : colors.danger }}>
+                        {quote.change >= 0 ? "+" : ""}
+                        {quote.changePct.toFixed(1)}% today
+                      </Text>
+                    </Text>
+                  ) : null}
                 </Pressable>
               ) : null}
-            </View>
-            {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
-            {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
-            {err ? <Text style={styles.err}>{err}</Text> : null}
-          </BlurView>
+              {top && top.sources.length > 0 ? (
+                <View style={styles.sourceRow}>
+                  {top.sources.slice(0, 3).map((s, i) => (
+                    <Pressable
+                      key={`${s.provider}-${i}`}
+                      style={styles.sourceChip}
+                      disabled={!s.url}
+                      onPress={() => {
+                        if (s.url) void Linking.openURL(s.url);
+                      }}
+                      accessibilityRole="link"
+                      accessibilityLabel={`Source ${s.provider}`}
+                    >
+                      <Text style={styles.sourceChipText}>{s.provider}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              <View style={styles.cardActions}>
+                {ticker ? (
+                  <Pressable
+                    style={styles.miniBtn}
+                    onPress={() => void onSave()}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Save ${ticker} to watchlist`}
+                  >
+                    <Ionicons name="star-outline" size={13} color={colors.accent} />
+                    <Text style={styles.miniBtnText}>Save</Text>
+                  </Pressable>
+                ) : null}
+                {top ? (
+                  <Pressable
+                    style={styles.miniBtn}
+                    onPress={openDetail}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open research"
+                  >
+                    <Ionicons name="document-text-outline" size={13} color={colors.accent} />
+                    <Text style={styles.miniBtnText}>Research</Text>
+                  </Pressable>
+                ) : null}
+                {frozenUri ? (
+                  <Pressable
+                    style={styles.miniBtn}
+                    onPress={() => {
+                      hapticSelect();
+                      setPendingUri(frozenUri);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refine — circle what you meant"
+                  >
+                    <Ionicons name="scan-outline" size={13} color={colors.accent} />
+                    <Text style={styles.miniBtnText}>Refine</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {top ? (
+                <Text style={styles.findsNote}>
+                  {session?.token ? "Added to your finds" : "Sign in to keep your finds."}
+                </Text>
+              ) : null}
+              {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
+              {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
+              {err ? <Text style={styles.err}>{err}</Text> : null}
+            </BlurView>
+          </CardEntrance>
         ) : err ? (
           <BlurView intensity={50} tint="dark" style={styles.resultCard}>
             <Text style={styles.err}>{err}</Text>
@@ -510,16 +562,51 @@ export default function CameraScreen() {
   );
 }
 
+/** Subtle mount entrance for the result card — fade + rise, ~250ms. */
+function CardEntrance({ children }: { children: ReactNode }) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 250 });
+  }, [progress]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 12 }],
+  }));
+
+  return <Animated.View style={animStyle}>{children}</Animated.View>;
+}
+
 /**
- * Map the categorical `Confidence` enum to a numeric [0,1] value so
- * synthesized detections can drive the overlay's opacity ramp.
+ * One-line "what this means for you" under the brand. Never invents a
+ * match: public brands missing a ticker get no line at all.
  */
+function meaningLine(inv: Investable | undefined): string | null {
+  if (!inv) return null;
+  const symbol = inv.brand.ticker?.symbol;
+  if (inv.brand.isPublic && symbol) {
+    return `${inv.brand.name} is $${symbol.toUpperCase()} — you can own this.`;
+  }
+  if (inv.brand.isPublic) return null;
+  const comp = inv.comparables?.[0]?.ticker;
+  if (comp) {
+    return `${inv.brand.name} is private — closest public cousin: $${comp.toUpperCase()}.`;
+  }
+  return `${inv.brand.name} looks private — no public match yet.`;
+}
+
 function confidenceLabel(c: Confidence | undefined): string {
   if (c === "high") return "High confidence";
   if (c === "low") return "Low confidence";
   return "Medium confidence";
 }
 
+/**
+ * Map the categorical `Confidence` enum to a numeric [0,1] value — still
+ * needed to drive the overlay's glow-opacity ramp. The user-facing pill
+ * label uses the categorical word (`confidenceWord`), never a percent.
+ */
 function confidenceToNumber(c: Confidence | undefined): number {
   if (c === "high") return 0.9;
   if (c === "medium") return 0.65;
@@ -528,12 +615,12 @@ function confidenceToNumber(c: Confidence | undefined): number {
 }
 
 /**
- * Coerce an identify response into a `Detection[]`. Preserves any
+ * Coerce an identify response into overlay detections. Preserves any
  * server-provided detections (forward-compat) and otherwise synthesizes
  * a single centered detection from the top investable so the overlay
  * still has something to render.
  */
-function coerceDetections(resp: IdentifyResponse | null): Detection[] {
+function coerceDetections(resp: IdentifyResponse | null): OverlayDetection[] {
   if (!resp) return [];
   if (resp.detections && resp.detections.length > 0) {
     return resp.detections.slice(0, 3);
@@ -549,6 +636,7 @@ function coerceDetections(resp: IdentifyResponse | null): Detection[] {
       ticker,
       name: inv.brand.name,
       confidence: confidenceToNumber(inv.confidence),
+      confidenceWord: inv.confidence,
     },
   ];
 }
@@ -646,8 +734,36 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     gap: 8,
   },
-  resultTitle: { color: colors.fg, ...type.h3, fontSize: 18 },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  resultTitle: { color: colors.fg, ...type.h3, fontSize: 18, flexShrink: 1 },
   resultSubtitle: { color: colors.fgMuted, fontSize: 13, marginTop: 2 },
+  confidencePill: {
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  confidencePillText: { color: colors.fgMuted, ...type.caption },
+  meaning: { color: colors.fgMuted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  priceLine: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 4 },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  sourceChip: {
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  sourceChipText: { color: colors.fgMuted, fontSize: 11, fontWeight: "600" },
+  findsNote: { color: colors.fgDim, fontSize: 11, marginTop: 2 },
   cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   miniBtn: {
     flexDirection: "row",

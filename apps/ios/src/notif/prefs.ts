@@ -5,6 +5,7 @@
  * types mirror the server contract in apps/api/src/routes/push.ts.
  */
 import { API_URL } from "@/util/env";
+import { getStoredTokenId } from "./registerForPush";
 
 export type PushEventKey =
   | "daily_brief"
@@ -42,9 +43,10 @@ export const PUSH_EVENT_ORDER: PushEventKey[] = [
 ];
 
 /** GET /v1/push/prefs → { prefs, tokenId } */
-export async function getPushPrefs(
-  session: { token: string },
-): Promise<{ prefs: PushPrefs; tokenId: string | null }> {
+export async function getPushPrefs(session: { token: string }): Promise<{
+  prefs: PushPrefs;
+  tokenId: string | null;
+}> {
   const res = await fetch(`${API_URL}/v1/push/prefs`, {
     method: "GET",
     headers: {
@@ -79,4 +81,20 @@ export async function setPushPref(
   } catch {
     /* swallow — client keeps optimistic state */
   }
+}
+
+/**
+ * Heartbeat the user's last known coordinates so the push scheduler can
+ * decide when a "you moved to a new area" local-brief notification is due.
+ * Resolves the device's push token id (stored id first, server lookup as
+ * fallback) and no-ops when this device never registered for push.
+ */
+export async function heartbeatLocation(lat: number, lng: number, token: string): Promise<void> {
+  const tokenId = (await getStoredTokenId()) ?? (await getPushPrefs({ token })).tokenId;
+  if (!tokenId) return;
+  await setPushPref(
+    tokenId,
+    { last_lat: lat, last_lng: lng, last_location_at: new Date().toISOString() },
+    { token },
+  );
 }

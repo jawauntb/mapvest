@@ -46,7 +46,11 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 
 Photos → Share → Mapvest is the same identify loop as Camera (`/share-intent`).
 The share extension is native; JS alone cannot appear in the iOS share sheet.
-Camera always opens a live shutter (last snap is not the landing state).
+Camera always opens a live shutter (last snap is not the landing state). The
+annotator is optional: snap identifies immediately, **Refine** (circle +
+hint) re-runs it, and roi / hint / location now reach the API. The result
+card leads with a meaning line (“you can own this” / closest public cousin),
+then price, a confidence badge, source chips, and “Added to your finds.”
 
 The product is four layers, in this order: **(A) identify** anything around
 you via camera or map (public ticker, or private → public comparable + ETF)
@@ -59,17 +63,22 @@ auction / ridge / regression) so they can think about how and why to own or
 trade the name. Mapvest sits on three APIs: location/image → public + private
 identity and comparables; a finance agent with stats tools; and a charts
 stack. First session still teaches one loop: camera or map → one identity →
-one ticker card with sources. Home is a watchlist, not a second command
-center. A quiet Identify · Local brief · Research · Analytics strip sits
-under the snap/map hero so the rest of the loop is visible without a
-carousel. Map and List are blended (bottom sheet on the map + **View as List** / **View as Map**
+one ticker card with sources. Every successful identify is recorded
+server-side as a **find** (`user_finds`, `GET /v1/finds`); for signed-in
+users Home leads with **Your universe** — recent finds and streak — with the
+watchlist under it, still not a second command center. The loop strip under
+the snap/map hero is gone, and so is Home’s top-bar camera icon — the
+snap/map hero card remains Home’s camera entry. Map and List are blended (bottom sheet on the map + **View as List** / **View as Map**
 toggles) rather than duplicated as Home widgets. There is **no bottom tab
 bar** — destinations live in the profile drawer (left-sliding) and a camera
-icon sits in the top-right of Home / Map / List. The Local Economy Brief sits
+icon sits in the top-right of Map / List. The Local Economy Brief sits
 above the watchlist on every Home load (featured chrome, always refreshable)
 and is **neighborhood-scoped** (Nominatim zoom 16 + suburb/neighbourhood,
 map viewport center when the user has panned the map — not “New York, New
-York”). Opus writes it first. Research chat proxies Derivation; if that
+York”). Opus writes it first. Daily and local briefs both carry “sources
+cited · research, not advice” and never name model providers. The client
+heartbeats its last location via push prefs so the moved-2km “new
+neighborhood” push can fire. Research chat proxies Derivation; if that
 service returns a machine error (`MODEL_BUDGET_EXHAUSTED`) we fall back to
 OpenRouter (Grok 4.6 → GPT-5.6 Luna → Opus 4.8) and never show the raw code. Every screen has a
 **menu burger** (shared `AppTopBar` or the tab header). Map refetch follows

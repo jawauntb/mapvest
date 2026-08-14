@@ -9,6 +9,7 @@ import {
   listWatchlists,
   removeFromWatchlist,
 } from "@/api/client";
+import { findStreakDays, listFinds } from "@/api/finds";
 import { useSession } from "@/auth/session";
 import { BacktestCard } from "@/components/BacktestCard";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
@@ -80,8 +81,9 @@ function isTickerShape(raw: string): boolean {
 }
 
 /**
- * Home is the watchlist. Camera is the hero loop; Map is one quiet link.
- * Briefs and movers wait until something is saved. Settings live in ≡.
+ * Home is the watchlist plus your universe of found companies. Camera is the
+ * hero loop; Map is one quiet link. Briefs and movers wait until something is
+ * saved. Settings live in ≡.
  */
 export default function HomeScreen() {
   const router = useRouter();
@@ -151,6 +153,31 @@ export default function HomeScreen() {
     staleTime: 60_000,
   });
   const quotes: Record<string, Quote> = quotesQ.data ?? {};
+
+  // "Your universe" — everything the user has identified, newest first.
+  const findsQ = useQuery({
+    queryKey: ["finds", session?.token],
+    queryFn: () => listFinds({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+  });
+  const finds = findsQ.data?.finds ?? [];
+  const recentFinds = finds.slice(0, 8);
+  const findStreak = findStreakDays(finds);
+  const findSyms = [
+    ...new Set(
+      recentFinds
+        .map((f) => (f.ticker ?? f.comparable)?.toUpperCase())
+        .filter((s): s is string => !!s),
+    ),
+  ].slice(0, 12);
+  const findQuotesQ = useQuery({
+    queryKey: ["find-quotes", findSyms.join(",")],
+    queryFn: () => fetchQuotesMap(findSyms, { token: session?.token }),
+    enabled: findSyms.length > 0,
+    staleTime: 60_000,
+  });
+  const findQuotes: Record<string, Quote> = findQuotesQ.data ?? {};
 
   // Live quote for whatever the user is typing — makes the search bar feel
   // responsive instead of "type then hit Go and hope".
@@ -285,18 +312,8 @@ export default function HomeScreen() {
           <Ionicons name="menu-outline" size={22} color={colors.fg} />
         </Pressable>
         <Text style={styles.title}>Mapvest</Text>
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            router.push("/(tabs)/camera?intent=snap");
-          }}
-          hitSlop={12}
-          style={styles.iconBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Open camera"
-        >
-          <Ionicons name="camera-outline" size={22} color={colors.fg} />
-        </Pressable>
+        {/* Right slot stays empty — the hero card below is the camera entry. */}
+        <View style={styles.iconBtn} />
       </View>
 
       <ScreenFade>
@@ -421,7 +438,9 @@ export default function HomeScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.heroTitle}>Snap a brand</Text>
-                    <Text style={styles.heroSub}>Point the camera — get the ticker</Text>
+                    <Text style={styles.heroSub}>
+                      Turn what's in front of you into something you can own.
+                    </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
                 </LinearGradient>
@@ -441,9 +460,64 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
               </Pressable>
 
-              <Text style={styles.loopStrip}>
-                Identify · Local brief · Research · Analytics
-              </Text>
+              {session?.token && finds.length > 0 ? (
+                <>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Your universe</Text>
+                    <Text style={styles.count}>
+                      {finds.length} find{finds.length === 1 ? "" : "s"}
+                      {findStreak >= 2 ? ` · ${findStreak} day streak` : ""}
+                    </Text>
+                  </View>
+                  <FlatList
+                    data={recentFinds}
+                    keyExtractor={(f) => f.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.findRow}
+                    renderItem={({ item }) => {
+                      const sym = (item.ticker ?? item.comparable)?.toUpperCase();
+                      const quote = sym ? findQuotes[sym] : undefined;
+                      const delta =
+                        item.foundPrice && quote
+                          ? ((quote.price - item.foundPrice) / item.foundPrice) * 100
+                          : undefined;
+                      return (
+                        <ScalePressable
+                          style={styles.findChip}
+                          onPress={() => {
+                            hapticSelect();
+                            router.push({
+                              pathname: "/detail/[id]",
+                              params: { id: item.ticker ?? item.comparable ?? item.brand },
+                            });
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open ${item.brand}`}
+                        >
+                          <Text style={styles.findChipSym} numberOfLines={1}>
+                            {item.ticker ?? (item.comparable ? `≈${item.comparable}` : item.brand)}
+                          </Text>
+                          <Text style={styles.findChipBrand} numberOfLines={1}>
+                            {item.brand}
+                          </Text>
+                          {delta !== undefined ? (
+                            <Text
+                              style={[
+                                styles.findChipDelta,
+                                { color: delta >= 0 ? colors.accent : colors.danger },
+                              ]}
+                            >
+                              {delta >= 0 ? "+" : ""}
+                              {delta.toFixed(1)}% since
+                            </Text>
+                          ) : null}
+                        </ScalePressable>
+                      );
+                    }}
+                  />
+                </>
+              ) : null}
 
               <View style={{ marginTop: 8 }}>
                 <LocalEconomyBriefCard token={session?.token} />
@@ -537,7 +611,7 @@ export default function HomeScreen() {
                   ) : null}
                 </View>
                 <Text style={styles.count}>
-                  {items.length} ticker{items.length === 1 ? "" : "s"}
+                  {items.length} {items.length === 1 ? "company" : "companies"}
                 </Text>
               </View>
 
@@ -569,7 +643,8 @@ export default function HomeScreen() {
               {!session?.token ? (
                 <View style={styles.guestHint}>
                   <Text style={styles.guestHintText}>
-                    Snap a storefront or open Map. Sign in when you want to keep a ticker.
+                    You can snap and explore without an account. Sign in when you find something
+                    worth keeping.
                   </Text>
                   <Pressable
                     onPress={() => router.push("/auth")}
@@ -585,8 +660,8 @@ export default function HomeScreen() {
               ) : items.length === 0 ? (
                 <EmptyState
                   icon="bookmark-outline"
-                  title="Nothing saved yet"
-                  subtitle="Open a ticker from Map or search above, then tap Save. It shows up here."
+                  title="Nothing found yet"
+                  subtitle="Snap a storefront or walk the map — everything you find lands here."
                 />
               ) : null}
             </View>
@@ -653,7 +728,7 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
   // the user has tickers. If the fetch is in-flight OR errored OR returned
   // an empty payload, keep the loading skeleton up so the user sees "we're
   // generating your brief" rather than a wrong empty state.
-  const hasBrief = briefQ.data && briefQ.data.headline && briefQ.data.body;
+  const hasBrief = briefQ.data?.headline && briefQ.data.body;
   const isWaiting = !hasBrief && (briefQ.isFetching || briefQ.isPending || briefQ.isError);
 
   return (
@@ -720,7 +795,14 @@ function DailyBriefCard({ token, tickers }: { token: string; tickers: string[] }
               inline ticker un-clickable and every paragraph mashed together. */}
           <RichText text={briefQ.data!.body} />
           <Text style={styles.briefFooter}>
-            Auto-generated · refreshed {new Date(briefQ.data!.generatedAt).toLocaleString()}
+            Written from your watchlist ·{" "}
+            {new Date(briefQ.data!.generatedAt).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}{" "}
+            · research, not advice
           </Text>
         </>
       ) : isWaiting ? (
@@ -859,7 +941,12 @@ function WatchRow({
         accessibilityLabel={`Open ${entry.ticker}. Swipe left to remove.`}
       >
         <View style={{ flex: 1 }}>
-          <Text style={styles.rowTicker}>{entry.ticker}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Text style={styles.rowTicker}>{entry.ticker}</Text>
+            {entry.source === "camera" ? (
+              <Ionicons name="camera-outline" size={12} color={colors.fgDim} />
+            ) : null}
+          </View>
           {subline ? (
             <Text style={styles.rowName} numberOfLines={1}>
               {subline}
@@ -1018,14 +1105,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
   },
   mapLinkText: { flex: 1, color: colors.fg, fontSize: 14, fontWeight: "600" },
-  loopStrip: {
-    color: colors.fgDim,
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.2,
-    paddingHorizontal: 20,
-    marginBottom: 8,
+  findRow: {
+    paddingHorizontal: 16,
+    gap: 8,
+    paddingBottom: 8,
   },
+  findChip: {
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minWidth: 108,
+    maxWidth: 160,
+    gap: 2,
+  },
+  findChipSym: { color: colors.fg, fontSize: 14, fontWeight: "800" },
+  findChipBrand: { color: colors.fgMuted, fontSize: 11 },
+  findChipDelta: { fontSize: 11, fontWeight: "700", marginTop: 2 },
   guestHint: {
     marginHorizontal: 16,
     marginTop: 4,

@@ -1,4 +1,4 @@
-import type { Detection } from "@/api/types";
+import type { Confidence, Detection } from "@/api/types";
 import { colors, radii } from "@/theme/tokens";
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -11,8 +11,15 @@ const MAX_DETECTIONS = 3;
 const PILL_HEIGHT = 22;
 const PILL_GAP = 4;
 
+/**
+ * Detection plus the categorical confidence from the identify response.
+ * Numeric `confidence` still drives glow intensity; the pill label shows
+ * the honest categorical level, never a synthesized percent.
+ */
+export type OverlayDetection = Detection & { confidenceWord?: Confidence };
+
 type Props = {
-  detections: Detection[];
+  detections: OverlayDetection[];
   containerSize: { width: number; height: number };
 };
 
@@ -22,7 +29,7 @@ type PositionedPill = {
   width: number;
 };
 
-type LaidOutDetection = Detection & {
+type LaidOutDetection = OverlayDetection & {
   // absolute pixel rect within the container
   px: { left: number; top: number; width: number; height: number };
   glowOpacity: number;
@@ -112,7 +119,7 @@ function DetectionCell({ det }: { det: LaidOutDetection }) {
         }}
       />
 
-      {/* Top pill — ticker + confidence percent */}
+      {/* Top pill — ticker + confidence level */}
       <View
         style={[
           styles.topPill,
@@ -160,7 +167,7 @@ function rgba({ r, g, b }: { r: number; g: number; b: number }, a: number): stri
  * cap so the target isn't cut off.
  */
 export function layoutDetections(
-  detections: Detection[],
+  detections: OverlayDetection[],
   containerSize: { width: number; height: number },
 ): LaidOutDetection[] {
   const { width: W, height: H } = containerSize;
@@ -261,18 +268,35 @@ export function layoutDetections(
     if (!det || !px || !pills) continue;
     const confidence = clamp(det.confidence, 0, 1);
     const glowOpacity = 0.35 + 0.65 * confidence;
-    const pct = Math.round(confidence * 100);
     out.push({
       ...det,
       px,
       glowOpacity,
       topPill: pills.top,
       bottomPill: pills.bottom,
-      labelText: `${det.ticker.toUpperCase()} · ${pct}%`,
+      labelText: `${det.ticker.toUpperCase()} · ${confidenceWordFor(det)}`,
       bottomText: det.name,
     });
   }
   return out;
+}
+
+const CONFIDENCE_WORDS: Record<Confidence, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+/**
+ * Categorical label for the pill. Server-provided detections (forward-compat
+ * path) only carry the numeric confidence, so bucket it instead of showing
+ * a percent that implies precision we don't have.
+ */
+function confidenceWordFor(det: OverlayDetection): string {
+  if (det.confidenceWord) return CONFIDENCE_WORDS[det.confidenceWord];
+  if (det.confidence >= 0.8) return "High";
+  if (det.confidence >= 0.5) return "Medium";
+  return "Low";
 }
 
 function clamp(v: number, lo: number, hi: number) {

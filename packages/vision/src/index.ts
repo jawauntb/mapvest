@@ -32,6 +32,8 @@ Rules:
 
 export type IdentifyOptions = {
   location?: LatLng;
+  /** Free-text user hint about the photographed subject (≤140 chars, pre-trimmed by the API). */
+  hint?: string;
   timeoutMs?: number;
 };
 
@@ -70,6 +72,13 @@ async function callOpenRouter(
   const b64 = Buffer.from(bytes).toString("base64");
   const dataUrl = `data:image/jpeg;base64,${b64}`;
 
+  const promptLines = [
+    opts.location
+      ? `Location hint: lat=${opts.location.lat}, lng=${opts.location.lng}. Identify.`
+      : "Identify the brand or product.",
+  ];
+  if (opts.hint) promptLines.push(`User hint about the subject: "${opts.hint}"`);
+
   const body = {
     model,
     response_format: { type: "json_object" as const },
@@ -78,12 +87,7 @@ async function callOpenRouter(
       {
         role: "user",
         content: [
-          {
-            type: "text",
-            text: opts.location
-              ? `Location hint: lat=${opts.location.lat}, lng=${opts.location.lng}. Identify.`
-              : "Identify the brand or product.",
-          },
+          { type: "text", text: promptLines.join("\n") },
           { type: "image_url", image_url: { url: dataUrl } },
         ],
       },

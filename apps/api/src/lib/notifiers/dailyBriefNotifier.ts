@@ -1,3 +1,5 @@
+import { sendPush } from "../push-dispatcher.js";
+import { listTokensForUserAndEvent } from "../push-tokens-store.js";
 /**
  * Daily-brief push notifier.
  *
@@ -13,17 +15,12 @@
  * collapse to one notification.
  */
 import type { DailyBrief } from "../watchlist-brief.js";
-import { sendPush } from "../push-dispatcher.js";
-import { listTokensForUserAndEvent } from "../push-tokens-store.js";
 import { commitSend, shouldSend, ymd } from "./dedupe.js";
 
 const DEDUPE_SLOT = "daily_brief";
 
 /** Public API — call after a brief is generated for `userId`. */
-export async function onDailyBriefGenerated(
-  userId: string,
-  brief: DailyBrief,
-): Promise<void> {
+export async function onDailyBriefGenerated(userId: string, brief: DailyBrief): Promise<void> {
   const key = ymd(new Date(brief.generatedAt));
   const tokens = await listTokensForUserAndEvent(userId, "daily_brief");
   if (tokens.length === 0) return;
@@ -31,7 +28,7 @@ export async function onDailyBriefGenerated(
 
   await sendPush({
     tokens: tokens.map((t) => t.expoToken),
-    title: "Your daily brief",
+    title: "Your morning read",
     body: brief.headline.slice(0, 240),
     data: { kind: "daily_brief" },
   });
