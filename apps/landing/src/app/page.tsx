@@ -321,7 +321,13 @@ export default async function HomePage() {
         </Reveal>
       </section>
 
-      <section className="section container" aria-labelledby="status-title">
+      {/* Hidden for now — visitors don't need infra status on the marketing page. */}
+      <section
+        hidden
+        className="section container"
+        aria-labelledby="status-title"
+        aria-hidden="true"
+      >
         <Reveal>
           <div className="section__eyebrow">System status</div>
           <h2 id="status-title" className="section__title">
