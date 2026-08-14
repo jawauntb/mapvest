@@ -33,7 +33,7 @@ import { API_URL } from "@/util/env";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -129,6 +129,22 @@ export default function DetailSheet() {
   const [researchOpen, setResearchOpen] = useState(false);
   const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
+  /**
+   * Stagger heavy blocks so the sheet paints immediately. Stage 0 = header /
+   * comps shell; 1 = price chart + auction; 2 = news / agent / actions.
+   * Prevents the "hang on loading" feel when resolveComparable is slow.
+   */
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (!brand) return;
+    setStage(0);
+    const t1 = setTimeout(() => setStage(1), 80);
+    const t2 = setTimeout(() => setStage(2), 280);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [brand]);
 
   // Overview always loads auction 1mo; Advanced loads selected chip/period.
   const activeType = tab === "overview" ? "auction" : chartType;
@@ -136,37 +152,93 @@ export default function DetailSheet() {
 
   const quoteQ = useQuery({
     queryKey: ["quote", ticker],
-    enabled: !!ticker,
+    enabled: !!ticker && stage >= 0,
     queryFn: () => fetchQuote(ticker!, { token: session?.token }),
     staleTime: 60_000,
   });
 
   const chartQ = useQuery({
     queryKey: ["chart", ticker, activeType, activePeriod],
-    enabled: !!ticker,
+    enabled: !!ticker && stage >= 1,
     queryFn: () => fetchChart(activeType, ticker!, activePeriod, { token: session?.token }),
     staleTime: 5 * 60_000,
   });
 
   const analysisQ = useQuery({
     queryKey: ["analysis", ticker],
-    enabled: !!ticker,
+    enabled: !!ticker && stage >= 1,
     queryFn: () => fetchAnalysis(ticker!, { token: session?.token }),
     staleTime: 5 * 60_000,
   });
 
   const secQ = useQuery({
     queryKey: ["sec", ticker],
-    enabled: !!ticker && tab === "advanced",
+    enabled: !!ticker && tab === "advanced" && stage >= 2,
     queryFn: () => secFilings(ticker!, { token: session?.token }),
     staleTime: 30 * 60_000,
   });
 
-  if (q.isLoading) {
+  // Paint a skeleton shell immediately — never block the whole modal on
+  // resolveComparable. Brian: "hang on loading… Maybe stagger the renderings."
+  if (q.isLoading && !q.data) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fg} />
-      </View>
+      <ScreenFade>
+        <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 16 }}>
+          <Stack.Screen
+            options={{
+              title: "Investable",
+              headerBackVisible: false,
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => router.replace("/(tabs)/home")}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to home"
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    gap: 2,
+                    borderRadius: 999,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgElevated,
+                  }}
+                >
+                  <Ionicons name="chevron-back" size={18} color={colors.fg} />
+                  <Text
+                    style={{
+                      color: colors.fg,
+                      fontSize: 15,
+                      fontWeight: "700",
+                      includeFontPadding: false,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Home
+                  </Text>
+                </Pressable>
+              ),
+            }}
+          />
+          <View>
+            <Text style={styles.h1}>{brand || "…"}</Text>
+            <Text style={styles.sub}>Loading investable details…</Text>
+          </View>
+          <View style={styles.staggerSkeleton}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.muted}>Pulling ticker, comps, and sources</Text>
+          </View>
+          {stage >= 1 ? (
+            <View style={styles.staggerSkeleton}>
+              <View style={styles.skelBar} />
+              <View style={[styles.skelBar, { width: "70%" }]} />
+              <View style={[styles.skelBar, { width: "55%" }]} />
+            </View>
+          ) : null}
+        </ScrollView>
+      </ScreenFade>
     );
   }
   if (q.isError) {
@@ -216,14 +288,6 @@ export default function DetailSheet() {
             // Hide iOS's native back chevron/pill so it can't stack behind
             // our own — that was the cause of the misalignment.
             headerBackVisible: false,
-            // Center the headerLeft slot vertically within the header. Without
-            // this the slot stretches full-height and the child pill sits at
-            // the top of its container rather than the vertical middle.
-            headerLeftContainerStyle: {
-              paddingLeft: 12,
-              alignItems: "center",
-              justifyContent: "center",
-            },
             headerLeft: () => (
               <Pressable
                 onPress={() => router.replace("/(tabs)/home")}
@@ -242,6 +306,7 @@ export default function DetailSheet() {
                   borderWidth: StyleSheet.hairlineWidth,
                   borderColor: colors.border,
                   backgroundColor: colors.bgElevated,
+                  marginLeft: 4,
                 }}
               >
                 <Ionicons name="chevron-back" size={18} color={colors.fg} />
@@ -260,12 +325,7 @@ export default function DetailSheet() {
                 </Text>
               </Pressable>
             ),
-            headerRight: () => <DetailHeaderRight ticker={ticker} />,
-            headerRightContainerStyle: {
-              paddingRight: 12,
-              alignItems: "center",
-              justifyContent: "center",
-            },
+            headerRight: () => <DetailHeaderRight ticker={ticker ?? ""} />,
           }}
         />
         <View>
@@ -340,13 +400,13 @@ export default function DetailSheet() {
               />
             </Section>
 
-            {ticker ? (
+            {stage >= 1 && ticker ? (
               <Section title="Price">
                 <NativePriceChart ticker={ticker} token={session?.token} />
               </Section>
             ) : null}
 
-            {ticker ? (
+            {stage >= 1 && ticker ? (
               <Section title={`Auction · $${ticker} · 1mo`}>
                 <ChartImageBlock
                   q={chartQ}
@@ -359,9 +419,9 @@ export default function DetailSheet() {
               </Section>
             ) : null}
 
-            {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
+            {stage >= 1 && analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
 
-            {ticker ? (
+            {stage >= 2 && ticker ? (
               <View style={{ gap: 10 }}>
                 <WatchlistActions
                   ticker={ticker}
@@ -416,9 +476,13 @@ export default function DetailSheet() {
               </View>
             ) : null}
 
-            {ticker ? <TickerNewsSection ticker={ticker} token={session?.token} /> : null}
+            {stage >= 2 && ticker ? (
+              <TickerNewsSection ticker={ticker} token={session?.token} />
+            ) : null}
 
-            {ticker ? <AgentOverviewBlock ticker={ticker} token={session?.token} /> : null}
+            {stage >= 2 && ticker ? (
+              <AgentOverviewBlock ticker={ticker} token={session?.token} />
+            ) : null}
           </>
         ) : (
           <>
@@ -498,8 +562,7 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
   });
   const saved = !!wlQ.data?.items?.some((e) => e.ticker.toUpperCase() === ticker.toUpperCase());
   const addM = useMutation({
-    mutationFn: () =>
-      addToWatchlist({ ticker, source: "detail" }, { token: session!.token }),
+    mutationFn: () => addToWatchlist({ ticker, source: "detail" }, { token: session!.token }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist", session?.token] }),
   });
   const rmM = useMutation({
@@ -545,7 +608,7 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
         }}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel="Open menu"
+        accessibilityLabel="Open profile menu"
         style={{
           width: 34,
           height: 34,
@@ -554,7 +617,7 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
           justifyContent: "center",
         }}
       >
-        <Ionicons name="menu-outline" size={22} color={colors.fg} />
+        <Ionicons name="person-circle-outline" size={24} color={colors.fg} />
       </Pressable>
     </View>
   );
@@ -1310,6 +1373,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bg,
+  },
+  staggerSkeleton: {
+    gap: 10,
+    padding: 16,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    alignItems: "flex-start",
+  },
+  skelBar: {
+    height: 12,
+    width: "88%",
+    borderRadius: 6,
+    backgroundColor: colors.bgSunken,
   },
   h1: { color: colors.fg, ...type.h1, fontSize: 28 },
   h2: { color: colors.fg, ...type.label, fontSize: 15 },

@@ -137,8 +137,8 @@ export default function ListScreen() {
           <SectorRing segments={sectorSegments} loading={q.isLoading} />
         </View>
       )}
-      {items.length > 0 ? (
-        <View style={styles.chatPillWrap}>
+      <View style={styles.chatPillWrap}>
+        {items.length > 0 ? (
           <ChatAboutButton
             label="Chat about this list"
             accessibilityLabel="Chat about this nearby list"
@@ -150,8 +150,20 @@ export default function ListScreen() {
               })
             }
           />
-        </View>
-      ) : null}
+        ) : null}
+        <ScalePressable
+          onPress={() => {
+            hapticSelect();
+            router.push("/(tabs)/map");
+          }}
+          style={styles.viewAsMapBtn}
+          accessibilityRole="button"
+          accessibilityLabel="View as map"
+        >
+          <Ionicons name="map-outline" size={14} color={colors.accent} />
+          <Text style={styles.viewAsMapText}>View as Map</Text>
+        </ScalePressable>
+      </View>
       <View style={styles.sortRow}>
         {SORTS.map(({ key, label, icon }) => (
           <ScalePressable
@@ -306,11 +318,26 @@ const styles = StyleSheet.create({
   ringWrap: { paddingTop: 8, paddingBottom: 12 },
   chatPillWrap: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "flex-start",
+    gap: 10,
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 2,
   },
+  viewAsMapBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    minHeight: 36,
+  },
+  viewAsMapText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
   sortRow: { flexDirection: "row", gap: 8, padding: 12 },
   chip: {
     flexDirection: "row",
