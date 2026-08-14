@@ -22,7 +22,7 @@ apps/api          Bun + Hono. Only HTTP + auth + rate limiting. No business logi
 apps/ios          Expo React Native. Camera, map, list, login, admin.
 apps/landing      Next.js. Marketing + rendered docs.
 packages/core     Shared types + zod schemas. No runtime deps beyond zod.
-packages/vision   OpenRouter multimodal client (Gemini 2.5 / Claude / GPT-4o). Input: image bytes. Output: {brand, product, confidence, tags}.
+packages/vision   OpenRouter multimodal client (GPT-5.6 Terra / Claude Opus 4.8 / Grok 4.6). Input: image bytes. Output: {brand, product, confidence, tags}.
 packages/finance  Ticker resolver, private→public comparable, ETF match. Cites sources.
 packages/search   Exa wrapper for open-web enrichment.
 infra/railway     Railway service configs.

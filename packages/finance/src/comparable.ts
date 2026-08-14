@@ -2,6 +2,9 @@ import type { Comparable, Source } from "@mapvest/core";
 import { enrichTicker, searchBrand, toSource, type SearchResult } from "@mapvest/search";
 import { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 
+const PRIMARY_MODEL = "openai/gpt-5.6-terra";
+const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
+
 type AgentPick = {
   ticker: string;
   name: string;
@@ -16,8 +19,9 @@ type AgentPick = {
  * Pipeline:
  *   1. Parallel Exa searches ("competitors", "parent ticker", "comps").
  *   2. Heuristic extract of exchange-cited symbols from hits.
- *   3. OpenRouter agent judges the Exa evidence and picks up to 3 real
- *      listed tickers (must be plausible; never invents NYP/MOUNT-style junk).
+ *   3. OpenRouter agent (gpt-5.6-terra → claude-opus-4.8 → grok-4.6)
+ *      judges the Exa evidence and picks up to 3 real listed tickers
+ *      (must be plausible; never invents NYP/MOUNT-style junk).
  */
 export async function resolveComparable(brand: string, hintSector?: string): Promise<Comparable[]> {
   const sector = (hintSector ?? "").trim();
@@ -103,24 +107,23 @@ function heuristicFromHits(hits: SearchResult[]): AgentPick[] {
   return out;
 }
 
-async function agentPickComparables(
+type ComparableEvidence = {
+  i: number;
+  title: string;
+  url: string;
+  snippet: string;
+};
+
+async function callComparableJudge(
+  model: string,
+  apiKey: string,
+  baseUrl: string,
   brand: string,
   sector: string,
-  hits: SearchResult[],
+  evidence: ComparableEvidence[],
 ): Promise<AgentPick[]> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
-
-  const evidence = hits.slice(0, 8).map((h, i) => ({
-    i,
-    title: h.title,
-    url: h.url,
-    snippet: h.snippet ?? "",
-  }));
-
   const body = {
-    model: "anthropic/claude-sonnet-5",
+    model,
     response_format: { type: "json_object" as const },
     temperature: 0.1,
     messages: [
@@ -161,7 +164,7 @@ Rules:
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`OpenRouter comparable agent ${res.status}`);
+    if (!res.ok) throw new Error(`OpenRouter comparable agent ${model} ${res.status}`);
     const j = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
@@ -178,4 +181,33 @@ Rules:
   } finally {
     clearTimeout(t);
   }
+}
+
+async function agentPickComparables(
+  brand: string,
+  sector: string,
+  hits: SearchResult[],
+): Promise<AgentPick[]> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
+
+  const evidence = hits.slice(0, 8).map((h, i) => ({
+    i,
+    title: h.title,
+    url: h.url,
+    snippet: h.snippet ?? "",
+  }));
+
+  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      return await callComparableJudge(model, apiKey, baseUrl, brand, sector, evidence);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[finance] comparable model ${model} failed, trying next:`, err);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }

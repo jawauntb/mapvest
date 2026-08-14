@@ -1,8 +1,10 @@
 import type { LatLng, PhotoIdentification } from "@mapvest/core";
 
 /**
- * OpenRouter multimodal client. Prefers google/gemini-2.5-pro; falls back
- * to anthropic/claude-sonnet-5, then openai/gpt-4o, on 4xx/5xx or timeout.
+ * OpenRouter multimodal client. Prefers openai/gpt-5.6-terra (image + text);
+ * falls back to anthropic/claude-opus-4.8, then x-ai/grok-4.6, on 4xx/5xx
+ * or timeout. Claude via OpenRouter is OK on the user path.
+ * ANTHROPIC_API_KEY stays agent-ops only.
  *
  * Env: OPENROUTER_API_KEY, OPENROUTER_BASE_URL (via Doppler).
  *
@@ -11,8 +13,8 @@ import type { LatLng, PhotoIdentification } from "@mapvest/core";
  *   - identifyFromImageWithUsage(bytes, opts)→ { identification, usage }
  */
 
-const PRIMARY_MODEL = "google/gemini-2.5-pro";
-const FALLBACK_MODELS = ["anthropic/claude-sonnet-5", "openai/gpt-4o"] as const;
+const PRIMARY_MODEL = "openai/gpt-5.6-terra";
+const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
 
 const SYSTEM_PROMPT = `You identify investable brands and products from an image.
 Return strict JSON matching:

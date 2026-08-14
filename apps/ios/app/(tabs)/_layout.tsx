@@ -69,9 +69,9 @@ function ProfileHeaderButton() {
         justifyContent: "center",
       }}
       accessibilityRole="button"
-      accessibilityLabel="Open profile menu"
+      accessibilityLabel="Open menu"
     >
-      <Ionicons name="person-circle-outline" size={26} color={colors.fg} />
+      <Ionicons name="menu-outline" size={26} color={colors.fg} />
     </Pressable>
   );
 }

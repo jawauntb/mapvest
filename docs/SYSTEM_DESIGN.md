@@ -18,11 +18,11 @@ Design decisions and the reasoning behind them. Update this file when a decision
 
 **Enforcement**: The AGENTS.md says `apps/api` cannot import from `apps/ios` or `apps/landing`. Lint rule TBD.
 
-## D3 — Multimodal via OpenRouter (Gemini primary)
+## D3 — Multimodal via OpenRouter (GPT-5.6 Terra primary)
 
-**Decision**: `packages/vision` calls OpenRouter with `google/gemini-2.5-pro` as the default model, falling back to `anthropic/claude-sonnet-5` then `openai/gpt-4o` on errors/timeouts (default 25s for multimodal).
+**Decision**: `packages/vision` calls OpenRouter with `openai/gpt-5.6-terra` as the default model (image + text), falling back to `anthropic/claude-opus-4.8` then `x-ai/grok-4.6` on errors/timeouts (default 25s for multimodal). Same chain judges private→public comparables and user-facing briefs. Claude via OpenRouter is OK on the user path (`ANTHROPIC_API_KEY` stays agent-ops only).
 
-**Why**: Gemini 2.5 Pro is currently the best price/quality on OCR + brand identification for the ticker use case. OpenRouter gives us a single interface for A/B testing without changing our code.
+**Why**: GPT-5.6 Terra is the balanced SOTA default on the camera, comparable, and brief loop. OpenRouter keeps one key and a fallback chain (Claude Opus 4.8, then Grok 4.6 last).
 
 **Trade-off**: OpenRouter adds a small latency tax (~50-100ms). Acceptable for camera path (users expect ~1-2s), tighter for live scan (want < 800ms end-to-end).
 

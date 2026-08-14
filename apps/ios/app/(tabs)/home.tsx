@@ -280,9 +280,9 @@ export default function HomeScreen() {
           hitSlop={12}
           style={styles.burger}
           accessibilityRole="button"
-          accessibilityLabel="Open profile menu"
+          accessibilityLabel="Open menu"
         >
-          <Ionicons name="person-circle-outline" size={22} color={colors.fg} />
+          <Ionicons name="menu-outline" size={22} color={colors.fg} />
         </Pressable>
         <Text style={styles.title}>Mapvest</Text>
         <Pressable
@@ -315,7 +315,10 @@ export default function HomeScreen() {
           refreshControl={
             <RefreshControl
               refreshing={!!session?.token && wl.isRefetching}
-              onRefresh={() => wl.refetch()}
+              onRefresh={() => {
+                void wl.refetch();
+                void qc.invalidateQueries({ queryKey: ["local-brief"] });
+              }}
               tintColor={colors.fgMuted}
             />
           }
@@ -437,6 +440,10 @@ export default function HomeScreen() {
                 <Text style={styles.mapLinkText}>Or walk the map</Text>
                 <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
               </Pressable>
+
+              <View style={{ marginTop: 8 }}>
+                <LocalEconomyBriefCard token={session?.token} />
+              </View>
 
               {session?.token && lists.length >= 2 ? (
                 <FlatList
@@ -593,7 +600,6 @@ export default function HomeScreen() {
             session?.token && items.length > 0 ? (
               <View style={{ marginTop: 20 }}>
                 <DailyBriefCard token={session.token} tickers={rawItems.map((i) => i.ticker)} />
-                <LocalEconomyBriefCard token={session.token} />
                 <TopMoversCard
                   items={rawItems}
                   quotes={quotes}

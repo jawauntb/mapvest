@@ -11,7 +11,8 @@
  *   1. Reverse-geocode (Nominatim) if city/state/zip aren't provided.
  *   2. Pull nearby brands via Overpass (mirrors of the /v1/nearby helper).
  *   3. Ask Exa for area context — 3 targeted queries.
- *   4. Compose an OpenRouter (Claude Sonnet 5) prompt and parse JSON output.
+ *   4. Compose an OpenRouter prompt (gpt-5.6-terra → claude-opus-4.8 →
+ *      grok-4.6) and parse JSON output.
  *
  * Caching: in-memory, keyed by (rounded lat/lng to 3 decimals + UTC date).
  * TTL 24h. Same cache pattern used by `watchlist-brief.ts`.
@@ -306,9 +307,10 @@ async function fetchExaSnippets(
   return winner.flat();
 }
 
-// ---------------- LLM prompt (OpenRouter → Claude Sonnet 5) ----------------
+// ---------------- LLM prompt (OpenRouter SOTA chain) ----------------
 
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-5";
+const PRIMARY_MODEL = "openai/gpt-5.6-terra";
+const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
 const OPENROUTER_TIMEOUT_MS = 25_000;
 
 const SYSTEM_PROMPT = `You are a financial-geography writer producing a "Local Economy Brief" for a private investor.
@@ -367,13 +369,14 @@ function buildUserContent(input: {
   ].join("\n");
 }
 
-async function callOpenRouter(userContent: string): Promise<LLMOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
-
+async function requestOpenRouter(
+  model: string,
+  apiKey: string,
+  baseUrl: string,
+  userContent: string,
+): Promise<LLMOutput> {
   const body = {
-    model: OPENROUTER_MODEL,
+    model,
     response_format: { type: "json_object" as const },
     temperature: 0.4,
     messages: [
@@ -396,7 +399,7 @@ async function callOpenRouter(userContent: string): Promise<LLMOutput> {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`OpenRouter ${OPENROUTER_MODEL} ${res.status}`);
+    if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
     const j = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
@@ -426,6 +429,24 @@ async function callOpenRouter(userContent: string): Promise<LLMOutput> {
   } finally {
     clearTimeout(t);
   }
+}
+
+async function callOpenRouter(userContent: string): Promise<LLMOutput> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
+
+  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      return await requestOpenRouter(model, apiKey, baseUrl, userContent);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[local-brief] model ${model} failed, trying next:`, err);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 // ---------------- Outage fallback ----------------

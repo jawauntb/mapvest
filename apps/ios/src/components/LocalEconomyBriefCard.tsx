@@ -26,7 +26,7 @@ import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -44,35 +44,64 @@ type LocState =
   | { kind: "denied" }
   | { kind: "ready"; lat: number; lng: number };
 
+/** Read or request foreground location, then resolve coords. */
+async function resolveLocation(request: boolean): Promise<LocState> {
+  const { status } = request
+    ? await Location.requestForegroundPermissionsAsync()
+    : await Location.getForegroundPermissionsAsync();
+  if (status !== "granted") return { kind: "denied" };
+  const pos = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  });
+  return {
+    kind: "ready",
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+  };
+}
+
+function BriefChrome({
+  actions,
+  children,
+}: {
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <View style={styles.eyebrowCluster}>
+          <Text style={styles.eyebrow}>Local Economy Brief</Text>
+          <View style={styles.exclusiveChip}>
+            <Text style={styles.exclusiveChipText}>Only on Mapvest</Text>
+          </View>
+        </View>
+        {actions ? <View style={styles.headerActions}>{actions}</View> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
 export function LocalEconomyBriefCard({ token }: { token: string | undefined }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loc, setLoc] = useState<LocState>({ kind: "idle" });
+  const [settingsHint, setSettingsHint] = useState(false);
   const [slowLabel, setSlowLabel] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [labelDraft, setLabelDraft] = useState("");
 
   // Resolve current coordinates on mount. Other screens (map/list/camera)
   // already request permission; we only *read* the current grant here so we
-  // don't double-prompt. If access isn't granted, show an empty state.
+  // don't double-prompt. The empty state offers an explicit Enable button
+  // that calls requestForegroundPermissionsAsync.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoc({ kind: "checking" });
       try {
-        const { status } = await Location.getForegroundPermissionsAsync();
-        if (status !== "granted") {
-          if (!cancelled) setLoc({ kind: "denied" });
-          return;
-        }
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        setLoc({
-          kind: "ready",
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
+        const next = await resolveLocation(false);
+        if (!cancelled) setLoc(next);
       } catch {
         if (!cancelled) setLoc({ kind: "denied" });
       }
@@ -81,6 +110,19 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
       cancelled = true;
     };
   }, []);
+
+  async function enableLocation() {
+    hapticSelect();
+    setLoc({ kind: "checking" });
+    try {
+      const next = await resolveLocation(true);
+      setLoc(next);
+      setSettingsHint(next.kind === "denied");
+    } catch {
+      setLoc({ kind: "denied" });
+      setSettingsHint(true);
+    }
+  }
 
   const enabled =
     !!token && loc.kind === "ready" && Number.isFinite(loc.lat) && Number.isFinite(loc.lng);
@@ -153,24 +195,38 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     setSaveOpen(true);
   }
 
-  // Locked out when either signed-out or permission-denied — same restrained
-  // "sign in / grant access" empty-state treatment as the rest of the app.
+  // Locked out when either signed-out or permission-denied — featured chrome
+  // stays so the module is still visible. Guests get a one-line pitch;
+  // denied location gets an in-app Enable button before Settings copy.
   if (!token) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.eyebrow}>Local Economy Brief</Text>
-        <Text style={styles.mutedBody}>Sign in to read the economic character of where you are.</Text>
-      </View>
+      <BriefChrome>
+        <Text style={styles.mutedBody}>
+          Sign in to read a live brief on the economic character of wherever you are.
+        </Text>
+      </BriefChrome>
     );
   }
   if (loc.kind === "denied") {
     return (
-      <View style={styles.card}>
-        <Text style={styles.eyebrow}>Local Economy Brief</Text>
+      <BriefChrome>
         <Text style={styles.mutedBody}>
-          Location access is off — enable it in Settings to see the area brief.
+          {settingsHint
+            ? "Location is still off — enable it in Settings to see the area brief."
+            : "Location access is off — enable it to see the area brief."}
         </Text>
-      </View>
+        <Pressable
+          onPress={() => {
+            void enableLocation();
+          }}
+          style={[styles.retryBtn, { alignSelf: "flex-start" }]}
+          accessibilityRole="button"
+          accessibilityLabel="Enable location"
+        >
+          <Ionicons name="location-outline" size={14} color={colors.accentInk} />
+          <Text style={styles.retryText}>Enable location</Text>
+        </Pressable>
+      </BriefChrome>
     );
   }
 
@@ -187,10 +243,9 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
   })();
 
   return (
-    <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <Text style={styles.eyebrow}>Local Economy Brief</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+    <BriefChrome
+      actions={
+        <>
           {briefQ.data ? (
             <Pressable
               onPress={openSaveModal}
@@ -203,26 +258,34 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
               <Text style={styles.headerBtnText}>Save</Text>
             </Pressable>
           ) : null}
-          {/* Manual refresh — the server never caches outage briefs, but a
-              successful outage-body 200 gets cached client-side for 6h. This
-              button lets the user force a re-run when the server says the
-              research service is temporarily unavailable. */}
+          {/* Always-visible refresh — works after a successful load too.
+              Server never caches outage briefs, but a successful outage-body
+              200 is cached client-side for 6h; refetch forces a re-run. */}
           <Pressable
             onPress={() => {
               hapticSelect();
+              if (loc.kind !== "ready") return;
               void briefQ.refetch();
             }}
             hitSlop={10}
-            style={styles.chevronBtn}
+            style={styles.headerBtn}
             accessibilityRole="button"
             accessibilityLabel="Refresh brief"
-            disabled={briefQ.isFetching}
+            disabled={briefQ.isFetching || loc.kind !== "ready"}
           >
             <Ionicons
               name="refresh"
               size={16}
-              color={briefQ.isFetching ? colors.fgDim : colors.fgMuted}
+              color={briefQ.isFetching ? colors.fgDim : colors.accent}
             />
+            <Text
+              style={[
+                styles.headerBtnText,
+                briefQ.isFetching ? { color: colors.fgDim } : null,
+              ]}
+            >
+              Refresh
+            </Text>
           </Pressable>
           <Pressable
             onPress={() => {
@@ -241,8 +304,9 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
               color={colors.fgMuted}
             />
           </Pressable>
-        </View>
-      </View>
+        </>
+      }
+    >
 
       {collapsed ? null : busy ? (
         <View style={styles.busyBlock}>
@@ -342,7 +406,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </BriefChrome>
   );
 }
 
@@ -441,7 +505,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accentMuted,
     backgroundColor: colors.bgElevated,
     gap: 10,
   },
@@ -449,6 +513,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  eyebrowCluster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+    flexWrap: "wrap",
+  },
+  exclusiveChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.bgSunken,
+  },
+  exclusiveChipText: {
+    color: colors.fgMuted,
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   eyebrow: {
     color: colors.accent,
