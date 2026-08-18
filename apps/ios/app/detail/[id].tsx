@@ -18,6 +18,7 @@ import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SetAlertButton } from "@/components/SetAlertButton";
+import { ShareButton } from "@/components/ShareButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
@@ -193,7 +194,6 @@ export default function DetailSheet() {
    * this is the outbound half, sharing *out of* the detail sheet.
    */
   async function onShare() {
-    hapticTap();
     const label = ticker ? `$${ticker}` : data!.brand.name;
     const priceLine = quote
       ? ` — $${quote.price.toFixed(2)} (${quote.change >= 0 ? "+" : ""}${quote.changePct.toFixed(2)}%)`
@@ -255,7 +255,9 @@ export default function DetailSheet() {
                 </Text>
               </Pressable>
             ),
-            headerRight: () => <DetailHeaderRight ticker={ticker ?? ""} />,
+            headerRight: () => (
+              <DetailHeaderRight ticker={ticker ?? ""} onShare={() => void onShare()} />
+            ),
           }}
         />
         <View>
@@ -412,7 +414,7 @@ export default function DetailSheet() {
  * their layout) and toggle watchlist membership without scrolling to the
  * Save/Memo actions block further down the page.
  */
-function DetailHeaderRight({ ticker }: { ticker: string }) {
+function DetailHeaderRight({ ticker, onShare }: { ticker: string; onShare?: () => void }) {
   const { session } = useSession();
   const { openSidebar } = useSidebar();
   const router = useRouter();
@@ -434,6 +436,12 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
   });
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      {onShare ? (
+        <ShareButton
+          onPress={onShare}
+          accessibilityLabel={ticker ? `Share $${ticker}` : "Share this investable"}
+        />
+      ) : null}
       {ticker ? (
         <ChatAboutButton
           onPress={() => openChatAbout(router, { kind: "ticker", ticker })}
