@@ -1,6 +1,6 @@
 /**
  * Env accessors with dev-safe defaults so the API boots without Doppler in local tests.
- * In production these MUST be supplied via Doppler (`cofounder/dev` or `cofounder/stg`).
+ * In production these MUST be supplied via Doppler (`mapvest/prd`) or Railway.
  */
 
 const DEV_DEFAULT_WARNING = (name: string) =>

@@ -32,8 +32,8 @@ mapvest/
 ## Quick start
 
 ```bash
-# 1. Doppler: use cofounder/dev
-doppler setup --project cofounder --config dev
+# 1. Doppler: personal workplace, project mapvest
+doppler setup --project mapvest --config dev
 
 # 2. Install
 bun install

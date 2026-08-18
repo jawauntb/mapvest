@@ -10,7 +10,7 @@
 #   3. `doppler`, `railway`, and `jq` are on PATH.
 #
 # Usage:
-#   DOPPLER_PROJECT=cofounder DOPPLER_CONFIG=dev \
+#   DOPPLER_PROJECT=mapvest DOPPLER_CONFIG=prd \
 #     scripts/mirror-doppler-to-railway.sh <railway-service-name>
 #
 # Prints only the NAMES of variables that were set. Never prints values.
@@ -23,7 +23,7 @@ if [[ -z "$service" ]]; then
   exit 2
 fi
 
-: "${DOPPLER_PROJECT:?DOPPLER_PROJECT must be set (e.g. cofounder)}"
+: "${DOPPLER_PROJECT:?DOPPLER_PROJECT must be set (e.g. mapvest)}"
 : "${DOPPLER_CONFIG:?DOPPLER_CONFIG must be set (e.g. dev or stg)}"
 
 for bin in doppler railway; do

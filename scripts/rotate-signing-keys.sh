@@ -14,12 +14,12 @@
 #   scripts/mirror-doppler-to-railway.sh api
 #
 # Environment:
-#   DOPPLER_PROJECT (default: cofounder)
-#   DOPPLER_CONFIG  (default: dev)  # set to stg for staging
+#   DOPPLER_PROJECT (default: mapvest)
+#   DOPPLER_CONFIG  (default: dev)  # set to prd for production
 
 set -euo pipefail
 
-project="${DOPPLER_PROJECT:-cofounder}"
+project="${DOPPLER_PROJECT:-mapvest}"
 config="${DOPPLER_CONFIG:-dev}"
 
 for bin in doppler openssl; do

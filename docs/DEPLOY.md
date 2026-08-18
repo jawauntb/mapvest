@@ -28,8 +28,7 @@ Create two Railway services from this repo:
 Mirror Doppler into Railway service variables. Never paste raw secrets by hand:
 
 ```bash
-doppler secrets download --project cofounder --config stg --format env --no-file \
-  | railway variables --service api set --from-stdin
+See `infra/doppler/README.md`. Authoritative Mapvest secrets: Doppler `mapvest/prd` (personal workplace), mirrored to Railway `api`. Sibling Railway apps: `python3 infra/doppler/sync-personal-apps.py`.
 ```
 
 ### Deploy
