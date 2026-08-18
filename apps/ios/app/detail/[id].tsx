@@ -1,10 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   addToWatchlist,
   agentChat,
   fetchAnalysis,
-  fetchChart,
   fetchQuote,
   generateMemo,
   listWatchlist,
@@ -16,19 +13,21 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
-import { ChartMedia } from "@/components/ChartMedia";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
+import { UnderlyingChartsSection } from "@/components/UnderlyingChartsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -42,28 +41,6 @@ import {
   View,
 } from "react-native";
 import { ResearchSheet } from "../ResearchSheet";
-
-const CHART_CHIPS = [
-  { id: "auction", label: "Auction" },
-  { id: "performance", label: "Seasonality" },
-  { id: "regression", label: "Regression" },
-  { id: "ridge-growth", label: "Ridge" },
-  { id: "flow-compass", label: "Flow" },
-  { id: "torque", label: "Torque" },
-] as const;
-
-/** Plain-language one-liners so the analytics PNGs read as more than wall art. */
-const CHART_EXPLAINERS: Record<(typeof CHART_CHIPS)[number]["id"], string> = {
-  auction:
-    "Where trading actually happened. Fat zones are fair value; thin edges are where buyers or sellers gave up.",
-  performance: "How this name historically behaves through the year. Rhythm, not prophecy.",
-  regression: "Trend with bands. Shows how stretched price is from its own path.",
-  "ridge-growth": "Growth trajectory ranked against peers over time.",
-  "flow-compass": "Which way money is leaning — accumulation or distribution.",
-  torque: "How hard price is being pushed off its trend. Momentum's turning force.",
-};
-
-const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
 
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -86,8 +63,6 @@ export default function DetailSheet() {
   const ticker = q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
 
   const [researchOpen, setResearchOpen] = useState(false);
-  const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
-  const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
   /**
    * Stagger heavy blocks so the sheet paints immediately. Stage 0 = header /
    * comps shell; 1 = price chart + auction; 2 = news / agent / actions.
@@ -105,21 +80,11 @@ export default function DetailSheet() {
     };
   }, [brand]);
 
-  const activeType = chartType;
-  const activePeriod = period;
-
   const quoteQ = useQuery({
     queryKey: ["quote", ticker],
     enabled: !!ticker && stage >= 0,
     queryFn: () => fetchQuote(ticker!, { token: session?.token }),
     staleTime: 60_000,
-  });
-
-  const chartQ = useQuery({
-    queryKey: ["chart", ticker, activeType, activePeriod],
-    enabled: !!ticker && stage >= 1,
-    queryFn: () => fetchChart(activeType, ticker!, activePeriod, { token: session?.token }),
-    staleTime: 5 * 60_000,
   });
 
   const analysisQ = useQuery({
@@ -212,12 +177,10 @@ export default function DetailSheet() {
   const publicTicker = data.brand.ticker?.symbol;
   const quote = quoteQ.data?.quote;
   const listedTicker = (publicTicker ?? urlTicker)?.toUpperCase();
-  const isListed = Boolean(
-    (data.brand.isPublic && publicTicker) || (listedTicker && quote),
-  );
-  const companyName = [quote?.name, analysisQ.data?.name, data.brand.name].find(
-    (n) => !!n && n.trim().toUpperCase() !== listedTicker,
-  )?.trim();
+  const isListed = Boolean((data.brand.isPublic && publicTicker) || (listedTicker && quote));
+  const companyName = [quote?.name, analysisQ.data?.name, data.brand.name]
+    .find((n) => !!n && n.trim().toUpperCase() !== listedTicker)
+    ?.trim();
   const dedupedSources = dedupeSources([
     ...data.comparables.flatMap((c) => c.sources),
     ...data.etfs.map((e) => e.source),
@@ -403,17 +366,7 @@ export default function DetailSheet() {
           </Section>
         ) : null}
 
-        {ticker ? (
-          <ChartStrip
-            q={chartQ}
-            ticker={ticker}
-            chartType={chartType}
-            period={period}
-            defaultOpen={isListed}
-            onType={setChartType}
-            onPeriod={setPeriod}
-          />
-        ) : null}
+        {ticker ? <UnderlyingChartsSection ticker={ticker} defaultOpen={isListed} /> : null}
 
         {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
         {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
@@ -444,9 +397,7 @@ export default function DetailSheet() {
           </CollapsibleSection>
         ) : null}
 
-        {stage >= 2 && ticker ? (
-          <TickerNewsSection ticker={ticker} token={session?.token} />
-        ) : null}
+        {stage >= 2 && ticker ? <TickerNewsSection ticker={ticker} token={session?.token} /> : null}
 
         {stage >= 2 && ticker ? (
           <AgentOverviewBlock ticker={ticker} token={session?.token} />
@@ -660,52 +611,6 @@ function CollapsibleSection({
   );
 }
 
-function ChartImageBlock({
-  q,
-  ticker,
-  label,
-  showLevels,
-  chartType,
-  period,
-}: {
-  q: ReturnType<typeof useQuery>;
-  ticker: string;
-  label: string;
-  showLevels?: boolean;
-  chartType?: string;
-  period?: string;
-}) {
-  const data = q.data as Awaited<ReturnType<typeof fetchChart>> | undefined;
-  if (q.isLoading || q.isFetching) return <ActivityIndicator color={colors.fg} />;
-  if (q.isError) return <Text style={styles.err}>{(q.error as Error).message}</Text>;
-  if (!data?.image?.data) return <Text style={styles.muted}>No chart.</Text>;
-  const typeSlug = chartType ?? data.type ?? label.toLowerCase().replace(/\s+/g, "-");
-  const per = period ?? data.period ?? "1mo";
-  const filename =
-    data.image.filename ?? `${ticker}-${typeSlug}-${per}.png`.replace(/[^\w.-]+/g, "_");
-  return (
-    <View style={{ gap: 8 }}>
-      <ChartMedia
-        uri={`data:${data.image.mime};base64,${data.image.data}`}
-        filename={filename}
-        accessibilityLabel={`${ticker} ${label} chart`}
-      />
-      {showLevels && data.levels ? (
-        <View style={{ gap: 2 }}>
-          <Text style={styles.muted}>
-            POC {fmtLvl(data.levels.poc)} · VAH {fmtLvl(data.levels.vah)} · VAL{" "}
-            {fmtLvl(data.levels.val)}
-            {data.provider ? ` · ${data.provider}` : ""}
-          </Text>
-          <Text style={styles.chartExplainer}>
-            POC = busiest price. VAH/VAL = the edges of fair value.
-          </Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function AgentOverviewBlock({
   ticker,
   token,
@@ -794,67 +699,6 @@ function AgentOverviewBlock({
         </View>
       )}
     </Section>
-  );
-}
-
-function ChartStrip({
-  q,
-  ticker,
-  chartType,
-  period,
-  defaultOpen,
-  onType,
-  onPeriod,
-}: {
-  q: ReturnType<typeof useQuery>;
-  ticker: string;
-  chartType: (typeof CHART_CHIPS)[number]["id"];
-  period: (typeof PERIODS)[number];
-  defaultOpen: boolean;
-  onType: (t: (typeof CHART_CHIPS)[number]["id"]) => void;
-  onPeriod: (p: (typeof PERIODS)[number]) => void;
-}) {
-  const label = CHART_CHIPS.find((c) => c.id === chartType)?.label ?? chartType;
-  return (
-    <CollapsibleSection title={`Analytics · ${label} · ${period}`} defaultOpen={defaultOpen}>
-      <View style={{ gap: 8, marginBottom: 8 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            {CHART_CHIPS.map((c) => (
-              <Pressable
-                key={c.id}
-                onPress={() => onType(c.id)}
-                style={[styles.chip, chartType === c.id && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, chartType === c.id && styles.chipTextActive]}>
-                  {c.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-        <Text style={styles.chartExplainer}>{CHART_EXPLAINERS[chartType]}</Text>
-      </View>
-      <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
-        {PERIODS.map((p) => (
-          <Pressable
-            key={p}
-            onPress={() => onPeriod(p)}
-            style={[styles.periodBtn, period === p && styles.periodBtnActive]}
-          >
-            <Text style={[styles.periodText, period === p && styles.periodTextActive]}>{p}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <ChartImageBlock
-        q={q}
-        ticker={ticker}
-        label={label}
-        showLevels={chartType === "auction"}
-        chartType={chartType}
-        period={period}
-      />
-    </CollapsibleSection>
   );
 }
 
@@ -1285,22 +1129,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  chartZoom: {
-    width: "100%",
-    height: 260,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSunken,
-    overflow: "hidden",
-  },
-  chartZoomContent: { alignItems: "center", justifyContent: "center" },
-  chartImg: {
-    width: 360,
-    height: 240,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSunken,
-  },
-  chartHint: { color: colors.fgDim, fontSize: 11 },
-  chartExplainer: { color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
   overviewBody: { color: colors.fg, fontSize: 14, lineHeight: 21 },
   errInline: { color: colors.danger, fontSize: 13 },
   loadBriefBtn: {
@@ -1403,31 +1231,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   memoText: { color: colors.fg, fontSize: 14, lineHeight: 21 },
-  chip: {
-    backgroundColor: colors.bgElevated,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.fg, fontSize: 12, fontWeight: "600" },
-  chipTextActive: { color: colors.accentInk },
-  periodBtn: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    minHeight: 28,
-    justifyContent: "center",
-  },
-  periodBtnActive: { borderColor: colors.accent },
-  periodText: { color: colors.fgMuted, fontSize: 11 },
-  periodTextActive: { color: colors.accent },
   quoteRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
   quotePrice: { color: colors.fg, ...type.h1, fontSize: 28 },
   quoteChange: { fontSize: 15, fontWeight: "600" },

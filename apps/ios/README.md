@@ -34,7 +34,12 @@ in `eas.json`.
 - `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
 - `/(tabs)/saved` — watchlist + cockpit/alerts; ★ Save / memos from detail.
 - `/(tabs)/admin` — hidden unless the signed-in user has `admin` scope.
-- `/detail/[id]` — Overview (auction chart, Research…, Save, memo) + Advanced charts/SEC.
+- `/detail/[id]` — Overview (price chart, Research…, Save, memo) + Terminal
+  charts/SEC. The Terminal charts section renders all nine Underlying Analyzer
+  chart types natively (react-native-svg, `src/chartkit/`) from its JSON data
+  endpoints (`POST /api/data/...`) — no server PNGs. Client + types live in
+  `src/api/underlying.ts`; base URL overridable via
+  `EXPO_PUBLIC_UNDERLYING_API_URL` (defaults to the production terminal).
 
 ## Offline photo queue
 
