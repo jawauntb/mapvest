@@ -196,9 +196,17 @@ describe("requireGenerationQuota + GET /v1/entitlements (HTTP)", () => {
     }
     const blocked = await hit();
     expect(blocked.status).toBe(402);
-    const body = (await blocked.json()) as { code: string; remaining: number; limit: number };
+    const body = (await blocked.json()) as {
+      code: string;
+      remaining: number;
+      limit: number;
+      priceUsd?: number;
+      interval?: string;
+    };
     expect(body.code).toBe("quota_exceeded");
     expect(body.remaining).toBe(0);
     expect(body.limit).toBe(FREE_GENERATION_LIMIT);
+    expect(body.priceUsd).toBe(20);
+    expect(body.interval).toBe("month");
   });
 });

@@ -1,4 +1,5 @@
 import { SessionProvider, useSession } from "@/auth/session";
+import { PaywallProvider } from "@/billing/Paywall";
 import { AppSidebar } from "@/components/AppSidebar";
 import { FirstOpenSheet } from "@/components/FirstOpenSheet";
 import { SidebarProvider } from "@/nav/SidebarContext";
@@ -140,44 +141,46 @@ export default function RootLayout() {
       <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <SessionProvider>
           <SidebarProvider>
-            <PushBridge />
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.bg },
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="auth" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen
-                name="detail/[id]"
-                options={{
-                  presentation: "modal",
-                  headerShown: true,
-                  title: "Mapvest",
-                  headerStyle: { backgroundColor: colors.bgElevated },
-                  headerTintColor: colors.fg,
-                  headerTitleStyle: { fontWeight: "700" },
+            <PaywallProvider>
+              <PushBridge />
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
                   contentStyle: { backgroundColor: colors.bg },
                 }}
-              />
-              <Stack.Screen
-                name="share-intent"
-                options={{
-                  presentation: "modal",
-                  headerShown: true,
-                  title: "Shared to Mapvest",
-                  headerStyle: { backgroundColor: colors.bgElevated },
-                  headerTintColor: colors.fg,
-                  headerTitleStyle: { fontWeight: "700" },
-                  contentStyle: { backgroundColor: colors.bg },
-                }}
-              />
-            </Stack>
-            <FirstOpenSheet />
-            <AppSidebar />
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="auth" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen
+                  name="detail/[id]"
+                  options={{
+                    presentation: "modal",
+                    headerShown: true,
+                    title: "Mapvest",
+                    headerStyle: { backgroundColor: colors.bgElevated },
+                    headerTintColor: colors.fg,
+                    headerTitleStyle: { fontWeight: "700" },
+                    contentStyle: { backgroundColor: colors.bg },
+                  }}
+                />
+                <Stack.Screen
+                  name="share-intent"
+                  options={{
+                    presentation: "modal",
+                    headerShown: true,
+                    title: "Shared to Mapvest",
+                    headerStyle: { backgroundColor: colors.bgElevated },
+                    headerTintColor: colors.fg,
+                    headerTitleStyle: { fontWeight: "700" },
+                    contentStyle: { backgroundColor: colors.bg },
+                  }}
+                />
+              </Stack>
+              <FirstOpenSheet />
+              <AppSidebar />
+            </PaywallProvider>
           </SidebarProvider>
         </SessionProvider>
       </PersistQueryClientProvider>

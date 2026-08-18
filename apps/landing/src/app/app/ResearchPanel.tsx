@@ -1,15 +1,11 @@
 "use client";
 
+import { type ChartImage, type ResearchArticle, agentChat, getChart } from "@/lib/mapvest-api";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  agentChat,
-  getChart,
-  type ChartImage,
-  type ResearchArticle,
-} from "@/lib/mapvest-api";
 import { ChartFigure } from "./ChartFigure";
 import { FormattedBrief } from "./FormattedBrief";
+import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 /**
  * Progressive research surface — opened from ticker detail, not a top-level tab.
@@ -35,6 +31,7 @@ export function ResearchPanel({
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [charts, setCharts] = useState<Record<string, ChartImage>>({});
+  const { presentPaywall } = usePaywall();
 
   useEffect(() => {
     if (!open) return;
@@ -94,6 +91,11 @@ export function ResearchPanel({
         : "";
       setStatus(`Brief ready${tools}`);
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep researching.");
+        setStatus(null);
+        return;
+      }
       setErr(e instanceof Error ? e.message : "research failed");
       setStatus(null);
     } finally {
@@ -120,8 +122,8 @@ export function ResearchPanel({
       <div className="app-research-stream">
         {turns.length === 0 ? (
           <p className="app-muted">
-            Ask a focused question. You’ll get a lede, evidence, optional charts, and sources —
-            not a chat dump.
+            Ask a focused question. You’ll get a lede, evidence, optional charts, and sources — not
+            a chat dump.
           </p>
         ) : null}
         {turns.map((t) =>
@@ -218,9 +220,7 @@ function Article({
           {article.ideas.slice(0, 3).map((idea, i) => (
             <div key={i} className="app-article-idea">
               <strong>{idea.title}</strong>
-              {idea.disposition ? (
-                <span className="app-muted"> · {idea.disposition}</span>
-              ) : null}
+              {idea.disposition ? <span className="app-muted"> · {idea.disposition}</span> : null}
               {idea.thesis ? <p className="app-muted">{idea.thesis}</p> : null}
             </div>
           ))}
@@ -244,9 +244,7 @@ function Article({
       ) : null}
 
       {article.toolsUsed.length > 0 ? (
-        <p className="app-article-tools">
-          Tools · {article.toolsUsed.slice(0, 6).join(" · ")}
-        </p>
+        <p className="app-article-tools">Tools · {article.toolsUsed.slice(0, 6).join(" · ")}</p>
       ) : null}
     </article>
   );

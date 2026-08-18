@@ -13,6 +13,7 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartsSection } from "@/components/ChartsSection";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { RichText } from "@/components/RichText";
@@ -831,6 +832,7 @@ function WatchlistActions({
 }) {
   const qc = useQueryClient();
   const router = useRouter();
+  const { presentPaywall } = usePaywall();
   const sym = ticker.trim().toUpperCase();
   const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
   const [memoSaved, setMemoSaved] = useState(false);
@@ -895,7 +897,13 @@ function WatchlistActions({
       setMemoSaved(false);
       setStatusLine("Memo ready");
     },
-    onError: (e) => setStatusLine((e as Error).message || "Memo failed"),
+    onError: (e) => {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setStatusLine("Free generations used. Subscribe to keep generating memos.");
+        return;
+      }
+      setStatusLine((e as Error).message || "Memo failed");
+    },
   });
 
   const saveMemoM = useMutation({

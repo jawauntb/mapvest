@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-const LAST_UPDATED = "August 6, 2026";
+const LAST_UPDATED = "August 18, 2026";
 const CONTACT = "jawaun.brown95@gmail.com";
 
 export default function Terms() {
@@ -77,6 +77,22 @@ export default function Terms() {
             hypothetical and past performance is not indicative of future
             results. Consult a licensed financial advisor before making any
             trading decision.
+          </p>
+        </section>
+
+        <section>
+          <h2>Subscriptions</h2>
+          <p>
+            Browse is free. Identify, research briefs, and memos are limited to
+            50 lifetime generations unless you subscribe to Mapvest Pro
+            ($20/month) or we have granted your account unlimited use. Map and
+            nearby stay free. A subscription is for research access, not a
+            brokerage account and not investment advice. On the web, payment
+            is processed by Stripe. On a future App Store or Play listing,
+            in-app purchases will use Apple or Google billing as those stores
+            require. Manage or cancel Stripe subscriptions from the billing
+            portal in Home; manage native-store subscriptions in App Store or
+            Play settings.
           </p>
         </section>
 

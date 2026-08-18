@@ -7,16 +7,9 @@
  */
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
+import { apiErrorFromResponse } from "./errors";
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError } from "./errors";
 
 export type FetchOpts = {
   token?: string;
@@ -51,14 +44,7 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    let message = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) message = j.error;
-    } catch {
-      /* plain-text body */
-    }
-    throw new ApiError(res.status, message);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
   return (await res.json()) as T;
 }

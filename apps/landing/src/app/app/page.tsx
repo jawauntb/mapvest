@@ -5,6 +5,7 @@ import {
   type AlertItem,
   ApiError,
   type CockpitRow,
+  type EntitlementState,
   type NearbyItem,
   type ResearchArticle,
   type User,
@@ -15,6 +16,7 @@ import {
   clearSession,
   fetchAlerts,
   fetchCockpit,
+  fetchEntitlements,
   fetchNearby,
   fetchSettings,
   generateMemo,
@@ -31,11 +33,13 @@ import {
   saveMemoToWatchlist,
   saveRobinhoodMcp,
   setSession as saveSession,
+  startPortal,
   verifyCode,
 } from "@/lib/mapvest-api";
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 export default function AppPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -298,6 +302,7 @@ function HomeSettingsTab({
           </p>
         </div>
         <SignIn onSignedIn={onSignedIn} embedded />
+        <PlanPanel />
       </section>
     );
   }
@@ -318,6 +323,7 @@ function SignedInHomeSettings({
   );
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ent, setEnt] = useState<EntitlementState | null>(null);
 
   useEffect(() => {
     void fetchSettings()
@@ -326,6 +332,9 @@ function SignedInHomeSettings({
         setNote(s.note ?? null);
       })
       .catch((e) => setStatus(e instanceof Error ? e.message : "settings failed"));
+    void fetchEntitlements()
+      .then(setEnt)
+      .catch(() => setEnt(null));
   }, []);
 
   async function save() {
@@ -367,6 +376,7 @@ function SignedInHomeSettings({
         <div>{user.email}</div>
         <div className="app-muted">{user.id}</div>
       </div>
+      <PlanPanel initial={ent} />
       <div style={{ display: "grid", gap: 8 }}>
         <h3>Robinhood MCP</h3>
         <p className="app-muted">
@@ -403,6 +413,61 @@ function SignedInHomeSettings({
         Sign out
       </button>
     </section>
+  );
+}
+
+function PlanPanel({ initial }: { initial?: EntitlementState | null }) {
+  const { presentPaywall } = usePaywall();
+  const [ent, setEnt] = useState<EntitlementState | null>(initial ?? null);
+
+  useEffect(() => {
+    if (initial) setEnt(initial);
+  }, [initial]);
+
+  useEffect(() => {
+    if (initial) return;
+    void fetchEntitlements()
+      .then(setEnt)
+      .catch(() => setEnt(null));
+  }, [initial]);
+
+  async function manage() {
+    try {
+      const { url } = await startPortal();
+      window.location.href = url;
+    } catch {
+      presentPaywall();
+    }
+  }
+
+  if (!ent) return null;
+  const unlimited = ent.freeForever || ent.subscribed;
+  const label = ent.freeForever
+    ? "Free forever"
+    : ent.subscribed
+      ? "Mapvest Pro"
+      : "Free tier";
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <h3>Plan</h3>
+      <p>
+        {label}
+        {unlimited
+          ? ". Unlimited identify, research, and memos."
+          : `. ${ent.remaining} of ${ent.limit} free generations left. Identify, research, and memos count. Map and nearby stay free.`}
+      </p>
+      <p className="app-muted">Pro is $20/month. Research, not a brokerage, not investment advice.</p>
+      {!unlimited ? (
+        <button type="button" className="app-btn app-btn-primary" onClick={() => presentPaywall()}>
+          Subscribe $20/mo
+        </button>
+      ) : ent.subscribed && !ent.freeForever ? (
+        <button type="button" className="app-btn secondary" onClick={() => void manage()}>
+          Manage subscription
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -629,6 +694,7 @@ function NearbyTab() {
 /* -------------------------- Identify --------------------------- */
 
 function IdentifyTab() {
+  const { presentPaywall } = usePaywall();
   const [result, setResult] = useState<Awaited<ReturnType<typeof identifyImage>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -645,6 +711,10 @@ function IdentifyTab() {
       const r = await identifyImage(file);
       setResult(r);
     } catch (er) {
+      if (presentPaywallIfQuota(er, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep identifying.");
+        return;
+      }
       setErr(er instanceof Error ? er.message : "identify failed");
     } finally {
       setBusy(false);
@@ -707,6 +777,7 @@ function IdentifyTab() {
 /* -------------------------- Research chat --------------------------- */
 
 function ResearchChatTab() {
+  const { presentPaywall } = usePaywall();
   const [threads, setThreads] = useState<AgentThread[] | null>(null);
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
@@ -769,6 +840,10 @@ function ResearchChatTab() {
       if (r.threadId) setThreadId(r.threadId);
       setTurns((t) => [...t, r.article]);
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep researching.");
+        return;
+      }
       setErr(e instanceof Error ? e.message : "research failed");
     } finally {
       setBusy(false);

@@ -173,7 +173,7 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 - [x] `X-Device-Id` (UUID in SecureStore / localStorage) on billable calls
 - [x] Postgres `usage_events` + `GET /v1/entitlements`
 - [x] Gate identify / agent/chat / memo at 50 for anon + unpaid users
-- [ ] Clients show remaining count + soft paywall CTA
+- [x] Clients show remaining count + soft paywall CTA
 
 **Acceptance**: 51st identify without login returns `402`/`403` with `{ code: "quota_exceeded" }`.
 
@@ -188,17 +188,17 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 
 ### Slice E — Stripe $20/mo
 
-- [ ] Doppler/Railway: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_MONTHLY`
-- [ ] `POST /v1/billing/checkout` → Stripe Checkout Session
-- [ ] `POST /v1/billing/portal` → customer portal
-- [ ] Webhook `customer.subscription.*` → set `subscribed`
-- [ ] Web + iOS “Subscribe $20/mo” (iOS may open Stripe Checkout in browser for v1; App Store IAP later)
+- [x] Doppler/Railway: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_MONTHLY`
+- [x] `POST /v1/billing/checkout` → Stripe Checkout Session (or native store product id)
+- [x] `POST /v1/billing/portal` → customer portal
+- [x] Webhook `customer.subscription.*` → set `subscribed`
+- [x] Web + iOS “Subscribe $20/mo” (web: Stripe Checkout; iOS: Stripe in Safari until `APPLE_IAP_PRODUCT_ID` is set, then `apple_iap`. Android Play Billing deferred with the rest of v0.2.)
 
 **Acceptance**: Test-mode checkout flips user to subscribed; quota lifts.
 
 ### Slice F — Docs + OpenAPI regen
 
-- [ ] `docs/SECRETS.md`, `DATA_SOURCES.md`, OpenAPI/Postman for entitlements/billing
+- [x] `docs/SECRETS.md`, `DATA_SOURCES.md`, OpenAPI/Postman for entitlements/billing
 - [ ] Tick this phase’s checkboxes as each slice lands
 
 **Acceptance**: Docs match live env vars; `bun run openapi && bun run postman` clean.

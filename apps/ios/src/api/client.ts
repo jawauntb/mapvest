@@ -1,6 +1,11 @@
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
+import { ApiError, apiErrorFromResponse } from "./errors";
 import type {
+  BillingCheckoutResponse,
+  BillingPlatform,
+  BillingPortalResponse,
+  EntitlementState,
   IdentifyResponse,
   LatLng,
   NearbyResponse,
@@ -10,15 +15,7 @@ import type {
   User,
 } from "./types";
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError, isQuotaExceeded } from "./errors";
 
 type FetchOpts = {
   token?: string;
@@ -48,14 +45,7 @@ async function jsonFetch<T>(path: string, init: RequestInit, opts: FetchOpts = {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    let message = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) message = j.error;
-    } catch {
-      /* plain-text body */
-    }
-    throw new ApiError(res.status, message);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
   return (await res.json()) as T;
 }
@@ -154,7 +144,7 @@ export async function identifyPhoto(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
   return (await res.json()) as IdentifyResponse;
 }
@@ -468,14 +458,7 @@ export async function agentChatStream(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    let msg = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) msg = j.error;
-    } catch {
-      /* plain-text body */
-    }
-    throw new ApiError(res.status, msg);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
 
   // React Native's fetch exposes the body as a ReadableStream on iOS 18 / RN 0.76+.
@@ -615,6 +598,21 @@ export function saveMemoToWatchlist(
   );
 }
 
+export function fetchEntitlements(opts: FetchOpts = {}): Promise<EntitlementState> {
+  return jsonFetch("/v1/entitlements", { method: "GET" }, opts);
+}
+
+export function startCheckout(
+  args: { platform: BillingPlatform; successUrl?: string; cancelUrl?: string },
+  opts: FetchOpts,
+): Promise<BillingCheckoutResponse> {
+  return jsonFetch("/v1/billing/checkout", { method: "POST", body: JSON.stringify(args) }, opts);
+}
+
+export function startPortal(opts: FetchOpts): Promise<BillingPortalResponse> {
+  return jsonFetch("/v1/billing/portal", { method: "POST", body: JSON.stringify({}) }, opts);
+}
+
 // -------- settings --------
 
 export type SettingsResponse = {
@@ -696,11 +694,7 @@ export function createWatchlist(
   name: string,
   opts: FetchOpts,
 ): Promise<{ list: WatchlistSummary }> {
-  return jsonFetch(
-    "/v1/watchlist/lists",
-    { method: "POST", body: JSON.stringify({ name }) },
-    opts,
-  );
+  return jsonFetch("/v1/watchlist/lists", { method: "POST", body: JSON.stringify({ name }) }, opts);
 }
 
 export function renameWatchlist(
@@ -732,14 +726,7 @@ export async function deleteWatchlist(id: string, opts: FetchOpts): Promise<void
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    let msg = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) msg = j.error;
-    } catch {
-      /* plain text */
-    }
-    throw new ApiError(res.status, msg);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
 }
 
@@ -762,14 +749,11 @@ export async function moveTicker(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    throw apiErrorFromResponse(res.status, text, res.statusText);
   }
 }
 
-export function getListSummary(
-  listId: string,
-  opts: FetchOpts,
-): Promise<ListSummaryResponse> {
+export function getListSummary(listId: string, opts: FetchOpts): Promise<ListSummaryResponse> {
   return jsonFetch(
     `/v1/watchlist/list-summary?listId=${encodeURIComponent(listId)}`,
     { method: "GET" },

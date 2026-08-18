@@ -18,6 +18,8 @@ import type { User } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
 
 export const FREE_GENERATION_LIMIT = 50;
+/** Mapvest Pro list price. Native IAP/Play products must match this. */
+export const MONTHLY_PRICE_USD = 20;
 
 export type Plan = "none" | "free_trial" | "free_forever" | "subscribed";
 

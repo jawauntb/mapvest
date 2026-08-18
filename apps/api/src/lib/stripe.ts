@@ -40,6 +40,8 @@ export async function createCheckoutSession(params: {
   userId: string;
   email: string;
   existingCustomerId?: string | null;
+  successUrl?: string;
+  cancelUrl?: string;
 }): Promise<string | null> {
   const stripe = getStripeClient();
   const priceId = stripePriceIdMonthly();
@@ -53,8 +55,8 @@ export async function createCheckoutSession(params: {
     customer_email: params.existingCustomerId ? undefined : params.email,
     metadata: { userId: params.userId },
     subscription_data: { metadata: { userId: params.userId } },
-    success_url: stripeSuccessUrl(),
-    cancel_url: stripeCancelUrl(),
+    success_url: params.successUrl ?? stripeSuccessUrl(),
+    cancel_url: params.cancelUrl ?? stripeCancelUrl(),
   });
   return session.url;
 }

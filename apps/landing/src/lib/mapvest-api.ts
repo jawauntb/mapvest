@@ -51,9 +51,43 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
+    public remaining?: number,
+    public limit?: number,
   ) {
     super(message);
+    this.name = "ApiError";
   }
+
+  get isQuotaExceeded(): boolean {
+    return this.status === 402 && this.code === "quota_exceeded";
+  }
+}
+
+export function isQuotaExceeded(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.isQuotaExceeded;
+}
+
+function apiErrorFromBody(status: number, text: string, fallback: string): ApiError {
+  let message = text || fallback;
+  let code: string | undefined;
+  let remaining: number | undefined;
+  let limit: number | undefined;
+  try {
+    const j = JSON.parse(text) as {
+      error?: string;
+      code?: string;
+      remaining?: number;
+      limit?: number;
+    };
+    if (typeof j.error === "string" && j.error.trim()) message = j.error;
+    if (typeof j.code === "string") code = j.code;
+    if (typeof j.remaining === "number") remaining = j.remaining;
+    if (typeof j.limit === "number") limit = j.limit;
+  } catch {
+    /* plain-text body */
+  }
+  return new ApiError(status, message, code, remaining, limit);
 }
 
 async function req<T>(path: string, init: RequestInit = {}, needsAuth = false): Promise<T> {
@@ -74,14 +108,7 @@ async function req<T>(path: string, init: RequestInit = {}, needsAuth = false): 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    let message = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) message = j.error;
-    } catch {
-      /* plain-text body */
-    }
-    throw new ApiError(res.status, message);
+    throw apiErrorFromBody(res.status, text, res.statusText);
   }
   return (await res.json()) as T;
 }
@@ -430,14 +457,7 @@ export async function identifyImage(file: File, location?: { lat: number; lng: n
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    let message = text || res.statusText;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) message = j.error;
-    } catch {
-      /* plain-text body */
-    }
-    throw new ApiError(res.status, message);
+    throw apiErrorFromBody(res.status, text, res.statusText);
   }
   return (await res.json()) as {
     identification: {
@@ -470,6 +490,40 @@ export function generateMemo(ticker: string) {
     method: "POST",
     body: JSON.stringify({ ticker }),
   });
+}
+
+export type EntitlementState = {
+  plan: "none" | "free_trial" | "free_forever" | "subscribed";
+  remaining: number;
+  limit: number;
+  freeForever: boolean;
+  subscribed: boolean;
+  canGenerate: boolean;
+  canPersist: boolean;
+};
+
+export function fetchEntitlements() {
+  return req<EntitlementState>("/v1/entitlements");
+}
+
+export type BillingCheckout = {
+  channel: "stripe" | "apple_iap" | "google_play";
+  url?: string;
+  productId?: string;
+  priceUsd: number;
+  interval: "month";
+};
+
+export function startCheckout(platform: "web" | "ios" | "android" = "web") {
+  return req<BillingCheckout>(
+    "/v1/billing/checkout",
+    { method: "POST", body: JSON.stringify({ platform }) },
+    true,
+  );
+}
+
+export function startPortal() {
+  return req<{ url: string }>("/v1/billing/portal", { method: "POST", body: "{}" }, true);
 }
 
 export function listWatchlist() {

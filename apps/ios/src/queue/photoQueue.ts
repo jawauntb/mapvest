@@ -4,9 +4,10 @@
 // Storage shape:
 //   { version: 1, items: QueuedPhoto[] }
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { IdentifyResponse, LatLng } from "@/api/types";
 import { identifyPhoto } from "@/api/client";
+import { isQuotaExceeded } from "@/api/errors";
+import type { IdentifyResponse, LatLng } from "@/api/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "mapvest.photoQueue.v1";
 
@@ -76,13 +77,16 @@ export async function markAttempt(id: string, error?: string): Promise<void> {
  * On success the item is removed from the queue; on failure attempts++ and
  * the item stays queued for the next flush.
  */
-export async function flushQueue(opts: { token?: string } = {}): Promise<
-  Array<{ id: string; ok: true; response: IdentifyResponse } | { id: string; ok: false; error: string }>
+export async function flushQueue(
+  opts: { token?: string } = {},
+): Promise<
+  Array<
+    { id: string; ok: true; response: IdentifyResponse } | { id: string; ok: false; error: string }
+  >
 > {
   const items = await readAll();
   const out: Array<
-    | { id: string; ok: true; response: IdentifyResponse }
-    | { id: string; ok: false; error: string }
+    { id: string; ok: true; response: IdentifyResponse } | { id: string; ok: false; error: string }
   > = [];
   for (const item of items) {
     try {
@@ -93,6 +97,11 @@ export async function flushQueue(opts: { token?: string } = {}): Promise<
       await removeFromQueue(item.id);
       out.push({ id: item.id, ok: true, response });
     } catch (err) {
+      if (isQuotaExceeded(err)) {
+        await markAttempt(item.id, "quota_exceeded");
+        out.push({ id: item.id, ok: false, error: "quota_exceeded" });
+        break;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       await markAttempt(item.id, msg);
       out.push({ id: item.id, ok: false, error: msg });

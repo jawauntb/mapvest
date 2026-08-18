@@ -1,6 +1,8 @@
 import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
 import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
+import { ENTITLEMENTS_QUERY_KEY, useEntitlements } from "@/billing/useEntitlements";
 import { captureStill } from "@/camera/captureStill";
 import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
@@ -54,6 +56,8 @@ export default function CameraScreen() {
   const params = useLocalSearchParams<{ intent?: string }>();
   const qc = useQueryClient();
   const { session } = useSession();
+  const { presentPaywall } = usePaywall();
+  const entitlementsQ = useEntitlements();
   const { online } = useNetworkSync({ token: session?.token });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
@@ -255,8 +259,14 @@ export default function CameraScreen() {
         );
         setResult(resp);
         persistCamera({ result: resp, err: null });
+        void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
         if (resp.investables.length > 0) hapticSuccess();
       } catch (e) {
+        if (presentPaywallIfQuota(e, presentPaywall)) {
+          setErr("Free generations used. Subscribe to keep identifying.");
+          persistCamera({ err: "quota_exceeded" });
+          return;
+        }
         await enqueuePhoto({ imageUri: args.imageUri, location });
         const msg = e instanceof Error ? e.message : String(e);
         const failNote =
@@ -394,6 +404,23 @@ export default function CameraScreen() {
             </View>
           ) : null}
         </View>
+        {entitlementsQ.data &&
+        !entitlementsQ.data.freeForever &&
+        !entitlementsQ.data.subscribed ? (
+          <View style={styles.lessonRow}>
+            <Pressable
+              onPress={() => presentPaywall()}
+              accessibilityRole="button"
+              accessibilityLabel={`${entitlementsQ.data.remaining} of ${entitlementsQ.data.limit} free generations left`}
+            >
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Text style={styles.status}>
+                  {entitlementsQ.data.remaining} of {entitlementsQ.data.limit} free left
+                </Text>
+              </BlurView>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.center} pointerEvents="none">
           {busy ? <ActivityIndicator color={colors.fg} size="large" /> : null}

@@ -1,6 +1,7 @@
 import { addToWatchlist, identifyPhoto } from "@/api/client";
 import type { IdentifyResponse, LatLng } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { colors, radii, type } from "@/theme/tokens";
@@ -25,6 +26,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function ShareIntentScreen() {
   const { shareIntent, resetShareIntent, error: shareError } = useShareIntentContext();
   const { session } = useSession();
+  const { presentPaywall } = usePaywall();
   const router = useRouter();
 
   const [busy, setBusy] = useState(false);
@@ -64,6 +66,10 @@ export default function ShareIntentScreen() {
       const resp = await identifyPhoto({ imageUri, location }, { token: session?.token });
       setResult(resp);
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep identifying.");
+        return;
+      }
       setErr(e instanceof Error ? e.message : "Could not identify that image.");
     } finally {
       setBusy(false);

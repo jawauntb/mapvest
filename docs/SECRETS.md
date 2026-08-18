@@ -25,6 +25,8 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `POST /v1/billing/webhook` | Subscription webhooks |
 | `STRIPE_PRICE_ID_MONTHLY` | Stripe Price **Mapvest Pro** $20/mo (`price_…`) on Artesanato Poesia | Checkout line item |
 | `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | optional | Checkout return URLs (default landing `/app`) |
+| `APPLE_IAP_PRODUCT_ID` | optional App Store Connect product id | When set, iOS `POST /v1/billing/checkout` returns `channel: "apple_iap"` instead of a Stripe URL (Guideline 3.1.1). Unset until the IAP product exists. |
+| `GOOGLE_PLAY_PRODUCT_ID` | optional Play Billing product id | Android v0.2 only. Do not treat this as permission to ship a Play build. |
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
 | `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |

@@ -74,6 +74,14 @@ const S = {
   ResearchArticle: component("ResearchArticle", raw.ResearchArticle),
   User: component("User", raw.User),
   Session: component("Session", raw.Session),
+  Plan: component("Plan", raw.Plan),
+  EntitlementState: component("EntitlementState", raw.EntitlementState),
+  QuotaExceeded: component("QuotaExceeded", raw.QuotaExceeded),
+  BillingPlatform: component("BillingPlatform", raw.BillingPlatform),
+  BillingChannel: component("BillingChannel", raw.BillingChannel),
+  BillingCheckoutRequest: component("BillingCheckoutRequest", raw.BillingCheckoutRequest),
+  BillingCheckoutResponse: component("BillingCheckoutResponse", raw.BillingCheckoutResponse),
+  BillingPortalResponse: component("BillingPortalResponse", raw.BillingPortalResponse),
 };
 
 // -------- shared error envelope --------
@@ -94,9 +102,16 @@ const errorResponse = (description: string) => ({
   content: { "application/json": { schema: ErrorResponse } },
 });
 
+const quotaExceededResponse = {
+  description:
+    "Free-tier generation quota spent. Clients must present the paywall, not a generic error.",
+  content: { "application/json": { schema: S.QuotaExceeded } },
+};
+
 const errorResponses = {
   400: errorResponse("Bad request — validation failed against the zod schema."),
   401: errorResponse("Missing or invalid session token."),
+  402: quotaExceededResponse,
   429: errorResponse("Rate limit exceeded (per-user or per-ip)."),
   500: errorResponse("Internal server error."),
 };
@@ -164,6 +179,7 @@ registry.registerPath({
       description: "Identification succeeded.",
       content: { "application/json": { schema: S.IdentifyResponse } },
     },
+    402: errorResponses[402],
     ...errorResponses,
   },
 });
@@ -440,6 +456,7 @@ registry.registerPath({
       description: "Research article + optional thread id.",
       content: { "application/json": { schema: S.AgentChatResponse } },
     },
+    402: errorResponses[402],
     ...errorResponses,
   },
 });
@@ -533,6 +550,102 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/v1/entitlements",
+  summary: "Free-tier remaining + plan",
+  description:
+    "Auth optional. Anonymous callers send `X-Device-Id` so remaining generations can be tracked per device. Mirrors the state `requireGenerationQuota` consumes.",
+  tags: ["billing"],
+  responses: {
+    200: {
+      description: "Current entitlement state.",
+      content: { "application/json": { schema: S.EntitlementState } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/billing/checkout",
+  summary: "Start a $20/mo subscription",
+  description:
+    "Signed-in only. `platform` selects the charge channel: Stripe Checkout URL for web (and iOS/Android until native product ids are configured), or `apple_iap` / `google_play` product ids once those env vars are set. Clients must not invent payment URLs.",
+  tags: ["billing"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: false,
+      content: {
+        "application/json": { schema: S.BillingCheckoutRequest },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Checkout intent for the resolved channel.",
+      content: { "application/json": { schema: S.BillingCheckoutResponse } },
+    },
+    401: errorResponses[401],
+    503: errorResponse("Billing not configured (Stripe keys or native product id missing)."),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/billing/portal",
+  summary: "Stripe customer portal (manage / cancel)",
+  description:
+    "Signed-in Stripe subscribers only. Native-store subscribers manage billing in App Store / Play, not here.",
+  tags: ["billing"],
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: "Portal URL.",
+      content: { "application/json": { schema: S.BillingPortalResponse } },
+    },
+    400: errorResponse("No Stripe customer on file — subscribe first."),
+    401: errorResponses[401],
+    503: errorResponse("Billing not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/memo",
+  summary: "Generate a ticker memo (billable)",
+  description:
+    "Full research memo for a ticker. Counts against the 50-generation free tier. Returns 402 `quota_exceeded` when the meter is spent.",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({ ticker: z.string() }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Memo generated.",
+      content: {
+        "application/json": {
+          schema: z.object({
+            ticker: z.string(),
+            provider: z.string(),
+            memo: z.string(),
+          }),
+        },
+      },
+    },
+    402: errorResponses[402],
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/v1/admin/metrics",
   summary: "Admin: request + cost metrics",
   description:
@@ -606,6 +719,7 @@ const document = generator.generateDocument({
     { name: "widget", description: "Home-screen widget data (iOS WidgetKit / Android App Widget)" },
     { name: "finance", description: "Ticker / comparable / ETF resolution" },
     { name: "auth", description: "Passwordless email sign-in" },
+    { name: "billing", description: "Entitlements + $20/mo subscription checkout" },
     { name: "admin", description: "Requires the `admin` scope" },
   ],
   security: [{ bearerAuth: [] }],

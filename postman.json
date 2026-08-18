@@ -518,6 +518,39 @@
               ]
             }
           }
+        },
+        {
+          "name": "Generate a ticker memo (billable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/memo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "memo"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Full research memo for a ticker. Counts against the 50-generation free tier. Returns 402 `quota_exceeded` when the meter is spent."
+          }
         }
       ]
     },
@@ -557,6 +590,103 @@
               }
             },
             "description": "Starts or completes a magic-link session. On first call with `{email}`, an email is dispatched. On second call with `{email, code}`, a session token is returned."
+          }
+        }
+      ]
+    },
+    {
+      "name": "billing",
+      "description": "Entitlements + $20/mo subscription checkout",
+      "item": [
+        {
+          "name": "Free-tier remaining + plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/entitlements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "entitlements"
+              ]
+            },
+            "description": "Auth optional. Anonymous callers send `X-Device-Id` so remaining generations can be tracked per device. Mirrors the state `requireGenerationQuota` consumes."
+          }
+        },
+        {
+          "name": "Start a $20/mo subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platform\": \"web\",\n  \"successUrl\": \"\",\n  \"cancelUrl\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Signed-in only. `platform` selects the charge channel: Stripe Checkout URL for web (and iOS/Android until native product ids are configured), or `apple_iap` / `google_play` product ids once those env vars are set. Clients must not invent payment URLs.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stripe customer portal (manage / cancel)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/portal",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "portal"
+              ]
+            },
+            "description": "Signed-in Stripe subscribers only. Native-store subscribers manage billing in App Store / Play, not here.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
           }
         }
       ]
