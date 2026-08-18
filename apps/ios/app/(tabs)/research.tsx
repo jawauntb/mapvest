@@ -6,6 +6,7 @@ import {
   listAgentThreads,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -71,6 +72,7 @@ function deriveThreadTitle(msg: string): string {
  */
 export default function ResearchChatScreen() {
   const { session } = useSession();
+  const { presentPaywall } = usePaywall();
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string; id?: string; seed?: string }>();
   const [mode, setMode] = useState<"list" | "chat">("list");
@@ -186,6 +188,11 @@ export default function ResearchChatScreen() {
         setStatus(`Brief ready${tools}`);
       }
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep researching.");
+        setStatus(null);
+        return;
+      }
       setErr((e as Error).message);
       setStatus(null);
     } finally {

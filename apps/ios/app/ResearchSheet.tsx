@@ -1,5 +1,6 @@
 import { type ResearchArticle, agentChat, agentChatStream } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { RichText } from "@/components/RichText";
 import { ShareButton } from "@/components/ShareButton";
 import { colors, radii } from "@/theme/tokens";
@@ -68,6 +69,7 @@ export function ResearchSheet({
   onClose: () => void;
 }) {
   const { session } = useSession();
+  const { presentPaywall } = usePaywall();
   const insets = useSafeAreaInsets();
   const keyboardOverlap = useSheetKeyboardOverlap();
   const [threadId, setThreadId] = useState<string | undefined>();
@@ -158,6 +160,11 @@ export function ResearchSheet({
         setStatus(`Brief ready${tools}`);
       }
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep researching.");
+        setStatus(null);
+        return;
+      }
       // Stream often yields a keepalive/reasoning frame then dies (proxy idle
       // close) before `article`. Always fall back to blocking /chat unless we
       // already have the brief — otherwise the user only sees
@@ -173,6 +180,11 @@ export function ResearchSheet({
             : "";
           setStatus(`Brief ready${tools}`);
         } catch (e2) {
+          if (presentPaywallIfQuota(e2, presentPaywall)) {
+            setErr("Free generations used. Subscribe to keep researching.");
+            setStatus(null);
+            return;
+          }
           setErr((e2 as Error).message || (e as Error).message);
           setStatus(null);
         }

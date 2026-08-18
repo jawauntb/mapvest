@@ -12,15 +12,7 @@ export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
 export const Source = z.object({
-  provider: z.enum([
-    "exa",
-    "openrouter",
-    "gemini",
-    "yahoo",
-    "polygon",
-    "sec",
-    "manual",
-  ]),
+  provider: z.enum(["exa", "openrouter", "gemini", "yahoo", "polygon", "sec", "manual"]),
   url: z.string().url().optional(),
   fetchedAt: z.string(),
   confidence: Confidence,
@@ -159,18 +151,14 @@ export const ResolveComparableRequest = z.object({
   brand: z.string(),
   hintSector: z.string().optional(),
 });
-export type ResolveComparableRequest = z.infer<
-  typeof ResolveComparableRequest
->;
+export type ResolveComparableRequest = z.infer<typeof ResolveComparableRequest>;
 
 export const ResolveComparableResponse = z.object({
   brand: Brand,
   comparables: z.array(Comparable),
   etfs: z.array(EtfExposure),
 });
-export type ResolveComparableResponse = z.infer<
-  typeof ResolveComparableResponse
->;
+export type ResolveComparableResponse = z.infer<typeof ResolveComparableResponse>;
 
 /** Daily Yahoo close for the native Overview price chart. `ts` is unix seconds. */
 export const QuoteHistoryPoint = z.object({
@@ -203,3 +191,56 @@ export const Session = z.object({
   expiresAt: z.string(),
 });
 export type Session = z.infer<typeof Session>;
+
+// -------- entitlements + billing (keep lockstep with packages/core) --------
+
+export const Plan = z.enum(["none", "free_trial", "free_forever", "subscribed"]);
+export type Plan = z.infer<typeof Plan>;
+
+export const EntitlementState = z.object({
+  plan: Plan,
+  remaining: z.number().int().min(0),
+  limit: z.number().int().min(0),
+  freeForever: z.boolean(),
+  subscribed: z.boolean(),
+  canGenerate: z.boolean(),
+  canPersist: z.boolean(),
+});
+export type EntitlementState = z.infer<typeof EntitlementState>;
+
+export const QuotaExceeded = z.object({
+  error: z.string(),
+  code: z.literal("quota_exceeded"),
+  remaining: z.number().int().min(0),
+  limit: z.number().int().min(0),
+  priceUsd: z.number().optional(),
+  interval: z.literal("month").optional(),
+});
+export type QuotaExceeded = z.infer<typeof QuotaExceeded>;
+
+export const BillingPlatform = z.enum(["web", "ios", "android"]);
+export type BillingPlatform = z.infer<typeof BillingPlatform>;
+
+export const BillingChannel = z.enum(["stripe", "apple_iap", "google_play"]);
+export type BillingChannel = z.infer<typeof BillingChannel>;
+
+export const BillingCheckoutRequest = z.object({
+  platform: BillingPlatform.default("web"),
+  successUrl: z.string().optional(),
+  cancelUrl: z.string().optional(),
+});
+export type BillingCheckoutRequest = z.infer<typeof BillingCheckoutRequest>;
+
+export const BillingCheckoutResponse = z.object({
+  channel: BillingChannel,
+  url: z.string().url().optional(),
+  productId: z.string().optional(),
+  priceUsd: z.number(),
+  interval: z.literal("month"),
+});
+export type BillingCheckoutResponse = z.infer<typeof BillingCheckoutResponse>;
+
+export const BillingPortalResponse = z.object({
+  url: z.string().url(),
+});
+export type BillingPortalResponse = z.infer<typeof BillingPortalResponse>;

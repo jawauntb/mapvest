@@ -75,6 +75,25 @@ export function stripeCancelUrl(): string {
   return process.env.STRIPE_CANCEL_URL || LANDING_APP_URL;
 }
 
+/**
+ * App Store Connect product id for Mapvest Pro. When set, iOS checkout
+ * returns `channel: "apple_iap"` instead of a Stripe URL (Guideline 3.1.1).
+ * Unset on TestFlight until the IAP product exists.
+ */
+export function appleIapProductId(): string | undefined {
+  const v = process.env.APPLE_IAP_PRODUCT_ID?.trim();
+  return v || undefined;
+}
+
+/**
+ * Play Billing product id. Unset until the Android v0.2 store listing exists.
+ * Do not treat this as permission to ship a Play build.
+ */
+export function googlePlayProductId(): string | undefined {
+  const v = process.env.GOOGLE_PLAY_PRODUCT_ID?.trim();
+  return v || undefined;
+}
+
 /** Test-only helper — resets the once-warned set. */
 export function __resetEnvWarnings() {
   warned = new Set<string>();

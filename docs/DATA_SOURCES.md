@@ -90,3 +90,7 @@ Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are
 - Paid market-data feeds (Polygon paid tier, IEX Cloud paid tier) — not until unit economics justify.
 - Any user-content scraper. If we need training data, it comes from provider APIs, not scraping.
 - Fabricated tickers from abbreviations or GuideStar / 401k plan names.
+
+## Billing (not market data)
+
+Stripe Checkout / Customer Portal charges Mapvest Pro ($20/mo) on the web and on TestFlight until native store products exist. Subscription state is `users.plan = subscribed` via `POST /v1/billing/webhook`. This is not a market-data source and is never cited on a ticker card. App Store / Play Billing product ids (`APPLE_IAP_PRODUCT_ID`, `GOOGLE_PLAY_PRODUCT_ID`) are optional; Play remains deferred with v0.2.

@@ -1,6 +1,6 @@
 import type { User } from "@mapvest/core";
 import type { MiddlewareHandler } from "hono";
-import { getEntitlementState, recordGeneration } from "../lib/entitlements.js";
+import { MONTHLY_PRICE_USD, getEntitlementState, recordGeneration } from "../lib/entitlements.js";
 
 const MAX_DEVICE_ID_LEN = 128;
 
@@ -39,6 +39,8 @@ export function requireGenerationQuota(kind: string): MiddlewareHandler {
           code: "quota_exceeded" as const,
           remaining: state.remaining,
           limit: state.limit,
+          priceUsd: MONTHLY_PRICE_USD,
+          interval: "month" as const,
         },
         402,
       );

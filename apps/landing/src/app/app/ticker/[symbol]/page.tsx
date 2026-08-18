@@ -23,6 +23,7 @@ import {
 } from "@/lib/mapvest-api";
 import { ChartFigure } from "../../ChartFigure";
 import { FormattedBrief } from "../../FormattedBrief";
+import { presentPaywallIfQuota, usePaywall } from "../../Paywall";
 import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
@@ -61,6 +62,7 @@ function hostLabel(url?: string): string {
 
 export default function TickerDetail() {
   const params = useParams<{ symbol: string }>();
+  const { presentPaywall } = usePaywall();
   const symbolOrBrand = decodeURIComponent(params.symbol ?? "");
   const [data, setData] = useState<Resolved | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -162,7 +164,13 @@ export default function TickerDetail() {
               setOverview(r.article);
               setOverviewErr(null);
             })
-            .catch((e) => setOverviewErr(e instanceof Error ? e.message : "overview failed"))
+            .catch((e) => {
+              if (presentPaywallIfQuota(e, presentPaywall)) {
+                setOverviewErr("Free generations used. Subscribe to keep researching.");
+                return;
+              }
+              setOverviewErr(e instanceof Error ? e.message : "overview failed");
+            })
             .finally(() => setOverviewLoading(false));
           if (authed) {
             // Prefer API deep-link; fall back to public RH URL when settings
@@ -281,6 +289,11 @@ export default function TickerDetail() {
       setMemo({ provider: r.provider, text: r.memo });
       setStatus("Memo ready");
     } catch (e) {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        setErr("Free generations used. Subscribe to keep generating memos.");
+        setStatus(null);
+        return;
+      }
       setErr(e instanceof Error ? e.message : "memo failed");
       setStatus(null);
     } finally {

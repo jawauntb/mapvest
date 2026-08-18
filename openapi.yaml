@@ -29,6 +29,8 @@ tags:
     description: Ticker / comparable / ETF resolution
   - name: auth
     description: Passwordless email sign-in
+  - name: billing
+    description: Entitlements + $20/mo subscription checkout
   - name: admin
     description: Requires the `admin` scope
 security:
@@ -2147,6 +2149,129 @@ components:
         - token
         - userId
         - expiresAt
+    Plan:
+      type: string
+      enum:
+        - none
+        - free_trial
+        - free_forever
+        - subscribed
+    EntitlementState:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum:
+            - none
+            - free_trial
+            - free_forever
+            - subscribed
+        remaining:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 0
+        freeForever:
+          type: boolean
+        subscribed:
+          type: boolean
+        canGenerate:
+          type: boolean
+        canPersist:
+          type: boolean
+      required:
+        - plan
+        - remaining
+        - limit
+        - freeForever
+        - subscribed
+        - canGenerate
+        - canPersist
+    QuotaExceeded:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - quota_exceeded
+        remaining:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 0
+        priceUsd:
+          type: number
+        interval:
+          type: string
+          enum:
+            - month
+      required:
+        - error
+        - code
+        - remaining
+        - limit
+    BillingPlatform:
+      type: string
+      enum:
+        - web
+        - ios
+        - android
+    BillingChannel:
+      type: string
+      enum:
+        - stripe
+        - apple_iap
+        - google_play
+    BillingCheckoutRequest:
+      type: object
+      properties:
+        platform:
+          type: string
+          enum:
+            - web
+            - ios
+            - android
+          default: web
+        successUrl:
+          type: string
+        cancelUrl:
+          type: string
+    BillingCheckoutResponse:
+      type: object
+      properties:
+        channel:
+          type: string
+          enum:
+            - stripe
+            - apple_iap
+            - google_play
+        url:
+          type: string
+          format: uri
+        productId:
+          type: string
+        priceUsd:
+          type: number
+        interval:
+          type: string
+          enum:
+            - month
+      required:
+        - channel
+        - priceUsd
+        - interval
+    BillingPortalResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+      required:
+        - url
     ErrorResponse:
       type: object
       properties:
@@ -2233,6 +2358,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2283,6 +2414,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2345,6 +2482,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2405,6 +2548,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2523,6 +2672,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2578,6 +2733,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2647,6 +2808,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2691,6 +2858,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2743,6 +2916,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2797,6 +2976,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2840,6 +3025,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2890,6 +3081,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -2937,6 +3134,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -3006,6 +3209,186 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/entitlements:
+    get:
+      summary: Free-tier remaining + plan
+      description: Auth optional. Anonymous callers send `X-Device-Id` so remaining generations can be tracked per device. Mirrors the state `requireGenerationQuota` consumes.
+      tags:
+        - billing
+      responses:
+        "200":
+          description: Current entitlement state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementState"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/billing/checkout:
+    post:
+      summary: Start a $20/mo subscription
+      description: "Signed-in only. `platform` selects the charge channel: Stripe Checkout URL for web (and iOS/Android until native product ids are configured), or `apple_iap` / `google_play` product ids once those env vars are set. Clients must not invent payment URLs."
+      tags:
+        - billing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCheckoutRequest"
+      responses:
+        "200":
+          description: Checkout intent for the resolved channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingCheckoutResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Billing not configured (Stripe keys or native product id missing).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/billing/portal:
+    post:
+      summary: Stripe customer portal (manage / cancel)
+      description: Signed-in Stripe subscribers only. Native-store subscribers manage billing in App Store / Play, not here.
+      tags:
+        - billing
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Portal URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalResponse"
+        "400":
+          description: No Stripe customer on file — subscribe first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Billing not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/memo:
+    post:
+      summary: Generate a ticker memo (billable)
+      description: Full research memo for a ticker. Counts against the 50-generation free tier. Returns 402 `quota_exceeded` when the meter is spent.
+      tags:
+        - finance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticker:
+                  type: string
+              required:
+                - ticker
+      responses:
+        "200":
+          description: Memo generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticker:
+                    type: string
+                  provider:
+                    type: string
+                  memo:
+                    type: string
+                required:
+                  - ticker
+                  - provider
+                  - memo
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:

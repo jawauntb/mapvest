@@ -1,19 +1,17 @@
 import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
 import { useSession } from "@/auth/session";
+import { usePaywall } from "@/billing/Paywall";
+import { useEntitlements } from "@/billing/useEntitlements";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import {
-  ensurePermissions,
-  getStoredTokenId,
-  registerForPush,
-} from "@/notif/registerForPush";
-import {
-  getPushPrefs,
   PUSH_EVENT_LABELS,
   PUSH_EVENT_ORDER,
   type PushEventKey,
   type PushPrefs,
+  getPushPrefs,
   setPushPref,
 } from "@/notif/prefs";
+import { ensurePermissions, getStoredTokenId, registerForPush } from "@/notif/registerForPush";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -109,6 +107,8 @@ export default function SettingsScreen() {
           <Text style={styles.value}>{user?.email ?? "—"}</Text>
           <Text style={styles.muted}>{user?.id}</Text>
         </View>
+
+        <PlanCard />
 
         <NotificationsSection sessionToken={session.token} />
 
@@ -343,8 +343,8 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
 
       {permissionStatus === "denied" ? (
         <Text style={styles.muted}>
-          iOS permission is currently denied. Open Settings → Notifications → Mapvest to allow
-          push, then return here to pick which events you want.
+          iOS permission is currently denied. Open Settings → Notifications → Mapvest to allow push,
+          then return here to pick which events you want.
         </Text>
       ) : null}
 
@@ -389,7 +389,64 @@ function GuestHome() {
             style={{ marginTop: 8, alignSelf: "stretch" }}
           />
         </View>
+
+        <PlanCard />
       </ScrollView>
+    </View>
+  );
+}
+
+function planCopy(plan: string, freeForever: boolean, subscribed: boolean): string {
+  if (freeForever) return "Free forever";
+  if (subscribed || plan === "subscribed") return "Mapvest Pro";
+  if (plan === "free_trial") return "Free trial";
+  return "Free tier";
+}
+
+function PlanCard() {
+  const { presentPaywall } = usePaywall();
+  const q = useEntitlements();
+  const data = q.data;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <Ionicons name="sparkles-outline" size={15} color={colors.accent} />
+        <Text style={styles.label}>Plan</Text>
+      </View>
+      {q.isLoading ? (
+        <ActivityIndicator color={colors.fg} style={{ marginTop: 8 }} />
+      ) : data ? (
+        <>
+          <Text style={styles.value}>{planCopy(data.plan, data.freeForever, data.subscribed)}</Text>
+          {data.freeForever || data.subscribed ? (
+            <Text style={styles.muted}>Unlimited identify, research, and memos.</Text>
+          ) : (
+            <Text style={styles.muted}>
+              {data.remaining} of {data.limit} free generations left. Identify, research, and memos
+              count. Map and nearby stay free. Pro is $20/month. Research, not advice.
+            </Text>
+          )}
+          {!data.freeForever && !data.subscribed ? (
+            <PrimaryButton
+              label="Subscribe $20/mo"
+              onPress={() => presentPaywall()}
+              style={{ marginTop: 8, alignSelf: "stretch" }}
+            />
+          ) : data.subscribed && !data.freeForever ? (
+            <Pressable
+              style={styles.btn}
+              onPress={() => presentPaywall()}
+              accessibilityRole="button"
+              accessibilityLabel="Manage subscription"
+            >
+              <Text style={styles.btnText}>Manage subscription</Text>
+            </Pressable>
+          ) : null}
+        </>
+      ) : (
+        <Text style={styles.muted}>Could not load plan status.</Text>
+      )}
     </View>
   );
 }
