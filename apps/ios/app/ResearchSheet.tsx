@@ -121,13 +121,12 @@ export function ResearchSheet({
     ]);
     setInput("");
 
-    let anyEvent = false;
+    let gotArticle = false;
     try {
       const r = await agentChatStream(
         msg,
         { ticker, threadId },
         (ev) => {
-          anyEvent = true;
           if (ev.type === "tool") {
             const d = ev.data as { name: string };
             setTimeline((t) => [...t, `Running: ${d.name}`]);
@@ -139,6 +138,7 @@ export function ResearchSheet({
             if (typeof d?.text === "string") setDraft((s) => s + d.text);
           } else if (ev.type === "article") {
             const art = ev.data as ResearchArticle;
+            gotArticle = true;
             setTurns((t) => [...t, art]);
             setDraft("");
             const tools = art.toolsUsed?.length ? ` · ${art.toolsUsed.slice(0, 3).join(", ")}` : "";
@@ -148,10 +148,21 @@ export function ResearchSheet({
         { token: session?.token },
       );
       if (r.threadId) setThreadId(r.threadId);
+      if (r.article && !gotArticle) {
+        gotArticle = true;
+        setTurns((t) => [...t, r.article]);
+        setDraft("");
+        const tools = r.article.toolsUsed?.length
+          ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+          : "";
+        setStatus(`Brief ready${tools}`);
+      }
     } catch (e) {
-      // If the stream endpoint failed before yielding any events, fall back to
-      // the blocking JSON endpoint so the user still gets a brief.
-      if (!anyEvent) {
+      // Stream often yields a keepalive/reasoning frame then dies (proxy idle
+      // close) before `article`. Always fall back to blocking /chat unless we
+      // already have the brief — otherwise the user only sees
+      // "stream ended without an article".
+      if (!gotArticle) {
         try {
           const r = await agentChat(msg, { ticker, threadId }, { token: session?.token });
           if (r.threadId) setThreadId(r.threadId);
@@ -162,7 +173,7 @@ export function ResearchSheet({
             : "";
           setStatus(`Brief ready${tools}`);
         } catch (e2) {
-          setErr((e2 as Error).message);
+          setErr((e2 as Error).message || (e as Error).message);
           setStatus(null);
         }
       } else {
