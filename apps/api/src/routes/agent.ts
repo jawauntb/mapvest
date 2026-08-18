@@ -6,14 +6,18 @@ import {
   derivationReadHeaders,
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
 import {
   friendlyResearchPreview,
   isMachineErrorText,
   openRouterResearchBrief,
 } from "../lib/research-fallback.js";
-import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
+import { createSseSession } from "../lib/sse-heartbeat.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
+
+/** Derivation idea-chat streams (tools + brief) can run well past a minute. */
+const UPSTREAM_AGENT_TIMEOUT_MS = 180_000;
 
 /**
  * Finance research agent — thin proxy to Derivation Research Console idea-chats.
@@ -151,9 +155,7 @@ function normalizeThread(t: UpstreamThread) {
   const rawPreview =
     lastAssistant?.content?.slice(0, 180) ?? messages.at(-1)?.content?.slice(0, 180) ?? "";
   const preview =
-    lastAssistant?.error || isMachineErrorText(rawPreview)
-      ? friendlyResearchPreview()
-      : rawPreview;
+    lastAssistant?.error || isMachineErrorText(rawPreview) ? friendlyResearchPreview() : rawPreview;
   return {
     id: t.id,
     title: t.title && t.title !== "Idea chat" ? t.title : "Research",
@@ -216,7 +218,11 @@ agent.get("/threads", async (c) => {
     }
     const j = (await res.json()) as { threads?: UpstreamThread[]; count?: number };
     const threads = (j.threads ?? []).map(normalizeThread);
-    return c.json({ threads, count: j.count ?? threads.length, sourceUrl: `${DERIVATION_URL}/docs` });
+    return c.json({
+      threads,
+      count: j.count ?? threads.length,
+      sourceUrl: `${DERIVATION_URL}/docs`,
+    });
   });
 });
 
@@ -276,7 +282,7 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
         client_message_id: crypto.randomUUID(),
         ...(threadId ? { thread_id: threadId, threadId } : {}),
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(UPSTREAM_AGENT_TIMEOUT_MS),
     });
     span.setAttributes({
       upstream_status: res.status,
@@ -316,10 +322,7 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
         });
       } catch {
         const text = await res.text().catch(() => "");
-        return c.json(
-          { error: `derivation agent ${res.status}`, detail: text.slice(0, 300) },
-          502,
-        );
+        return c.json({ error: `derivation agent ${res.status}`, detail: text.slice(0, 300) }, 502);
       }
     }
 
@@ -402,10 +405,9 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
       );
     }
 
-    const chartTickers = [
-      ...(ticker ? [ticker] : []),
-      ...tickersFromText(content),
-    ].filter((t, i, a) => a.indexOf(t) === i);
+    const chartTickers = [...(ticker ? [ticker] : []), ...tickersFromText(content)].filter(
+      (t, i, a) => a.indexOf(t) === i,
+    );
 
     const article = {
       id: crypto.randomUUID(),
@@ -460,6 +462,7 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
  * Same body as /v1/agent/chat, but the response is `text/event-stream`.
  *
  * Emits these named events, one JSON payload per event:
+ *   ping       { ts }                — keepalive so proxies / URLSession do not idle-close
  *   tool       { name, arg? }        — a tool call started
  *   tool_end   { name, ok }          — a tool call finished
  *   reasoning  { text }              — short human-readable status
@@ -473,6 +476,11 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
  * fails to yield any streamed text (e.g. it only sends a final result blob),
  * we degrade gracefully by emitting one `token` event with the full body and
  * one `article` event so the UI still updates.
+ *
+ * Railway Hikari closes idle streamed responses after ~10s. We therefore
+ * heartbeat `ping` frames for the whole handler, including Derivation connect
+ * and the OpenRouter fallback — otherwise the iOS client reports
+ * "stream ended without an article" while /v1/agent/chat still succeeds.
  */
 agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
@@ -494,51 +502,49 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
     ? `Focus ticker: $${ticker}. Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.\n\nUser: ${message}`
     : `Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.\n\nUser: ${message}`;
 
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+
   return streamSSE(c, async (sse) => {
-    return safeExecuteWithSpan("http.agent.stream", async (span) => {
-      span.setAttributes({ has_ticker: !!ticker, ticker: ticker ?? "", upstream: DERIVATION_URL });
-      const started = performance.now();
-
-      await sse.writeSSE({
-        event: "reasoning",
-        data: JSON.stringify({ text: "Contacting research agent…" }),
-      });
-
-      let upstream: Response;
-      try {
-        upstream = await fetch(`${DERIVATION_URL}/api/idea-chats/stream`, {
-          method: "POST",
-          headers: derivationMutateHeaders(),
-          body: JSON.stringify({
-            message: prompt,
-            client_message_id: crypto.randomUUID(),
-            ...(threadId ? { thread_id: threadId, threadId } : {}),
-          }),
-          signal: AbortSignal.timeout(90_000),
+    const session = createSseSession(sse);
+    try {
+      await safeExecuteWithSpan("http.agent.stream", async (span) => {
+        span.setAttributes({
+          has_ticker: !!ticker,
+          ticker: ticker ?? "",
+          upstream: DERIVATION_URL,
         });
-      } catch (e) {
-        await sse.writeSSE({
-          event: "error",
-          data: JSON.stringify({ message: (e as Error).message || "upstream failed" }),
-        });
-        return;
-      }
+        const started = performance.now();
 
-      span.setAttributes({
-        upstream_status: upstream.status,
-        upstream_connect_ms: Math.round(performance.now() - started),
-      });
+        await session.write("reasoning", { text: "Contacting research agent…" });
 
-      if (!upstream.ok || !upstream.body) {
+        let upstream: Response;
         try {
-          const fallback = await openRouterResearchBrief(prompt);
-          await sse.writeSSE({
-            event: "token",
-            data: JSON.stringify({ text: fallback }),
+          upstream = await fetch(`${DERIVATION_URL}/api/idea-chats/stream`, {
+            method: "POST",
+            headers: derivationMutateHeaders(),
+            body: JSON.stringify({
+              message: prompt,
+              client_message_id: crypto.randomUUID(),
+              ...(threadId ? { thread_id: threadId, threadId } : {}),
+            }),
+            signal: AbortSignal.timeout(UPSTREAM_AGENT_TIMEOUT_MS),
           });
-          await sse.writeSSE({
-            event: "article",
-            data: JSON.stringify({
+        } catch (e) {
+          await session.write("error", { message: (e as Error).message || "upstream failed" });
+          return;
+        }
+
+        span.setAttributes({
+          upstream_status: upstream.status,
+          upstream_connect_ms: Math.round(performance.now() - started),
+        });
+
+        if (!upstream.ok || !upstream.body) {
+          try {
+            const fallback = await openRouterResearchBrief(prompt);
+            await session.write("token", { text: fallback });
+            await session.write("article", {
               id: crypto.randomUUID(),
               role: "assistant",
               content: fallback,
@@ -547,255 +553,216 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
               ideas: [],
               toolsUsed: [],
               sources: [],
-              chartTickers: [
-                ...(ticker ? [ticker] : []),
-                ...tickersFromText(fallback),
-              ]
+              chartTickers: [...(ticker ? [ticker] : []), ...tickersFromText(fallback)]
                 .filter((t, i, a) => a.indexOf(t) === i)
                 .slice(0, 4),
-            }),
-          });
-          await sse.writeSSE({
-            event: "done",
-            data: JSON.stringify({ threadId }),
-          });
-          span.setAttribute("research_fallback", "openrouter");
-          return;
-        } catch {
-          const text = await upstream.text().catch(() => "");
-          await sse.writeSSE({
-            event: "error",
-            data: JSON.stringify({
+            });
+            await session.write("done", { threadId });
+            span.setAttribute("research_fallback", "openrouter");
+            return;
+          } catch {
+            const text = await upstream.text().catch(() => "");
+            await session.write("error", {
               message: `derivation agent ${upstream.status}`,
               detail: text.slice(0, 300),
-            }),
-          });
-          return;
-        }
-      }
-
-      // Accumulators for building the final ResearchArticle.
-      const texts: string[] = [];
-      const tools: string[] = [];
-      const openTools = new Set<string>();
-      let resolvedThread = threadId;
-      let latestBriefing: string | undefined;
-      let interesting: string[] = [];
-      let ideas: ReturnType<typeof normalizeMessage>["ideas"] = [];
-      let sources: Array<{ label: string; url?: string }> = [];
-      let mode: string | undefined;
-      let error: string | undefined;
-      let tokensStreamed = 0;
-
-      // Manual SSE parser over the upstream ReadableStream so we can emit
-      // events downstream as they arrive rather than waiting for res.text().
-      const reader = upstream.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buf = "";
-
-      const handleBlock = async (rawBlock: string) => {
-        const lines = rawBlock.split("\n").filter(Boolean);
-        if (!lines.length) return;
-        const dataLines: string[] = [];
-        for (const line of lines) {
-          if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-        }
-        if (!dataLines.length) return;
-        let payload: {
-          thread?: UpstreamThread;
-          data?: { type?: string; text?: string; tool?: string; ok?: boolean; arg?: string; error?: string };
-          latest_result?: UpstreamMsg["result"];
-        };
-        try {
-          payload = JSON.parse(dataLines.join("\n"));
-        } catch {
-          return;
-        }
-
-        if (payload.thread?.id) {
-          resolvedThread = payload.thread.id;
-          if (payload.thread.latest_result || payload.thread.messages?.length) {
-            const norm = normalizeThread(payload.thread);
-            const last = norm.messages.filter((m) => m.role === "assistant").at(-1);
-            if (last?.content) latestBriefing = last.content;
-            if (last?.interesting.length) interesting = last.interesting;
-            if (last?.ideas.length) ideas = last.ideas;
-            if (last?.sources.length) sources = last.sources;
-            if (last?.toolsUsed.length) tools.push(...last.toolsUsed);
-            mode = last?.mode;
-            error = last?.error;
-          }
-        }
-        const inner = payload.data;
-        if (inner?.type === "error") {
-          const code = inner.error || inner.text || "MODEL_BUDGET_EXHAUSTED";
-          if (isMachineErrorText(code) || /budget/i.test(code)) error = code;
-        }
-        if (inner?.type === "tool_start" && typeof inner.tool === "string") {
-          tools.push(inner.tool);
-          openTools.add(inner.tool);
-          await sse.writeSSE({
-            event: "tool",
-            data: JSON.stringify({ name: inner.tool, arg: inner.arg }),
-          });
-          await sse.writeSSE({
-            event: "reasoning",
-            data: JSON.stringify({ text: `Running ${inner.tool}…` }),
-          });
-        }
-        if (inner?.type === "tool_end" && typeof inner.tool === "string") {
-          openTools.delete(inner.tool);
-          await sse.writeSSE({
-            event: "tool_end",
-            data: JSON.stringify({ name: inner.tool, ok: inner.ok !== false }),
-          });
-        }
-        if (inner?.type === "model_text" && typeof inner.text === "string") {
-          texts.push(inner.text);
-          if (isMachineErrorText(inner.text)) {
-            error = inner.text.trim();
+            });
             return;
           }
-          const brief = extractBriefing(inner.text);
-          if (brief) latestBriefing = brief;
-          // Chunk into ~20-char slices so the client sees a smooth stream even
-          // when upstream buffers into large paragraphs. If it's already short,
-          // one event is fine.
-          const chunkSize = 24;
-          if (inner.text.length <= chunkSize) {
-            tokensStreamed += 1;
-            await sse.writeSSE({
-              event: "token",
-              data: JSON.stringify({ text: inner.text }),
-            });
-          } else {
-            for (let i = 0; i < inner.text.length; i += chunkSize) {
-              const slice = inner.text.slice(i, i + chunkSize);
-              tokensStreamed += 1;
-              await sse.writeSSE({
-                event: "token",
-                data: JSON.stringify({ text: slice }),
-              });
-              await sse.sleep(15);
+        }
+
+        const texts: string[] = [];
+        const tools: string[] = [];
+        const openTools = new Set<string>();
+        let resolvedThread = threadId;
+        let latestBriefing: string | undefined;
+        let interesting: string[] = [];
+        let ideas: ReturnType<typeof normalizeMessage>["ideas"] = [];
+        let sources: Array<{ label: string; url?: string }> = [];
+        let mode: string | undefined;
+        let error: string | undefined;
+        let tokensStreamed = 0;
+
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buf = "";
+
+        const handleBlock = async (rawBlock: string) => {
+          const lines = rawBlock.split(/\r?\n/).filter(Boolean);
+          if (!lines.length) return;
+          const dataLines: string[] = [];
+          for (const line of lines) {
+            if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+          }
+          if (!dataLines.length) return;
+          let payload: {
+            thread?: UpstreamThread;
+            data?: {
+              type?: string;
+              text?: string;
+              tool?: string;
+              ok?: boolean;
+              arg?: string;
+              error?: string;
+            };
+            latest_result?: UpstreamMsg["result"];
+          };
+          try {
+            payload = JSON.parse(dataLines.join("\n"));
+          } catch {
+            return;
+          }
+
+          if (payload.thread?.id) {
+            resolvedThread = payload.thread.id;
+            if (payload.thread.latest_result || payload.thread.messages?.length) {
+              const norm = normalizeThread(payload.thread);
+              const last = norm.messages.filter((m) => m.role === "assistant").at(-1);
+              if (last?.content) latestBriefing = last.content;
+              if (last?.interesting.length) interesting = last.interesting;
+              if (last?.ideas.length) ideas = last.ideas;
+              if (last?.sources.length) sources = last.sources;
+              if (last?.toolsUsed.length) tools.push(...last.toolsUsed);
+              mode = last?.mode;
+              error = last?.error;
             }
           }
-        }
-        if (payload.latest_result?.briefing) {
-          latestBriefing = payload.latest_result.briefing;
-          interesting = payload.latest_result.interesting ?? interesting;
-        }
-      };
+          const inner = payload.data;
+          if (inner?.type === "error") {
+            const code = inner.error || inner.text || "MODEL_BUDGET_EXHAUSTED";
+            if (isMachineErrorText(code) || /budget/i.test(code)) error = code;
+          }
+          if (inner?.type === "tool_start" && typeof inner.tool === "string") {
+            tools.push(inner.tool);
+            openTools.add(inner.tool);
+            await session.write("tool", { name: inner.tool, arg: inner.arg });
+            await session.write("reasoning", { text: `Running ${inner.tool}…` });
+          }
+          if (inner?.type === "tool_end" && typeof inner.tool === "string") {
+            openTools.delete(inner.tool);
+            await session.write("tool_end", { name: inner.tool, ok: inner.ok !== false });
+          }
+          if (inner?.type === "model_text" && typeof inner.text === "string") {
+            texts.push(inner.text);
+            if (isMachineErrorText(inner.text)) {
+              error = inner.text.trim();
+              return;
+            }
+            const brief = extractBriefing(inner.text);
+            if (brief) latestBriefing = brief;
+            const chunkSize = 24;
+            if (inner.text.length <= chunkSize) {
+              tokensStreamed += 1;
+              await session.write("token", { text: inner.text });
+            } else {
+              for (let i = 0; i < inner.text.length; i += chunkSize) {
+                const slice = inner.text.slice(i, i + chunkSize);
+                tokensStreamed += 1;
+                await session.write("token", { text: slice });
+                await sse.sleep(15);
+              }
+            }
+          }
+          if (payload.latest_result?.briefing) {
+            latestBriefing = payload.latest_result.briefing;
+            interesting = payload.latest_result.interesting ?? interesting;
+          }
+        };
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          // Split on blank-line SSE boundaries; keep the trailing partial in buf.
-          let idx = buf.indexOf("\n\n");
-          while (idx !== -1) {
-            const block = buf.slice(0, idx);
-            buf = buf.slice(idx + 2);
-            await handleBlock(block);
-            idx = buf.indexOf("\n\n");
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let idx = buf.search(/\r?\n\r?\n/);
+            while (idx !== -1) {
+              const block = buf.slice(0, idx);
+              const sep = buf.startsWith("\r\n\r\n", idx) ? 4 : 2;
+              buf = buf.slice(idx + sep);
+              await handleBlock(block);
+              idx = buf.search(/\r?\n\r?\n/);
+            }
+          }
+          if (buf.trim()) await handleBlock(buf);
+        } catch (e) {
+          await session.write("error", { message: (e as Error).message || "stream read failed" });
+          return;
+        }
+
+        let content =
+          latestBriefing ??
+          texts
+            .map((t) => t.trim())
+            .filter((t) => t && !isMachineErrorText(t))
+            .slice(-2)
+            .join("\n\n")
+            .trim();
+
+        if (!content || isMachineErrorText(content) || error) {
+          try {
+            content = await openRouterResearchBrief(prompt);
+            error = undefined;
+            tokensStreamed = 0;
+            span.setAttribute("research_fallback", "openrouter");
+          } catch (fallbackErr) {
+            span.recordException(fallbackErr);
           }
         }
-        // Flush any remaining buffered block.
-        if (buf.trim()) await handleBlock(buf);
-      } catch (e) {
-        await sse.writeSSE({
-          event: "error",
-          data: JSON.stringify({ message: (e as Error).message || "stream read failed" }),
-        });
-        return;
-      }
 
-      let content =
-        latestBriefing ??
-        texts
-          .map((t) => t.trim())
-          .filter((t) => t && !isMachineErrorText(t))
-          .slice(-2)
-          .join("\n\n")
-          .trim();
-
-      if (!content || isMachineErrorText(content) || error) {
-        try {
-          content = await openRouterResearchBrief(prompt);
-          error = undefined;
-          tokensStreamed = 0;
-          span.setAttribute("research_fallback", "openrouter");
-        } catch (fallbackErr) {
-          span.recordException(fallbackErr);
-        }
-      }
-
-      if (!content || isMachineErrorText(content)) {
-        await sse.writeSSE({
-          event: "error",
-          data: JSON.stringify({
+        if (!content || isMachineErrorText(content)) {
+          await session.write("error", {
             message: "agent returned no text",
             threadId: resolvedThread,
-          }),
-        });
-        return;
-      }
+          });
+          return;
+        }
 
-      // Graceful degradation: if upstream never yielded model_text chunks,
-      // still feed the client a single token event so the draft area fills.
-      if (tokensStreamed === 0) {
-        await sse.writeSSE({
-          event: "token",
-          data: JSON.stringify({ text: content }),
-        });
-      }
+        if (tokensStreamed === 0) {
+          await session.write("token", { text: content });
+        }
 
-      const chartTickers = [
-        ...(ticker ? [ticker] : []),
-        ...tickersFromText(content),
-      ].filter((t, i, a) => a.indexOf(t) === i);
-
-      const article = {
-        id: crypto.randomUUID(),
-        role: "assistant" as const,
-        content,
-        createdAt: new Date().toISOString(),
-        interesting,
-        ideas,
-        toolsUsed: [...new Set(tools)],
-        sources,
-        chartTickers: chartTickers.slice(0, 4),
-        mode,
-        error,
-      };
-
-      await sse.writeSSE({
-        event: "article",
-        data: JSON.stringify(article),
-      });
-
-      // Fire-and-forget push for opted-in users. Never blocks the SSE stream.
-      const streamUser = (
-        c as unknown as { get: (k: string) => { id?: string } | undefined }
-      ).get("user");
-      if (streamUser?.id) {
-        const title = content.split(/\r?\n/)[0]?.trim() || "Research ready";
-        onAgentResponseReady(streamUser.id, resolvedThread, title.slice(0, 160)).catch(
-          () => {},
+        const chartTickers = [...(ticker ? [ticker] : []), ...tickersFromText(content)].filter(
+          (t, i, a) => a.indexOf(t) === i,
         );
-      }
 
-      await sse.writeSSE({
-        event: "done",
-        data: JSON.stringify({ threadId: resolvedThread }),
-      });
+        const article = {
+          id: crypto.randomUUID(),
+          role: "assistant" as const,
+          content,
+          createdAt: new Date().toISOString(),
+          interesting,
+          ideas,
+          toolsUsed: [...new Set(tools)],
+          sources,
+          chartTickers: chartTickers.slice(0, 4),
+          mode,
+          error,
+        };
 
-      span.setAttributes({
-        stream_ms: Math.round(performance.now() - started),
-        tools_seen: [...new Set(tools)].length,
-        tokens_streamed: tokensStreamed,
+        await session.write("article", article);
+
+        const streamUser = (
+          c as unknown as { get: (k: string) => { id?: string } | undefined }
+        ).get("user");
+        if (streamUser?.id) {
+          const title = content.split(/\r?\n/)[0]?.trim() || "Research ready";
+          onAgentResponseReady(streamUser.id, resolvedThread, title.slice(0, 160)).catch(() => {});
+        }
+
+        await session.write("done", { threadId: resolvedThread });
+
+        span.setAttributes({
+          stream_ms: Math.round(performance.now() - started),
+          tools_seen: [...new Set(tools)].length,
+          tokens_streamed: tokensStreamed,
+        });
       });
-    });
+    } catch (e) {
+      await session
+        .write("error", { message: (e as Error).message || "stream failed" })
+        .catch(() => {});
+    } finally {
+      session.stop();
+    }
   });
 });
 
