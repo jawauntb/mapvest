@@ -39,6 +39,7 @@ type EntitlementRow = {
   freeForeverReason: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  appleOriginalTransactionId: string | null;
 };
 
 const DEFAULT_ROW: EntitlementRow = {
@@ -47,6 +48,7 @@ const DEFAULT_ROW: EntitlementRow = {
   freeForeverReason: null,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
+  appleOriginalTransactionId: null,
 };
 
 /** Internal engineering + friends get unlimited, unbilled usage. */
@@ -93,13 +95,15 @@ type UsersEntitlementRow = {
   free_forever_reason: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  apple_original_transaction_id: string | null;
 };
 
 async function dbGetRow(userId: string): Promise<EntitlementRow | undefined> {
   const sql = getSql();
   if (!sql) return undefined;
   const rows = await sql`
-    SELECT plan, free_forever, free_forever_reason, stripe_customer_id, stripe_subscription_id
+    SELECT plan, free_forever, free_forever_reason, stripe_customer_id, stripe_subscription_id,
+           apple_original_transaction_id
     FROM users WHERE id = ${userId} LIMIT 1
   `;
   const row = rows[0] as UsersEntitlementRow | undefined;
@@ -110,6 +114,7 @@ async function dbGetRow(userId: string): Promise<EntitlementRow | undefined> {
     freeForeverReason: row.free_forever_reason,
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
+    appleOriginalTransactionId: row.apple_original_transaction_id,
   };
 }
 
@@ -222,7 +227,10 @@ export async function getEntitlementState(params: {
   const row = userId ? (dbEnabled() ? await dbGetRow(userId) : memGetRow(userId)) : undefined;
   const freeForever = Boolean(row?.freeForever) || (email ? isEmailFreeForever(email) : false);
   const plan: Plan = freeForever ? "free_forever" : (row?.plan ?? "none");
-  const subscribed = plan === "subscribed" || Boolean(row?.stripeSubscriptionId);
+  const subscribed =
+    plan === "subscribed" ||
+    Boolean(row?.stripeSubscriptionId) ||
+    Boolean(row?.appleOriginalTransactionId);
 
   const limit = FREE_GENERATION_LIMIT;
   if (freeForever || subscribed) {
@@ -273,18 +281,19 @@ export async function recordGeneration(params: {
 
 // ---- Stripe subscription helpers (Phase 8 Slice E) ----
 
-function memSetSubscription(
-  userId: string,
-  patch: { plan?: Plan; stripeCustomerId?: string | null; stripeSubscriptionId?: string | null },
-): void {
+type SubscriptionPatch = {
+  plan?: Plan;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  appleOriginalTransactionId?: string | null;
+};
+
+function memSetSubscription(userId: string, patch: SubscriptionPatch): void {
   const existing = memGetRow(userId);
   memRows.set(userId, { ...existing, ...patch });
 }
 
-async function dbSetSubscription(
-  userId: string,
-  patch: { plan?: Plan; stripeCustomerId?: string | null; stripeSubscriptionId?: string | null },
-): Promise<void> {
+async function dbSetSubscription(userId: string, patch: SubscriptionPatch): Promise<void> {
   const sql = getSql();
   if (!sql) return;
   // Only overwrite columns the caller actually passed — `undefined` means "leave as-is".
@@ -296,6 +305,9 @@ async function dbSetSubscription(
   }
   if (patch.stripeSubscriptionId !== undefined) {
     await sql`UPDATE users SET stripe_subscription_id = ${patch.stripeSubscriptionId} WHERE id = ${userId}`;
+  }
+  if (patch.appleOriginalTransactionId !== undefined) {
+    await sql`UPDATE users SET apple_original_transaction_id = ${patch.appleOriginalTransactionId} WHERE id = ${userId}`;
   }
 }
 
@@ -367,6 +379,75 @@ export async function findUserIdByStripeCustomerId(customerId: string): Promise<
     if (row.stripeCustomerId === customerId) return userId;
   }
   return null;
+}
+
+export class AppleSubscriptionConflictError extends Error {
+  constructor(message = "apple transaction already bound to another account") {
+    super(message);
+    this.name = "AppleSubscriptionConflictError";
+  }
+}
+
+export async function findUserIdByAppleOriginalTransactionId(
+  originalTransactionId: string,
+): Promise<string | null> {
+  await initDb();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (!sql) return null;
+    const rows = await sql`
+      SELECT id FROM users WHERE apple_original_transaction_id = ${originalTransactionId} LIMIT 1
+    `;
+    return (rows[0] as { id: string } | undefined)?.id ?? null;
+  }
+  for (const [userId, row] of memRows.entries()) {
+    if (row.appleOriginalTransactionId === originalTransactionId) return userId;
+  }
+  return null;
+}
+
+/**
+ * StoreKit 2 purchase/restore — binds this Apple originalTransactionId to the
+ * Mapvest user and flips `plan` to `subscribed`. Does not touch Stripe ids.
+ */
+export async function markAppleSubscribed(
+  userId: string,
+  originalTransactionId: string,
+): Promise<void> {
+  await initDb();
+  const existing = await findUserIdByAppleOriginalTransactionId(originalTransactionId);
+  if (existing && existing !== userId) {
+    throw new AppleSubscriptionConflictError();
+  }
+  const patch: SubscriptionPatch = {
+    plan: "subscribed",
+    appleOriginalTransactionId: originalTransactionId,
+  };
+  if (dbEnabled()) {
+    await dbSetSubscription(userId, patch);
+  } else {
+    memSetSubscription(userId, patch);
+  }
+}
+
+/**
+ * Apple subscription expired or revoked. Clears the Apple transaction id.
+ * Drops `plan` back to free_forever/none only when there is no Stripe sub.
+ */
+export async function clearAppleSubscription(userId: string): Promise<void> {
+  await initDb();
+  const row = dbEnabled() ? await dbGetRow(userId) : memGetRow(userId);
+  const stillStripe = Boolean(row?.stripeSubscriptionId);
+  const nextPlan: Plan = stillStripe ? "subscribed" : row?.freeForever ? "free_forever" : "none";
+  const patch: SubscriptionPatch = {
+    plan: nextPlan,
+    appleOriginalTransactionId: null,
+  };
+  if (dbEnabled()) {
+    await dbSetSubscription(userId, patch);
+  } else {
+    memSetSubscription(userId, patch);
+  }
 }
 
 /** Test-only helper to reset in-memory state between suites. */

@@ -688,6 +688,50 @@
               ]
             }
           }
+        },
+        {
+          "name": "Redeem a StoreKit 2 transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/apple",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "apple"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signedTransaction\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Signed-in only. Body is the JWS from StoreKit (`purchase.purchaseToken` on iOS). The API verifies Apple's ES256 + x5c chain against Apple Root CA G3, then sets `plan=subscribed`. Native subscribers manage billing in the App Store, not Stripe portal.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         }
       ]
     },

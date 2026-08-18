@@ -1,5 +1,10 @@
-import { BillingCheckoutRequest } from "@mapvest/core";
+import { BillingAppleRequest, BillingCheckoutRequest } from "@mapvest/core";
 import { Hono } from "hono";
+import {
+  AppleJwsError,
+  AppleSubscriptionConflictError,
+  redeemAppleTransaction,
+} from "../lib/apple-iap.js";
 import {
   resolveBillingChannel,
   sanitizeReturnUrl,
@@ -117,6 +122,38 @@ billing.post("/portal", async (c) => {
     const url = await createPortalSession(customerId);
     if (!url) return c.json({ error: "billing not configured" }, 503);
     return c.json({ url });
+  });
+});
+
+/**
+ * POST /v1/billing/apple
+ * Body: { signedTransaction } — StoreKit 2 JWS from the iOS client.
+ * Verifies Apple's signature, then marks the signed-in user subscribed.
+ */
+billing.post("/apple", async (c) => {
+  return safeExecuteWithSpan("http.billing.apple", async (span) => {
+    const user = c.get("user");
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = BillingAppleRequest.safeParse(raw ?? {});
+    if (!parsed.success) return c.json({ error: "invalid signedTransaction" }, 400);
+    span.setAttribute("user_id", user.id);
+    try {
+      const state = await redeemAppleTransaction(user.id, parsed.data.signedTransaction);
+      span.setAttributes({
+        subscribed: state.subscribed,
+        plan: state.plan,
+      });
+      return c.json(state);
+    } catch (err) {
+      if (err instanceof AppleSubscriptionConflictError) {
+        return c.json({ error: "transaction already linked to another account" }, 409);
+      }
+      if (err instanceof AppleJwsError) {
+        span.setAttribute("apple_jws_error", err.message);
+        return c.json({ error: err.message }, 400);
+      }
+      throw err;
+    }
   });
 });
 

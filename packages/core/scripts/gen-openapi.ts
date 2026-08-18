@@ -82,6 +82,7 @@ const S = {
   BillingCheckoutRequest: component("BillingCheckoutRequest", raw.BillingCheckoutRequest),
   BillingCheckoutResponse: component("BillingCheckoutResponse", raw.BillingCheckoutResponse),
   BillingPortalResponse: component("BillingPortalResponse", raw.BillingPortalResponse),
+  BillingAppleRequest: component("BillingAppleRequest", raw.BillingAppleRequest),
 };
 
 // -------- shared error envelope --------
@@ -606,6 +607,33 @@ registry.registerPath({
     400: errorResponse("No Stripe customer on file — subscribe first."),
     401: errorResponses[401],
     503: errorResponse("Billing not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/billing/apple",
+  summary: "Redeem a StoreKit 2 transaction",
+  description:
+    "Signed-in only. Body is the JWS from StoreKit (`purchase.purchaseToken` on iOS). The API verifies Apple's ES256 + x5c chain against Apple Root CA G3, then sets `plan=subscribed`. Native subscribers manage billing in the App Store, not Stripe portal.",
+  tags: ["billing"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: S.BillingAppleRequest },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated entitlement state.",
+      content: { "application/json": { schema: S.EntitlementState } },
+    },
+    400: errorResponse("Invalid, expired, revoked, or untrusted Apple JWS."),
+    401: errorResponses[401],
+    409: errorResponse("This Apple transaction is already linked to another Mapvest account."),
   },
 });
 

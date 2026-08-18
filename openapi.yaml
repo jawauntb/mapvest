@@ -2272,6 +2272,15 @@ components:
           format: uri
       required:
         - url
+    BillingAppleRequest:
+      type: object
+      properties:
+        signedTransaction:
+          type: string
+          minLength: 32
+          maxLength: 16384
+      required:
+        - signedTransaction
     ErrorResponse:
       type: object
       properties:
@@ -3332,6 +3341,45 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Billing not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/billing/apple:
+    post:
+      summary: Redeem a StoreKit 2 transaction
+      description: Signed-in only. Body is the JWS from StoreKit (`purchase.purchaseToken` on iOS). The API verifies Apple's ES256 + x5c chain against Apple Root CA G3, then sets `plan=subscribed`. Native subscribers manage billing in the App Store, not Stripe portal.
+      tags:
+        - billing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingAppleRequest"
+      responses:
+        "200":
+          description: Updated entitlement state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementState"
+        "400":
+          description: Invalid, expired, revoked, or untrusted Apple JWS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This Apple transaction is already linked to another Mapvest account.
           content:
             application/json:
               schema:

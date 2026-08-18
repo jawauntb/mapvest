@@ -244,3 +244,8 @@ export const BillingPortalResponse = z.object({
   url: z.string().url(),
 });
 export type BillingPortalResponse = z.infer<typeof BillingPortalResponse>;
+
+export const BillingAppleRequest = z.object({
+  signedTransaction: z.string().min(32).max(16_384),
+});
+export type BillingAppleRequest = z.infer<typeof BillingAppleRequest>;
