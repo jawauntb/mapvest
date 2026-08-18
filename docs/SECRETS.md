@@ -23,7 +23,7 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 | `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, nearby_cache, brand_ticker_cache, usage/entitlements |
 | `STRIPE_SECRET_KEY` | Stripe (**Artesanato Poesia** `acct_1Pj15wKwhiITC0uV`) — Mapvest only, not objetdart | Checkout + portal (Phase 8 Slice E). Railway API currently uses test-mode `sk_test_…` until live keys have `product_write`. |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `POST /v1/billing/webhook` | Subscription webhooks |
-| `STRIPE_PRICE_ID_MONTHLY` | Stripe Price **Mapvest Pro** $20/mo (`price_…`) on Artesanato Poesia | Checkout line item |
+| `STRIPE_PRICE_ID_MONTHLY` | Stripe Price **Mapvest Pro** $19.99/mo (`price_…`) on Artesanato Poesia | Checkout line item |
 | `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | optional | Checkout return URLs (default landing `/app`) |
 | `APPLE_IAP_PRODUCT_ID` | App Store Connect product id `mapvest_pro_monthly` | When set, iOS `POST /v1/billing/checkout` returns `channel: "apple_iap"`. Leave unset on Railway until the StoreKit client is on TestFlight (older builds would otherwise stop opening Stripe). Not a secret. |
 | `APPLE_BUNDLE_ID` | `com.mapvest.app` | StoreKit JWS `bundleId` pin. Optional; defaults to `com.mapvest.app`. |
@@ -37,7 +37,7 @@ doppler run -- bun run dev   # every dev script goes through Doppler
 
 ### App Store Connect (StoreKit)
 
-Create an auto-renewable subscription with product id `mapvest_pro_monthly` at $20/month, bundle `com.mapvest.app`. Sandbox testers use a Sandbox Apple ID — do not put a card number in the repo or Doppler. After the StoreKit client is on TestFlight, set `APPLE_IAP_PRODUCT_ID=mapvest_pro_monthly` on the Railway API so checkout stops returning Stripe to iOS.
+Create an auto-renewable subscription with product id `mapvest_pro_monthly` at $19.99/month, bundle `com.mapvest.app`. Sandbox testers use a Sandbox Apple ID — do not put a card number in the repo or Doppler. After the StoreKit client is on TestFlight, set `APPLE_IAP_PRODUCT_ID=mapvest_pro_monthly` on the Railway API so checkout stops returning Stripe to iOS.
 
 ### Robinhood MCP (operator vs user)
 

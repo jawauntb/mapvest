@@ -82,7 +82,7 @@ function PaywallModal({ open, onClose }: { open: boolean; onClose: () => void })
         <h2>50 free generations used</h2>
         <p>
           Identify, research briefs, and memos are metered. Map and nearby stay free. Pro is
-          $20/month and follows the account you sign in with.
+          $19.99/month and follows the account you sign in with.
         </p>
         <p>
           This is research, not a brokerage, and not investment advice. Mapvest never places trades.
@@ -93,7 +93,7 @@ function PaywallModal({ open, onClose }: { open: boolean; onClose: () => void })
           disabled={busy}
           onClick={() => void subscribe()}
         >
-          {signedIn ? (busy ? "Opening checkout…" : "Subscribe $20/mo") : "Sign in to subscribe"}
+          {signedIn ? (busy ? "Opening checkout…" : "Subscribe $19.99/mo") : "Sign in to subscribe"}
         </button>
         {signedIn ? (
           <button type="button" className="app-link" disabled={busy} onClick={() => void manage()}>

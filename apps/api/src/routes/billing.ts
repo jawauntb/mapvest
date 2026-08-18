@@ -23,7 +23,7 @@ import { createCheckoutSession, createPortalSession } from "../lib/stripe.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /**
- * Phase 8 Slice E — $20/mo subscription (checkout + portal only;
+ * Phase 8 Slice E — $19.99/mo subscription (checkout + portal only;
  * the webhook lives in `billingWebhook.ts` and is mounted separately so it
  * never sits behind `bearerAuth` or any body-consuming middleware).
  *

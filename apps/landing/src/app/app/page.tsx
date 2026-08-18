@@ -457,10 +457,10 @@ function PlanPanel({ initial }: { initial?: EntitlementState | null }) {
           ? ". Unlimited identify, research, and memos."
           : `. ${ent.remaining} of ${ent.limit} free generations left. Identify, research, and memos count. Map and nearby stay free.`}
       </p>
-      <p className="app-muted">Pro is $20/month. Research, not a brokerage, not investment advice.</p>
+      <p className="app-muted">Pro is $19.99/month. Research, not a brokerage, not investment advice.</p>
       {!unlimited ? (
         <button type="button" className="app-btn app-btn-primary" onClick={() => presentPaywall()}>
-          Subscribe $20/mo
+          Subscribe $19.99/mo
         </button>
       ) : ent.subscribed && !ent.freeForever ? (
         <button type="button" className="app-btn secondary" onClick={() => void manage()}>

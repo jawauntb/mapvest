@@ -596,7 +596,7 @@
     },
     {
       "name": "billing",
-      "description": "Entitlements + $20/mo subscription checkout",
+      "description": "Entitlements + $19.99/mo subscription checkout",
       "item": [
         {
           "name": "Free-tier remaining + plan",
@@ -617,7 +617,7 @@
           }
         },
         {
-          "name": "Start a $20/mo subscription",
+          "name": "Start a $19.99/mo subscription",
           "request": {
             "method": "POST",
             "header": [

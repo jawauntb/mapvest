@@ -217,7 +217,7 @@ function PaywallSheet({
           <Text style={styles.title}>50 free generations used</Text>
           <Text style={styles.body}>
             Identify, research briefs, and memos are metered. Map and nearby stay free. Pro is
-            $20/month and follows the account you sign in with.
+            $19.99/month and follows the account you sign in with.
           </Text>
           <Text style={styles.body}>
             This is research, not a brokerage, and not investment advice. Mapvest never places
@@ -231,12 +231,14 @@ function PaywallSheet({
                   ? Platform.OS === "ios"
                     ? "Waiting for App Store…"
                     : "Opening checkout…"
-                  : "Subscribe $20/mo"
+                  : "Subscribe $19.99/mo"
             }
             busy={busy === "checkout"}
             onPress={() => void subscribe()}
             style={{ alignSelf: "stretch" }}
-            accessibilityLabel={session ? "Subscribe 20 dollars per month" : "Sign in to subscribe"}
+            accessibilityLabel={
+              session ? "Subscribe 19 dollars 99 cents per month" : "Sign in to subscribe"
+            }
           />
           {session ? (
             <Pressable

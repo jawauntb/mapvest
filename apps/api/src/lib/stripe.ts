@@ -1,5 +1,5 @@
 /**
- * Phase 8 Slice E — Stripe $20/mo subscription.
+ * Phase 8 Slice E — Stripe $19.99/mo subscription.
  *
  * Thin wrapper around the official `stripe` npm package (works fine on Bun —
  * no need to hand-roll the REST calls over fetch). Every export degrades
@@ -32,7 +32,7 @@ export function getStripeClient(): Stripe | null {
 export { stripeConfigured };
 
 /**
- * Creates a Checkout Session (mode=subscription) for the $20/mo price.
+ * Creates a Checkout Session (mode=subscription) for the $19.99/mo price.
  * `client_reference_id` + `metadata.userId` both carry the Mapvest user id so
  * the webhook can resolve the subscriber even if `customer_email` changes.
  */
