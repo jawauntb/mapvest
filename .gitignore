@@ -19,6 +19,7 @@ android/app/build/
 .doppler.yaml
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 coverage/
