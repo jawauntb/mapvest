@@ -70,7 +70,7 @@ Phase 2 acceptance criteria in `IMPLEMENTATION_PLAN.md`:
   real OpenRouter call to `identifyFromImage()` still executes with the
   Doppler-provided key, so the test verifies the full pipeline.
 - The helper script `apps/api/scripts/run-integration.sh` sets both env
-  vars for local runs against `doppler run --project cofounder --config dev`.
+  vars for local runs against `doppler run --project mapvest --config dev`.
 
 ## Adding a new fixture
 

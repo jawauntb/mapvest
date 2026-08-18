@@ -8,7 +8,7 @@ A map + camera product that turns **places and objects into investable tickers**
 
 ## 2. Non‑negotiables
 
-1. **No secret ever hardcoded.** All secrets flow through Doppler (`cofounder` project, `dev` or `stg` config). Read via `doppler run -- ...` in scripts or via `process.env.*` populated by Doppler. If a secret has to reach the iOS app, hash/mask it via `jq` before writing to the runtime bundle — see `docs/SECRETS.md`.
+1. **No secret ever hardcoded.** All secrets flow through Doppler **personal workplace** (jawaun personal). Mapvest uses project `mapvest` (`dev` / `stg` / `prd`). Sibling Railway apps each have their own project; identical provider tokens live in `shared`. Not GIC `cofounder`. Read via `doppler run -- ...` in scripts or via `process.env.*` populated by Doppler. If a secret has to reach the iOS app, hash/mask it via `jq` before writing to the runtime bundle — see `docs/SECRETS.md` and `infra/doppler/README.md`.
 2. **API layer vs implementation layer is a hard boundary.** `apps/api` exposes HTTP; it must not import from `apps/ios` or `apps/landing`. Everything shared lives in `packages/*`. Any downstream web/mobile client can plug in without changes to `apps/api`.
 3. **Types are the source of truth.** Every request and response is a zod schema in `packages/core/src/schemas`. Never invent a JSON shape at the call site.
 4. **Never fake financial data.** Ticker resolution, ETF matches, and comparables always cite a source (Exa result URL, provider name, timestamp). If confidence is low, return `confidence: "low"` and let the client decide.
@@ -41,7 +41,7 @@ Do not add a package outside `packages/`. Do not add an app outside `apps/`. If 
 
 ## 5. Secrets contract
 
-Every secret this repo touches is in Doppler `cofounder/dev` (or `stg`). The names below are the exact env var names — do not rename:
+Every secret this repo touches is in Doppler `mapvest/dev` (or `stg` / `prd`) in the personal workplace. The names below are the exact env var names — do not rename:
 
 | Purpose | Env var |
 |---|---|
@@ -81,7 +81,7 @@ Downstream clients (iOS, landing, external integrators) consume `openapi.yaml` a
 
 ```
 # from repo root
-doppler setup --project cofounder --config dev
+doppler setup --project mapvest --config dev
 bun install
 bun run dev        # api :3001, landing :3000, expo :8081
 bun test           # runs all package + api tests

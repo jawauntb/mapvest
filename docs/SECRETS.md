@@ -1,13 +1,16 @@
 # Secrets
 
-Every secret Mapvest touches lives in Doppler `cofounder` project, `dev` (or `stg`) config. Nothing else is authoritative.
+Every secret Mapvest touches lives in the **personal** Doppler workplace (jawaun personal), project `mapvest`, configs `dev` / `stg` / `prd`. GIC `cofounder` is not authoritative for this repo. Sibling Railway apps (objetdart, derivation, inquiry, …) have their own Doppler projects in the same workplace; shared provider tokens and `KEY_APP` aliases are documented in `infra/doppler/README.md`.
 
 ## Doppler setup
 
 ```
-doppler login
-doppler setup --project cofounder --config dev
-doppler run -- bun run dev   # every dev script goes through Doppler
+doppler login --scope . --overwrite   # pick workplace "jawaun personal", not GIC
+doppler setup --project mapvest --config dev
+doppler run -- bun run dev            # every dev script goes through Doppler
+bash infra/doppler/sync-from-railway.sh   # one-time: Railway production API → mapvest/prd
+python3 infra/doppler/sync-personal-apps.py  # all personal Railway apps + shared providers
+python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no extra login)
 ```
 
 ## Names (canonical)
@@ -73,8 +76,9 @@ doppler secrets download --format json --no-file \
 Then `railway variables set` from the real (unmasked) JSON, and only paste the masked one into any log/PR:
 
 ```bash
-doppler secrets download --format env --no-file \
-  | railway variables set --from-stdin
+doppler secrets download --project mapvest --config prd --format env --no-file \
+  | railway variable set --service api --environment production
+# Prefer the Doppler ↔ Railway integration so you are not piping secrets through a shell.
 ```
 
 ## Rotation

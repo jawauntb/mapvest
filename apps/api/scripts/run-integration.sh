@@ -7,4 +7,4 @@
 #   MOCK_FIXTURES=1 apps/api/scripts/run-integration.sh   # stub the images (CI)
 set -euo pipefail
 
-INTEGRATION=1 doppler run --project cofounder --config dev -- bun test apps/api/tests/integration/**
+INTEGRATION=1 doppler run --project mapvest --config dev -- bun test apps/api/tests/integration/**

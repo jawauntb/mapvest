@@ -1,105 +1,93 @@
-# Doppler → Railway mirroring
+# Doppler (personal workplace)
 
-Doppler (`cofounder` project, `dev` or `stg` config) is the source of truth for every
-secret in this repo. Railway services never store canonical values — they receive a
-snapshot of Doppler at deploy time. This directory documents the exact commands to
-push that snapshot up.
+Secrets for Jawaun’s Railway apps live in the **jawaun personal** Doppler workplace. They do **not** live in GIC `cofounder` / Superoptimizers.
 
-The paired script is `scripts/mirror-doppler-to-railway.sh` (chmod +x that after clone).
+This Mapvest repo is scoped to that workplace (`doppler login --scope .`). Other checkouts keep the GIC token via `--scope /Users/jawaun/superoptimizers`.
 
-## Prerequisites
+## Layout
 
-1. `doppler` and `railway` CLIs installed.
-2. `doppler login` completed (or `DOPPLER_TOKEN` in the environment).
-3. `railway login` completed (or `RAILWAY_TOKEN` in the environment).
-4. `railway link` has been run inside this repo so the CLI knows which project and
-   environment to write to. Verify with `railway status`.
-5. `jq` on PATH — used for the mask-and-forward pattern documented in
-   `docs/SECRETS.md`.
+One Doppler **project per Railway project**, plus `shared`.
 
-## Self-signed keys (required, create once)
+| Doppler project | Railway `production` source | Configs |
+|---|---|---|
+| `shared` | majority provider tokens + GIC extras | `dev` / `prd` |
+| `mapvest` | service `api` | `dev` / `prd`; `prd_landing` |
+| `derivation-research-console` | service `derivation-research-console` | `dev` / `prd`; `prd_railway_campaign_worker` |
+| `inquiry-black-box` | `inquiry-black-box-api` | `dev` / `prd` |
+| `inquiry-black-box-site` | site | `dev` / `prd` |
+| `objetdart` | `objetdart` | `dev` / `prd` |
+| `underlying-terminal` | `underlying-terminal` | `dev` / `prd`; `prd_daily_alert_digest` |
+| `compiler-tomography` | app | `dev` / `prd` |
+| `reafference-chat` | `web` | `dev` / `prd` |
+| `conjecture-lab` | `web` | `dev` / `prd` |
+| `philo-video-brainlab` | app | `dev` / `prd` |
+| other Railway apps | empty on Railway today | `dev` / `prd` placeholders |
 
-Two secrets are minted locally rather than issued by a provider. If they are missing
-from Doppler, generate them before the first mirror:
+`dev` is `prd` minus `railway.internal` URLs and `PORT`, so `doppler run` on a laptop does not get the private Railway Postgres host.
 
-```bash
-# 32 bytes of hex → 64-char secret. Create only if missing.
-openssl rand -hex 32   # → paste as IOS_MAPS_TOKEN_SIGNING_KEY
-openssl rand -hex 32   # → paste as SESSION_SIGNING_KEY
+Re-sync (never prints values):
 
-doppler secrets set IOS_MAPS_TOKEN_SIGNING_KEY --project cofounder --config dev
-doppler secrets set SESSION_SIGNING_KEY        --project cofounder --config dev
+```
+bash infra/doppler/sync-from-railway.sh          # mapvest/api → mapvest/prd
+python3 infra/doppler/sync-personal-apps.py      # all Railway apps + shared
 ```
 
-Or run `scripts/rotate-signing-keys.sh` which does both in one shot (also
-usable for the 90-day rotation cadence called out in `docs/SECRETS.md`).
+## Same name, one key
 
-## Mirror all Doppler secrets into a Railway service
+Apps keep the env names they already use (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …). Distinction is the **Doppler project**, not a rename in code.
 
-The pattern is: download secrets from Doppler as `KEY=VALUE` pairs and stream them
-straight into `railway variables`. Nothing is written to disk — no `.env` file, no
-temp file, no shell history entry that captures a value.
+When the **same underlying token** is on several apps, `shared` stores it once under that name:
 
-```bash
-export DOPPLER_PROJECT=cofounder
-export DOPPLER_CONFIG=dev        # or stg for staging
+- `OPENROUTER_API_KEY` — mapvest, derivation, objetdart, reafference-chat
+- `OPENROUTER_BASE_URL`
+- `EXA_API_KEY` — mapvest, derivation, GIC `cofounder/prd` (same value)
+- `GEMINI_API_KEY` / `GOOGLE_API_KEY` — same Google AI key
+- `OPENAI_API_KEY` — inquiry + reafference-chat + GIC `cofounder/prd` (same value)
+- `ANTHROPIC_API_KEY` — derivation + objetdart
+- `GOOGLE_MAPS_API_KEY` — mapvest
+- `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` — mapvest + derivation
 
-# Current Railway CLI (v3+): each variable is passed via --set KEY=VALUE.
-# The helper script parses the env stream and issues one --set per pair so it
-# works whether or not your Railway CLI ships --set-from-stdin.
-./scripts/mirror-doppler-to-railway.sh api
-./scripts/mirror-doppler-to-railway.sh landing
-```
+## Same name, different credentials
 
-The equivalent one-shot form (works on Railway CLI versions that accept stdin):
+Do **not** merge these. Apps still read the original name from **their** project. `shared` also keeps the extras as `KEY_APP` so both values exist in one config:
 
-```bash
-doppler secrets download \
-    --project "$DOPPLER_PROJECT" \
-    --config  "$DOPPLER_CONFIG" \
-    --format env --no-file \
-  | railway variables --service api --set-from-stdin
-```
+| Name | Canonical (`shared` / majority) | Aliases on `shared` |
+|---|---|---|
+| `OPENROUTER_API_KEY` | personal majority | `_GIC` (inquiry uses this), `_COMPILER` |
+| `ANTHROPIC_API_KEY` | derivation + objetdart | `_GIC` (inquiry), `_COMPILER`, `_UNDERLYING` |
+| `OPENAI_API_KEY` | inquiry + GIC | `_COMPILER`, `_OBJETDART`, `_UNDERLYING` |
+| `EXA_API_KEY` | mapvest + derivation + GIC | `_UNDERLYING` |
+| `HF_TOKEN` | GIC `cofounder/prd` | `_INQUIRY` |
+| `MODAL_TOKEN_ID` / `_SECRET` | inquiry + GIC `prd` | `_COMPILER` |
+| `STRIPE_SECRET_KEY` | **mapvest only** (test Artesanato Poesia) | GIC live Superoptimizers Stripe stays on GIC. Not copied. |
+| `DATABASE_URL` / `POSTGRES_URL` | per app | never in `shared` |
+| `INQUIRY_CLOUD_AUTH_SECRET` | site vs api are different | each Doppler project |
 
-On completion the script prints **variable names only** — never values. If you see a
-value in the terminal, stop and rotate that secret.
+No app code changes. Point `doppler setup` at the app’s project.
 
-## Mask-and-forward for anything you have to log
+## What stayed on GIC `cofounder`
 
-If a value must appear in a PR, a Slack paste, or a debug log, mask it first with
-the pattern from `docs/SECRETS.md`:
+Do not copy these into personal Doppler:
 
-```bash
-doppler secrets download --format json --no-file \
-  | jq 'to_entries | map(
-      if .key | test("KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL") then
-        .value = { computed: (.value.computed // .value | tostring
-                             | .[0:4] + "…" + .[-4:]),
-                   note: "masked" }
-      else . end
-    ) | from_entries'
-```
+- Superoptimizers Stripe, Vercel, Slack, Linear, customer GitHub
+- Everett / `cofounder/research` (not Derivation Research Console)
+- Customer Supabase, Agentation, Daytona, Pipedream
 
-The real (unmasked) JSON goes straight into `railway variables`. The masked JSON is
-the only thing that ever leaves the machine.
+Derivation’s runtime secrets were already on Railway, not in GIC `research`.
 
-## Verifying the mirror
+## First-time (this repo)
 
 ```bash
-railway variables --service api      # names + masked values (Railway masks by default)
-railway variables --service landing
+doppler login --scope . --overwrite   # workplace "jawaun personal"
+doppler setup                         # project mapvest, config dev
+doppler run -- bun run dev
 ```
 
-If a name is missing on Railway that Doppler has, re-run the mirror script — do not
-paste the value by hand.
+Sibling checkouts (objetdart, derivation, compiler, …) do not need a new browser login. This worktree already has the personal token:
 
-## Rotation cheatsheet
+```bash
+python3 infra/doppler/sync-personal-apps.py     # Railway + GIC providers → personal Doppler
+python3 infra/doppler/setup-local-repos.py      # scope each local repo, write doppler.yaml
+```
 
-| Secret | Cadence | Command |
-| --- | --- | --- |
-| `SESSION_SIGNING_KEY` | 90 days | `scripts/rotate-signing-keys.sh` |
-| `IOS_MAPS_TOKEN_SIGNING_KEY` | on demand | `scripts/rotate-signing-keys.sh` |
-| Any leaked secret | immediately | rotate at the provider, then re-mirror |
-
-After any rotation, re-run the mirror script against every Railway service that uses
-the changed secret so Railway sees the new value.
+`setup-local-repos.py` clones `social-cohesion-vectors` and `underlying-analyzer-reboot` if they are missing. Nested `customer-product-shape-observatory*` dirs stay on GIC `cofounder`. Superoptimizers stays on `cofounder`.

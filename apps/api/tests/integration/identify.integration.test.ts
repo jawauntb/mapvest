@@ -3,7 +3,7 @@
  *
  * Gated behind INTEGRATION=1 so it does NOT run under normal `bun test`.
  * Run it via `apps/api/scripts/run-integration.sh` (which wraps it in
- * `doppler run --project cofounder --config dev`).
+ * `doppler run --project mapvest --config dev`).
  *
  * When MOCK_FIXTURES=1, the image downloads are stubbed with tiny PNGs
  * generated in-memory (see ../../scripts/generate-stub-images.ts). The
