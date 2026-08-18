@@ -1,8 +1,19 @@
 import type { RegressionDataset, ValuePoint } from "@/api/underlying";
+import { useState } from "react";
 import { View } from "react-native";
 import { Polygon, Polyline, Rect } from "react-native-svg";
 import { terminal } from "./palette";
-import { ChartShell, LegendRow, Panel, PanelHeading, XDateLabels, YGrid } from "./primitives";
+import {
+  ChartShell,
+  Crosshair,
+  LegendRow,
+  Panel,
+  PanelHeading,
+  ScrubDot,
+  ScrubTip,
+  XDateLabels,
+  YGrid,
+} from "./primitives";
 import {
   decimate,
   extent,
@@ -13,6 +24,7 @@ import {
   niceTicks,
   padDomain,
   polylinePoints,
+  shortDate,
 } from "./scale";
 
 const PRICE_HEIGHT = 228;
@@ -24,6 +36,7 @@ const MAX_POINTS = 160;
  * ±1σ bands with cyan channel fill, EMA 21/50/200. Bottom — up/down volume.
  */
 export function RegressionChart({ data }: { data: RegressionDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const s = data.series;
   const bars = decimate(s.ohlcv, MAX_POINTS);
   const dates = bars.map((b) => b.date);
@@ -32,6 +45,12 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
   const values = (series: ValuePoint[]) =>
     series.filter((p) => dateIndex.has(p.date)).map((p) => p.value);
 
+  // Series are sparse relative to the decimated bar dates, so the scrub readout joins by date.
+  const closeBy = new Map(s.close.map((p) => [p.date, p.value]));
+  const trendBy = new Map(s.trend.map((p) => [p.date, p.value]));
+  const upperBy = new Map(s.upper_band.map((p) => [p.date, p.value]));
+  const lowerBy = new Map(s.lower_band.map((p) => [p.date, p.value]));
+
   return (
     <ChartShell
       title={`${data.ticker} regression channel`}
@@ -39,7 +58,7 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
       footerLeft={`${data.ticker} trend diagnostics`}
       footerRight={`source ${data.provider ?? "n/a"}`}
     >
-      <Panel height={PRICE_HEIGHT}>
+      <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (dates.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -66,6 +85,40 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
               .reverse()
               .map((p) => `${x(dateIndex.get(p.date) ?? 0).toFixed(1)},${y(p.value).toFixed(1)}`),
           ].join(" ");
+
+          let scrub: React.ReactNode = null;
+          const bar = scrubIdx == null ? undefined : bars[scrubIdx];
+          if (scrubIdx != null && bar) {
+            const cx = x(scrubIdx);
+            const close = closeBy.get(bar.date) ?? bar.close;
+            const trend = trendBy.get(bar.date);
+            const upperVal = upperBy.get(bar.date);
+            const lowerVal = lowerBy.get(bar.date);
+            const lines = [
+              { text: shortDate(bar.date, true).toUpperCase(), color: terminal.amberHot },
+              { text: `C ${fmtPrice(close)}`, color: terminal.textStrong },
+            ];
+            if (trend != null) {
+              lines.push({ text: `TREND ${fmtPrice(trend)}`, color: terminal.amberHot });
+            }
+            if (upperVal != null) {
+              lines.push({ text: `+1σ ${fmtPrice(upperVal)}`, color: terminal.green });
+            }
+            if (lowerVal != null) {
+              lines.push({ text: `−1σ ${fmtPrice(lowerVal)}`, color: terminal.red });
+            }
+            lines.push({ text: `VOL ${fmtCompact(bar.volume)}`, color: terminal.muted });
+            scrub = (
+              <>
+                <Crosshair x={cx} bottom={h - 16} />
+                <ScrubDot cx={cx} cy={y(close)} color={terminal.textStrong} />
+                {trend != null ? (
+                  <ScrubDot cx={cx} cy={y(trend)} color={terminal.amberHot} />
+                ) : null}
+                <ScrubTip x={cx} plotWidth={w} lines={lines} />
+              </>
+            );
+          }
 
           return (
             <>
@@ -111,13 +164,14 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
                 strokeWidth={1.4}
               />
               <XDateLabels dates={dates} x={x} height={h} />
+              {scrub}
             </>
           );
         }}
       </Panel>
 
       <PanelHeading label="Volume" />
-      <Panel height={VOLUME_HEIGHT}>
+      <Panel height={VOLUME_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (bars.length === 0) return null;
           const x = linearScale([0, Math.max(1, bars.length - 1)], [6, w - 6]);
@@ -138,6 +192,7 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
                   opacity={0.68}
                 />
               ))}
+              {scrubIdx != null ? <Crosshair x={x(scrubIdx)} bottom={h - 2} /> : null}
             </>
           );
         }}
