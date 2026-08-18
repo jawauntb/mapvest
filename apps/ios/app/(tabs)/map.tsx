@@ -534,6 +534,7 @@ function shouldShowChip(
   if (cluster.length <= 1) return true;
   const center = { lat: region.latitude, lng: region.longitude };
   let best = cluster[0];
+  if (!best) return true;
   let bestD = haversineMeters(best.place.location, center);
   for (const other of cluster.slice(1)) {
     const d = haversineMeters(other.place.location, center);
