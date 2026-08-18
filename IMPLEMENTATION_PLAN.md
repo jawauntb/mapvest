@@ -85,7 +85,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [ ] Service: `landing` (Next.js) — generated domain
 - [ ] Postgres plugin — sessions + admin log
 - [ ] Env vars mirrored from Doppler via `doppler secrets download --format env --no-file | railway variables set`
-- [ ] Custom domain optional (deferred)
+- [x] Custom domain `mapvest.app` on landing (`www` → Railway; apex `301` at GoDaddy)
 
 **Acceptance**: `https://mapvest-api-*.up.railway.app/v1/health` returns 200; landing loads at its Railway URL.
 
