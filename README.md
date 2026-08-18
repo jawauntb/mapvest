@@ -44,7 +44,8 @@ bun run dev            # runs api, landing, and expo start
 
 ## Deploy
 
-- **API + landing**: Railway (see `docs/DEPLOY.md`)
+- **Landing**: https://mapvest.app (`www` on Railway; apex `301`s to `www`)
+- **API**: https://api-production-4b27.up.railway.app (see `docs/DEPLOY.md`)
 - **iOS**: TestFlight via EAS (see `apps/ios/README.md`)
 
 ## Docs

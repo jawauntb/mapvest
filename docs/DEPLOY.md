@@ -38,10 +38,10 @@ See `infra/doppler/README.md`. Authoritative Mapvest secrets: Doppler `mapvest/p
 
 ### Domains
 
-Generated Railway domains until custom is decided:
+- Landing: `https://mapvest.app` — public site. `www.mapvest.app` is the Railway custom domain on the `landing` service (port 3000). The apex `301`s to `www` at GoDaddy.
+- API: `https://api-production-4b27.up.railway.app` — Railway service domain. No custom API host yet.
 
-- API:      `mapvest-api-*.up.railway.app`
-- Landing:  `mapvest-*.up.railway.app`
+The previous landing URL `https://landing-production-ce7b.up.railway.app` still resolves and can stay as a fallback.
 
 ## TestFlight (iOS)
 

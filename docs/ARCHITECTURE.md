@@ -22,7 +22,7 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
           │                       (Gemini 2.5 /       Polygon · ETF.com
           │                        Claude 5 vision)
           │
-          └── landing (Next.js) ── renders docs, TestFlight link
+          └── landing (Next.js) ── mapvest.app — docs, TestFlight link
 ```
 
 ## Request flow — “what is this?”

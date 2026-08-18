@@ -349,7 +349,7 @@ export default async function HomePage() {
             <li className="status-row status-row--up">
               <span className="status-dot status-dot--up" aria-hidden="true" />
               <span className="status-row__name">landing</span>
-              <code className="status-row__host">landing-production-ce7b.up.railway.app</code>
+              <code className="status-row__host">mapvest.app</code>
               <span className="status-row__state">live</span>
             </li>
           </ul>

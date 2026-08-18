@@ -80,14 +80,14 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 5 — Deploy (Railway)
 
-- [ ] Railway project `mapvest` in the user's default workspace
-- [ ] Service: `api` (Bun) — Doppler mount, healthcheck, autoscaling off, generated domain
-- [ ] Service: `landing` (Next.js) — generated domain
-- [ ] Postgres plugin — sessions + admin log
-- [ ] Env vars mirrored from Doppler via `doppler secrets download --format env --no-file | railway variables set`
-- [ ] Custom domain optional (deferred)
+- [x] Railway project `mapvest` in the user's default workspace
+- [x] Service: `api` (Bun) — Doppler mount, healthcheck, autoscaling off, generated domain
+- [x] Service: `landing` (Next.js) — generated domain
+- [x] Postgres plugin — sessions + admin log
+- [x] Env vars mirrored from Doppler via `doppler secrets download --format env --no-file | railway variables set`
+- [x] Custom domain `mapvest.app` on landing (`www` → Railway; apex `301` at GoDaddy)
 
-**Acceptance**: `https://mapvest-api-*.up.railway.app/v1/health` returns 200; landing loads at its Railway URL.
+**Acceptance**: `https://api-production-4b27.up.railway.app/v1/health` returns 200; landing loads at `https://mapvest.app`.
 
 ---
 
