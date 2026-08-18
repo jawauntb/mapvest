@@ -1,0 +1,26 @@
+# Read by eas-cli when packing from apps/ios (EAS_NO_VCS=1 or no repo-root .easignore).
+# Do NOT ignore package.json or the native ios/ tree — the worker looks for both.
+
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+expo-env.d.ts
+credentials.json
+credentials/
+*.p12
+*.mobileprovision
+*.p8
+*.ipa
+
+# Keep ios/ (apps/ios/.gitignore ignores it). Drop only build artifacts.
+ios/Pods/
+ios/build/
+ios/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate

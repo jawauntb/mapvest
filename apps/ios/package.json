@@ -10,7 +10,7 @@
     "prebuild": "expo prebuild --clean",
     "build:dev": "eas build --platform ios --profile development",
     "build:preview": "eas build --platform ios --profile preview",
-    "build:prod": "eas build --platform ios --profile production",
+    "build:prod": "EAS_NO_VCS=1 npx eas-cli@22.0.0 build --platform ios --profile production",
     "submit": "eas submit --platform ios --latest",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
