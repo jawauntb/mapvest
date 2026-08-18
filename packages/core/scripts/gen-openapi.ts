@@ -568,7 +568,7 @@ registry.registerPath({
 registry.registerPath({
   method: "post",
   path: "/v1/billing/checkout",
-  summary: "Start a $20/mo subscription",
+  summary: "Start a $19.99/mo subscription",
   description:
     "Signed-in only. `platform` selects the charge channel: Stripe Checkout URL for web (and iOS/Android until native product ids are configured), or `apple_iap` / `google_play` product ids once those env vars are set. Clients must not invent payment URLs.",
   tags: ["billing"],
@@ -747,7 +747,7 @@ const document = generator.generateDocument({
     { name: "widget", description: "Home-screen widget data (iOS WidgetKit / Android App Widget)" },
     { name: "finance", description: "Ticker / comparable / ETF resolution" },
     { name: "auth", description: "Passwordless email sign-in" },
-    { name: "billing", description: "Entitlements + $20/mo subscription checkout" },
+    { name: "billing", description: "Entitlements + $19.99/mo subscription checkout" },
     { name: "admin", description: "Requires the `admin` scope" },
   ],
   security: [{ bearerAuth: [] }],

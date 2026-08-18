@@ -206,7 +206,7 @@ describe("requireGenerationQuota + GET /v1/entitlements (HTTP)", () => {
     expect(body.code).toBe("quota_exceeded");
     expect(body.remaining).toBe(0);
     expect(body.limit).toBe(FREE_GENERATION_LIMIT);
-    expect(body.priceUsd).toBe(20);
+    expect(body.priceUsd).toBe(19.99);
     expect(body.interval).toBe("month");
   });
 });

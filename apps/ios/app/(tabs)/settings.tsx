@@ -424,12 +424,12 @@ function PlanCard() {
           ) : (
             <Text style={styles.muted}>
               {data.remaining} of {data.limit} free generations left. Identify, research, and memos
-              count. Map and nearby stay free. Pro is $20/month. Research, not advice.
+              count. Map and nearby stay free. Pro is $19.99/month. Research, not advice.
             </Text>
           )}
           {!data.freeForever && !data.subscribed ? (
             <PrimaryButton
-              label="Subscribe $20/mo"
+              label="Subscribe $19.99/mo"
               onPress={() => presentPaywall()}
               style={{ marginTop: 8, alignSelf: "stretch" }}
             />

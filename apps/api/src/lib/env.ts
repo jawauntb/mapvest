@@ -46,7 +46,7 @@ export function postgresUrl(): string | undefined {
   return process.env.POSTGRES_URL || undefined;
 }
 
-// ---- Stripe (Phase 8 Slice E — $20/mo subscription) ----
+// ---- Stripe (Phase 8 Slice E — $19.99/mo subscription) ----
 
 const LANDING_APP_URL = "https://mapvest.app/app";
 

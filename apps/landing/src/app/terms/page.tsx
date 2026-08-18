@@ -85,7 +85,7 @@ export default function Terms() {
           <p>
             Browse is free. Identify, research briefs, and memos are limited to
             50 lifetime generations unless you subscribe to Mapvest Pro
-            ($20/month) or we have granted your account unlimited use. Map and
+            ($19.99/month) or we have granted your account unlimited use. Map and
             nearby stay free. A subscription is for research access, not a
             brokerage account and not investment advice. On the web, payment
             is processed by Stripe. On a future App Store or Play listing,
