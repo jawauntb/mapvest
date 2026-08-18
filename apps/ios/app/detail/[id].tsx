@@ -13,13 +13,12 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { ChartsSection } from "@/components/ChartsSection";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
-import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
-import { UnderlyingChartsSection } from "@/components/UnderlyingChartsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -298,11 +297,7 @@ export default function DetailSheet() {
           </Section>
         ) : null}
 
-        {stage >= 1 && ticker ? (
-          <Section title="Price">
-            <NativePriceChart ticker={ticker} token={session?.token} />
-          </Section>
-        ) : null}
+        {stage >= 1 && ticker ? <ChartsSection ticker={ticker} token={session?.token} /> : null}
 
         {stage >= 2 && ticker ? (
           <View style={{ gap: 10 }}>
@@ -365,8 +360,6 @@ export default function DetailSheet() {
             )}
           </Section>
         ) : null}
-
-        {ticker ? <UnderlyingChartsSection ticker={ticker} defaultOpen={isListed} /> : null}
 
         {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
         {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
