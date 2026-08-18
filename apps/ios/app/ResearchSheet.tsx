@@ -3,13 +3,15 @@ import { useSession } from "@/auth/session";
 import { RichText } from "@/components/RichText";
 import { ShareButton } from "@/components/ShareButton";
 import { colors, radii } from "@/theme/tokens";
-import { shareBriefText } from "@/util/share";
 import { hapticSelect, hapticTap } from "@/util/haptics";
+import { shareBriefText } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Dimensions,
+  Keyboard,
+  LayoutAnimation,
   Linking,
   Modal,
   Platform,
@@ -21,6 +23,39 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/**
+ * Keyboard overlap for composers inside a pageSheet Modal. iOS's
+ * KeyboardAvoidingView is unreliable there: it diffs its own sheet-local
+ * frame against the keyboard's *screen* frame, under-padding by the sheet's
+ * top gap — which left the send button hidden behind the keyboard. A
+ * pageSheet's bottom edge is flush with the screen, so the keyboard's
+ * on-screen height is exactly the inset the composer needs.
+ */
+function useSheetKeyboardOverlap(): number {
+  const [overlap, setOverlap] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const animate = (duration?: number | null) =>
+      LayoutAnimation.configureNext({
+        duration: Math.max(duration ?? 250, 10),
+        update: { type: LayoutAnimation.Types.keyboard },
+      });
+    const change = Keyboard.addListener("keyboardWillChangeFrame", (e) => {
+      animate(e.duration);
+      setOverlap(Math.max(0, Dimensions.get("screen").height - e.endCoordinates.screenY));
+    });
+    const hide = Keyboard.addListener("keyboardWillHide", (e) => {
+      animate(e.duration);
+      setOverlap(0);
+    });
+    return () => {
+      change.remove();
+      hide.remove();
+    };
+  }, []);
+  return overlap;
+}
 
 /** Ticker-bound research brief — not a top-level Chat tab. */
 export function ResearchSheet({
@@ -34,6 +69,7 @@ export function ResearchSheet({
 }) {
   const { session } = useSession();
   const insets = useSafeAreaInsets();
+  const keyboardOverlap = useSheetKeyboardOverlap();
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
   const [input, setInput] = useState(`What’s the story on $${ticker}?`);
@@ -200,12 +236,12 @@ export function ResearchSheet({
               <View key={t.id} style={styles.article}>
                 <RichText text={t.content} />
                 {t.interesting.slice(0, 4).map((x, i) => (
-                  <Text key={i} style={styles.bullet}>
+                  <Text key={`${i}-${x}`} style={styles.bullet}>
                     · {x}
                   </Text>
                 ))}
                 {t.ideas.slice(0, 2).map((idea, i) => (
-                  <View key={i} style={styles.idea}>
+                  <View key={`${i}-${idea.title}`} style={styles.idea}>
                     <Text style={styles.ideaTitle}>{idea.title}</Text>
                     {idea.thesis ? <Text style={styles.sub}>{idea.thesis}</Text> : null}
                   </View>
@@ -310,41 +346,40 @@ export function ResearchSheet({
           {err ? <Text style={styles.err}>{err}</Text> : null}
         </ScrollView>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={0}
+        <View
+          style={[
+            styles.composer,
+            {
+              paddingBottom: keyboardOverlap > 0 ? 12 : Math.max(insets.bottom, 12),
+              marginBottom: keyboardOverlap,
+            },
+          ]}
         >
-          <View
-            style={[
-              styles.composer,
-              { paddingBottom: Math.max(insets.bottom, 12) },
-            ]}
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder={`Ask about $${ticker}…`}
+            placeholderTextColor={colors.fgDim}
+            editable={!busy}
+            returnKeyType="send"
+            onSubmitEditing={() => void onSend()}
+            accessibilityLabel={`Ask about $${ticker}`}
+          />
+          <Pressable
+            style={[styles.send, (!input.trim() || busy) && { opacity: 0.4 }]}
+            disabled={!input.trim() || busy}
+            onPress={() => void onSend()}
+            accessibilityRole="button"
+            accessibilityLabel="Ask"
           >
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={setInput}
-              placeholder={`Ask about $${ticker}…`}
-              placeholderTextColor={colors.fgDim}
-              editable={!busy}
-              onSubmitEditing={() => void onSend()}
-              accessibilityLabel={`Ask about $${ticker}`}
-            />
-            <Pressable
-              style={[styles.send, (!input.trim() || busy) && { opacity: 0.4 }]}
-              disabled={!input.trim() || busy}
-              onPress={() => void onSend()}
-              accessibilityRole="button"
-              accessibilityLabel="Ask"
-            >
-              {busy ? (
-                <ActivityIndicator color={colors.accentInk} size="small" />
-              ) : (
-                <Ionicons name="arrow-up" size={18} color={colors.accentInk} />
-              )}
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
+            {busy ? (
+              <ActivityIndicator color={colors.accentInk} size="small" />
+            ) : (
+              <Ionicons name="arrow-up" size={18} color={colors.accentInk} />
+            )}
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
