@@ -40,6 +40,10 @@ export async function initDb(): Promise<void> {
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS free_forever_reason TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_original_transaction_id TEXT`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_apple_original_txn_idx
+      ON users (apple_original_transaction_id)
+      WHERE apple_original_transaction_id IS NOT NULL`;
     await sql`
       CREATE TABLE IF NOT EXISTS usage_events (
         id TEXT PRIMARY KEY,

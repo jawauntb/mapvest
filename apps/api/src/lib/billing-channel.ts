@@ -3,8 +3,9 @@
  *
  * App Store 3.1.1 and Play's digital-goods rule both require the native store
  * kit once those products exist. Until `APPLE_IAP_PRODUCT_ID` /
- * `GOOGLE_PLAY_PRODUCT_ID` are set, checkout falls through to Stripe so
- * TestFlight and the web app can actually take payment.
+ * `GOOGLE_PLAY_PRODUCT_ID` are set, checkout falls through to Stripe so the
+ * web app (and older TestFlight builds) can take payment. New iOS builds
+ * purchase through StoreKit regardless and redeem via `POST /v1/billing/apple`.
  */
 import type { BillingChannel, BillingPlatform } from "@mapvest/core";
 import { appleIapProductId, googlePlayProductId } from "./env.js";

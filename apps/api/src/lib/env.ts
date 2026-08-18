@@ -78,11 +78,18 @@ export function stripeCancelUrl(): string {
 /**
  * App Store Connect product id for Mapvest Pro. When set, iOS checkout
  * returns `channel: "apple_iap"` instead of a Stripe URL (Guideline 3.1.1).
- * Unset on TestFlight until the IAP product exists.
+ * Leave unset on Railway until the StoreKit client build is on TestFlight
+ * so older builds keep Stripe Safari.
  */
 export function appleIapProductId(): string | undefined {
   const v = process.env.APPLE_IAP_PRODUCT_ID?.trim();
   return v || undefined;
+}
+
+/** Bundle id the StoreKit JWS must carry. Defaults to the shipped iOS id. */
+export function appleBundleId(): string {
+  const v = process.env.APPLE_BUNDLE_ID?.trim();
+  return v || "com.mapvest.app";
 }
 
 /**

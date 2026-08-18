@@ -93,4 +93,4 @@ Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are
 
 ## Billing (not market data)
 
-Stripe Checkout / Customer Portal charges Mapvest Pro ($20/mo) on the web and on TestFlight until native store products exist. Subscription state is `users.plan = subscribed` via `POST /v1/billing/webhook`. This is not a market-data source and is never cited on a ticker card. App Store / Play Billing product ids (`APPLE_IAP_PRODUCT_ID`, `GOOGLE_PLAY_PRODUCT_ID`) are optional; Play remains deferred with v0.2.
+Stripe Checkout / Customer Portal charges Mapvest Pro ($20/mo) on the **web**. iOS charges the same plan through StoreKit 2 (`mapvest_pro_monthly`); the API verifies Apple's signed transaction (`POST /v1/billing/apple`) and sets `users.plan = subscribed`. This is not a market-data source and is never cited on a ticker card. Play Billing remains deferred with v0.2.

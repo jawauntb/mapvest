@@ -1,6 +1,13 @@
-import { startCheckout, startPortal } from "@/api/client";
+import { confirmApplePurchase, startCheckout, startPortal } from "@/api/client";
 import { isQuotaExceeded } from "@/api/errors";
 import { useSession } from "@/auth/session";
+import {
+  isAppleUserCancelled,
+  openAppleSubscriptionManagement,
+  purchaseAppleSubscription,
+  resolveAppleProductId,
+  restoreAppleSubscription,
+} from "@/billing/appleIap";
 import { ENTITLEMENTS_QUERY_KEY } from "@/billing/useEntitlements";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -51,11 +58,10 @@ export function presentPaywallIfQuota(err: unknown, present: () => void): boolea
 }
 
 /**
- * Global subscribe sheet. Apple 3.1.1 / Play digital-goods: the CTA asks the
- * API which channel to use (`stripe` | `apple_iap` | `google_play`). Today
- * TestFlight has no IAP product, so checkout opens Stripe in Safari. When
- * `APPLE_IAP_PRODUCT_ID` is set server-side, the same sheet will receive
- * `apple_iap` and must not open a web checkout.
+ * Global subscribe sheet. iOS charges through StoreKit 2 (Guideline 3.1.1).
+ * Web (and this sheet's Android stub) uses Stripe Checkout. After a native
+ * purchase the JWS is posted to `POST /v1/billing/apple` so quota lifts on
+ * the same account as web Stripe.
  */
 export function PaywallProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
@@ -107,7 +113,7 @@ function PaywallSheet({
   const { session } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
-  const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
+  const [busy, setBusy] = useState<"checkout" | "portal" | "restore" | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function subscribe() {
@@ -120,6 +126,23 @@ function PaywallSheet({
     }
     setBusy("checkout");
     try {
+      if (Platform.OS === "ios") {
+        let productId = resolveAppleProductId();
+        try {
+          const intent = await startCheckout(
+            { platform: "ios", successUrl: "https://mapvest.app/app?billing=success" },
+            { token: session.token },
+          );
+          productId = resolveAppleProductId(intent.productId);
+        } catch {
+          /* checkout 503s until APPLE_IAP_PRODUCT_ID is set; StoreKit still uses the default sku */
+        }
+        const purchase = await purchaseAppleSubscription(productId);
+        await confirmApplePurchase({ signedTransaction: purchase.jws }, { token: session.token });
+        await purchase.finish();
+        onClose();
+        return;
+      }
       const platform = Platform.OS === "android" ? "android" : "ios";
       const intent = await startCheckout(
         { platform, successUrl: "https://mapvest.app/app?billing=success" },
@@ -129,19 +152,39 @@ function PaywallSheet({
         await Linking.openURL(intent.url);
         return;
       }
-      if (intent.channel === "apple_iap") {
-        setErr(
-          "App Store billing is configured on the server but this build does not purchase through StoreKit yet. Use the web app to subscribe, then sign in here.",
-        );
-        return;
-      }
       if (intent.channel === "google_play") {
         setErr("Play Billing is not on this build.");
         return;
       }
       setErr("Could not start checkout.");
     } catch (e) {
+      if (isAppleUserCancelled(e)) return;
       setErr(e instanceof Error ? e.message : "Could not start checkout.");
+    } finally {
+      setBusy(null);
+      void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
+    }
+  }
+
+  async function restore() {
+    if (!session?.token || Platform.OS !== "ios") return;
+    setErr(null);
+    setBusy("restore");
+    try {
+      const intent = await startCheckout({ platform: "ios" }, { token: session.token }).catch(
+        () => null,
+      );
+      const productId = resolveAppleProductId(intent?.productId);
+      const purchase = await restoreAppleSubscription(productId);
+      if (!purchase) {
+        setErr("No App Store subscription found for this Apple ID.");
+        return;
+      }
+      await confirmApplePurchase({ signedTransaction: purchase.jws }, { token: session.token });
+      await purchase.finish();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not restore purchases.");
     } finally {
       setBusy(null);
       void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
@@ -153,6 +196,10 @@ function PaywallSheet({
     setErr(null);
     setBusy("portal");
     try {
+      if (Platform.OS === "ios") {
+        await openAppleSubscriptionManagement();
+        return;
+      }
       const { url } = await startPortal({ token: session.token });
       await Linking.openURL(url);
     } catch (e) {
@@ -181,7 +228,9 @@ function PaywallSheet({
               !session
                 ? "Sign in to subscribe"
                 : busy === "checkout"
-                  ? "Opening checkout…"
+                  ? Platform.OS === "ios"
+                    ? "Waiting for App Store…"
+                    : "Opening checkout…"
                   : "Subscribe $20/mo"
             }
             busy={busy === "checkout"}
@@ -202,6 +251,22 @@ function PaywallSheet({
             >
               <Text style={styles.secondaryText}>
                 {busy === "portal" ? "Opening…" : "Already subscribed? Manage"}
+              </Text>
+            </Pressable>
+          ) : null}
+          {session && Platform.OS === "ios" ? (
+            <Pressable
+              onPress={() => {
+                hapticSelect();
+                void restore();
+              }}
+              disabled={busy === "restore"}
+              style={styles.secondary}
+              accessibilityRole="button"
+              accessibilityLabel="Restore App Store purchases"
+            >
+              <Text style={styles.secondaryText}>
+                {busy === "restore" ? "Restoring…" : "Restore purchases"}
               </Text>
             </Pressable>
           ) : null}

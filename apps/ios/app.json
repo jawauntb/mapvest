@@ -118,7 +118,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-iap"
     ],
     "extra": {
       "router": {

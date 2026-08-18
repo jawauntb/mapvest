@@ -145,7 +145,7 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 
 1. **Browse free without account** — open app/web, use map/list/nearby/identify/research up to **50 generations** (billable: identify, agent chat, memo).
 2. **Signup required to persist** — Save/watchlist, Robinhood MCP, memos-on-watchlist need a session.
-3. **After 50 gens** — must subscribe **$20/month** (Stripe) unless entitled free.
+3. **After 50 gens** — must subscribe **$20/month** (Stripe on web, StoreKit on iOS) unless entitled free.
 4. **Forever-free entitlements**
    - Auto: email contains `jawaun` (case-insensitive) → free forever.
    - Admin: grant/revoke free on `/v1/admin/users` (and Admin UI).
@@ -192,7 +192,7 @@ Ship as small slices; each slice merges to `main` and redeploys Railway (API + l
 - [x] `POST /v1/billing/checkout` → Stripe Checkout Session (or native store product id)
 - [x] `POST /v1/billing/portal` → customer portal
 - [x] Webhook `customer.subscription.*` → set `subscribed`
-- [x] Web + iOS “Subscribe $20/mo” (web: Stripe Checkout; iOS: Stripe in Safari until `APPLE_IAP_PRODUCT_ID` is set, then `apple_iap`. Android Play Billing deferred with the rest of v0.2.)
+- [x] Web + iOS “Subscribe $20/mo” (web: Stripe Checkout; iOS: StoreKit 2 → `POST /v1/billing/apple`. Android Play Billing deferred with the rest of v0.2.)
 
 **Acceptance**: Test-mode checkout flips user to subscribed; quota lifts.
 

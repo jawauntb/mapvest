@@ -11,12 +11,13 @@ process.env.APPLE_IAP_PRODUCT_ID = undefined;
 process.env.GOOGLE_PLAY_PRODUCT_ID = undefined;
 
 import { app } from "../src/index.js";
+import { __setAppleJwsVerifier } from "../src/lib/apple-jws.js";
 import {
   resolveBillingChannel,
   sanitizeReturnUrl,
   stripeSafeReturnUrl,
 } from "../src/lib/billing-channel.js";
-import { MONTHLY_PRICE_USD } from "../src/lib/entitlements.js";
+import { MONTHLY_PRICE_USD, __resetEntitlements } from "../src/lib/entitlements.js";
 import { __resetEnvWarnings } from "../src/lib/env.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
 import { __resetStore } from "../src/lib/store.js";
@@ -53,15 +54,19 @@ beforeEach(() => {
   __resetMetrics();
   __resetRateLimit();
   __resetEnvWarnings();
+  __resetEntitlements();
+  __setAppleJwsVerifier(undefined);
   process.env.APPLE_IAP_PRODUCT_ID = "";
   process.env.GOOGLE_PLAY_PRODUCT_ID = "";
   process.env.STRIPE_SECRET_KEY = "";
   process.env.STRIPE_PRICE_ID_MONTHLY = "";
+  process.env.APPLE_BUNDLE_ID = "com.mapvest.app";
 });
 
 afterEach(() => {
   process.env.APPLE_IAP_PRODUCT_ID = "";
   process.env.GOOGLE_PLAY_PRODUCT_ID = "";
+  __setAppleJwsVerifier(undefined);
 });
 
 describe("resolveBillingChannel", () => {
@@ -159,5 +164,95 @@ describe("POST /v1/billing/checkout", () => {
     expect(body.url).toBeUndefined();
     expect(body.priceUsd).toBe(MONTHLY_PRICE_USD);
     expect(body.interval).toBe("month");
+  });
+});
+
+describe("POST /v1/billing/apple", () => {
+  test("requires a session", async () => {
+    const res = await app.fetch(
+      new Request(url("/billing/apple"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signedTransaction: "a".repeat(40) }),
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects an untrusted JWS", async () => {
+    const token = await signIn("apple-bad@example.com");
+    const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify({ productId: "x" })).toString("base64url");
+    const res = await app.fetch(
+      new Request(url("/billing/apple"), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ signedTransaction: `${header}.${payload}.${"c".repeat(40)}` }),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("a verified sandbox subscription marks the user subscribed", async () => {
+    process.env.APPLE_IAP_PRODUCT_ID = "mapvest_pro_monthly";
+    __setAppleJwsVerifier(async () => ({
+      bundleId: "com.mapvest.app",
+      productId: "mapvest_pro_monthly",
+      transactionId: "1000000123456789",
+      originalTransactionId: "1000000000000001",
+      type: "Auto-Renewable Subscription",
+      environment: "Sandbox",
+      expiresDate: Date.now() + 30 * 86_400_000,
+    }));
+    const token = await signIn("apple-ok@example.com");
+    const res = await app.fetch(
+      new Request(url("/billing/apple"), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ signedTransaction: "a".repeat(40) }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { subscribed: boolean; plan: string; canGenerate: boolean };
+    expect(body.subscribed).toBe(true);
+    expect(body.plan).toBe("subscribed");
+    expect(body.canGenerate).toBe(true);
+
+    const ent = await app.fetch(
+      new Request(url("/entitlements"), { headers: { authorization: `Bearer ${token}` } }),
+    );
+    const state = (await ent.json()) as { subscribed: boolean };
+    expect(state.subscribed).toBe(true);
+  });
+
+  test("does not let a second account steal an originalTransactionId", async () => {
+    process.env.APPLE_IAP_PRODUCT_ID = "mapvest_pro_monthly";
+    __setAppleJwsVerifier(async () => ({
+      bundleId: "com.mapvest.app",
+      productId: "mapvest_pro_monthly",
+      transactionId: "2000000123456789",
+      originalTransactionId: "shared-orig-txn",
+      type: "Auto-Renewable Subscription",
+      environment: "Sandbox",
+      expiresDate: Date.now() + 86_400_000,
+    }));
+    const a = await signIn("apple-a@example.com");
+    const first = await app.fetch(
+      new Request(url("/billing/apple"), {
+        method: "POST",
+        headers: { authorization: `Bearer ${a}`, "content-type": "application/json" },
+        body: JSON.stringify({ signedTransaction: "a".repeat(40) }),
+      }),
+    );
+    expect(first.status).toBe(200);
+    const b = await signIn("apple-b@example.com");
+    const second = await app.fetch(
+      new Request(url("/billing/apple"), {
+        method: "POST",
+        headers: { authorization: `Bearer ${b}`, "content-type": "application/json" },
+        body: JSON.stringify({ signedTransaction: "b".repeat(40) }),
+      }),
+    );
+    expect(second.status).toBe(409);
   });
 });

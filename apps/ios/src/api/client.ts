@@ -613,6 +613,13 @@ export function startPortal(opts: FetchOpts): Promise<BillingPortalResponse> {
   return jsonFetch("/v1/billing/portal", { method: "POST", body: JSON.stringify({}) }, opts);
 }
 
+export function confirmApplePurchase(
+  args: { signedTransaction: string },
+  opts: FetchOpts,
+): Promise<EntitlementState> {
+  return jsonFetch("/v1/billing/apple", { method: "POST", body: JSON.stringify(args) }, opts);
+}
+
 // -------- settings --------
 
 export type SettingsResponse = {
