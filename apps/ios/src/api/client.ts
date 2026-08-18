@@ -414,12 +414,13 @@ export function agentChat(
  * common polyfills break Reanimated worklets.
  *
  * The callback receives every parsed SSE event as `{ type, data }`. The
- * returned promise resolves with the final article once `event: done` fires,
- * or rejects on `event: error` / transport failure. If the response body is
- * missing (some RN releases hide it behind polyfills) the promise rejects so
- * ResearchSheet can fall back to the non-streaming call.
+ * returned promise resolves with the final article (from `event: article`,
+ * or synthesized from `token` text if the stream closes early). It rejects
+ * on `event: error` / transport failure / empty stream so ResearchSheet can
+ * fall back to the blocking /chat call. `ping` keepalives are ignored.
  */
 export type AgentStreamEvent =
+  | { type: "ping"; data: { ts?: number } }
   | { type: "tool"; data: { name: string; arg?: string } }
   | { type: "tool_end"; data: { name: string; ok: boolean } }
   | { type: "reasoning"; data: { text: string } }
@@ -428,6 +429,15 @@ export type AgentStreamEvent =
   | { type: "done"; data: { threadId?: string } }
   | { type: "error"; data: { message: string } }
   | { type: string; data: unknown };
+
+function nextSseBoundary(buf: string): { idx: number; sep: number } {
+  const crlf = buf.indexOf("\r\n\r\n");
+  const lf = buf.indexOf("\n\n");
+  if (crlf === -1 && lf === -1) return { idx: -1, sep: 0 };
+  if (crlf === -1) return { idx: lf, sep: 2 };
+  if (lf === -1) return { idx: crlf, sep: 4 };
+  return crlf < lf ? { idx: crlf, sep: 4 } : { idx: lf, sep: 2 };
+}
 
 export async function agentChatStream(
   message: string,
@@ -477,9 +487,10 @@ export async function agentChatStream(
   let finalArticle: ResearchArticle | undefined;
   let finalThreadId: string | undefined;
   let errored: string | undefined;
+  let tokenText = "";
 
   const dispatch = (rawBlock: string) => {
-    const lines = rawBlock.split("\n").filter(Boolean);
+    const lines = rawBlock.split(/\r?\n/).filter(Boolean);
     if (!lines.length) return;
     let eventName = "message";
     const dataLines: string[] = [];
@@ -494,10 +505,14 @@ export async function agentChatStream(
     } catch {
       return;
     }
+    if (eventName === "ping") return;
     const evt = { type: eventName, data } as AgentStreamEvent;
     onEvent(evt);
     if (eventName === "article") {
       finalArticle = data as ResearchArticle;
+    } else if (eventName === "token") {
+      const d = data as { text?: string };
+      if (typeof d?.text === "string") tokenText += d.text;
     } else if (eventName === "done") {
       const d = data as { threadId?: string };
       finalThreadId = d?.threadId;
@@ -514,12 +529,12 @@ export async function agentChatStream(
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      let idx = buf.indexOf("\n\n");
+      let { idx, sep } = nextSseBoundary(buf);
       while (idx !== -1) {
         const block = buf.slice(0, idx);
-        buf = buf.slice(idx + 2);
+        buf = buf.slice(idx + sep);
         dispatch(block);
-        idx = buf.indexOf("\n\n");
+        ({ idx, sep } = nextSseBoundary(buf));
       }
       if (errored) break;
     }
@@ -527,13 +542,27 @@ export async function agentChatStream(
   } else {
     // Whole-body fallback for RN builds without a streaming fetch.
     const text = await res.text();
-    for (const block of text.split("\n\n")) {
+    const parts = text.split(/\r?\n\r?\n/);
+    for (const block of parts) {
       dispatch(block);
       if (errored) break;
     }
   }
 
   if (errored) throw new ApiError(500, errored);
+  if (!finalArticle && tokenText.trim()) {
+    finalArticle = {
+      id: `stream-${Date.now()}`,
+      role: "assistant",
+      content: tokenText.trim(),
+      createdAt: new Date().toISOString(),
+      interesting: [],
+      ideas: [],
+      toolsUsed: [],
+      sources: [],
+      chartTickers: args.ticker ? [args.ticker] : [],
+    };
+  }
   if (!finalArticle) throw new ApiError(500, "stream ended without an article");
   return { article: finalArticle, threadId: finalThreadId };
 }
