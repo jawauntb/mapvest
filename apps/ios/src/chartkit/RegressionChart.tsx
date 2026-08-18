@@ -11,6 +11,7 @@ import {
   PanelHeading,
   ScrubDot,
   ScrubTip,
+  type ScrubTipLine,
   XDateLabels,
   YGrid,
 } from "./primitives";
@@ -94,7 +95,7 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
             const trend = trendBy.get(bar.date);
             const upperVal = upperBy.get(bar.date);
             const lowerVal = lowerBy.get(bar.date);
-            const lines = [
+            const lines: ScrubTipLine[] = [
               { text: shortDate(bar.date, true).toUpperCase(), color: terminal.amberHot },
               { text: `C ${fmtPrice(close)}`, color: terminal.textStrong },
             ];

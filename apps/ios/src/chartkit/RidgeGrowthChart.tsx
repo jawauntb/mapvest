@@ -1,12 +1,17 @@
 import type { RidgeGrowthDataset } from "@/api/underlying";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Line, Polyline, Rect } from "react-native-svg";
 import { MONO_FONT, terminal } from "./palette";
 import {
   ChartShell,
+  Crosshair,
   LegendRow,
   Panel,
   PanelHeading,
+  ScrubDot,
+  ScrubTip,
+  type ScrubTipLine,
   TriangleMarker,
   XDateLabels,
   YGrid,
@@ -15,11 +20,13 @@ import {
   extent,
   fmtMoney,
   fmtPct,
+  fmtPrice,
   indexByDate,
   linearScale,
   niceTicks,
   padDomain,
   polylinePoints,
+  shortDate,
 } from "./scale";
 
 const PRICE_HEIGHT = 250;
@@ -32,6 +39,7 @@ const INITIAL_CAPITAL = 10_000;
  * dashboard table.
  */
 export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
   const s = data.series;
   const signals = s.signals;
@@ -39,6 +47,7 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
   const dateIndex = indexByDate(dates);
   const auction = m.auction;
   const equityColor = m.total_return >= 0 ? terminal.green : terminal.red;
+  const equityBy = new Map(s.equity.map((p) => [p.date, p.value]));
 
   return (
     <ChartShell
@@ -47,7 +56,7 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
       footerLeft={`${data.ticker} ${data.period} | buys ${m.buy_count} | sells ${m.sell_count} | flow ${m.flow_compass.state}`}
       footerRight="ridge growth"
     >
-      <Panel height={PRICE_HEIGHT}>
+      <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (dates.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -73,6 +82,33 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
               runStart = null;
             }
           });
+
+          const scrubPt = scrubIdx != null ? signals[scrubIdx] : undefined;
+          const tipLines: ScrubTipLine[] = [];
+          if (scrubPt) {
+            tipLines.push({
+              text: shortDate(scrubPt.date, true).toUpperCase(),
+              color: terminal.amberHot,
+            });
+            if (scrubPt.Close != null) {
+              tipLines.push({ text: `C ${fmtPrice(scrubPt.Close)}`, color: terminal.textStrong });
+            }
+            const eq = equityBy.get(scrubPt.date);
+            if (eq != null) {
+              tipLines.push({
+                text: `EQ ${fmtMoney(eq)}`,
+                color: eq >= INITIAL_CAPITAL ? terminal.green : terminal.red,
+              });
+            }
+            tipLines.push(
+              scrubPt.in_trade === true
+                ? { text: "IN TRADE", color: terminal.green }
+                : { text: "FLAT", color: terminal.muted },
+            );
+            if (scrubPt.rsi_14 != null) {
+              tipLines.push({ text: `RSI ${scrubPt.rsi_14.toFixed(0)}`, color: terminal.cyan });
+            }
+          }
 
           return (
             <>
@@ -158,6 +194,15 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                 return null;
               })}
               <XDateLabels dates={dates} x={x} height={h} />
+              {scrubIdx != null && scrubPt ? (
+                <>
+                  <Crosshair x={x(scrubIdx)} bottom={h - 16} />
+                  {scrubPt.Close != null ? (
+                    <ScrubDot cx={x(scrubIdx)} cy={y(scrubPt.Close)} color={terminal.textStrong} />
+                  ) : null}
+                  <ScrubTip x={x(scrubIdx)} plotWidth={w} lines={tipLines} />
+                </>
+              ) : null}
             </>
           );
         }}
@@ -176,7 +221,7 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
       />
 
       <PanelHeading label="Strategy equity" />
-      <Panel height={EQUITY_HEIGHT}>
+      <Panel height={EQUITY_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (s.equity.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -185,6 +230,8 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
             0.08,
           );
           const y = linearScale(domain, [h - 4, 6]);
+          const scrubPt = scrubIdx != null ? signals[scrubIdx] : undefined;
+          const scrubEq = scrubPt ? equityBy.get(scrubPt.date) : undefined;
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 2)} y={y} format={fmtMoney} />
@@ -204,6 +251,12 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                 stroke={equityColor}
                 strokeWidth={2}
               />
+              {scrubIdx != null && scrubEq != null ? (
+                <>
+                  <Crosshair x={x(scrubIdx)} bottom={h - 2} />
+                  <ScrubDot cx={x(scrubIdx)} cy={y(scrubEq)} color={equityColor} />
+                </>
+              ) : null}
             </>
           );
         }}

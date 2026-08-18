@@ -1,6 +1,8 @@
 import type { PerformanceDataset } from "@/api/underlying";
-import { StyleSheet, Text, View } from "react-native";
-import { returnHeatColor, terminal } from "./palette";
+import { hapticSelect } from "@/util/haptics";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { MONO_FONT, returnHeatColor, terminal } from "./palette";
 import { ChartShell } from "./primitives";
 
 /**
@@ -9,6 +11,7 @@ import { ChartShell } from "./primitives";
  * colormap with a symmetric ±max(5, |max|) domain.
  */
 export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
+  const [sel, setSel] = useState<{ month: number; col: string } | null>(null);
   const { columns, rows } = data.table;
 
   let maxAbs = 5;
@@ -18,6 +21,9 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
       if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v);
     }
   }
+
+  const selRow = rows.find((r) => r.month === sel?.month);
+  const selValue = sel != null && selRow ? (selRow.values[sel.col] ?? null) : null;
 
   const headerLabel = (col: string) =>
     col === "Mean 5Y" ? "x̄5Y" : col === "Median 5Y" ? "M5Y" : `'${col.slice(2)}`;
@@ -49,8 +55,21 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
               const v = row.values[col] ?? null;
               const t = v == null ? 0.5 : (v + maxAbs) / (2 * maxAbs);
               const bright = v != null && v > maxAbs * 0.34;
+              const isSel = sel != null && sel.month === row.month && sel.col === col;
               return (
-                <View key={col} style={[styles.cell, { backgroundColor: returnHeatColor(t) }]}>
+                <Pressable
+                  key={col}
+                  style={[
+                    styles.cell,
+                    { backgroundColor: returnHeatColor(t) },
+                    isSel && styles.cellSelected,
+                  ]}
+                  onPress={() => {
+                    hapticSelect();
+                    setSel(isSel ? null : { month: row.month, col });
+                  }}
+                  accessibilityRole="button"
+                >
                   {v != null ? (
                     <Text
                       style={[
@@ -62,12 +81,18 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
                       {v.toFixed(1)}
                     </Text>
                   ) : null}
-                </View>
+                </Pressable>
               );
             })}
           </View>
         ))}
       </View>
+      {sel != null && selRow && selValue != null ? (
+        <Text style={[styles.readout, { color: selValue >= 0 ? terminal.green : terminal.red }]}>
+          {selRow.month_label.toUpperCase()} {sel.col} → {selValue >= 0 ? "+" : ""}
+          {selValue.toFixed(2)}%
+        </Text>
+      ) : null}
       <Text style={styles.scaleNote}>
         MONTHLY RETURN % · SCALE ±{maxAbs.toFixed(0)} · RED ↓ / GREEN ↑ / CYAN HOT
       </Text>
@@ -87,7 +112,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cellSelected: { borderWidth: 1.5, borderColor: terminal.amberHot },
   headerText: { color: terminal.muted, fontSize: 7, fontWeight: "700" },
   cellText: { fontSize: 7.5, fontWeight: "700" },
+  readout: { fontFamily: MONO_FONT, fontSize: 10, fontWeight: "700" },
   scaleNote: { color: terminal.muted, fontSize: 8, letterSpacing: 0.3 },
 });

@@ -1,12 +1,17 @@
 import type { FlowCompassDataset } from "@/api/underlying";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Line, Polyline, Rect } from "react-native-svg";
 import { MONO_FONT, flowComponentColor, terminal } from "./palette";
 import {
   ChartShell,
+  Crosshair,
   LegendRow,
   Panel,
   PanelHeading,
+  ScrubDot,
+  ScrubTip,
+  type ScrubTipLine,
   TriangleMarker,
   XDateLabels,
   YGrid,
@@ -20,6 +25,7 @@ import {
   niceTicks,
   padDomain,
   polylinePoints,
+  shortDate,
 } from "./scale";
 
 const PRICE_HEIGHT = 112;
@@ -33,6 +39,7 @@ const MAX_BARS = 150;
  * component score bars.
  */
 export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
   const s = data.series;
   const signals = s.signals;
@@ -59,12 +66,13 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
       footerLeft={`${data.ticker} flow ${(m.score ?? 0).toFixed(1)} | ${m.state}`}
       footerRight="flow compass"
     >
-      <Panel height={PRICE_HEIGHT}>
+      <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (dates.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
           const domain = padDomain(extent(s.close.map((p) => p.value)), 0.08);
           const y = linearScale(domain, [h - 4, 6]);
+          const scrubPt = scrubIdx != null ? signals[scrubIdx] : undefined;
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 2)} y={y} format={fmtPrice} />
@@ -96,13 +104,21 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
                   />
                 ) : null,
               )}
+              {scrubIdx != null && scrubPt ? (
+                <>
+                  <Crosshair x={x(scrubIdx)} bottom={h - 2} />
+                  {scrubPt.Close != null ? (
+                    <ScrubDot cx={x(scrubIdx)} cy={y(scrubPt.Close)} color={terminal.textStrong} />
+                  ) : null}
+                </>
+              ) : null}
             </>
           );
         }}
       </Panel>
 
       <PanelHeading label="Main bias score" />
-      <Panel height={SCORE_HEIGHT}>
+      <Panel height={SCORE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (dates.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -122,6 +138,35 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
               opacity={0.75}
             />
           );
+
+          const scoreColor = (v: number) =>
+            v > trigger ? terminal.green : v < -trigger ? terminal.red : terminal.muted;
+          const scrubPt = scrubIdx != null ? signals[scrubIdx] : undefined;
+          const tipLines: ScrubTipLine[] = [];
+          if (scrubPt) {
+            tipLines.push({
+              text: shortDate(scrubPt.date, true).toUpperCase(),
+              color: terminal.amberHot,
+            });
+            if (scrubPt.Close != null) {
+              tipLines.push({ text: `C ${fmtPrice(scrubPt.Close)}`, color: terminal.textStrong });
+            }
+            if (scrubPt.flow_score != null) {
+              tipLines.push({
+                text: `FLOW ${scrubPt.flow_score.toFixed(1)}`,
+                color: scoreColor(scrubPt.flow_score),
+              });
+            }
+            if (scrubPt.compass_signal != null) {
+              tipLines.push({
+                text: `SIG ${scrubPt.compass_signal.toFixed(1)}`,
+                color: terminal.amberHot,
+              });
+            }
+            if (scrubPt.state) {
+              tipLines.push({ text: scrubPt.state.toUpperCase(), color: terminal.cyan });
+            }
+          }
 
           return (
             <>
@@ -191,6 +236,26 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
                 ) : null,
               )}
               <XDateLabels dates={dates} x={x} height={h} />
+              {scrubIdx != null && scrubPt ? (
+                <>
+                  <Crosshair x={x(scrubIdx)} bottom={h - 16} />
+                  {scrubPt.flow_score != null ? (
+                    <ScrubDot
+                      cx={x(scrubIdx)}
+                      cy={y(scrubPt.flow_score)}
+                      color={scoreColor(scrubPt.flow_score)}
+                    />
+                  ) : null}
+                  {scrubPt.compass_signal != null ? (
+                    <ScrubDot
+                      cx={x(scrubIdx)}
+                      cy={y(scrubPt.compass_signal)}
+                      color={terminal.amberHot}
+                    />
+                  ) : null}
+                  <ScrubTip x={x(scrubIdx)} plotWidth={w} lines={tipLines} />
+                </>
+              ) : null}
             </>
           );
         }}

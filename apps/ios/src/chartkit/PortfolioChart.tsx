@@ -1,8 +1,19 @@
 import type { PortfolioDataset, ValuePoint } from "@/api/underlying";
+import { useState } from "react";
 import { View } from "react-native";
 import { Polygon, Polyline } from "react-native-svg";
 import { PORTFOLIO_LINE_CYCLE, terminal } from "./palette";
-import { ChartShell, LegendRow, Panel, XDateLabels, YGrid } from "./primitives";
+import {
+  ChartShell,
+  Crosshair,
+  LegendRow,
+  Panel,
+  ScrubDot,
+  ScrubTip,
+  type ScrubTipLine,
+  XDateLabels,
+  YGrid,
+} from "./primitives";
 import {
   decimate,
   extent,
@@ -13,6 +24,7 @@ import {
   niceTicks,
   padDomain,
   polylinePoints,
+  shortDate,
 } from "./scale";
 
 const PANEL_HEIGHT = 240;
@@ -24,12 +36,14 @@ const MAX_POINTS = 160;
  * benchmark dashed cyan when it resolved.
  */
 export function PortfolioChart({ data }: { data: PortfolioDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
   const portfolio = decimate(data.series.portfolio, MAX_POINTS);
   const dates = portfolio.map((p) => p.date);
   const dateIndex = indexByDate(dates);
   const holdings = Object.entries(data.series.holdings);
   const benchmark = data.series.benchmark;
+  const benchmarkBy = new Map((benchmark ?? []).map((p) => [p.date, p.value]));
 
   const subtitleParts = [
     `${data.tickers.length} HOLDINGS`,
@@ -47,7 +61,7 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
       footerLeft={`Return ${fmtPct(m.total_return)} | drawdown ${fmtPct(m.max_drawdown)} | vol ${fmtPct(m.annualized_volatility)}`}
       footerRight="portfolio scanner"
     >
-      <Panel height={PANEL_HEIGHT}>
+      <Panel height={PANEL_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
           if (portfolio.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -73,6 +87,34 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
                   `${x(dates.length - 1).toFixed(1)},${floor.toFixed(1)}`,
                 ].join(" ")
               : "";
+
+          let scrubChrome: React.ReactNode = null;
+          if (scrubIdx != null) {
+            const p = portfolio[scrubIdx];
+            if (p) {
+              const b = benchmarkBy.get(p.date);
+              const lines: ScrubTipLine[] = [
+                { text: shortDate(p.date, true).toUpperCase(), color: terminal.amberHot },
+                { text: `PORT ${fmtMoney(p.value)}`, color: terminal.amberHot },
+              ];
+              if (b != null) lines.push({ text: `BENCH ${fmtMoney(b)}`, color: terminal.cyan });
+              if (m.initial_value > 0) {
+                const ret = (p.value - m.initial_value) / m.initial_value;
+                lines.push({
+                  text: `RET ${ret >= 0 ? "+" : ""}${fmtPct(ret)}`,
+                  color: ret >= 0 ? terminal.green : terminal.red,
+                });
+              }
+              scrubChrome = (
+                <>
+                  <Crosshair x={x(scrubIdx)} bottom={h - 16} />
+                  <ScrubDot cx={x(scrubIdx)} cy={y(p.value)} color={terminal.amberHot} />
+                  {b != null ? <ScrubDot cx={x(scrubIdx)} cy={y(b)} color={terminal.cyan} /> : null}
+                  <ScrubTip x={x(scrubIdx)} plotWidth={w} lines={lines} />
+                </>
+              );
+            }
+          }
 
           return (
             <>
@@ -106,6 +148,7 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
                 strokeWidth={2.8}
               />
               <XDateLabels dates={dates} x={x} height={h} />
+              {scrubChrome}
             </>
           );
         }}
