@@ -1,8 +1,9 @@
 import type { MoneylineDataset } from "@/api/underlying";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { G, Line, Rect, Text as SvgText } from "react-native-svg";
 import { MONO_FONT, terminal } from "./palette";
-import { ChartShell, LegendRow, Panel } from "./primitives";
+import { ChartShell, Crosshair, LegendRow, Panel, ScrubDot, ScrubTip } from "./primitives";
 import { fmtCompact, linearScale } from "./scale";
 
 const PANEL_HEIGHT = 210;
@@ -12,6 +13,7 @@ const PANEL_HEIGHT = 210;
  * down red), amber spot line, plus the strike-ladder table.
  */
 export function MoneylineChart({ data }: { data: MoneylineDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const strikes = data.series.strikes;
   const spot = data.meta.current_price;
   const maxOi = Math.max(
@@ -26,7 +28,10 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
       footerLeft={`${data.ticker} open interest mirror`}
       footerRight="moneyline"
     >
-      <Panel height={PANEL_HEIGHT}>
+      <Panel
+        height={PANEL_HEIGHT}
+        scrub={{ count: strikes.length, onIndex: setScrubIdx, padStart: 16, padEnd: 16 }}
+      >
         {(w, h) => {
           if (strikes.length === 0) return null;
           const first = strikes[0];
@@ -53,6 +58,8 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
             }
             return x(0);
           })();
+
+          const scrubRow = scrubIdx != null ? strikes[scrubIdx] : undefined;
 
           return (
             <>
@@ -125,6 +132,47 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
                 stroke={terminal.amber}
                 strokeWidth={2.2}
               />
+              {scrubIdx != null && scrubRow ? (
+                <>
+                  <Crosshair x={x(scrubIdx)} top={4} bottom={h - 16} color={terminal.textStrong} />
+                  {hasOi ? (
+                    <>
+                      <ScrubDot
+                        cx={x(scrubIdx)}
+                        cy={y(scrubRow.call_open_interest)}
+                        color={terminal.green}
+                      />
+                      <ScrubDot
+                        cx={x(scrubIdx)}
+                        cy={y(-scrubRow.put_open_interest)}
+                        color={terminal.red}
+                      />
+                    </>
+                  ) : null}
+                  <ScrubTip
+                    x={x(scrubIdx)}
+                    plotWidth={w}
+                    lines={[
+                      {
+                        text:
+                          scrubRow.strike % 1 === 0
+                            ? `STRIKE ${scrubRow.strike.toFixed(0)}`
+                            : `STRIKE ${scrubRow.strike.toFixed(1)}`,
+                        color: terminal.amberHot,
+                      },
+                      {
+                        text: `CALL ${fmtCompact(scrubRow.call_open_interest)}`,
+                        color: terminal.green,
+                      },
+                      {
+                        text: `PUT ${fmtCompact(scrubRow.put_open_interest)}`,
+                        color: terminal.red,
+                      },
+                      { text: `P/C ${scrubRow.put_call_ratio.toFixed(2)}`, color: terminal.text },
+                    ]}
+                  />
+                </>
+              ) : null}
             </>
           );
         }}

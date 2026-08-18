@@ -13,13 +13,13 @@ import {
 } from "@/api/client";
 import type { Comparable, EtfExposure, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
+import { ChartsSection } from "@/components/ChartsSection";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
-import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SetAlertButton } from "@/components/SetAlertButton";
+import { ShareButton } from "@/components/ShareButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
-import { UnderlyingChartsSection } from "@/components/UnderlyingChartsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -194,7 +194,6 @@ export default function DetailSheet() {
    * this is the outbound half, sharing *out of* the detail sheet.
    */
   async function onShare() {
-    hapticTap();
     const label = ticker ? `$${ticker}` : data!.brand.name;
     const priceLine = quote
       ? ` — $${quote.price.toFixed(2)} (${quote.change >= 0 ? "+" : ""}${quote.changePct.toFixed(2)}%)`
@@ -256,7 +255,9 @@ export default function DetailSheet() {
                 </Text>
               </Pressable>
             ),
-            headerRight: () => <DetailHeaderRight ticker={ticker ?? ""} />,
+            headerRight: () => (
+              <DetailHeaderRight ticker={ticker ?? ""} onShare={() => void onShare()} />
+            ),
           }}
         />
         <View>
@@ -298,11 +299,7 @@ export default function DetailSheet() {
           </Section>
         ) : null}
 
-        {stage >= 1 && ticker ? (
-          <Section title="Price">
-            <NativePriceChart ticker={ticker} token={session?.token} />
-          </Section>
-        ) : null}
+        {stage >= 1 && ticker ? <ChartsSection ticker={ticker} token={session?.token} /> : null}
 
         {stage >= 2 && ticker ? (
           <View style={{ gap: 10 }}>
@@ -366,8 +363,6 @@ export default function DetailSheet() {
           </Section>
         ) : null}
 
-        {ticker ? <UnderlyingChartsSection ticker={ticker} defaultOpen={isListed} /> : null}
-
         {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
         {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
 
@@ -419,7 +414,7 @@ export default function DetailSheet() {
  * their layout) and toggle watchlist membership without scrolling to the
  * Save/Memo actions block further down the page.
  */
-function DetailHeaderRight({ ticker }: { ticker: string }) {
+function DetailHeaderRight({ ticker, onShare }: { ticker: string; onShare?: () => void }) {
   const { session } = useSession();
   const { openSidebar } = useSidebar();
   const router = useRouter();
@@ -441,6 +436,12 @@ function DetailHeaderRight({ ticker }: { ticker: string }) {
   });
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      {onShare ? (
+        <ShareButton
+          onPress={onShare}
+          accessibilityLabel={ticker ? `Share $${ticker}` : "Share this investable"}
+        />
+      ) : null}
       {ticker ? (
         <ChatAboutButton
           onPress={() => openChatAbout(router, { kind: "ticker", ticker })}

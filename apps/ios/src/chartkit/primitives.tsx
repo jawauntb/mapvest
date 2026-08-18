@@ -1,14 +1,15 @@
 import { radii } from "@/theme/tokens";
 import { useState } from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
-import Svg, { G, Line, Polygon, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, G, Line, Polygon, Rect, Text as SvgText } from "react-native-svg";
 import { MONO_FONT, terminal } from "./palette";
 import { shortDate, spansYears, tickIndices } from "./scale";
 
 /**
  * Shared chrome for the Underlying Terminal charts: the outer shell (title /
- * subtitle / footer stat strip), self-measuring SVG panels, grid + axis
- * labels, level pills, and signal markers.
+ * subtitle / footer stat strip), self-measuring SVG panels with drag-to-scrub
+ * support, grid + axis labels, level pills, signal markers, and the scrub
+ * crosshair/readout primitives.
  */
 
 const AMBER_BORDER = "rgba(255, 201, 74, 0.34)";
@@ -49,30 +50,156 @@ export function PanelHeading({ label }: { label: string }) {
 }
 
 /**
+ * Touch-scrub contract for a Panel. `count` is the number of index positions
+ * along the chart's category x-axis and `padStart`/`padEnd` mirror the
+ * horizontal padding of the chart's own `linearScale([0, count-1], [pad,
+ * width-pad])` so touch x inverts to the same index the chart plotted.
+ */
+export type PanelScrub = {
+  count: number;
+  /** Nearest index while the finger is down; null on release/cancel. */
+  onIndex: (index: number | null) => void;
+  padStart?: number;
+  padEnd?: number;
+};
+
+/**
  * Self-measuring SVG plot panel with the terminal plot-area background and
- * border. Children render into the SVG once the width is known.
+ * border. Children render into the SVG once the width is known. When `scrub`
+ * is provided the panel claims touches (same responder pattern as
+ * NativePriceChart — vertical page scrolls still win via responder
+ * termination) and reports the nearest data index while dragging.
  */
 export function Panel({
   height,
   style,
   children,
+  scrub,
 }: {
   height: number;
   style?: ViewStyle;
   children: (width: number, height: number) => React.ReactNode;
+  scrub?: PanelScrub;
 }) {
   const [width, setWidth] = useState(0);
+  const scrubActive = !!scrub && scrub.count > 1 && width > 1;
+
+  const toIndex = (locationX: number): number => {
+    if (!scrub) return 0;
+    const padStart = scrub.padStart ?? 6;
+    const padEnd = scrub.padEnd ?? 6;
+    const span = Math.max(1, width - padStart - padEnd);
+    const t = (locationX - padStart) / span;
+    return Math.min(scrub.count - 1, Math.max(0, Math.round(t * (scrub.count - 1))));
+  };
+
   return (
     <View
       style={[styles.panel, { height }, style]}
       onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}
+      onStartShouldSetResponder={() => scrubActive}
+      onMoveShouldSetResponder={() => scrubActive}
+      onResponderGrant={(e) => scrub?.onIndex(toIndex(e.nativeEvent.locationX))}
+      onResponderMove={(e) => scrub?.onIndex(toIndex(e.nativeEvent.locationX))}
+      onResponderRelease={() => scrub?.onIndex(null)}
+      onResponderTerminate={() => scrub?.onIndex(null)}
+      accessible={scrubActive}
+      accessibilityRole={scrubActive ? "adjustable" : undefined}
+      accessibilityLabel={scrubActive ? "Chart. Drag horizontally to inspect values." : undefined}
     >
       {width > 1 ? (
-        <Svg width={width} height={height}>
+        // pointerEvents none keeps the parent View the touch target so
+        // locationX stays panel-relative for the index math above.
+        <Svg width={width} height={height} pointerEvents="none">
           {children(width, height)}
         </Svg>
       ) : null}
     </View>
+  );
+}
+
+/** Vertical scrub crosshair spanning the plot height. */
+export function Crosshair({
+  x,
+  top = 0,
+  bottom,
+  color = terminal.amberHot,
+}: {
+  x: number;
+  top?: number;
+  bottom: number;
+  color?: string;
+}) {
+  return (
+    <Line
+      x1={x}
+      x2={x}
+      y1={top}
+      y2={bottom}
+      stroke={color}
+      strokeWidth={1}
+      strokeDasharray="2 2"
+      opacity={0.9}
+    />
+  );
+}
+
+/** Value marker riding a series at the scrub position (dark keyline). */
+export function ScrubDot({ cx, cy, color }: { cx: number; cy: number; color: string }) {
+  return <Circle cx={cx} cy={cy} r={3.2} fill={color} stroke={terminal.chartBg} strokeWidth={1} />;
+}
+
+export type ScrubTipLine = { text: string; color?: string };
+
+/**
+ * Monospace readout box pinned to the top corner opposite the crosshair so
+ * the finger never covers it. `x` is the crosshair position, `plotWidth` the
+ * usable plot width (pass the pre-gutter width on charts with right gutters).
+ */
+export function ScrubTip({
+  x,
+  plotWidth,
+  lines,
+  y = 6,
+}: {
+  x: number;
+  plotWidth: number;
+  lines: ScrubTipLine[];
+  y?: number;
+}) {
+  if (lines.length === 0) return null;
+  const maxChars = Math.max(...lines.map((l) => l.text.length));
+  const w = maxChars * 5.4 + 12;
+  const lineH = 11;
+  const h = lines.length * lineH + 9;
+  const bx = x > plotWidth / 2 ? 6 : Math.max(6, plotWidth - w - 6);
+  return (
+    <G>
+      <Rect
+        x={bx}
+        y={y}
+        width={w}
+        height={h}
+        rx={4}
+        fill={terminal.chartBg}
+        opacity={0.94}
+        stroke={AMBER_BORDER}
+        strokeWidth={0.8}
+      />
+      {lines.map((l, i) => (
+        <SvgText
+          key={l.text}
+          x={bx + 6}
+          y={y + 12 + i * lineH}
+          fill={l.color ?? terminal.text}
+          fontSize={8}
+          fontWeight="bold"
+          fontFamily={MONO_FONT}
+        >
+          {l.text}
+        </SvgText>
+      ))}
+    </G>
   );
 }
 

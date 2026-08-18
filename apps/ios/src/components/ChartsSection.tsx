@@ -15,23 +15,25 @@ import {
   TorqueDashboard,
   VolatilityChart,
 } from "@/chartkit";
+import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { Skeleton } from "@/components/Skeleton";
-import { colors, radii, type } from "@/theme/tokens";
+import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
-import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 /**
- * Native "Terminal charts" section for the detail sheet. Renders all nine
- * Underlying Analyzer dataset types from the JSON data endpoints — no PNGs.
- * Only the selected chart's block mounts, so exactly one query runs at a time
- * and react-query keeps previously viewed charts warm.
+ * The one charts surface on the detail sheet. Price (the default view) and
+ * all nine Underlying Terminal chart types share a single chip row at the top
+ * of the page — one place to look, one block of screen real estate. Only the
+ * selected chart's block mounts, so exactly one query runs at a time and
+ * react-query keeps previously viewed charts warm.
  */
 
 const CHART_CHIPS = [
+  { id: "price", label: "Price" },
   { id: "auction", label: "Auction" },
   { id: "performance", label: "Seasonality" },
   { id: "regression", label: "Regression" },
@@ -45,8 +47,9 @@ const CHART_CHIPS = [
 
 type ChartId = (typeof CHART_CHIPS)[number]["id"];
 
-/** Plain-language one-liners so the terminal charts read as more than wall art. */
+/** Plain-language one-liners so the charts read as more than wall art. */
 const CHART_EXPLAINERS: Record<ChartId, string> = {
+  price: "Market price history. Touch and drag any chart here to read exact values.",
   auction:
     "Where trading actually happened. Fat zones are fair value; thin edges are where buyers or sellers gave up.",
   performance: "How this name historically behaves through the year. Rhythm, not prophecy.",
@@ -75,16 +78,8 @@ const DEFAULT_PERIOD: Partial<Record<ChartId, string>> = {
 const RIDGE_WINDOWS = ["6mo", "1y", "2y"] as const;
 const STALE_TIME = 5 * 60_000;
 
-export function UnderlyingChartsSection({
-  ticker,
-  defaultOpen = false,
-}: {
-  ticker: string;
-  defaultOpen?: boolean;
-}) {
-  const [toggled, setToggled] = useState<boolean | null>(null);
-  const open = toggled ?? defaultOpen;
-  const [chartId, setChartId] = useState<ChartId>("auction");
+export function ChartsSection({ ticker, token }: { ticker: string; token?: string }) {
+  const [chartId, setChartId] = useState<ChartId>("price");
   const [periods, setPeriods] = useState<Partial<Record<ChartId, string>>>({});
   const [ridgeWindow, setRidgeWindow] = useState<(typeof RIDGE_WINDOWS)[number]>("1y");
 
@@ -94,111 +89,101 @@ export function UnderlyingChartsSection({
 
   return (
     <View style={{ gap: 8 }}>
-      <Pressable
-        onPress={() => {
-          hapticSelect();
-          setToggled(!open);
-        }}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel="Terminal charts"
-        accessibilityState={{ expanded: open }}
-        style={({ pressed }) => [styles.header, pressed && { opacity: 0.7 }]}
-      >
-        <Text style={styles.h2}>{`Terminal charts · ${label}`}</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.fgMuted} />
-      </Pressable>
+      <Text style={styles.h2}>{`Charts · ${label}`}</Text>
 
-      {open ? (
-        <View style={{ gap: 8 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {CHART_CHIPS.map((c) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() => {
-                    hapticSelect();
-                    setChartId(c.id);
-                  }}
-                  style={[styles.chip, chartId === c.id && styles.chipActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: chartId === c.id }}
-                >
-                  <Text style={[styles.chipText, chartId === c.id && styles.chipTextActive]}>
-                    {c.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </ScrollView>
-          <Text style={styles.explainer}>{CHART_EXPLAINERS[chartId]}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {CHART_CHIPS.map((c) => (
+            <Pressable
+              key={c.id}
+              onPress={() => {
+                hapticSelect();
+                setChartId(c.id);
+              }}
+              style={[styles.chip, chartId === c.id && styles.chipActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: chartId === c.id }}
+            >
+              <Text style={[styles.chipText, chartId === c.id && styles.chipTextActive]}>
+                {c.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+      <Text style={styles.explainer}>{CHART_EXPLAINERS[chartId]}</Text>
 
-          {periodChips ? (
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {periodChips.map((p) => (
-                <Pressable
-                  key={p}
-                  onPress={() => {
-                    hapticSelect();
-                    setPeriods((prev) => ({ ...prev, [chartId]: p }));
-                  }}
-                  style={[styles.periodBtn, period === p && styles.periodBtnActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: period === p }}
-                >
-                  <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
-                    {p}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {chartId === "ridge-growth" ? (
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {RIDGE_WINDOWS.map((p) => (
-                <Pressable
-                  key={p}
-                  onPress={() => {
-                    hapticSelect();
-                    setRidgeWindow(p);
-                  }}
-                  style={[styles.periodBtn, ridgeWindow === p && styles.periodBtnActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: ridgeWindow === p }}
-                >
-                  <Text style={[styles.periodText, ridgeWindow === p && styles.periodTextActive]}>
-                    {p}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          <ActiveChart
-            ticker={ticker}
-            chartId={chartId}
-            period={period}
-            ridgeWindow={ridgeWindow}
-          />
+      {periodChips ? (
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {periodChips.map((p) => (
+            <Pressable
+              key={p}
+              onPress={() => {
+                hapticSelect();
+                setPeriods((prev) => ({ ...prev, [chartId]: p }));
+              }}
+              style={[styles.periodBtn, period === p && styles.periodBtnActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: period === p }}
+            >
+              <Text style={[styles.periodText, period === p && styles.periodTextActive]}>{p}</Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
+
+      {chartId === "ridge-growth" ? (
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {RIDGE_WINDOWS.map((p) => (
+            <Pressable
+              key={p}
+              onPress={() => {
+                hapticSelect();
+                setRidgeWindow(p);
+              }}
+              style={[styles.periodBtn, ridgeWindow === p && styles.periodBtnActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: ridgeWindow === p }}
+            >
+              <Text style={[styles.periodText, ridgeWindow === p && styles.periodTextActive]}>
+                {p}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <ActiveChart
+        ticker={ticker}
+        token={token}
+        chartId={chartId}
+        period={period}
+        ridgeWindow={ridgeWindow}
+      />
     </View>
   );
 }
 
 function ActiveChart({
   ticker,
+  token,
   chartId,
   period,
   ridgeWindow,
 }: {
   ticker: string;
+  token?: string;
   chartId: ChartId;
   period?: string;
   ridgeWindow: string;
 }) {
   switch (chartId) {
+    case "price":
+      return (
+        <View style={styles.priceCard}>
+          <NativePriceChart ticker={ticker} token={token} />
+        </View>
+      );
     case "auction":
       return <AuctionBlock ticker={ticker} period={period ?? "1y"} />;
     case "performance":
@@ -405,13 +390,16 @@ function MoneylineBlock({ ticker }: { ticker: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
   h2: { color: colors.fg, ...type.label, fontSize: 15 },
   explainer: { color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
+  priceCard: {
+    backgroundColor: colors.bgElevated,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: 12,
+    ...elevation.sm,
+  },
   chip: {
     backgroundColor: colors.bgElevated,
     borderColor: colors.border,

@@ -1,5 +1,7 @@
 import type { VolatilityDataset } from "@/api/underlying";
-import { StyleSheet, Text, View } from "react-native";
+import { hapticSelect } from "@/util/haptics";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MONO_FONT, VOLATILITY_BAR_CYCLE, terminal } from "./palette";
 import { ChartShell } from "./primitives";
 import { fmtPct } from "./scale";
@@ -9,6 +11,7 @@ import { fmtPct } from "./scale";
  * with expected 1-week / 1-month dollar ranges, ~1.35× headroom.
  */
 export function VolatilityChart({ data }: { data: VolatilityDataset }) {
+  const [selected, setSelected] = useState<string | null>(null);
   const rows = data.rows;
   const maxVol = Math.max(0.0001, ...rows.map((r) => r.annual_vol));
 
@@ -24,7 +27,17 @@ export function VolatilityChart({ data }: { data: VolatilityDataset }) {
           const color = VOLATILITY_BAR_CYCLE[idx % VOLATILITY_BAR_CYCLE.length];
           const frac = row.annual_vol / (maxVol * 1.35);
           return (
-            <View key={row.ticker} style={styles.row}>
+            <Pressable
+              key={row.ticker}
+              style={[styles.row, selected === row.ticker && styles.rowSelected]}
+              onPress={() => {
+                hapticSelect();
+                setSelected(selected === row.ticker ? null : row.ticker);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selected === row.ticker }}
+              accessibilityLabel={`${row.ticker} volatility details`}
+            >
               <Text style={styles.ticker}>{row.ticker}</Text>
               <View style={styles.trackColumn}>
                 <View style={styles.track}>
@@ -37,8 +50,18 @@ export function VolatilityChart({ data }: { data: VolatilityDataset }) {
                   {"  |  1M ± "}
                   {row.one_month_range.toFixed(2)}
                 </Text>
+                {selected === row.ticker ? (
+                  <Text style={[styles.rangeLabel, { color }]} numberOfLines={1}>
+                    {"PX "}
+                    {row.price.toFixed(2)}
+                    {"  |  DAILY ±"}
+                    {fmtPct(row.daily_vol)}
+                    {"  |  ANNUAL "}
+                    {fmtPct(row.annual_vol)}
+                  </Text>
+                ) : null}
               </View>
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -56,6 +79,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rowSelected: { borderRadius: 4, backgroundColor: terminal.panel },
   ticker: {
     color: terminal.text,
     width: 52,

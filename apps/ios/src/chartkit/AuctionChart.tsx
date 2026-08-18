@@ -1,8 +1,27 @@
 import type { AuctionDataset } from "@/api/underlying";
+import { useState } from "react";
 import { G, Line, Polyline, Rect } from "react-native-svg";
 import { terminal } from "./palette";
-import { ChartShell, LevelPill, Panel, XDateLabels, YGrid } from "./primitives";
-import { bucketOhlc, extent, fmtPrice, linearScale, niceTicks, padDomain } from "./scale";
+import {
+  ChartShell,
+  Crosshair,
+  LevelPill,
+  Panel,
+  ScrubDot,
+  ScrubTip,
+  XDateLabels,
+  YGrid,
+} from "./primitives";
+import {
+  bucketOhlc,
+  extent,
+  fmtCompact,
+  fmtPrice,
+  linearScale,
+  niceTicks,
+  padDomain,
+  shortDate,
+} from "./scale";
 
 const PANEL_HEIGHT = 260;
 const PILL_GUTTER = 64;
@@ -13,6 +32,7 @@ const MAX_BARS = 110;
  * shading, and right-edge level pills.
  */
 export function AuctionChart({ data }: { data: AuctionDataset }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const { vah, val, poc } = data.levels;
   const bars = bucketOhlc(data.series.ohlcv, MAX_BARS);
   const dates = bars.map((b) => b.date);
@@ -24,7 +44,10 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
       footerLeft={`Fair price ${poc.toFixed(2)} | high ${vah.toFixed(2)} | low ${val.toFixed(2)}`}
       footerRight={`${data.ticker} ${data.period}`}
     >
-      <Panel height={PANEL_HEIGHT}>
+      <Panel
+        height={PANEL_HEIGHT}
+        scrub={{ count: bars.length, onIndex: setScrubIdx, padEnd: PILL_GUTTER + 6 }}
+      >
         {(w, h) => {
           if (bars.length === 0) return null;
           const plotRight = w - PILL_GUTTER;
@@ -35,6 +58,31 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
           );
           const y = linearScale(domain, [h - 18, 10]);
           const bodyWidth = Math.max(1.5, ((plotRight - 12) / bars.length) * 0.55);
+
+          let scrub: React.ReactNode = null;
+          const bar = scrubIdx == null ? undefined : bars[scrubIdx];
+          if (scrubIdx != null && bar) {
+            const cx = x(scrubIdx);
+            const closeColor = bar.close >= bar.open ? terminal.green : terminal.red;
+            scrub = (
+              <>
+                <Crosshair x={cx} bottom={h - 16} color={terminal.amberHot} />
+                <ScrubDot cx={cx} cy={y(bar.close)} color={closeColor} />
+                <ScrubTip
+                  x={cx}
+                  plotWidth={plotRight}
+                  lines={[
+                    { text: shortDate(bar.date, true).toUpperCase(), color: terminal.amberHot },
+                    { text: `O ${fmtPrice(bar.open)}`, color: terminal.text },
+                    { text: `H ${fmtPrice(bar.high)}`, color: terminal.green },
+                    { text: `L ${fmtPrice(bar.low)}`, color: terminal.red },
+                    { text: `C ${fmtPrice(bar.close)}`, color: closeColor },
+                    { text: `VOL ${fmtCompact(bar.volume)}`, color: terminal.muted },
+                  ]}
+                />
+              </>
+            );
+          }
 
           return (
             <>
@@ -142,6 +190,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
                 label={`VAL ${val.toFixed(2)}`}
                 color={terminal.red}
               />
+              {scrub}
             </>
           );
         }}

@@ -1,4 +1,5 @@
 import type { QuarterPoint, TorqueDataset, ValuePoint } from "@/api/underlying";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from "react-native-svg";
 import {
@@ -11,10 +12,14 @@ import {
 } from "./palette";
 import {
   ChartShell,
+  Crosshair,
   LegendRow,
   Panel,
   PanelHeading,
   PanelNote,
+  ScrubDot,
+  ScrubTip,
+  type ScrubTipLine,
   XDateLabels,
   YGrid,
 } from "./primitives";
@@ -27,6 +32,7 @@ import {
   niceTicks,
   padDomain,
   polylinePoints,
+  shortDate,
   tickIndices,
 } from "./scale";
 
@@ -188,13 +194,16 @@ function TorquePricePanel({
   price: TorqueDataset["series"]["price"];
   coiled: boolean;
 }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const close = price.close ?? [];
   const dates = close.map((p) => p.date);
   const dateIndex = indexByDate(dates);
   const bandColor = coiled ? terminal.green : terminal.amber;
+  const ema75By = new Map((price.ema75 ?? []).map((p) => [p.date, p.value]));
+  const sma200By = new Map((price.sma200 ?? []).map((p) => [p.date, p.value]));
 
   return (
-    <Panel height={PRICE_HEIGHT}>
+    <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
       {(w, h) => {
         if (dates.length === 0) return null;
         const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
@@ -221,6 +230,27 @@ function TorquePricePanel({
                   .map((p) => toPt(p, 0.92)),
               ].join(" ")
             : "";
+        let scrubChrome: React.ReactNode = null;
+        if (scrubIdx != null) {
+          const p = close[scrubIdx];
+          if (p) {
+            const e = ema75By.get(p.date);
+            const sm = sma200By.get(p.date);
+            const lines: ScrubTipLine[] = [
+              { text: shortDate(p.date, true).toUpperCase(), color: terminal.amberHot },
+              { text: `C ${fmtPrice(p.value)}`, color: terminal.textStrong },
+            ];
+            if (e != null) lines.push({ text: `EMA75 ${fmtPrice(e)}`, color: terminal.cyan });
+            if (sm != null) lines.push({ text: `SMA200 ${fmtPrice(sm)}`, color: terminal.amber });
+            scrubChrome = (
+              <>
+                <Crosshair x={x(scrubIdx)} bottom={h - 16} />
+                <ScrubDot cx={x(scrubIdx)} cy={y(p.value)} color={terminal.textStrong} />
+                <ScrubTip x={x(scrubIdx)} plotWidth={w} lines={lines} />
+              </>
+            );
+          }
+        }
         return (
           <>
             <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtPrice} />
@@ -248,6 +278,7 @@ function TorquePricePanel({
               strokeWidth={1.35}
             />
             <XDateLabels dates={dates} x={x} height={h} />
+            {scrubChrome}
           </>
         );
       }}
@@ -263,8 +294,12 @@ function RevenuePanel({
   revenue: QuarterPoint[];
   grossMargin: QuarterPoint[];
 }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   return (
-    <Panel height={FUNDAMENTAL_HEIGHT}>
+    <Panel
+      height={FUNDAMENTAL_HEIGHT}
+      scrub={{ count: revenue.length, onIndex: setScrubIdx, padStart: 14, padEnd: 14 }}
+    >
       {(w, h) => {
         const n = revenue.length;
         const x = linearScale([0, Math.max(1, n - 1)], [14, w - 14]);
@@ -281,6 +316,26 @@ function RevenuePanel({
         const yGm = linearScale(gmDomain, [h - 16, 8]);
         // GM points align to the trailing revenue quarters.
         const gmOffset = n - grossMargin.length;
+
+        let scrubChrome: React.ReactNode = null;
+        if (scrubIdx != null) {
+          const q = revenue[scrubIdx];
+          if (q) {
+            const lines: ScrubTipLine[] = [
+              { text: q.label.toUpperCase(), color: terminal.amberHot },
+              { text: `REV ${fmtCompact(q.value)}`, color: terminal.cyan },
+            ];
+            const gm = scrubIdx >= gmOffset ? grossMargin[scrubIdx - gmOffset] : undefined;
+            if (gm) lines.push({ text: `GM ${gm.value.toFixed(1)}%`, color: terminal.green });
+            scrubChrome = (
+              <>
+                <Crosshair x={x(scrubIdx)} bottom={h - 14} />
+                <ScrubDot cx={x(scrubIdx)} cy={yRev(q.value)} color={terminal.cyan} />
+                <ScrubTip x={x(scrubIdx)} plotWidth={w} lines={lines} />
+              </>
+            );
+          }
+        }
 
         return (
           <>
@@ -336,6 +391,7 @@ function RevenuePanel({
                 </SvgText>
               </>
             ) : null}
+            {scrubChrome}
           </>
         );
       }}
@@ -345,8 +401,12 @@ function RevenuePanel({
 
 /** Operating-margin trajectory with amber underfill and a zero line. */
 function OperatingMarginPanel({ series }: { series: QuarterPoint[] }) {
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   return (
-    <Panel height={FUNDAMENTAL_HEIGHT}>
+    <Panel
+      height={FUNDAMENTAL_HEIGHT}
+      scrub={{ count: series.length, onIndex: setScrubIdx, padStart: 14, padEnd: 14 }}
+    >
       {(w, h) => {
         const n = series.length;
         const x = linearScale([0, Math.max(1, n - 1)], [14, w - 14]);
@@ -360,6 +420,26 @@ function OperatingMarginPanel({ series }: { series: QuarterPoint[] }) {
           ...linePts,
           `${x(n - 1).toFixed(1)},${y(0).toFixed(1)}`,
         ].join(" ");
+        let scrubChrome: React.ReactNode = null;
+        if (scrubIdx != null) {
+          const q = series[scrubIdx];
+          if (q) {
+            scrubChrome = (
+              <>
+                <Crosshair x={x(scrubIdx)} bottom={h - 14} />
+                <ScrubDot cx={x(scrubIdx)} cy={y(q.value)} color={terminal.amberHot} />
+                <ScrubTip
+                  x={x(scrubIdx)}
+                  plotWidth={w}
+                  lines={[
+                    { text: q.label.toUpperCase(), color: terminal.amberHot },
+                    { text: `OM ${q.value.toFixed(1)}%`, color: terminal.amberHot },
+                  ]}
+                />
+              </>
+            );
+          }
+        }
         return (
           <>
             <Line
@@ -397,6 +477,7 @@ function OperatingMarginPanel({ series }: { series: QuarterPoint[] }) {
             <SvgText x={w - 4} y={12} fill={terminal.amberHot} fontSize={7} textAnchor="end">
               OM {values[values.length - 1]?.toFixed(1)}%
             </SvgText>
+            {scrubChrome}
           </>
         );
       }}
