@@ -141,9 +141,7 @@ export function ResearchSheet({
             const art = ev.data as ResearchArticle;
             setTurns((t) => [...t, art]);
             setDraft("");
-            const tools = art.toolsUsed?.length
-              ? ` · ${art.toolsUsed.slice(0, 3).join(", ")}`
-              : "";
+            const tools = art.toolsUsed?.length ? ` · ${art.toolsUsed.slice(0, 3).join(", ")}` : "";
             setStatus(`Brief ready${tools}`);
           }
         },
