@@ -2,7 +2,7 @@ import type { QuarterPoint, TorqueDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from "react-native-svg";
-import { safeFixed } from "./format";
+import { safeFixed, safeUpper } from "./format";
 import {
   MONO_FONT,
   TORQUE_STAGE_COLORS,
@@ -47,9 +47,16 @@ const FUNDAMENTAL_HEIGHT = 150;
  */
 export function TorqueDashboard({ data }: { data: TorqueDataset }) {
   const m = data.meta;
-  const price = data.series.price;
-  const fundamentals = data.series.fundamentals;
+  const price = data.series?.price ?? { close: [] };
+  const fundamentals = data.series?.fundamentals;
   const hasPrice = (price.close?.length ?? 0) > 0;
+  if (!m) {
+    return (
+      <ChartShell title={`${data.ticker ?? "ticker"} torque`} subtitle="No torque payload">
+        <PanelNote title="No data" detail="Torque payload was missing its score block." />
+      </ChartShell>
+    );
+  }
   const stageColor = torqueStageColor(m.stage_label);
   const gaugeColor = torqueGaugeColor(m.total_score);
 
@@ -155,13 +162,13 @@ export function TorqueDashboard({ data }: { data: TorqueDataset }) {
         </View>
         <View style={styles.gaugeLabelRow}>
           <Text style={[styles.gaugeTotal, { color: gaugeColor }]}>
-            TOTAL {m.total_score.toFixed(0)}
+            TOTAL {safeFixed(m.total_score, 0)}
           </Text>
           <Text style={[styles.gaugeStage, { color: stageColor }]} numberOfLines={1}>
-            STAGE: {m.stage_label.toUpperCase()} — {m.recommendation}
+            STAGE: {safeUpper(m.stage_label)} — {m.recommendation ?? "—"}
           </Text>
         </View>
-        {data.torque.components.map((c) => (
+        {(data.torque?.components ?? []).map((c) => (
           <View key={c.name} style={styles.componentRow}>
             <Text style={styles.componentName} numberOfLines={2}>
               {c.name}

@@ -8,7 +8,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  * header, quote, and actions up and lets the user retry just the chart.
  */
 export class ChartErrorBoundary extends Component<
-  { children: ReactNode },
+  {
+    children: ReactNode;
+    title?: string;
+    detail?: string;
+    retryLabel?: string;
+  },
   { error: Error | null }
 > {
   state: { error: Error | null } = { error: null };
@@ -23,19 +28,22 @@ export class ChartErrorBoundary extends Component<
 
   render() {
     if (this.state.error) {
+      const title = this.props.title ?? "Chart failed to render";
+      const detail =
+        this.props.detail ??
+        "The rest of this page is still usable. Retry the chart, or pick another view.";
+      const retryLabel = this.props.retryLabel ?? "Retry chart";
       return (
         <View style={styles.box}>
-          <Text style={styles.title}>Chart failed to render</Text>
-          <Text style={styles.detail}>
-            The rest of this page is still usable. Retry the chart, or pick another view.
-          </Text>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.detail}>{detail}</Text>
           <Pressable
             onPress={() => this.setState({ error: null })}
             style={styles.retry}
             accessibilityRole="button"
-            accessibilityLabel="Retry chart"
+            accessibilityLabel={retryLabel}
           >
-            <Text style={styles.retryText}>Retry chart</Text>
+            <Text style={styles.retryText}>{retryLabel}</Text>
           </Pressable>
         </View>
       );

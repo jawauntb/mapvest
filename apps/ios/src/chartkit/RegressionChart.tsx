@@ -2,6 +2,7 @@ import type { RegressionDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { View } from "react-native";
 import { Polygon, Polyline, Rect } from "react-native-svg";
+import { safeFixed } from "./format";
 import { terminal } from "./palette";
 import {
   ChartShell,
@@ -38,7 +39,17 @@ const MAX_POINTS = 160;
  */
 export function RegressionChart({ data }: { data: RegressionDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
-  const s = data.series;
+  const s = {
+    ohlcv: data.series?.ohlcv ?? [],
+    close: data.series?.close ?? [],
+    trend: data.series?.trend ?? [],
+    upper_band: data.series?.upper_band ?? [],
+    lower_band: data.series?.lower_band ?? [],
+    ema21: data.series?.ema21 ?? [],
+    ema50: data.series?.ema50 ?? [],
+    ema200: data.series?.ema200 ?? [],
+    volume: data.series?.volume ?? [],
+  };
   const bars = decimate(s.ohlcv, MAX_POINTS);
   const dates = bars.map((b) => b.date);
   const dateIndex = indexByDate(dates);
@@ -55,7 +66,7 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
   return (
     <ChartShell
       title={`${data.ticker} regression channel`}
-      subtitle={`SLOPE ${data.meta.slope_per_day.toFixed(4)}/SESSION | SIGMA ${data.meta.residual_std.toFixed(2)}`}
+      subtitle={`SLOPE ${safeFixed(data.meta?.slope_per_day, 4)}/SESSION | SIGMA ${safeFixed(data.meta?.residual_std)}`}
       footerLeft={`${data.ticker} trend diagnostics`}
       footerRight={`source ${data.provider ?? "n/a"}`}
     >
