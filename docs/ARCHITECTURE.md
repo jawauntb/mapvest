@@ -60,7 +60,9 @@ street better or worse for a business); **(C) a finance agent** with tools
 that writes briefs and memos, with saved chats and Chat about / Chat with on
 the map and everywhere else; **(D) analytics and charts** (trends, levels,
 auction / ridge / regression) so they can think about how and why to own or
-trade the name. Mapvest sits on three APIs: location/image → public + private
+trade the name. iOS charts draw with React Native Views (`apps/ios/src/chartkit`),
+not `react-native-svg` — that native module flashed and SIGABRT'd on current
+Xcode / iOS builds. Mapvest sits on three APIs: location/image → public + private
 identity and comparables; a finance agent with stats tools; and a charts
 stack. First session still teaches one loop: camera or map → one identity →
 one ticker card with sources. Every successful identify is recorded

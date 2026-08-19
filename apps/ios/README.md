@@ -37,7 +37,7 @@ in `eas.json`.
 - `/detail/[id]` — Investable is a stack **card** (not a page-sheet modal).
   One Charts section at the top: a single chip row switches between Price
   and Underlying Analyzer chart types (`src/components/ChartsSection.tsx`),
-  rendered natively (react-native-svg, `src/chartkit/`) from JSON data
+  rendered with View primitives (`src/chartkit/`, no `react-native-svg`) from JSON data
   endpoints. Nested Research / news-reader sheets mount only when opened.
   Client + types live in `src/api/underlying.ts`; base URL overridable via
   `EXPO_PUBLIC_UNDERLYING_API_URL`. Below it: Research, Save/memo, comps,

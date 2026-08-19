@@ -1,4 +1,4 @@
-import { type Quote, fetchChart, fetchNearby, fetchQuotesMap } from "@/api/client";
+import { type Quote, fetchNearby, fetchQuotesMap } from "@/api/client";
 import { type Find, listFinds } from "@/api/finds";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
@@ -153,16 +153,6 @@ export default function MapScreen() {
     const t = setTimeout(() => setTrackMarkers(false), delay);
     return () => clearTimeout(t);
   }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt, focusedPlaceId]);
-
-  useEffect(() => {
-    for (const t of pinTickers.slice(0, 4)) {
-      void qc.prefetchQuery({
-        queryKey: ["chart", t, "auction", "1mo"],
-        queryFn: () => fetchChart("auction", t, "1mo", { token: session?.token }),
-        staleTime: 10 * 60_000,
-      });
-    }
-  }, [pinTickers, qc, session?.token]);
 
   function openItem(item: NearbyItem) {
     const pin = resolvePinTicker(item);

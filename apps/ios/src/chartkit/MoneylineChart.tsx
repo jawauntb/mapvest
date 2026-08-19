@@ -1,11 +1,11 @@
 import type { MoneylineDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { G, Line, Rect, Text as SvgText } from "react-native-svg";
 import { safeFixed } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import { ChartShell, Crosshair, LegendRow, Panel, ScrubDot, ScrubTip } from "./primitives";
 import { fmtCompact, linearScale } from "./scale";
+import { G, Line, Rect, Text as SvgText } from "./view-svg";
 
 const PANEL_HEIGHT = 210;
 

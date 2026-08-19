@@ -1,7 +1,6 @@
 import type { RidgeGrowthDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Line, Rect } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import {
@@ -30,6 +29,7 @@ import {
   polylinePoints,
   shortDate,
 } from "./scale";
+import { Line, Rect } from "./view-svg";
 
 const PRICE_HEIGHT = 250;
 const EQUITY_HEIGHT = 84;

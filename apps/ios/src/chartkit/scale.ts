@@ -114,7 +114,7 @@ export function polylinePoints(
   return parts.join(" ");
 }
 
-/** RNSVG on iOS SIGABRTs on empty or NaN `points` — never mount those. */
+/** Never mount empty or NaN `points` strings — layout math treats those as missing. */
 export function isSafeSvgPoints(points: string | undefined): points is string {
   return typeof points === "string" && points.length > 0 && !/\bNaN\b|\bInfinity\b/.test(points);
 }

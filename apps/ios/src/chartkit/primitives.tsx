@@ -1,20 +1,21 @@
 import { radii } from "@/theme/tokens";
 import { useState } from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
-import Svg, {
+import { safeUpper } from "./format";
+import { MONO_FONT, terminal } from "./palette";
+import { isSafeSvgPoints, shortDate, spansYears, tickIndices } from "./scale";
+import {
   Circle,
   G,
   Line,
   Polygon,
-  Polyline,
-  Rect,
-  Text as SvgText,
   type PolygonProps,
+  Polyline,
   type PolylineProps,
-} from "react-native-svg";
-import { safeUpper } from "./format";
-import { MONO_FONT, terminal } from "./palette";
-import { isSafeSvgPoints, shortDate, spansYears, tickIndices } from "./scale";
+  Rect,
+  Svg,
+  Text as SvgText,
+} from "./view-svg";
 
 /**
  * Shared chrome for the Underlying Terminal charts: the outer shell (title /
@@ -129,7 +130,7 @@ export function Panel({
   );
 }
 
-/** Drop empty / NaN `points` — RNSVG on iOS native-crashes on those. */
+/** Drop empty / NaN `points` — never mount a polyline with junk coords. */
 export function SafePolyline(props: PolylineProps) {
   const pts = typeof props.points === "string" ? props.points : undefined;
   if (!isSafeSvgPoints(pts)) return null;

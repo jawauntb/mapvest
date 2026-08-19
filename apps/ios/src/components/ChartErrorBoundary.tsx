@@ -4,8 +4,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * Charts must never take down the Investable sheet. A bad auction/ridge
- * payload or an SVG throw used to blank the whole page; this keeps the
- * header, quote, and actions up and lets the user retry just the chart.
+ * payload used to blank the whole page; this keeps the header, quote, and
+ * actions up and lets the user retry just the chart. Native SVG crashes are
+ * avoided by drawing with Views (`chartkit/view-svg.tsx`) instead of
+ * react-native-svg.
  */
 export class ChartErrorBoundary extends Component<
   {

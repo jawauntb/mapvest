@@ -1,6 +1,5 @@
 import type { AuctionDataset } from "@/api/underlying";
 import { useState } from "react";
-import { G, Line, Rect } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import { terminal } from "./palette";
 import {
@@ -24,6 +23,7 @@ import {
   padDomain,
   shortDate,
 } from "./scale";
+import { G, Line, Rect } from "./view-svg";
 
 const PANEL_HEIGHT = 260;
 const PILL_GUTTER = 64;
