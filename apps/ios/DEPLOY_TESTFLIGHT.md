@@ -4,6 +4,16 @@ Everything is pre-configured. The three commands below run against the current
 `eas.json`, `app.json`, and the deployed API at
 `https://api-production-4b27.up.railway.app`.
 
+## CI (preferred)
+
+Repo secret `EXPO_TOKEN` (Expo access token; never commit it). Then:
+
+```
+gh workflow run ios-eas-production.yml --ref main
+```
+
+The workflow installs `apps/ios` with `npm ci --no-workspaces` (iOS is not a Bun workspace), then `eas build --auto-submit --no-wait`. Watch the EAS build past `PRE_INSTALL_HOOK` — Actions only queues it.
+
 ## 0. One-time prerequisites
 
 1. **Apple Developer account** (paid $99/yr). Team ID is what EAS asks for on
