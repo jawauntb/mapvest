@@ -33,6 +33,7 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `GOOGLE_PLAY_PRODUCT_ID` | optional Play Billing product id | Android v0.2 only. Do not treat this as permission to ship a Play build. |
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
+| `EXPO_TOKEN` | Expo | GitHub Actions `ios-eas-production` only. Create at expo.dev → Access tokens. Never put it in the iOS bundle, Doppler-to-client path, or a commit. |
 | `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |
 | `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Host attestation header for Derivation request-guard |
 | `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` | Derivation Doppler/Railway | Bearer for GET `/api/idea-chats` |

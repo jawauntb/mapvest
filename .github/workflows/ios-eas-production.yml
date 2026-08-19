@@ -29,6 +29,12 @@ jobs:
       - name: Install monorepo dependencies
         run: bun install --frozen-lockfile
 
+      # apps/ios is not a Bun workspace member (Metro vs hoisted .bun/).
+      # eas-cli resolves expo-router locally before it uploads the tarball.
+      - name: Install iOS dependencies
+        working-directory: apps/ios
+        run: npm install --no-workspaces
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
