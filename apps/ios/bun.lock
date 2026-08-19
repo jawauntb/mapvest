@@ -24,6 +24,7 @@
         "expo-file-system": "~19.0.23",
         "expo-font": "~14.0.12",
         "expo-haptics": "~15.0.7",
+        "expo-iap": "^5.3.1",
         "expo-image-manipulator": "~14.0.8",
         "expo-image-picker": "~17.0.11",
         "expo-linear-gradient": "~15.0.7",
@@ -45,7 +46,7 @@
         "react-native-android-widget": "^0.21.0",
         "react-native-gesture-handler": "~2.28.0",
         "react-native-maps": "1.20.1",
-        "react-native-reanimated": "~3.17.4",
+        "react-native-reanimated": "~3.19.5",
         "react-native-safe-area-context": "~5.6.0",
         "react-native-screens": "~4.16.0",
         "zod": "^3.23.8",
@@ -777,6 +778,8 @@
 
     "expo-haptics": ["expo-haptics@15.0.8", "", { "peerDependencies": { "expo": "*" } }, "sha512-lftutojy8Qs8zaDzzjwM3gKHFZ8bOOEZDCkmh2Ddpe95Ra6kt2izeOfOfKuP/QEh0MZ1j9TfqippyHdRd1ZM9g=="],
 
+    "expo-iap": ["expo-iap@5.3.1", "", { "peerDependencies": { "@amazon-devices/keplerscript-appstore-iap-lib": "~2.13.0", "@amazon-devices/package-manager-lib": "~1.0.1767254401", "expo": "*", "react": "*", "react-native": "*" }, "optionalPeers": ["@amazon-devices/keplerscript-appstore-iap-lib", "@amazon-devices/package-manager-lib"] }, "sha512-XEGcZrzpKH9krdVKPc2saC4+qQx3xKtfejtgQVWCungmL6wzquk6xkwhTZjfxPcFwd3qxD7BK1ItXEyTeYf6Bg=="],
+
     "expo-image-loader": ["expo-image-loader@6.0.0", "", { "peerDependencies": { "expo": "*" } }, "sha512-nKs/xnOGw6ACb4g26xceBD57FKLFkSwEUTDXEDF3Gtcu3MqF3ZIYd3YM+sSb1/z9AKV1dYT7rMSGVNgsveXLIQ=="],
 
     "expo-image-manipulator": ["expo-image-manipulator@14.0.8", "", { "dependencies": { "expo-image-loader": "~6.0.0" }, "peerDependencies": { "expo": "*" } }, "sha512-sXsXjm7rIxLWZe0j2A41J/Ph53PpFJRdyzJ3EQ/qetxLUvS2m3K1sP5xy37px43qCf0l79N/i6XgFgenFV36/Q=="],
@@ -1259,7 +1262,7 @@
 
     "react-native-maps": ["react-native-maps@1.20.1", "", { "dependencies": { "@types/geojson": "^7946.0.13" }, "peerDependencies": { "react": ">= 17.0.1", "react-native": ">= 0.64.3", "react-native-web": ">= 0.11" }, "optionalPeers": ["react-native-web"] }, "sha512-NZI3B5Z6kxAb8gzb2Wxzu/+P2SlFIg1waHGIpQmazDSCRkNoHNY4g96g+xS0QPSaG/9xRBbDNnd2f2/OW6t6LQ=="],
 
-    "react-native-reanimated": ["react-native-reanimated@3.17.5", "", { "dependencies": { "@babel/plugin-transform-arrow-functions": "^7.0.0-0", "@babel/plugin-transform-class-properties": "^7.0.0-0", "@babel/plugin-transform-classes": "^7.0.0-0", "@babel/plugin-transform-nullish-coalescing-operator": "^7.0.0-0", "@babel/plugin-transform-optional-chaining": "^7.0.0-0", "@babel/plugin-transform-shorthand-properties": "^7.0.0-0", "@babel/plugin-transform-template-literals": "^7.0.0-0", "@babel/plugin-transform-unicode-regex": "^7.0.0-0", "@babel/preset-typescript": "^7.16.7", "convert-source-map": "^2.0.0", "invariant": "^2.2.4", "react-native-is-edge-to-edge": "1.1.7" }, "peerDependencies": { "@babel/core": "^7.0.0-0", "react": "*", "react-native": "*" } }, "sha512-SxBK7wQfJ4UoWoJqQnmIC7ZjuNgVb9rcY5Xc67upXAFKftWg0rnkknTw6vgwnjRcvYThrjzUVti66XoZdDJGtw=="],
+    "react-native-reanimated": ["react-native-reanimated@3.19.5", "", { "dependencies": { "@babel/plugin-transform-arrow-functions": "^7.0.0-0", "@babel/plugin-transform-class-properties": "^7.0.0-0", "@babel/plugin-transform-classes": "^7.0.0-0", "@babel/plugin-transform-nullish-coalescing-operator": "^7.0.0-0", "@babel/plugin-transform-optional-chaining": "^7.0.0-0", "@babel/plugin-transform-shorthand-properties": "^7.0.0-0", "@babel/plugin-transform-template-literals": "^7.0.0-0", "@babel/plugin-transform-unicode-regex": "^7.0.0-0", "@babel/preset-typescript": "^7.16.7", "convert-source-map": "^2.0.0", "invariant": "^2.2.4", "react-native-is-edge-to-edge": "1.1.7" }, "peerDependencies": { "@babel/core": "^7.0.0-0", "react": "*", "react-native": "*" } }, "sha512-bd4AwIkBAaY4BjrgpSoKjEaRG/tXD756F5nGuiH5IMBSKN8tRdUEA8hWZCyIo/R6/kha/tVSoCqodVUACh7ZWw=="],
 
     "react-native-safe-area-context": ["react-native-safe-area-context@5.6.2", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-4XGqMNj5qjUTYywJqpdWZ9IG8jgkS3h06sfVjfw5yZQZfWnRFXczi0GnYyFyCc2EBps/qFmoCH8fez//WumdVg=="],
 

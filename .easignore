@@ -23,6 +23,13 @@ apps/ios/ios/DerivedData/
 **/xcuserdata/
 **/*.xcuserstate
 
+# The iOS app is a nested EAS project. Keep its build manifest and package
+# metadata even when broad root-level ignore patterns match nested files.
+!apps/ios/package.json
+!apps/ios/bun.lock
+!apps/ios/app.json
+!apps/ios/eas.json
+
 # Drop docs / postman that just bloat the tarball
 docs/
 postman.json
