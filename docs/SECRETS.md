@@ -1,14 +1,14 @@
 # Secrets
 
-Every secret Mapvest touches lives in the **personal** Doppler workplace (jawaun personal), project `mapvest`, configs `dev` / `stg` / `prd`. GIC `cofounder` is not authoritative for this repo. Sibling Railway apps (objetdart, derivation, inquiry, …) have their own Doppler projects in the same workplace; shared provider tokens and `KEY_APP` aliases are documented in `infra/doppler/README.md`.
+Every shared provider secret Mapvest touches lives in the **Jawaun personal** Doppler workplace, project `shared`. Local development uses `shared/dev_personal`; production and Railway use `shared/prd`. GIC `cofounder` is not authoritative. Service-specific values may remain in the Mapvest service project, but Massive credentials are canonical only in `shared`.
 
 ## Doppler setup
 
 ```
 doppler login --scope . --overwrite   # pick workplace "jawaun personal", not GIC
-doppler setup --project mapvest --config dev
-doppler run -- bun run dev            # every dev script goes through Doppler
-bash infra/doppler/sync-from-railway.sh   # one-time: Railway production API → mapvest/prd
+doppler run --project shared --config dev_personal -- bun run dev
+doppler run --project shared --config prd -- <production verification command>
+bash infra/doppler/sync-from-railway.sh   # service-owned variables only; not Massive credentials
 python3 infra/doppler/sync-personal-apps.py  # all personal Railway apps + shared providers
 python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no extra login)
 ```
@@ -23,7 +23,11 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |
-| `MASSIVE_API_KEY` | Massive | `packages/finance` market-data adapter; server-side only |
+| `MASSIVE_API_KEY` | Massive | `packages/finance` market-data adapter; server-side only; shared Doppler |
+| `MASSIVE_S3_FLAT_FILE_ACCESS_KEY_ID` | Massive | optional flat-file ingestion; shared Doppler |
+| `MASSIVE_S3_FLAT_FILE_SECRET_ACCESS_KEY` | Massive | optional flat-file ingestion; shared Doppler |
+| `MASSIVE_S3_ENDPOINT` | Massive | optional flat-file ingestion; shared Doppler |
+| `MASSIVE_S3_BUCKET` | Massive | optional flat-file ingestion; shared Doppler |
 | `MASSIVE_BASE_URL` | Massive | optional REST base URL; defaults to `https://api.massive.com` |
 | `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, nearby_cache, brand_ticker_cache, usage/entitlements |
 | `STRIPE_SECRET_KEY` | Stripe (**Artesanato Poesia** `acct_1Pj15wKwhiITC0uV`) — Mapvest only, not objetdart | Checkout + portal (Phase 8 Slice E). Railway API currently uses test-mode `sk_test_…` until live keys have `product_write`. |
@@ -45,12 +49,13 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 
 The API reads `MASSIVE_*` values through Doppler. Never place a Massive token in
 `.env`, an iOS bundle, a checked-in Railway file, or a test fixture. The
-provider selection flags are non-secret configuration: `MARKET_DATA_PROVIDER`
-defaults to `massive`, while `MARKET_DATA_FALLBACK_PROVIDER=yahoo` enables the
-temporary quote/history fallback. Plan labels and freshness are descriptive
-metadata (`MASSIVE_STOCKS_PLAN`, `MASSIVE_OPTIONS_PLAN`,
-`MASSIVE_EVENTS_PLAN`, `MASSIVE_MARKET_DATA_FRESHNESS`) and must be kept in
-sync with the purchased account after Doppler access is provisioned.
+provider selection flags are non-secret configuration: `MARKET_DATA_PRIMARY`
+defaults to `massive` (with `MARKET_DATA_PROVIDER` retained as a compatibility
+alias), while `MARKET_DATA_FALLBACK_PROVIDER=yahoo` enables the temporary
+quote/history fallback. The plan and freshness variables are optional reporting
+metadata only; this repository does not require or invent any `MASSIVE_*_PLAN`
+values. The five shared S3 variables are reserved for future flat-file ingestion
+and are not required by the REST adapter.
 
 ### App Store Connect (StoreKit)
 
@@ -90,9 +95,8 @@ doppler secrets download --format json --no-file \
 Then `railway variables set` from the real (unmasked) JSON, and only paste the masked one into any log/PR:
 
 ```bash
-doppler secrets download --project mapvest --config prd --format env --no-file \
-  | railway variable set --service api --environment production
-# Prefer the Doppler ↔ Railway integration so you are not piping secrets through a shell.
+# Prefer the Doppler ↔ Railway integration targeting project `shared`, config
+# `prd`, so secrets are not piped through a shell or copied to Railway variables.
 ```
 
 ## Rotation

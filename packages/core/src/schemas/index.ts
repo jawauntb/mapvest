@@ -350,12 +350,18 @@ export const CorporateEvent = z.object({
   status: z.string().optional(),
   description: z.string().optional(),
   sourceUrl: z.string().url().optional(),
+  provider: z.enum(["massive", "tmx"]).optional(),
+  companyName: z.string().optional(),
+  isin: z.string().optional(),
+  tradingVenue: z.string().optional(),
+  tmxRecordId: z.string().optional(),
 });
 export type CorporateEvent = z.infer<typeof CorporateEvent>;
 
 export const MarketEventsResponse = z.object({
   ticker: z.string().optional(),
   events: z.array(CorporateEvent),
+  tmxAvailable: z.boolean().optional(),
   sources: z.array(Source),
 });
 export type MarketEventsResponse = z.infer<typeof MarketEventsResponse>;

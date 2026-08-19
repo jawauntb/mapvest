@@ -87,6 +87,18 @@ type MassiveContract = {
   primary_exchange?: string;
   cfi?: string;
 };
+type MassiveTmxEvent = {
+  company_name?: string;
+  date?: string;
+  isin?: string;
+  name?: string;
+  status?: string;
+  ticker?: string;
+  tmx_record_id?: string;
+  trading_venue?: string;
+  type?: string;
+  url?: string;
+};
 type MassiveOptionSnapshot = MassiveContract & {
   details?: MassiveContract;
   break_even_price?: number;
@@ -539,6 +551,7 @@ export class MassiveClient {
       id: typeof row.id === "string" ? row.id : undefined,
       ticker: typeof row.ticker === "string" ? row.ticker : (query.ticker ?? ""),
       type: "split",
+      provider: "massive" as const,
       date: typeof row.execution_date === "string" ? row.execution_date : undefined,
       description: `${String(row.split_from ?? "?")} for ${String(row.split_to ?? "?")} split`,
       raw: row,
@@ -548,6 +561,7 @@ export class MassiveClient {
         id: typeof row.id === "string" ? row.id : undefined,
         ticker: typeof row.ticker === "string" ? row.ticker : (query.ticker ?? ""),
         type: "dividend",
+        provider: "massive" as const,
         date: typeof row.ex_dividend_date === "string" ? row.ex_dividend_date : undefined,
         description:
           typeof row.cash_amount === "number" ? `Cash dividend ${row.cash_amount}` : undefined,
@@ -561,6 +575,49 @@ export class MassiveClient {
         if (query.to && event.date > query.to) return false;
         return true;
       })
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+      .slice(0, Math.min(query.limit ?? 100, 500));
+  }
+
+  async getTmxCorporateEvents(query: {
+    ticker?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }): Promise<CorporateEvent[]> {
+    if (process.env.MASSIVE_CORPORATE_EVENTS_ENABLED !== "1") return [];
+    const body = await this.request<MassiveTmxEvent>("/tmx/v1/corporate-events", {
+      ticker: query.ticker,
+      "date.gte": query.from,
+      "date.lte": query.to,
+      limit: Math.min(query.limit ?? 100, 500),
+      sort: "date.desc",
+    });
+    const rows = Array.isArray(body.results) ? body.results : body.results ? [body.results] : [];
+    return rows
+      .flatMap((row) => {
+        if (!row.ticker || !row.type || !row.date) return [];
+        return [
+          {
+            ticker: row.ticker,
+            type: row.type,
+            date: row.date,
+            status: row.status,
+            description: row.name,
+            sourceUrl: row.url,
+            provider: "tmx" as const,
+            companyName: row.company_name,
+            isin: row.isin,
+            tradingVenue: row.trading_venue,
+            tmxRecordId: row.tmx_record_id,
+          },
+        ];
+      })
+      .filter(
+        (event) =>
+          (!query.from || (event.date ?? "") >= query.from) &&
+          (!query.to || (event.date ?? "") <= query.to),
+      )
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, Math.min(query.limit ?? 100, 500));
   }

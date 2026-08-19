@@ -4,7 +4,9 @@ import {
   getCorporateEvents,
   getOptionContracts,
   getOptionsChain,
+  getPrimaryProvider,
   getQuote,
+  getTmxCorporateEvents,
 } from "../src/index.js";
 import { massiveClient } from "../src/marketData/massive.js";
 
@@ -13,6 +15,7 @@ const savedEnv = {
   key: process.env.MASSIVE_API_KEY,
   base: process.env.MASSIVE_BASE_URL,
   provider: process.env.MARKET_DATA_PROVIDER,
+  primary: process.env.MARKET_DATA_PRIMARY,
   retries: process.env.MASSIVE_MAX_RETRIES,
   delay: process.env.MASSIVE_RETRY_DELAY_MS,
   freshness: process.env.MASSIVE_MARKET_DATA_FRESHNESS,
@@ -42,6 +45,7 @@ beforeEach(() => {
   process.env.MASSIVE_API_KEY = "test-key";
   process.env.MASSIVE_BASE_URL = "https://massive.test";
   process.env.MARKET_DATA_PROVIDER = "massive";
+  process.env.MARKET_DATA_PRIMARY = "massive";
   process.env.MASSIVE_MAX_RETRIES = "0";
   process.env.MASSIVE_RETRY_DELAY_MS = "0";
   process.env.MASSIVE_MARKET_DATA_FRESHNESS = "real-time";
@@ -55,6 +59,7 @@ afterEach(() => {
     MASSIVE_API_KEY: savedEnv.key,
     MASSIVE_BASE_URL: savedEnv.base,
     MARKET_DATA_PROVIDER: savedEnv.provider,
+    MARKET_DATA_PRIMARY: savedEnv.primary,
     MASSIVE_MAX_RETRIES: savedEnv.retries,
     MASSIVE_RETRY_DELAY_MS: savedEnv.delay,
     MASSIVE_MARKET_DATA_FRESHNESS: savedEnv.freshness,
@@ -67,6 +72,12 @@ afterEach(() => {
 });
 
 describe("Massive provider adapter", () => {
+  test("prefers the canonical MARKET_DATA_PRIMARY setting", () => {
+    process.env.MARKET_DATA_PRIMARY = "massive";
+    process.env.MARKET_DATA_PROVIDER = "yahoo";
+    expect(getPrimaryProvider().name).toBe("massive");
+  });
+
   test("maps a realtime snapshot into the stable quote shape", async () => {
     const calls = installFetch(() =>
       json({
@@ -285,5 +296,44 @@ describe("Massive provider adapter", () => {
     });
     expect(events.map((event) => event.type).sort()).toEqual(["dividend", "split"]);
     expect(events.every((event) => event.date?.startsWith("2025"))).toBe(true);
+  });
+
+  test("maps the optional TMX corporate-events partner dataset", async () => {
+    process.env.MASSIVE_CORPORATE_EVENTS_ENABLED = "1";
+    installFetch((url) => {
+      expect(url).toContain("/tmx/v1/corporate-events");
+      expect(url).toContain("date.gte=2025-01-01");
+      return json({
+        status: "OK",
+        results: [
+          {
+            company_name: "Costco Wholesale Corporation",
+            date: "2025-09-25",
+            isin: "US22160K1051",
+            name: "Q4 2025 Earnings Announcement-After Mkt",
+            status: "confirmed",
+            ticker: "COST",
+            tmx_record_id: "4XPC2KMG",
+            trading_venue: "XNAS",
+            type: "earnings_announcement_date",
+            url: "https://example.com/costco-event",
+          },
+        ],
+      });
+    });
+    const events = await getTmxCorporateEvents({
+      ticker: "COST",
+      from: "2025-01-01",
+      to: "2025-12-31",
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        ticker: "COST",
+        type: "earnings_announcement_date",
+        provider: "tmx",
+        companyName: "Costco Wholesale Corporation",
+        tmxRecordId: "4XPC2KMG",
+      }),
+    ]);
   });
 });

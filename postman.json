@@ -585,7 +585,7 @@
                 }
               ]
             },
-            "description": "Returns Massive stock splits and dividends, with optional partner event coverage documented by the capability report."
+            "description": "Returns Massive stock splits and dividends, plus optional TMX/Wall Street Horizon corporate events when the partner dataset is enabled."
           }
         },
         {

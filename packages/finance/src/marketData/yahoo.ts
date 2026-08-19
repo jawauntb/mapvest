@@ -208,4 +208,10 @@ export const yahooProvider = {
     to?: string;
     limit?: number;
   }): Promise<CorporateEvent[]> => unsupported("corporate events"),
+  getTmxCorporateEvents: async (_query: {
+    ticker?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }): Promise<CorporateEvent[]> => unsupported("TMX corporate events"),
 };

@@ -24,7 +24,8 @@ function providerName(
 }
 
 export function getPrimaryProvider(): MarketDataProvider {
-  return providerName(process.env.MARKET_DATA_PROVIDER, "massive") === "yahoo"
+  const configured = process.env.MARKET_DATA_PRIMARY?.trim() || process.env.MARKET_DATA_PROVIDER;
+  return providerName(configured?.toLowerCase(), "massive") === "yahoo"
     ? yahooProvider
     : massiveClient;
 }
@@ -128,6 +129,12 @@ export const getCorporateEvents = (query: {
   to?: string;
   limit?: number;
 }) => withFallback((provider) => provider.getCorporateEvents(query));
+export const getTmxCorporateEvents = (query: {
+  ticker?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}) => withFallback((provider) => provider.getTmxCorporateEvents(query));
 
 export type {
   AggregateBar,
