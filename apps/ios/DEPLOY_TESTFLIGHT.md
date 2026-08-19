@@ -12,7 +12,7 @@ Repo secret `EXPO_TOKEN` (Expo access token; never commit it). Then:
 gh workflow run ios-eas-production.yml --ref main
 ```
 
-The workflow installs `apps/ios` with `npm ci --no-workspaces` (iOS is not a Bun workspace), then `eas build --auto-submit --no-wait`. Watch the EAS build past `PRE_INSTALL_HOOK` — Actions only queues it.
+The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then `eas build --auto-submit --no-wait`. Watch the EAS build past `PRE_INSTALL_HOOK` — Actions only queues it.
 
 ## 0. One-time prerequisites
 

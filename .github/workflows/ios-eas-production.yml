@@ -33,7 +33,7 @@ jobs:
       # eas-cli resolves expo-router locally before it uploads the tarball.
       - name: Install iOS dependencies
         working-directory: apps/ios
-        run: npm ci --no-workspaces
+        run: npm install --no-workspaces
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
