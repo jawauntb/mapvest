@@ -237,3 +237,59 @@ this environment can't run — that step is the "acceptance" gate below.
 **Acceptance**: Sharing a photo from Photos/Messages/a browser to Mapvest
 identifies it end-to-end; both home-screen widgets show real nearby data
 and refresh after visiting Map/List.
+
+---
+
+## Phase 10 — Universe gamification
+
+Full slice detail, rules, and acceptance gates: `docs/UNIVERSE_ROADMAP.md` §1.
+The loop: discover → understand → payoff. XP is the only currency; levels
+gate cosmetics, never features.
+
+- [ ] A1 `user_progress` store; streak moves server-side
+- [ ] A2 evolution notifier (+ fix `moverNotifier` "universe" copy — it scans the watchlist)
+- [ ] A3 counterfactual universe portfolio ("$100 per find at found price → worth $X today")
+- [ ] A4 sector dex + rarity tiers from `brands.json`
+- [ ] A5 daily quests (server-verified from the find stream)
+- [ ] A6 territory (geohash pioneer + neighborhood completion)
+- [ ] A7 scheduler-driven events
+
+**Acceptance**: streak survives reinstall; one evolution push per find per
+tier; dex counts reconcile with `user_finds` × `brands.json`.
+
+---
+
+## Phase 11 — Location engine
+
+Detail: `docs/UNIVERSE_ROADMAP.md` §2. Two problems, two costs: in-app brief
+staleness is a foreground bug fix; background awareness powers the arrival
+push. Notification budget is product law (max 1/arrival, 2/day, threshold-gated).
+
+- [ ] B1 foreground Local Economy Brief refresh (>2km → refetch)
+- [ ] B2 uncaught silhouette pins on the map
+- [ ] B3 widget location heartbeat (`NSWidgetWantsLocation`, no new permission)
+- [ ] B4 arrival push: scored uncaught-nearby ("JPM is 200m away, not in your universe")
+- [ ] B5 Always-permission visit monitoring (ask only after B4 proves value)
+
+**Acceptance**: Astoria→Flatiron refreshes the brief on foreground; new-tile
+arrival with a high-scoring uncaught ticker → exactly one push.
+
+---
+
+## Phase 12 — Company graph (layered analysis)
+
+Detail: `docs/UNIVERSE_ROADMAP.md` §3. suppliers → company → buyers as edges;
+sector/macro/policy/culture as fields. The graph is both the analysis moat and
+the game board (constellations). Filings stay proxied via `underlying-terminal`;
+`sources` designed provider-agnostic so first-party EDGAR can slot in later.
+
+- [ ] C1 `company_edges` store + `valueChain.ts` extraction + `GET /v1/graph/:ticker`
+- [ ] C2 Orbit view + universe constellations (uncaught nodes grayed)
+- [ ] C3 demand pulse (wire Massive fundamentals; aggregate buyer capex/revenue)
+- [ ] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief)
+- [ ] C5 synthesis memo (binding constraint · demand durability · pricing power)
+- [ ] C6 rivalries (find vs comparable, weekly; PvP rejected)
+
+**Acceptance**: `GET /v1/graph/NVDA` returns cited supplier + buyer edges,
+cache-hit on second call; synthesis memo cites ≥1 upstream and ≥1 downstream
+fact and degrades to a plain memo when the graph is empty.
