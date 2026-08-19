@@ -155,7 +155,7 @@ function ChartBody({
       </View>
 
       <Text style={styles.footer}>
-        Yahoo Finance
+        Market data
         {fetchedAt ? ` · ${formatFetchedAt(fetchedAt)}` : ""}
       </Text>
     </>

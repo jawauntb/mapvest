@@ -10,6 +10,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
 | **Google Places** | Nearby POI enumeration for the map view (primary). Multi-type queries (`restaurant`, `cafe`, `store`, `bank`, …) merged + de-noised (no hospitals/doctors/parks). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
+| **Massive** | Primary market-data provider for routed quotes, aggregates, options contracts/chains, reference news, and splits/dividends. | `MASSIVE_API_KEY` and account entitlements in personal Doppler `mapvest` |
 
 ## Secondary / free-tier
 
@@ -18,7 +19,7 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 | **OpenStreetMap Overpass** | Nearby POI fallback when Google Places is denied/unavailable. Mirrors are raced in parallel; prefer `overpass.openstreetmap.fr`. | No key. Cite as OSM/Overpass. |
 | **Photon (Komoot)** | Last-resort nearby brand search if every Overpass mirror fails. | No key. Shortlist of common public brands only. |
 | **SEC EDGAR** | Parent-company resolution, subsidiary lookup, 10-K brand mentions. | No key, please rate-limit. |
-| **Yahoo Finance** (via `yfinance` server-side) | Realtime quote for a resolved ticker, plus daily history for the native Overview price chart (`GET /v1/quote-history`). | Best-effort, do not display live price without a disclaimer. Never invent closes. |
+| **Yahoo Finance** (legacy adapter) | Explicit quote/history provider or temporary fallback while Massive parity is being proven. | Never selected implicitly; best-effort and delayed. Never invent closes. |
 | **ETF.com** / **Nasdaq holdings** | ETF constituent + weight lookup. | Scraped via Exa (respect robots). |
 | **Wikidata** | Brand → parent company mapping for the seed table. | Public SPARQL. |
 
@@ -84,6 +85,14 @@ Comparables pipeline for private brands / IP:
 3. **OpenRouter agent** (`openai/gpt-5.6-terra`, then `anthropic/claude-opus-4.8`, then `x-ai/grok-4.6`) judges the evidence and picks ≤3 real listed tickers with reasoning + source URL.
 
 Random ALLCAPS tokens in titles (e.g. `NYP`, `MOUNT`, `MSHS` for nonprofits) are rejected — see `packages/finance/src/tickerSymbol.ts`.
+
+## Market-data ownership and limits
+
+See [`MARKET_DATA_MIGRATION.md`](MARKET_DATA_MIGRATION.md) for the audited flow
+map, route compatibility, Massive endpoint mapping, fallback routing, and
+subscription assumptions. `GET /v1/market-data/capabilities` is the runtime
+source of truth for configured freshness and dataset access. “Configured” does
+not mean “real-time”: the purchased Massive plan must be verified in Doppler.
 
 ## What we do NOT use
 

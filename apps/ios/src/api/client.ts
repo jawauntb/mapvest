@@ -210,7 +210,7 @@ export function fetchQuote(
 
 export type QuoteHistoryPeriod = QuoteHistoryResponse["period"];
 
-/** Daily Yahoo closes for the native Overview price chart. Never invents prices. */
+/** Daily provider-routed closes for the native Overview price chart. Never invents prices. */
 export function fetchQuoteHistory(
   symbol: string,
   period: QuoteHistoryPeriod = "1mo",

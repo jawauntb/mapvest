@@ -1,14 +1,16 @@
+import { getHistoricalClosesWithProvider } from "@mapvest/finance";
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import { type Period, VALID_PERIODS, getHistoricalCloses } from "../lib/yahooHistory.js";
+import { marketDataSource } from "../lib/marketDataSource.js";
+import { type Period, VALID_PERIODS } from "../lib/yahooHistory.js";
 
 const quoteHistory = new Hono();
 
 /**
  * GET /v1/quote-history?symbol=AAPL&period=1mo
  *
- * Daily Yahoo closes for the native Overview price chart. Never invents
- * prices — 502 when Yahoo has no usable series.
+ * Daily closes for the native Overview price chart. Never invents prices —
+ * 502 when the configured provider has no usable series.
  */
 quoteHistory.get("/", async (c) => {
   return safeExecuteWithSpan("http.quote_history", async (span) => {
@@ -28,32 +30,24 @@ quoteHistory.get("/", async (c) => {
     span.setAttributes({ symbol, period });
 
     const started = performance.now();
-    const points = await getHistoricalCloses(symbol, period);
+    const result = await getHistoricalClosesWithProvider(symbol, period);
     const latencyMs = Math.round(performance.now() - started);
     span.setAttributes({
       latency_ms: latencyMs,
-      history_hit: !!points && points.length > 0,
-      points: points?.length ?? 0,
+      history_hit: !!result?.value && result.value.length > 0,
+      points: result?.value?.length ?? 0,
     });
 
-    if (!points || points.length === 0) {
+    if (!result?.value || result.value.length === 0) {
       return c.json({ error: "history unavailable" }, 502);
     }
 
-    const fetchedAt = new Date().toISOString();
     c.header("Cache-Control", "public, max-age=60");
     return c.json({
       ticker: symbol,
       period,
-      points,
-      sources: [
-        {
-          provider: "yahoo",
-          url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
-          fetchedAt,
-          confidence: "high",
-        },
-      ],
+      points: result.value,
+      sources: [marketDataSource(result.provider)],
     });
   });
 });

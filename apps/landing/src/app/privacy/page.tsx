@@ -21,20 +21,18 @@ export default function PrivacyPolicy() {
         <section>
           <h2>Summary</h2>
           <p>
-            Mapvest is a research tool that helps you identify the brands you
-            see in the wild and map them to publicly traded tickers, private
-            comparables, and ETFs. This policy explains what we collect, why,
-            how long we keep it, and who we share it with. We do not sell your
-            data, ever. We collect the minimum required to make the product
-            work.
+            Mapvest is a research tool that helps you identify the brands you see in the wild and
+            map them to publicly traded tickers, private comparables, and ETFs. This policy explains
+            what we collect, why, how long we keep it, and who we share it with. We do not sell your
+            data, ever. We collect the minimum required to make the product work.
           </p>
         </section>
 
         <section>
           <h2>Who we are</h2>
           <p>
-            Mapvest is operated by Jawaun Brown ("we", "us"). You can reach us
-            at <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+            Mapvest is operated by Jawaun Brown ("we", "us"). You can reach us at{" "}
+            <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
           </p>
         </section>
 
@@ -42,49 +40,44 @@ export default function PrivacyPolicy() {
           <h2>Information we collect</h2>
           <ul>
             <li>
-              <strong>Account.</strong> If you choose to sign in, we store your
-              email address. Sign-in is optional; guest mode covers every core
-              feature.
+              <strong>Account.</strong> If you choose to sign in, we store your email address.
+              Sign-in is optional; guest mode covers every core feature.
             </li>
             <li>
-              <strong>Watchlist &amp; alerts.</strong> Tickers you save, memos
-              you write, price alerts you set, and named watchlists you create.
+              <strong>Watchlist &amp; alerts.</strong> Tickers you save, memos you write, price
+              alerts you set, and named watchlists you create.
             </li>
             <li>
-              <strong>Location.</strong> When you open the Map or List tab or
-              request a local-area briefing, we use your device location to
-              query nearby brands. Location is used per-request and is not
-              stored by us other than as a short-lived cache; we never
+              <strong>Location.</strong> When you open the Map or List tab or request a local-area
+              briefing, we use your device location to query nearby brands. Location is used
+              per-request and is not stored by us other than as a short-lived cache; we never
               broadcast your location.
             </li>
             <li>
-              <strong>Camera &amp; photos.</strong> If you use the camera
-              scanner or pick a photo from your library, we send the image to
-              our identification service to be matched against brands. Images
-              are used only for that request and are not retained after the
+              <strong>Camera &amp; photos.</strong> If you use the camera scanner or pick a photo
+              from your library, we send the image to our identification service to be matched
+              against brands. Images are used only for that request and are not retained after the
               identification round-trip completes.
             </li>
             <li>
-              <strong>Research prompts.</strong> Questions you type into the
-              Research chat, and the resulting agent responses, are stored on
-              our servers so you can revisit past briefings.
+              <strong>Research prompts.</strong> Questions you type into the Research chat, and the
+              resulting agent responses, are stored on our servers so you can revisit past
+              briefings.
             </li>
             <li>
-              <strong>Device metadata.</strong> A generated anonymous device
-              identifier (used to meter guest usage), the platform (iOS or
-              Android), the app build number, and coarse network telemetry so
-              we can debug issues. No advertising identifiers are collected.
+              <strong>Device metadata.</strong> A generated anonymous device identifier (used to
+              meter guest usage), the platform (iOS or Android), the app build number, and coarse
+              network telemetry so we can debug issues. No advertising identifiers are collected.
             </li>
             <li>
-              <strong>Push notification tokens.</strong> If you opt in to
-              notifications in Settings, we store the Expo push token for your
-              device so we can deliver only the event types you have enabled.
+              <strong>Push notification tokens.</strong> If you opt in to notifications in Settings,
+              we store the Expo push token for your device so we can deliver only the event types
+              you have enabled.
             </li>
             <li>
-              <strong>Optional Robinhood MCP token.</strong> If you paste your
-              Robinhood agent MCP bearer under Settings, we store it encrypted
-              at rest in our database. It never leaves our server except to
-              enrich Robinhood link-out responses on your behalf. Mapvest does
+              <strong>Optional Robinhood MCP token.</strong> If you paste your Robinhood agent MCP
+              bearer under Settings, we store it encrypted at rest in our database. It never leaves
+              our server except to enrich Robinhood link-out responses on your behalf. Mapvest does
               not submit broker orders; we only deep-link to the Robinhood app.
             </li>
           </ul>
@@ -93,55 +86,49 @@ export default function PrivacyPolicy() {
         <section>
           <h2>Third-party services we use</h2>
           <p>
-            To make the product work we send parts of your requests to the
-            following processors:
+            To make the product work we send parts of your requests to the following processors:
           </p>
           <ul>
             <li>
-              <strong>Anthropic (via OpenRouter).</strong> The research agent
-              and daily briefings are generated by Anthropic&rsquo;s Claude
-              models. Your prompt text (and the retrieved context we assemble
-              for it) is sent to Anthropic to generate a response.
+              <strong>Anthropic (via OpenRouter).</strong> The research agent and daily briefings
+              are generated by Anthropic&rsquo;s Claude models. Your prompt text (and the retrieved
+              context we assemble for it) is sent to Anthropic to generate a response.
             </li>
             <li>
-              <strong>Yahoo Finance / Finnhub.</strong> Quote data, historical
-              closes, and per-ticker news headlines. Only the ticker symbol is
+              <strong>Massive, with explicit Yahoo Finance / Finnhub fallbacks.</strong> Quote data,
+              historical closes, and per-ticker news headlines. Only the ticker symbol is sent.
+            </li>
+            <li>
+              <strong>Exa.</strong> Web research snippets used to enrich local economy briefings.
+              Only the query text (city, state, topic) is sent.
+            </li>
+            <li>
+              <strong>OpenStreetMap Nominatim.</strong> Reverse geocoding of your approximate
+              location to a city/region when generating a local briefing. Only the coordinates are
               sent.
             </li>
             <li>
-              <strong>Exa.</strong> Web research snippets used to enrich local
-              economy briefings. Only the query text (city, state, topic) is
-              sent.
+              <strong>Google Maps.</strong> Map tiles and place autocomplete on the Map screen.
+              Governed by Google&rsquo;s own privacy policy.
             </li>
             <li>
-              <strong>OpenStreetMap Nominatim.</strong> Reverse geocoding of
-              your approximate location to a city/region when generating a
-              local briefing. Only the coordinates are sent.
+              <strong>Expo push service.</strong> Delivers push notifications you have opted into.
+              We send them the push token, notification title, and body.
             </li>
             <li>
-              <strong>Google Maps.</strong> Map tiles and place autocomplete on
-              the Map screen. Governed by Google&rsquo;s own privacy policy.
+              <strong>Railway (infrastructure).</strong> Hosts our API, Postgres database, and
+              landing site.
             </li>
             <li>
-              <strong>Expo push service.</strong> Delivers push notifications
-              you have opted into. We send them the push token, notification
-              title, and body.
+              <strong>Stripe.</strong> Payment processing for any future paid tiers. We do not store
+              card numbers.
             </li>
             <li>
-              <strong>Railway (infrastructure).</strong> Hosts our API,
-              Postgres database, and landing site.
-            </li>
-            <li>
-              <strong>Stripe.</strong> Payment processing for any future paid
-              tiers. We do not store card numbers.
-            </li>
-            <li>
-              <strong>Robinhood (deep link only).</strong> The Open in
-              Robinhood button hands off to the Robinhood app or website via a
-              universal link. We do not have your Robinhood credentials and
-              never place orders. If you have connected an MCP key, we may hit
-              a Robinhood agent endpoint you configured; you can clear that key
-              any time under Settings.
+              <strong>Robinhood (deep link only).</strong> The Open in Robinhood button hands off to
+              the Robinhood app or website via a universal link. We do not have your Robinhood
+              credentials and never place orders. If you have connected an MCP key, we may hit a
+              Robinhood agent endpoint you configured; you can clear that key any time under
+              Settings.
             </li>
           </ul>
         </section>
@@ -152,16 +139,14 @@ export default function PrivacyPolicy() {
             <li>To answer your requests (identify a brand, generate a brief).</li>
             <li>To render your watchlist, alerts, and saved research.</li>
             <li>
-              To send you push notifications for the specific event types you
-              have opted into.
+              To send you push notifications for the specific event types you have opted into.
             </li>
             <li>To debug crashes and errors so we can ship fixes.</li>
             <li>To prevent abuse (rate limits keyed to your device id).</li>
           </ul>
           <p>
-            We do <strong>not</strong> use your data for advertising, we do{" "}
-            <strong>not</strong> sell it, and we do <strong>not</strong> share
-            it with data brokers.
+            We do <strong>not</strong> use your data for advertising, we do <strong>not</strong>{" "}
+            sell it, and we do <strong>not</strong> share it with data brokers.
           </p>
         </section>
 
@@ -170,11 +155,14 @@ export default function PrivacyPolicy() {
           <ul>
             <li>Watchlists, memos, alerts, and research threads: kept until you delete them.</li>
             <li>
-              Location coordinates: not persisted beyond the short-lived cache
-              needed to answer your request (minutes).
+              Location coordinates: not persisted beyond the short-lived cache needed to answer your
+              request (minutes).
             </li>
             <li>Captured photos: not persisted server-side after identification completes.</li>
-            <li>Push tokens: kept while your device stays active; unregistered when you disable notifications.</li>
+            <li>
+              Push tokens: kept while your device stays active; unregistered when you disable
+              notifications.
+            </li>
             <li>Debug logs: 30 days.</li>
           </ul>
         </section>
@@ -183,42 +171,39 @@ export default function PrivacyPolicy() {
           <h2>Your rights</h2>
           <p>
             You can export or delete your data by emailing{" "}
-            <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. We honor deletion
-            requests within 30 days. If you delete your account, we delete your
-            watchlist, memos, alerts, research threads, and Robinhood MCP key.
-            Debug logs are purged with the standard 30-day rotation.
+            <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. We honor deletion requests within 30 days.
+            If you delete your account, we delete your watchlist, memos, alerts, research threads,
+            and Robinhood MCP key. Debug logs are purged with the standard 30-day rotation.
           </p>
           <p>
-            You can revoke camera, photo library, location, and notification
-            permissions at any time from your device&rsquo;s Settings.
+            You can revoke camera, photo library, location, and notification permissions at any time
+            from your device&rsquo;s Settings.
           </p>
         </section>
 
         <section>
           <h2>Children</h2>
           <p>
-            Mapvest is not directed to children under 13. We do not knowingly
-            collect information from children under 13; if you believe we have,
-            please contact us and we will delete it.
+            Mapvest is not directed to children under 13. We do not knowingly collect information
+            from children under 13; if you believe we have, please contact us and we will delete it.
           </p>
         </section>
 
         <section>
           <h2>Not investment advice</h2>
           <p>
-            Everything Mapvest surfaces — identifications, briefings, movers,
-            backtests — is informational and not investment advice. Mapvest
-            does not custody funds or place broker orders. Any trading decision
-            you make is your own.
+            Everything Mapvest surfaces — identifications, briefings, movers, backtests — is
+            informational and not investment advice. Mapvest does not custody funds or place broker
+            orders. Any trading decision you make is your own.
           </p>
         </section>
 
         <section>
           <h2>Changes to this policy</h2>
           <p>
-            We may update this policy from time to time. Material changes will
-            be announced in-app or via email. The &ldquo;Last updated&rdquo;
-            date at the top of this page always reflects the current version.
+            We may update this policy from time to time. Material changes will be announced in-app
+            or via email. The &ldquo;Last updated&rdquo; date at the top of this page always
+            reflects the current version.
           </p>
         </section>
 

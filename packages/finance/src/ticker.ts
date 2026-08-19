@@ -2,7 +2,7 @@ import type { Brand, Source, Ticker } from "@mapvest/core";
 import { searchBrand, toSource } from "@mapvest/search";
 import { normalizeBrand, normalizeParent } from "./normalize.js";
 import { getQuote } from "./quote.js";
-import { seedBrands, type SeedEntry } from "./seed.js";
+import { type SeedEntry, seedBrands } from "./seed.js";
 
 const TICKER_RE = /^[A-Z][A-Z0-9.]{0,5}$/;
 
@@ -53,7 +53,7 @@ function matchSeedSubstring(normalized: string): SeedEntry | undefined {
  *      instead of "Hershey's", scan seed values for a parent whose
  *      `normalizeParent` form matches the input's. Seed key still wins
  *      when both would match, so brand-short-forms are preferred.
- *   4. Ticker-shaped input + Yahoo quote hit → listed.
+ *   4. Ticker-shaped input + provider quote hit → listed.
  *   5. Exa search + LLM extraction (deferred to caller if needed).
  */
 export async function resolveTicker(brandInput: string): Promise<TickerResolution> {
@@ -80,7 +80,7 @@ export async function resolveTicker(brandInput: string): Promise<TickerResolutio
     }
   }
 
-  // (4) Ticker-shaped input with a live Yahoo quote → listed, not private.
+  // (4) Ticker-shaped input with a provider quote → listed, not private.
   // This is how /detail/RLX stops being labeled "private" when the chart works.
   const asTicker = brandInput.trim().toUpperCase();
   if (TICKER_RE.test(asTicker)) {
@@ -94,8 +94,11 @@ export async function resolveTicker(brandInput: string): Promise<TickerResolutio
         },
         sources: [
           {
-            provider: "yahoo",
-            url: `https://finance.yahoo.com/quote/${encodeURIComponent(quote.symbol)}`,
+            provider: quote.provider ?? "yahoo",
+            url:
+              quote.provider === "massive"
+                ? "https://massive.com/docs/rest/stocks/snapshots/single-ticker-snapshot"
+                : `https://finance.yahoo.com/quote/${encodeURIComponent(quote.symbol)}`,
             fetchedAt: quote.ts,
             confidence: "high",
           },

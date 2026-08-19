@@ -11,7 +11,7 @@ import {
   markTriggered,
 } from "../lib/alerts-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /**
  * Per-user price alerts.
@@ -61,7 +61,9 @@ alerts.post("/", async (c) => {
       return c.json({ error: "threshold must be a finite number" }, 400);
     }
     const note =
-      typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 240) : undefined;
+      typeof body.note === "string" && body.note.trim()
+        ? body.note.trim().slice(0, 240)
+        : undefined;
 
     const user = c.get("user");
     const alert = await createAlert(user.id, { ticker, kind, threshold, note });
@@ -100,7 +102,7 @@ alerts.get("/", async (c) => {
  * clients diff against locally-remembered ids to surface UI badges.
  *
  * Quote failures are treated as "no signal" — an alert is never marked
- * triggered on missing data. Yahoo's endpoint is already best-effort +
+ * triggered on missing data. The market-data provider is already best-effort +
  * memoized in @mapvest/finance, so a slow upstream can't wedge this route.
  */
 alerts.get("/check", async (c) => {

@@ -5,7 +5,7 @@ import { apiBase, price, printKeyValue, readJson, signed } from "../util.js";
  * `mapvest quote <symbol>` — GET /v1/quote?symbol=…
  *
  * The API returns `{ quote }` on success and `{ error }` on missing or
- * unresolvable symbols (502). Yahoo TOS requires the delayed-quote
+ * unresolvable symbols (502). Provider terms require the quote
  * disclaimer be surfaced verbatim, so we print `disclaimer` on its own line.
  */
 export async function runQuote(

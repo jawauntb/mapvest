@@ -34,7 +34,7 @@ identify.use("*", requireGenerationQuota("identify"));
  */
 /**
  * Best-effort quote fetch bounded by `timeoutMs`. Wraps getQuote() in a race
- * so a slow Yahoo response can't blow up identify latency. Returns null on
+ * so a slow market-data response can't blow up identify latency. Returns null on
  * timeout, upstream failure, or any thrown error.
  */
 async function bestEffortQuote(symbol: string, timeoutMs = 500): Promise<Quote | null> {
@@ -218,7 +218,7 @@ identify.post("/", async (c) => {
 
         if (brand.isPublic) {
           // Best-effort: attach a delayed quote for public brands. Bounded to
-          // 500 ms so identify latency stays flat even if Yahoo is slow.
+          // 500 ms so identify latency stays flat even if market data is slow.
           const q = brand.ticker?.symbol ? await bestEffortQuote(brand.ticker.symbol) : null;
           return {
             brand,

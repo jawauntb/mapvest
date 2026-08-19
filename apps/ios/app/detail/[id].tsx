@@ -220,7 +220,7 @@ export default function DetailSheet() {
                     </Text>
                   </View>
                   <Text style={styles.quoteDisclaimer}>
-                    {quote.disclaimer || "Prices delayed ~15 min · Yahoo Finance"}
+                    {quote.disclaimer || "Market-data freshness depends on subscription"}
                   </Text>
                 </>
               ) : null}

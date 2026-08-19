@@ -59,7 +59,7 @@ Every finance answer must attach a `sources: Source[]` array. The canonical shap
 
 ```ts
 type Source = {
-  provider: "exa" | "openrouter" | "gemini" | "yahoo" | "polygon" | "sec" | "manual";
+  provider: "exa" | "openrouter" | "gemini" | "massive" | "yahoo" | "polygon" | "sec" | "manual";
   url?: string;
   fetchedAt: string; // ISO
   confidence: "high" | "medium" | "low";
@@ -67,6 +67,8 @@ type Source = {
 ```
 
 If you cannot cite a source, return an empty `sources: []` and set overall `confidence: "low"` — do not fabricate.
+
+Market-data provider routing is owned by `packages/finance/src/marketData`. Massive is primary when `MARKET_DATA_PROVIDER` is unset or `massive` and `MASSIVE_API_KEY` is available. Yahoo is only used when `MARKET_DATA_PROVIDER=yahoo` or `MARKET_DATA_FALLBACK_PROVIDER=yahoo`; fallback is never implicit. Massive credentials and plan declarations flow through Doppler as `MASSIVE_API_KEY`, `MASSIVE_BASE_URL`, `MASSIVE_MARKET_DATA_FRESHNESS`, `MASSIVE_STOCKS_PLAN`, `MASSIVE_OPTIONS_PLAN`, and `MASSIVE_EVENTS_PLAN`. Never put their values in `.env` files or source.
 
 **API contract artifacts.** `openapi.yaml` and `postman.json` at the repo root are **generated files** — never hand-edit. Regenerate whenever a schema in `packages/core` changes:
 

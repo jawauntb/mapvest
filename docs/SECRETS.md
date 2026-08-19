@@ -23,6 +23,8 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |
+| `MASSIVE_API_KEY` | Massive | `packages/finance` market-data adapter; server-side only |
+| `MASSIVE_BASE_URL` | Massive | optional REST base URL; defaults to `https://api.massive.com` |
 | `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, nearby_cache, brand_ticker_cache, usage/entitlements |
 | `STRIPE_SECRET_KEY` | Stripe (**Artesanato Poesia** `acct_1Pj15wKwhiITC0uV`) — Mapvest only, not objetdart | Checkout + portal (Phase 8 Slice E). Railway API currently uses test-mode `sk_test_…` until live keys have `product_write`. |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `POST /v1/billing/webhook` | Subscription webhooks |
@@ -38,6 +40,17 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Host attestation header for Derivation request-guard |
 | `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` | Derivation Doppler/Railway | Bearer for GET `/api/idea-chats` |
 | `RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE` | Derivation Doppler/Railway | Bearer for POST `/api/idea-chats/stream` |
+
+### Massive market data
+
+The API reads `MASSIVE_*` values through Doppler. Never place a Massive token in
+`.env`, an iOS bundle, a checked-in Railway file, or a test fixture. The
+provider selection flags are non-secret configuration: `MARKET_DATA_PROVIDER`
+defaults to `massive`, while `MARKET_DATA_FALLBACK_PROVIDER=yahoo` enables the
+temporary quote/history fallback. Plan labels and freshness are descriptive
+metadata (`MASSIVE_STOCKS_PLAN`, `MASSIVE_OPTIONS_PLAN`,
+`MASSIVE_EVENTS_PLAN`, `MASSIVE_MARKET_DATA_FRESHNESS`) and must be kept in
+sync with the purchased account after Doppler access is provisioned.
 
 ### App Store Connect (StoreKit)
 

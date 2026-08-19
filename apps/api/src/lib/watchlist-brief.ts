@@ -13,7 +13,7 @@
  */
 
 import { getQuote } from "@mapvest/finance";
-import { fetchTickerNews, type NewsItem } from "./news-source.js";
+import { type NewsItem, fetchTickerNews } from "./news-source.js";
 import { onDailyBriefGenerated } from "./notifiers/dailyBriefNotifier.js";
 import type { WatchEntry } from "./watchlist-store.js";
 
@@ -55,7 +55,10 @@ function yyyymmdd(now: Date): string {
 }
 
 function tickersHash(tickers: string[]): string {
-  return [...tickers].map((t) => t.toUpperCase()).sort().join(",");
+  return [...tickers]
+    .map((t) => t.toUpperCase())
+    .sort()
+    .join(",");
 }
 
 export function briefCacheKey(userId: string, tickers: string[], now: Date): string {
@@ -218,12 +221,11 @@ async function requestOpenRouter(
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content:
-          `Watchlist snapshot (Yahoo quotes, delayed ~15m):\n${userContext}\n\n` +
-          (headlinesBlock
+        content: `Watchlist snapshot (provider-routed quotes; freshness is subscription-dependent):\n${userContext}\n\n${
+          headlinesBlock
             ? `Recent headlines (best-effort, may be empty):\n${headlinesBlock}\n\n`
-            : "") +
-          "Write the daily briefing.",
+            : ""
+        }Write the daily briefing.`,
       },
     ],
   };
@@ -255,8 +257,7 @@ async function requestOpenRouter(
     const last = stripped.lastIndexOf("}");
     const slice = first !== -1 && last > first ? stripped.slice(first, last + 1) : stripped;
     const parsed = JSON.parse(slice) as Partial<LLMOutput>;
-    const headline =
-      typeof parsed.headline === "string" ? stripMdMarks(parsed.headline) : "";
+    const headline = typeof parsed.headline === "string" ? stripMdMarks(parsed.headline) : "";
     const paragraph = typeof parsed.body === "string" ? stripMdMarks(parsed.body) : "";
     if (!headline || !paragraph) {
       throw new Error("LLM returned unexpected shape (missing headline/body)");
@@ -267,10 +268,7 @@ async function requestOpenRouter(
   }
 }
 
-async function callOpenRouter(
-  userContext: string,
-  headlinesBlock: string,
-): Promise<LLMOutput> {
+async function callOpenRouter(userContext: string, headlinesBlock: string): Promise<LLMOutput> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
   if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");

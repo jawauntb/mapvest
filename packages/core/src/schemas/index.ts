@@ -6,7 +6,7 @@ export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
 export const Source = z.object({
-  provider: z.enum(["exa", "openrouter", "gemini", "yahoo", "polygon", "sec", "manual"]),
+  provider: z.enum(["exa", "openrouter", "gemini", "massive", "yahoo", "polygon", "sec", "manual"]),
   url: z.string().url().optional(),
   fetchedAt: z.string(), // ISO
   confidence: Confidence,
@@ -56,9 +56,9 @@ export const Comparable = z.object({
 export type Comparable = z.infer<typeof Comparable>;
 
 /**
- * Delayed market quote — Yahoo v7 chart endpoint, cached in-process. Attached
- * best-effort by /v1/identify; consumers must treat it as optional and must
- * surface the `disclaimer` text verbatim (Yahoo TOS: 15-min delay).
+ * Provider-routed market quote, cached in-process. Attached best-effort by
+ * /v1/identify; consumers must treat it as optional and surface the
+ * `disclaimer` text verbatim because freshness follows the active subscription.
  */
 export const Quote = z.object({
   symbol: z.string(),
@@ -69,6 +69,8 @@ export const Quote = z.object({
   ts: z.string(), // ISO
   disclaimer: z.string(),
   name: z.string().optional(),
+  provider: z.enum(["massive", "yahoo"]).optional(),
+  freshness: z.enum(["real-time", "delayed", "end-of-day", "unknown"]).optional(),
 });
 export type Quote = z.infer<typeof Quote>;
 
@@ -244,6 +246,138 @@ export const QuoteHistoryResponse = z.object({
   sources: z.array(Source),
 });
 export type QuoteHistoryResponse = z.infer<typeof QuoteHistoryResponse>;
+
+export const AggregatePoint = z.object({
+  ts: z.number(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  close: z.number(),
+  volume: z.number().optional(),
+  vwap: z.number().optional(),
+  transactions: z.number().optional(),
+});
+export type AggregatePoint = z.infer<typeof AggregatePoint>;
+
+export const AggregatesResponse = z.object({
+  symbol: z.string(),
+  from: z.string(),
+  to: z.string(),
+  multiplier: z.number(),
+  timespan: z.string(),
+  points: z.array(AggregatePoint),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type AggregatesResponse = z.infer<typeof AggregatesResponse>;
+
+export const OptionContract = z.object({
+  ticker: z.string(),
+  underlyingTicker: z.string().optional(),
+  contractType: z.enum(["call", "put", "other"]).optional(),
+  expirationDate: z.string().optional(),
+  strikePrice: z.number().optional(),
+  exerciseStyle: z.enum(["american", "bermudan", "european"]).optional(),
+  sharesPerContract: z.number().optional(),
+  primaryExchange: z.string().optional(),
+  cfi: z.string().optional(),
+});
+export type OptionContract = z.infer<typeof OptionContract>;
+
+export const OptionSnapshot = OptionContract.extend({
+  breakEvenPrice: z.number().optional(),
+  impliedVolatility: z.number().optional(),
+  openInterest: z.number().optional(),
+  greeks: z
+    .object({
+      delta: z.number().optional(),
+      gamma: z.number().optional(),
+      theta: z.number().optional(),
+      vega: z.number().optional(),
+    })
+    .optional(),
+  quote: z
+    .object({
+      bid: z.number().optional(),
+      ask: z.number().optional(),
+      bidSize: z.number().optional(),
+      askSize: z.number().optional(),
+      ts: z.number().optional(),
+    })
+    .optional(),
+  trade: z
+    .object({
+      price: z.number().optional(),
+      size: z.number().optional(),
+      ts: z.number().optional(),
+    })
+    .optional(),
+  day: z
+    .object({
+      open: z.number().optional(),
+      high: z.number().optional(),
+      low: z.number().optional(),
+      close: z.number().optional(),
+      volume: z.number().optional(),
+    })
+    .optional(),
+});
+export type OptionSnapshot = z.infer<typeof OptionSnapshot>;
+
+export const OptionsResponse = z.object({
+  underlyingTicker: z.string(),
+  contracts: z.array(OptionSnapshot),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionsResponse = z.infer<typeof OptionsResponse>;
+
+export const OptionContractsResponse = z.object({
+  contracts: z.array(OptionContract),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionContractsResponse = z.infer<typeof OptionContractsResponse>;
+
+export const CorporateEvent = z.object({
+  id: z.string().optional(),
+  ticker: z.string(),
+  type: z.string(),
+  date: z.string().optional(),
+  status: z.string().optional(),
+  description: z.string().optional(),
+  sourceUrl: z.string().url().optional(),
+});
+export type CorporateEvent = z.infer<typeof CorporateEvent>;
+
+export const MarketEventsResponse = z.object({
+  ticker: z.string().optional(),
+  events: z.array(CorporateEvent),
+  sources: z.array(Source),
+});
+export type MarketEventsResponse = z.infer<typeof MarketEventsResponse>;
+
+export const MarketDataCapabilities = z.object({
+  provider: z.enum(["massive", "yahoo"]),
+  configured: z.boolean(),
+  freshness: z.enum(["real-time", "delayed", "end-of-day", "unknown"]),
+  datasets: z.record(
+    z.object({
+      supported: z.boolean(),
+      access: z.enum(["primary", "fallback", "unconfigured"]),
+      note: z.string().optional(),
+    }),
+  ),
+  subscription: z.object({
+    stocks: z.string().optional(),
+    options: z.string().optional(),
+    events: z.string().optional(),
+  }),
+});
+export type MarketDataCapabilities = z.infer<typeof MarketDataCapabilities>;
 
 /** @deprecated alias — prefer ChartResponse */
 export const AuctionChartResponse = ChartResponse;

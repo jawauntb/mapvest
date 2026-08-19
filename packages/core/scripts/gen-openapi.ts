@@ -65,6 +65,15 @@ const S = {
   ChartResponse: component("ChartResponse", raw.ChartResponse),
   QuoteHistoryPoint: component("QuoteHistoryPoint", raw.QuoteHistoryPoint),
   QuoteHistoryResponse: component("QuoteHistoryResponse", raw.QuoteHistoryResponse),
+  AggregatePoint: component("AggregatePoint", raw.AggregatePoint),
+  AggregatesResponse: component("AggregatesResponse", raw.AggregatesResponse),
+  OptionContract: component("OptionContract", raw.OptionContract),
+  OptionSnapshot: component("OptionSnapshot", raw.OptionSnapshot),
+  OptionsResponse: component("OptionsResponse", raw.OptionsResponse),
+  OptionContractsResponse: component("OptionContractsResponse", raw.OptionContractsResponse),
+  CorporateEvent: component("CorporateEvent", raw.CorporateEvent),
+  MarketEventsResponse: component("MarketEventsResponse", raw.MarketEventsResponse),
+  MarketDataCapabilities: component("MarketDataCapabilities", raw.MarketDataCapabilities),
   AnalysisSnapshot: component("AnalysisSnapshot", raw.AnalysisSnapshot),
   CockpitResponse: component("CockpitResponse", raw.CockpitResponse),
   AlertsResponse: component("AlertsResponse", raw.AlertsResponse),
@@ -101,6 +110,11 @@ const ErrorResponse = component(
 const errorResponse = (description: string) => ({
   description,
   content: { "application/json": { schema: ErrorResponse } },
+});
+
+const flatErrorResponse = (description: string) => ({
+  description,
+  content: { "application/json": { schema: z.object({ error: z.string() }) } },
 });
 
 const quotaExceededResponse = {
@@ -306,9 +320,9 @@ registry.registerPath({
 registry.registerPath({
   method: "get",
   path: "/v1/quote-history",
-  summary: "Daily Yahoo price history",
+  summary: "Daily provider-routed price history",
   description:
-    "Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.",
+    "Daily adjusted closes from the configured market-data provider for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.",
   tags: ["finance"],
   request: {
     query: z.object({
@@ -318,11 +332,11 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: "Daily close series with Yahoo source citation.",
+      description: "Daily close series with provider source citation.",
       content: { "application/json": { schema: S.QuoteHistoryResponse } },
     },
     400: errorResponses[400],
-    502: errorResponse("Yahoo history unavailable."),
+    502: errorResponse("Market-data history unavailable."),
     ...errorResponses,
   },
 });
@@ -332,7 +346,7 @@ registry.registerPath({
   path: "/v1/chart/{type}",
   summary: "Underlying Analyzer chart image",
   description:
-    "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`.",
+    "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to the sibling analyzer's `1mo` period.",
   tags: ["finance"],
   request: {
     params: z.object({
@@ -353,6 +367,183 @@ registry.registerPath({
       content: { "application/json": { schema: S.ChartResponse } },
     },
     ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/market-data/capabilities",
+  summary: "Market-data provider capabilities",
+  description:
+    "Returns the configured primary provider, freshness declaration, subscription labels, and dataset capability notes. The subscription labels are operational configuration and are not inferred from API responses.",
+  tags: ["finance"],
+  responses: {
+    200: {
+      description: "Provider capability report.",
+      content: { "application/json": { schema: S.MarketDataCapabilities } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/market-data/aggregates",
+  summary: "Historical market aggregates",
+  description:
+    "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are Unix seconds. The endpoint returns an opaque `nextCursor` when the provider has another page.",
+  tags: ["finance"],
+  request: {
+    query: z.object({
+      symbol: z.string().openapi({ example: "AAPL" }),
+      from: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .openapi({ example: "2026-01-01" }),
+      to: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .openapi({ example: "2026-01-31" }),
+      multiplier: z.coerce.number().int().min(1).max(1_000).optional().openapi({ example: 1 }),
+      timespan: z
+        .enum(["minute", "hour", "day", "week", "month", "quarter", "year"])
+        .optional()
+        .openapi({ example: "day" }),
+      adjusted: z.coerce.boolean().optional(),
+      assetClass: z.enum(["stocks", "options"]).optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Aggregate bars.",
+      content: { "application/json": { schema: S.AggregatesResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Market-data aggregates unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/options/chain",
+  summary: "Options chain snapshot",
+  description:
+    "Additive option-chain snapshot with Massive-normalized contracts, greeks, implied volatility, quotes, trades, and open interest when the subscribed Options plan includes them.",
+  tags: ["finance"],
+  request: {
+    query: z.object({
+      underlying: z.string().openapi({ example: "AAPL" }),
+      expiration_date: z.string().optional(),
+      contract_type: z.enum(["call", "put"]).optional(),
+      strike_price: z.coerce.number().finite().optional(),
+      limit: z.coerce.number().int().min(1).max(250).optional(),
+      cursor: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Options chain page.",
+      content: { "application/json": { schema: S.OptionsResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options chain unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/options/contracts",
+  summary: "Options contract reference data",
+  description:
+    "Additive, cursor-paginated options contract index. Massive exposes active and expired contracts with expiration dates, strikes, types, and exercise styles.",
+  tags: ["finance"],
+  request: {
+    query: z.object({
+      underlying: z.string().optional(),
+      ticker: z.string().optional(),
+      expiration_date: z.string().optional(),
+      contract_type: z.enum(["call", "put"]).optional(),
+      expired: z.coerce.boolean().optional(),
+      as_of: z.string().optional(),
+      strike_price: z.coerce.number().finite().optional(),
+      limit: z.coerce.number().int().min(1).max(1_000).optional(),
+      cursor: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Options contracts page.",
+      content: { "application/json": { schema: S.OptionContractsResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options contracts unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/options/contracts/{ticker}",
+  summary: "Single options contract",
+  description: "Additive options contract reference lookup by Massive options ticker.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      ticker: z
+        .string()
+        .openapi({ param: { name: "ticker", in: "path" }, example: "O:AAPL260116C00100000" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Options contract.",
+      content: {
+        "application/json": {
+          schema: z.object({ contract: S.OptionContract, sources: z.array(S.Source) }),
+        },
+      },
+    },
+    ...errorResponses,
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options contract unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/market-events",
+  summary: "Corporate actions and market events",
+  description:
+    "Returns Massive stock splits and dividends, with optional partner event coverage documented by the capability report.",
+  tags: ["finance"],
+  request: {
+    query: z.object({
+      ticker: z.string().optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.coerce.number().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Market events.",
+      content: { "application/json": { schema: S.MarketEventsResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Market events unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 

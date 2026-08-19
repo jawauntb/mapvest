@@ -15,8 +15,8 @@ import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
  * equal-weighted basket would have done vs SPY. This is not portfolio
  * accounting — no rebalancing, no dividends, just naive normalized closes.
  *
- * Daily closes come from `getHistoricalCloses` in `../lib/yahooHistory.ts`
- * (Yahoo v7 chart, in-process 30 min cache). The assembled backtest
+ * Daily closes come from the provider-routed `getHistoricalCloses` facade.
+ * The assembled backtest
  * response is cached per (userId + ticker-set + period) for the same window.
  */
 
@@ -101,10 +101,11 @@ backtest.post("/", async (c) => {
     ]);
 
     const usable = portfolio.filter(
-      (p): p is { ticker: string; history: HistoryPoint[] } =>
-        !!p.history && p.history.length >= 2,
+      (p): p is { ticker: string; history: HistoryPoint[] } => !!p.history && p.history.length >= 2,
     );
-    const omitted = portfolio.filter((p) => !p.history || p.history.length < 2).map((p) => p.ticker);
+    const omitted = portfolio
+      .filter((p) => !p.history || p.history.length < 2)
+      .map((p) => p.ticker);
 
     if (usable.length === 0) {
       span.setAttributes({
@@ -114,10 +115,7 @@ backtest.post("/", async (c) => {
         period,
         error: "no_history",
       });
-      return c.json(
-        { error: "no price history for any ticker in this period", omitted },
-        502,
-      );
+      return c.json({ error: "no price history for any ticker in this period", omitted }, 502);
     }
 
     // Tail-align every ticker's series to the length of the shortest so the

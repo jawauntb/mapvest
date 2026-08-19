@@ -46,6 +46,8 @@ When the **same underlying token** is on several apps, `shared` stores it once u
 - `ANTHROPIC_API_KEY` — derivation + objetdart
 - `GOOGLE_MAPS_API_KEY` — mapvest
 - `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` — mapvest + derivation
+- `MASSIVE_API_KEY` — mapvest primary market-data provider; keep only in the
+  personal `mapvest` Doppler project and never copy it into repo config
 
 ## Same name, different credentials
 
