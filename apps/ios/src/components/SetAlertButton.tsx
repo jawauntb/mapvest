@@ -87,90 +87,92 @@ export function SetAlertButton({
         <Text style={styles.pillText}>{compact ? "Alert" : "Set alert"}</Text>
       </Pressable>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={{ width: "100%", alignItems: "center" }}
-          >
-            {/* Inner Pressable eats taps so the backdrop closes only on outside taps. */}
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>Set alert · ${ticker}</Text>
-                <Pressable
-                  onPress={() => setOpen(false)}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                >
-                  <Ionicons name="close" size={20} color={colors.fgMuted} />
-                </Pressable>
-              </View>
+      {open ? (
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
+          <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              style={{ width: "100%", alignItems: "center" }}
+            >
+              {/* Inner Pressable eats taps so the backdrop closes only on outside taps. */}
+              <Pressable style={styles.sheet} onPress={() => {}}>
+                <View style={styles.sheetHeader}>
+                  <Text style={styles.sheetTitle}>Set alert · ${ticker}</Text>
+                  <Pressable
+                    onPress={() => setOpen(false)}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                  >
+                    <Ionicons name="close" size={20} color={colors.fgMuted} />
+                  </Pressable>
+                </View>
 
-              <Text style={styles.label}>Kind</Text>
-              <View style={styles.kindRow}>
-                {KIND_OPTIONS.map((k) => {
-                  const active = kind === k;
-                  return (
-                    <Pressable
-                      key={k}
-                      onPress={() => {
-                        hapticSelect();
-                        setKind(k);
-                      }}
-                      style={[styles.kindChip, active && styles.kindChipActive]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.kindChipText, active && styles.kindChipTextActive]}>
-                        {alertKindLabel(k)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                <Text style={styles.label}>Kind</Text>
+                <View style={styles.kindRow}>
+                  {KIND_OPTIONS.map((k) => {
+                    const active = kind === k;
+                    return (
+                      <Pressable
+                        key={k}
+                        onPress={() => {
+                          hapticSelect();
+                          setKind(k);
+                        }}
+                        style={[styles.kindChip, active && styles.kindChipActive]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.kindChipText, active && styles.kindChipTextActive]}>
+                          {alertKindLabel(k)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
 
-              <Text style={styles.label}>
-                {kind === "pct_move" ? "Threshold (%)" : "Threshold ($)"}
-              </Text>
-              <TextInput
-                value={threshold}
-                onChangeText={setThreshold}
-                keyboardType="decimal-pad"
-                placeholder={kind === "pct_move" ? "e.g. 5" : "e.g. 250.00"}
-                placeholderTextColor={colors.fgDim}
-                style={styles.input}
-                accessibilityLabel="Threshold"
-              />
+                <Text style={styles.label}>
+                  {kind === "pct_move" ? "Threshold (%)" : "Threshold ($)"}
+                </Text>
+                <TextInput
+                  value={threshold}
+                  onChangeText={setThreshold}
+                  keyboardType="decimal-pad"
+                  placeholder={kind === "pct_move" ? "e.g. 5" : "e.g. 250.00"}
+                  placeholderTextColor={colors.fgDim}
+                  style={styles.input}
+                  accessibilityLabel="Threshold"
+                />
 
-              <Text style={styles.label}>Note (optional)</Text>
-              <TextInput
-                value={note}
-                onChangeText={setNote}
-                placeholder="Why this level?"
-                placeholderTextColor={colors.fgDim}
-                style={styles.input}
-                maxLength={240}
-                accessibilityLabel="Note"
-              />
+                <Text style={styles.label}>Note (optional)</Text>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Why this level?"
+                  placeholderTextColor={colors.fgDim}
+                  style={styles.input}
+                  maxLength={240}
+                  accessibilityLabel="Note"
+                />
 
-              {err ? <Text style={styles.err}>{err}</Text> : null}
+                {err ? <Text style={styles.err}>{err}</Text> : null}
 
-              <PrimaryButton
-                label={createM.isPending ? "Saving…" : "Save alert"}
-                busy={createM.isPending}
-                onPress={() => createM.mutate()}
-                style={{ marginTop: 12, alignSelf: "stretch" }}
-              />
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
+                <PrimaryButton
+                  label={createM.isPending ? "Saving…" : "Save alert"}
+                  busy={createM.isPending}
+                  onPress={() => createM.mutate()}
+                  style={{ marginTop: 12, alignSelf: "stretch" }}
+                />
+              </Pressable>
+            </KeyboardAvoidingView>
+          </Pressable>
+        </Modal>
+      ) : null}
     </>
   );
 }

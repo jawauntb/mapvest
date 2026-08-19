@@ -47,6 +47,7 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
           // Spot line: interpolate x between the surrounding strikes.
           const strikeValues = strikes.map((r) => r.strike);
           const spotX = (() => {
+            if (!Number.isFinite(spot)) return undefined;
             if (spot <= first.strike) return x(0);
             if (spot >= last.strike) return x(strikes.length - 1);
             for (let i = 0; i < strikeValues.length - 1; i++) {
@@ -126,14 +127,16 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
                 stroke={terminal.textStrong}
                 strokeWidth={1}
               />
-              <Line
-                x1={spotX}
-                x2={spotX}
-                y1={4}
-                y2={h - 16}
-                stroke={terminal.amber}
-                strokeWidth={2.2}
-              />
+              {Number.isFinite(spotX) ? (
+                <Line
+                  x1={spotX}
+                  x2={spotX}
+                  y1={4}
+                  y2={h - 16}
+                  stroke={terminal.amber}
+                  strokeWidth={2.2}
+                />
+              ) : null}
               {scrubIdx != null && scrubRow ? (
                 <>
                   <Crosshair x={x(scrubIdx)} top={4} bottom={h - 16} color={terminal.textStrong} />
@@ -184,7 +187,7 @@ export function MoneylineChart({ data }: { data: MoneylineDataset }) {
         items={[
           { color: terminal.green, label: "Call OI" },
           { color: terminal.red, label: "Put OI (mirrored)" },
-          { color: terminal.amber, label: `Spot ${spot.toFixed(2)}` },
+          { color: terminal.amber, label: `Spot ${safeFixed(spot)}` },
         ]}
       />
 

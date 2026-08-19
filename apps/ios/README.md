@@ -34,16 +34,14 @@ in `eas.json`.
 - `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
 - `/(tabs)/saved` — watchlist + cockpit/alerts; ★ Save / memos from detail.
 - `/(tabs)/admin` — hidden unless the signed-in user has `admin` scope.
-- `/detail/[id]` — one Charts section at the top of the sheet: a single chip
-  row switches between Price and all nine Underlying Analyzer chart types
-  (`src/components/ChartsSection.tsx`), rendered natively (react-native-svg,
-  `src/chartkit/`) from the JSON data endpoints (`POST /api/data/...`) — no
-  server PNGs. Every chart is interactive: touch-and-drag scrubs a crosshair
-  with a monospace readout (date/OHLC/levels per chart); the volatility radar
-  and seasonality heatmap are tap-to-inspect. Client + types live in
-  `src/api/underlying.ts`; base URL overridable via
-  `EXPO_PUBLIC_UNDERLYING_API_URL` (defaults to the production terminal).
-  Below it: Research…, Save/memo, comparables/ETFs, SEC, news, agent brief.
+- `/detail/[id]` — Investable is a stack **card** (not a page-sheet modal).
+  One Charts section at the top: a single chip row switches between Price
+  and Underlying Analyzer chart types (`src/components/ChartsSection.tsx`),
+  rendered natively (react-native-svg, `src/chartkit/`) from JSON data
+  endpoints. Nested Research / news-reader sheets mount only when opened.
+  Client + types live in `src/api/underlying.ts`; base URL overridable via
+  `EXPO_PUBLIC_UNDERLYING_API_URL`. Below it: Research, Save/memo, comps,
+  ETFs, SEC, news, agent brief.
 
 ## Offline photo queue
 

@@ -211,7 +211,6 @@ function LineSparkline({
               backgroundColor: color,
               borderRadius: 1,
               transform: [{ rotate: `${deg}deg` }],
-              transformOrigin: "left center",
             }}
           />
         );

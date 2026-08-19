@@ -1,10 +1,20 @@
 import { radii } from "@/theme/tokens";
 import { useState } from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
-import Svg, { Circle, G, Line, Polygon, Rect, Text as SvgText } from "react-native-svg";
+import Svg, {
+  Circle,
+  G,
+  Line,
+  Polygon,
+  Polyline,
+  Rect,
+  Text as SvgText,
+  type PolygonProps,
+  type PolylineProps,
+} from "react-native-svg";
 import { safeUpper } from "./format";
 import { MONO_FONT, terminal } from "./palette";
-import { shortDate, spansYears, tickIndices } from "./scale";
+import { isSafeSvgPoints, shortDate, spansYears, tickIndices } from "./scale";
 
 /**
  * Shared chrome for the Underlying Terminal charts: the outer shell (title /
@@ -119,6 +129,23 @@ export function Panel({
   );
 }
 
+/** Drop empty / NaN `points` — RNSVG on iOS native-crashes on those. */
+export function SafePolyline(props: PolylineProps) {
+  const pts = typeof props.points === "string" ? props.points : undefined;
+  if (!isSafeSvgPoints(pts)) return null;
+  return <Polyline {...props} points={pts} />;
+}
+
+export function SafePolygon(props: PolygonProps) {
+  const pts = typeof props.points === "string" ? props.points : undefined;
+  if (!isSafeSvgPoints(pts)) return null;
+  return <Polygon {...props} points={pts} />;
+}
+
+function finitePair(a: number, b: number): boolean {
+  return Number.isFinite(a) && Number.isFinite(b);
+}
+
 /** Vertical scrub crosshair spanning the plot height. */
 export function Crosshair({
   x,
@@ -131,6 +158,7 @@ export function Crosshair({
   bottom: number;
   color?: string;
 }) {
+  if (!finitePair(x, bottom) || !Number.isFinite(top)) return null;
   return (
     <Line
       x1={x}
@@ -147,6 +175,7 @@ export function Crosshair({
 
 /** Value marker riding a series at the scrub position (dark keyline). */
 export function ScrubDot({ cx, cy, color }: { cx: number; cy: number; color: string }) {
+  if (!finitePair(cx, cy)) return null;
   return <Circle cx={cx} cy={cy} r={3.2} fill={color} stroke={terminal.chartBg} strokeWidth={1} />;
 }
 
@@ -323,12 +352,13 @@ export function TriangleMarker({
   color: string;
   size?: number;
 }) {
+  if (!finitePair(cx, cy) || !Number.isFinite(size)) return null;
   const s = size;
   const points =
     dir === "up"
       ? `${cx},${cy - s} ${cx - s},${cy + s} ${cx + s},${cy + s}`
       : `${cx},${cy + s} ${cx - s},${cy - s} ${cx + s},${cy - s}`;
-  return <Polygon points={points} fill={color} stroke={terminal.chartBg} strokeWidth={0.8} />;
+  return <SafePolygon points={points} fill={color} stroke={terminal.chartBg} strokeWidth={0.8} />;
 }
 
 /** Compact legend row — panel background + amber border like the terminal. */

@@ -1,7 +1,7 @@
 import type { QuarterPoint, TorqueDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from "react-native-svg";
+import { Circle, G, Line, Rect, Text as SvgText } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import {
   MONO_FONT,
@@ -18,6 +18,8 @@ import {
   Panel,
   PanelHeading,
   PanelNote,
+  SafePolygon,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   type ScrubTipLine,
@@ -48,7 +50,11 @@ const FUNDAMENTAL_HEIGHT = 150;
 export function TorqueDashboard({ data }: { data: TorqueDataset }) {
   const m = data.meta;
   const price = data.series?.price ?? { close: [] };
-  const fundamentals = data.series?.fundamentals;
+  const fundamentals = data.series?.fundamentals ?? {
+    revenue: [],
+    gross_margin: [],
+    operating_margin: [],
+  };
   const hasPrice = (price.close?.length ?? 0) > 0;
   if (!m) {
     return (
@@ -262,9 +268,9 @@ function TorquePricePanel({
         return (
           <>
             <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtPrice} />
-            {band ? <Polygon points={band} fill={bandColor} opacity={0.07} /> : null}
+            {band ? <SafePolygon points={band} fill={bandColor} opacity={0.07} /> : null}
             {price.sma200 ? (
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(price.sma200, dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.amber}
@@ -272,14 +278,14 @@ function TorquePricePanel({
               />
             ) : null}
             {price.ema75 ? (
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(price.ema75, dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.cyan}
                 strokeWidth={1.6}
               />
             ) : null}
-            <Polyline
+            <SafePolyline
               points={polylinePoints(close, dateIndex, x, y)}
               fill="none"
               stroke={terminal.textStrong}
@@ -377,7 +383,7 @@ function RevenuePanel({
             </SvgText>
             {grossMargin.length > 0 ? (
               <>
-                <Polyline
+                <SafePolyline
                   points={grossMargin
                     .map((p, i) => `${x(gmOffset + i).toFixed(1)},${yGm(p.value).toFixed(1)}`)
                     .join(" ")}
@@ -459,8 +465,8 @@ function OperatingMarginPanel({ series }: { series: QuarterPoint[] }) {
               strokeWidth={0.8}
               opacity={0.65}
             />
-            {n > 1 ? <Polygon points={fillPts} fill={terminal.amber} opacity={0.15} /> : null}
-            <Polyline
+            {n > 1 ? <SafePolygon points={fillPts} fill={terminal.amber} opacity={0.15} /> : null}
+            <SafePolyline
               points={linePts.join(" ")}
               fill="none"
               stroke={terminal.amberHot}

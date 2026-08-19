@@ -1,6 +1,6 @@
 import type { AuctionDataset } from "@/api/underlying";
 import { useState } from "react";
-import { G, Line, Polyline, Rect } from "react-native-svg";
+import { G, Line, Rect } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import { terminal } from "./palette";
 import {
@@ -8,6 +8,7 @@ import {
   Crosshair,
   LevelPill,
   Panel,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   XDateLabels,
@@ -35,7 +36,13 @@ const MAX_BARS = 110;
 export function AuctionChart({ data }: { data: AuctionDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const { vah, val, poc } = data.levels ?? { vah: undefined, val: undefined, poc: undefined };
-  const bars = bucketOhlc(data.series?.ohlcv ?? [], MAX_BARS);
+  const bars = bucketOhlc(data.series?.ohlcv ?? [], MAX_BARS).filter(
+    (b) =>
+      Number.isFinite(b.open) &&
+      Number.isFinite(b.high) &&
+      Number.isFinite(b.low) &&
+      Number.isFinite(b.close),
+  );
   const dates = bars.map((b) => b.date);
 
   return (
@@ -92,7 +99,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtPrice} />
-              {typeof vah === "number" && typeof val === "number" ? (
+              {Number.isFinite(vah) && Number.isFinite(val) ? (
                 <Rect
                   x={0}
                   y={y(vah)}
@@ -102,7 +109,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
                   opacity={0.055}
                 />
               ) : null}
-              {typeof vah === "number" && typeof poc === "number" ? (
+              {Number.isFinite(vah) && Number.isFinite(poc) ? (
                 <Rect
                   x={0}
                   y={y(vah)}
@@ -112,7 +119,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
                   opacity={0.11}
                 />
               ) : null}
-              {typeof poc === "number" && typeof val === "number" ? (
+              {Number.isFinite(poc) && Number.isFinite(val) ? (
                 <Rect
                   x={0}
                   y={y(poc)}
@@ -148,7 +155,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
                   </G>
                 );
               })}
-              <Polyline
+              <SafePolyline
                 points={bars.map((b, i) => `${x(i).toFixed(1)},${y(b.close).toFixed(1)}`).join(" ")}
                 fill="none"
                 stroke={terminal.textStrong}

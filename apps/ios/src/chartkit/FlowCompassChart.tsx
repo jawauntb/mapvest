@@ -1,7 +1,7 @@
 import type { FlowCompassDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Line, Polyline, Rect } from "react-native-svg";
+import { Line, Rect } from "react-native-svg";
 import { MONO_FONT, flowComponentColor, terminal } from "./palette";
 import {
   ChartShell,
@@ -9,6 +9,7 @@ import {
   LegendRow,
   Panel,
   PanelHeading,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   type ScrubTipLine,
@@ -45,8 +46,14 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
   const signals = s?.signals ?? [];
   const dates = signals.map((p) => p.date);
   const dateIndex = indexByDate(dates);
-  const trigger = data.levels?.trigger_level;
-  const strong = data.levels?.strong_level;
+  const trigger =
+    typeof data.levels?.trigger_level === "number" && Number.isFinite(data.levels.trigger_level)
+      ? data.levels.trigger_level
+      : 50;
+  const strong =
+    typeof data.levels?.strong_level === "number" && Number.isFinite(data.levels.strong_level)
+      ? data.levels.strong_level
+      : 80;
 
   const freshLongs = signals.filter((p) => p.fresh_long);
   const freshShorts = signals.filter((p) => p.fresh_short);
@@ -76,7 +83,7 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 2)} y={y} format={fmtPrice} />
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s.close, dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.textStrong}
@@ -207,7 +214,7 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
               {guide(-trigger, terminal.red, "5 4", 1.1)}
               {guide(strong, terminal.cyan, "2 3", 1.3)}
               {guide(-strong, terminal.orange, "2 3", 1.3)}
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s.compass_signal, dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.amberHot}

@@ -1,17 +1,11 @@
-import { fetchTickerNews, type NewsItem } from "@/api/news";
+import { type NewsItem, fetchTickerNews } from "@/api/news";
 import { InAppReader } from "@/components/InAppReader";
 import { colors, radii, type as typography } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * Per-ticker news feed for the detail screen.
@@ -44,6 +38,7 @@ export function TickerNewsSection({
   });
 
   const items = useMemo<NewsItem[]>(() => q.data?.items ?? [], [q.data]);
+  const [reader, setReader] = useState<NewsItem | null>(null);
 
   return (
     <View style={styles.wrap}>
@@ -58,55 +53,67 @@ export function TickerNewsSection({
         ) : (
           <View style={styles.list}>
             {items.map((it, idx) => (
-              <NewsRow key={`${it.url}-${idx}`} item={it} isLast={idx === items.length - 1} />
+              <NewsRow
+                key={`${it.url}-${idx}`}
+                item={it}
+                isLast={idx === items.length - 1}
+                onOpen={() => {
+                  hapticTap();
+                  setReader(it);
+                }}
+              />
             ))}
           </View>
         )}
       </View>
+      {reader ? (
+        <InAppReader
+          visible
+          url={reader.url}
+          title={reader.title}
+          source={reader.source}
+          onClose={() => setReader(null)}
+        />
+      ) : null}
     </View>
   );
 }
 
-function NewsRow({ item, isLast }: { item: NewsItem; isLast: boolean }) {
-  const [open, setOpen] = useState(false);
+function NewsRow({
+  item,
+  isLast,
+  onOpen,
+}: {
+  item: NewsItem;
+  isLast: boolean;
+  onOpen: () => void;
+}) {
   return (
-    <>
-      <Pressable
-        onPress={() => {
-          hapticTap();
-          setOpen(true);
-        }}
-        style={({ pressed }) => [
-          styles.row,
-          !isLast && styles.rowDivider,
-          pressed && { opacity: 0.7 },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Read ${item.title} from ${item.source}`}
-      >
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={styles.title} numberOfLines={3}>
-            {item.title}
-          </Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {item.source} · {formatRelative(item.publishedAt)}
-          </Text>
-        </View>
-        <Ionicons
-          name="book-outline"
-          size={16}
-          color={colors.fgMuted}
-          style={{ marginTop: 2, marginLeft: 8 }}
-        />
-      </Pressable>
-      <InAppReader
-        visible={open}
-        url={item.url}
-        title={item.title}
-        source={item.source}
-        onClose={() => setOpen(false)}
+    <Pressable
+      onPress={onOpen}
+      style={({ pressed }) => [
+        styles.row,
+        !isLast && styles.rowDivider,
+        pressed && { opacity: 0.7 },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Read ${item.title} from ${item.source}`}
+    >
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={styles.title} numberOfLines={3}>
+          {item.title}
+        </Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {item.source} · {formatRelative(item.publishedAt)}
+        </Text>
+      </View>
+      <Ionicons
+        name="book-outline"
+        size={16}
+        color={colors.fgMuted}
+        style={{ marginTop: 2, marginLeft: 8 }}
       />
-    </>
+    </Pressable>
   );
 }
 

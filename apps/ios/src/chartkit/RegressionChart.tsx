@@ -1,7 +1,7 @@
 import type { RegressionDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { View } from "react-native";
-import { Polygon, Polyline, Rect } from "react-native-svg";
+import { Rect } from "react-native-svg";
 import { safeFixed } from "./format";
 import { terminal } from "./palette";
 import {
@@ -10,6 +10,8 @@ import {
   LegendRow,
   Panel,
   PanelHeading,
+  SafePolygon,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   type ScrubTipLine,
@@ -135,41 +137,48 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtPrice} />
-              {channel ? <Polygon points={channel} fill={terminal.cyan} opacity={0.11} /> : null}
-              <Polyline points={pts(s.ema21)} fill="none" stroke={terminal.cyan} strokeWidth={1} />
-              <Polyline
+              {channel ? (
+                <SafePolygon points={channel} fill={terminal.cyan} opacity={0.11} />
+              ) : null}
+              <SafePolyline
+                points={pts(s.ema21)}
+                fill="none"
+                stroke={terminal.cyan}
+                strokeWidth={1}
+              />
+              <SafePolyline
                 points={pts(s.ema50)}
                 fill="none"
                 stroke={terminal.violet}
                 strokeWidth={1}
               />
-              <Polyline
+              <SafePolyline
                 points={pts(s.ema200)}
                 fill="none"
                 stroke={terminal.orange}
                 strokeWidth={1}
               />
-              <Polyline
+              <SafePolyline
                 points={pts(s.upper_band)}
                 fill="none"
                 stroke={terminal.green}
                 strokeWidth={1}
                 strokeDasharray="5 4"
               />
-              <Polyline
+              <SafePolyline
                 points={pts(s.lower_band)}
                 fill="none"
                 stroke={terminal.red}
                 strokeWidth={1}
                 strokeDasharray="5 4"
               />
-              <Polyline
+              <SafePolyline
                 points={pts(s.trend)}
                 fill="none"
                 stroke={terminal.amberHot}
                 strokeWidth={2}
               />
-              <Polyline
+              <SafePolyline
                 points={pts(s.close)}
                 fill="none"
                 stroke={terminal.textStrong}

@@ -1,7 +1,7 @@
 import type { RidgeGrowthDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Line, Polyline, Rect } from "react-native-svg";
+import { Line, Rect } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import {
@@ -10,6 +10,7 @@ import {
   LegendRow,
   Panel,
   PanelHeading,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   type ScrubTipLine,
@@ -149,25 +150,25 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                   opacity={0.78}
                 />
               ) : null}
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s?.major_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.muted}
                 strokeWidth={1.4}
               />
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s?.base_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.amber}
                 strokeWidth={1.6}
               />
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s?.fast_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.cyan}
                 strokeWidth={1.6}
               />
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s?.close ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.textStrong}
@@ -252,7 +253,7 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                 strokeDasharray="5 4"
                 opacity={0.62}
               />
-              <Polyline
+              <SafePolyline
                 points={polylinePoints(s?.equity ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={equityColor}
