@@ -159,6 +159,14 @@ Heartbeats keep the Mapvest→client pipe open while Derivation and/or OpenRoute
 
 **What we are not doing**: Redis yet. Per-route quotas stay on identify (`identifyGuards`) and generation (`requireGenerationQuota`).
 
+## D15 — Investable never dies for a chart throw or a 429
+
+**Decision**: The Investable sheet always paints a header. `resolve-comparable` failures (including 429) use a local fallback: typed tickers still get charts; brand names show the name + inline retry and do **not** invent a ticker. Chart SVG throws stay inside `ChartErrorBoundary`. React Query does not retry 429/401.
+
+**Why**: PR #26 stopped IP-wide 60/min exhaustion and wrapped charts, but a map pin named "Starbucks" still replaced the whole sheet with `rate limit exceeded` when resolve 429'd, and a `toFixed` on missing quote/regression fields still escaped the chart boundary.
+
+**What we are not doing**: A batch `/v1/quotes` endpoint. Home's 24-wide quote fan-out is absorbed by the 300/min user/device bucket.
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

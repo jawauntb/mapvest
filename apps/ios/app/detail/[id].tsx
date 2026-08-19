@@ -11,6 +11,7 @@ import {
   saveMemoToWatchlist,
   secFilings,
 } from "@/api/client";
+import { fallbackResolve, looksLikeTicker } from "@/api/resolveFallback";
 import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
@@ -44,14 +45,6 @@ import {
 } from "react-native";
 import { ResearchSheet } from "../ResearchSheet";
 
-function fallbackResolve(ticker: string): ResolveComparableResponse {
-  return {
-    brand: { name: ticker, isPublic: true, ticker: { symbol: ticker } },
-    comparables: [],
-    etfs: [],
-  };
-}
-
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
   const { session } = useSession();
@@ -65,9 +58,7 @@ export default function DetailSheet() {
     staleTime: 5 * 60_000,
   });
 
-  const urlTicker = /^[A-Z][A-Z0-9.]{0,5}$/.test(brand.toUpperCase())
-    ? brand.toUpperCase()
-    : undefined;
+  const urlTicker = looksLikeTicker(brand);
   // Prefer listed brand ticker, then typed URL symbol, then top comparable.
   // Never let a comparable steal charts for a typed ticker like MCD.
   const ticker = q.data?.brand.ticker?.symbol ?? urlTicker ?? q.data?.comparables?.[0]?.ticker;
@@ -174,19 +165,7 @@ export default function DetailSheet() {
       </ScreenFade>
     );
   }
-  const data: ResolveComparableResponse | undefined =
-    q.data ?? (urlTicker ? fallbackResolve(urlTicker) : undefined);
-  if (q.isError && !data) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.err}>{(q.error as Error).message}</Text>
-        <Pressable onPress={() => void q.refetch()} style={styles.miniBtn}>
-          <Text style={styles.miniBtnText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-  if (!data) return null;
+  const data: ResolveComparableResponse = q.data ?? fallbackResolve(brand, urlTicker);
 
   const publicTicker = data.brand.ticker?.symbol;
   const quote = quoteQ.data?.quote;
@@ -210,7 +189,7 @@ export default function DetailSheet() {
   async function onShare() {
     const label = ticker ? `$${ticker}` : data!.brand.name;
     const priceLine = quote
-      ? ` — $${quote.price.toFixed(2)} (${quote.change >= 0 ? "+" : ""}${quote.changePct.toFixed(2)}%)`
+      ? ` — $${fmtLvl(quote.price)} (${quote.change >= 0 ? "+" : ""}${fmtLvl(quote.changePct)}%)`
       : "";
     const deepLink = `mapvest://detail/${encodeURIComponent(ticker ?? data!.brand.name)}`;
     const message = `${data!.brand.name} (${label})${priceLine} — via Mapvest\n${deepLink}`;
@@ -296,7 +275,7 @@ export default function DetailSheet() {
           {quote ? (
             <>
               <View style={styles.quoteRow}>
-                <Text style={styles.quotePrice}>${quote.price.toFixed(2)}</Text>
+                <Text style={styles.quotePrice}>${fmtLvl(quote.price)}</Text>
                 <Text
                   style={[
                     styles.quoteChange,
@@ -304,7 +283,7 @@ export default function DetailSheet() {
                   ]}
                 >
                   {quote.change >= 0 ? "+" : ""}
-                  {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+                  {fmtLvl(quote.change)} ({fmtLvl(quote.changePct)}%)
                 </Text>
               </View>
               <Text style={styles.quoteDisclaimer}>

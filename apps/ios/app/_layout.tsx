@@ -1,6 +1,8 @@
+import { shouldRetryQuery } from "@/api/errors";
 import { SessionProvider, useSession } from "@/auth/session";
 import { PaywallProvider } from "@/billing/Paywall";
 import { AppSidebar } from "@/components/AppSidebar";
+import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { FirstOpenSheet } from "@/components/FirstOpenSheet";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerForPush } from "@/notif/registerForPush";
@@ -108,7 +110,7 @@ export default function RootLayout() {
           queries: {
             staleTime: 60_000,
             gcTime: 1000 * 60 * 60 * 24,
-            retry: 1,
+            retry: shouldRetryQuery,
           },
           mutations: { retry: 0 },
         },
@@ -189,7 +191,13 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <DeferredShareIntent>{tree}</DeferredShareIntent>
+      <ChartErrorBoundary
+        title="This screen hit a display error"
+        detail="Retry to redraw. Header, quote, and actions should stay usable after a chart or identity glitch."
+        retryLabel="Retry screen"
+      >
+        <DeferredShareIntent>{tree}</DeferredShareIntent>
+      </ChartErrorBoundary>
     </GestureHandlerRootView>
   );
 }

@@ -2,6 +2,7 @@ import { radii } from "@/theme/tokens";
 import { useState } from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
 import Svg, { Circle, G, Line, Polygon, Rect, Text as SvgText } from "react-native-svg";
+import { safeUpper } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import { shortDate, spansYears, tickIndices } from "./scale";
 
@@ -30,15 +31,15 @@ export function ChartShell({
   return (
     <View style={styles.shell}>
       <View style={{ gap: 2 }}>
-        <Text style={styles.title}>{title.toUpperCase()}</Text>
+        <Text style={styles.title}>{safeUpper(title)}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {children}
       <View style={styles.footerRow}>
         <Text style={styles.footerLeft} numberOfLines={1}>
-          {(footerLeft ?? "").toUpperCase()}
+          {safeUpper(footerLeft ?? "", "")}
         </Text>
-        <Text style={styles.footerRight}>{footerRight.toUpperCase()}</Text>
+        <Text style={styles.footerRight}>{safeUpper(footerRight)}</Text>
       </View>
     </View>
   );
@@ -46,7 +47,7 @@ export function ChartShell({
 
 /** Small amber uppercase caption above a sub-panel (matplotlib axis titles). */
 export function PanelHeading({ label }: { label: string }) {
-  return <Text style={styles.panelHeading}>{label.toUpperCase()}</Text>;
+  return <Text style={styles.panelHeading}>{safeUpper(label)}</Text>;
 }
 
 /**
@@ -359,7 +360,7 @@ export function LegendRow({
 export function PanelNote({ title, detail }: { title: string; detail?: string }) {
   return (
     <View style={styles.noteBox}>
-      <Text style={styles.noteTitle}>{title.toUpperCase()}</Text>
+      <Text style={styles.noteTitle}>{safeUpper(title)}</Text>
       {detail ? <Text style={styles.noteDetail}>{detail}</Text> : null}
     </View>
   );

@@ -249,17 +249,7 @@ export default function TickerDetail() {
     [presentPaywall],
   );
 
-  if (!resolved && !urlTicker) {
-    if (err) {
-      return (
-        <div className="app-detail">
-          <p className="app-err">{err}</p>
-          <button type="button" className="app-btn" onClick={() => window.location.reload()}>
-            Retry
-          </button>
-        </div>
-      );
-    }
+  if (!resolved && !urlTicker && !err) {
     return (
       <div className="app-detail">
         <p className="app-muted">Loading…</p>
@@ -412,12 +402,15 @@ export default function TickerDetail() {
 
       {quote ? (
         <div className="app-quote">
-          <span className="app-quote-price">${quote.price.toFixed(2)}</span>
+          <span className="app-quote-price">
+            {typeof quote.price === "number" ? `$${quote.price.toFixed(2)}` : "—"}
+          </span>
           <span
             className={`app-quote-change ${quote.change >= 0 ? "app-quote-up" : "app-quote-down"}`}
           >
             {quote.change >= 0 ? "+" : ""}
-            {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
+            {typeof quote.change === "number" ? quote.change.toFixed(2) : "—"} (
+            {typeof quote.changePct === "number" ? `${quote.changePct.toFixed(2)}%` : "—"})
           </span>
           <span className="app-quote-disc">{quote.disclaimer}</span>
         </div>

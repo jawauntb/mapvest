@@ -45,3 +45,9 @@ export function apiErrorFromResponse(status: number, text: string, fallback: str
   }
   return new ApiError(status, message, code, remaining, limit);
 }
+
+/** React Query retry: one retry, never on 429 / 401 (retrying those deepens the hole). */
+export function shouldRetryQuery(failureCount: number, error: unknown, max = 1): boolean {
+  if (error instanceof ApiError && (error.status === 429 || error.status === 401)) return false;
+  return failureCount < max;
+}
