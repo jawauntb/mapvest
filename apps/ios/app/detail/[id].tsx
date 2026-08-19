@@ -28,7 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -137,20 +137,30 @@ export default function DetailSheet() {
     }
   }
 
+  // Keep the native header stable while the load sequence re-renders this
+  // screen many times in quick succession (resolve → stage timers → quote).
+  // Recreating headerLeft/headerRight closures on every render re-configures
+  // RNSScreenStackHeaderConfig mid push-transition — native churn we can
+  // avoid by memoizing on the ticker only. onShare reads live data via ref.
+  const onShareRef = useRef(onShare);
+  onShareRef.current = onShare;
+  const screenOptions = useMemo(
+    () => ({
+      title: "Investable",
+      // Hide iOS's native back chevron/pill so it can't stack behind
+      // our own — that was the cause of the misalignment.
+      headerBackVisible: false,
+      headerLeft: () => <HomeBackButton />,
+      headerRight: () => (
+        <DetailHeaderRight ticker={ticker ?? ""} onShare={() => void onShareRef.current()} />
+      ),
+    }),
+    [ticker],
+  );
+
   return (
     <View style={styles.root}>
-      <Stack.Screen
-        options={{
-          title: "Investable",
-          // Hide iOS's native back chevron/pill so it can't stack behind
-          // our own — that was the cause of the misalignment.
-          headerBackVisible: false,
-          headerLeft: () => <HomeBackButton />,
-          headerRight: () => (
-            <DetailHeaderRight ticker={ticker ?? ""} onShare={() => void onShare()} />
-          ),
-        }}
-      />
+      <Stack.Screen options={screenOptions} />
       <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
         {identityLoading ? (
           <>
@@ -681,10 +691,10 @@ function AgentOverviewBlock({
         // content column. Without it, RN can size a column-flex View to its
         // intrinsic content width and let a single long line spill right.
         <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
-          <RichText text={overviewQ.data?.article.content ?? ""} />
-          {(overviewQ.data?.article.interesting?.length ?? 0) > 0 ? (
+          <RichText text={overviewQ.data?.article?.content ?? ""} />
+          {(overviewQ.data?.article?.interesting?.length ?? 0) > 0 ? (
             <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
-              {overviewQ.data!.article.interesting.slice(0, 5).map((line) => (
+              {(overviewQ.data?.article?.interesting ?? []).slice(0, 5).map((line) => (
                 <Text key={line} style={[styles.muted, { flexShrink: 1 }]}>
                   · {line}
                 </Text>
@@ -848,7 +858,7 @@ function WatchlistActions({
     enabled: !!token,
     staleTime: 30_000,
   });
-  const entry = wl.data?.items.find((e) => e.ticker.toUpperCase() === sym);
+  const entry = wl.data?.items?.find((e) => e.ticker?.toUpperCase() === sym);
   const serverSaved = !!entry;
   const isSaved = optimisticSaved ?? serverSaved;
   // A memo persisted on the watchlist entry hydrates the card until a fresh

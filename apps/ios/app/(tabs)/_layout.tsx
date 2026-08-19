@@ -30,7 +30,10 @@ export default function TabsLayout() {
 function EdgeSwipeOpener() {
   const { openSidebar } = useSidebar();
   const pan = Gesture.Pan()
-    .activeOffsetX([30, 30])
+    // Single positive threshold = activate only after a 30pt rightward pan.
+    // The old two-element form ([30, 30]) is invalid — the first entry must
+    // be negative — and made the gesture activate on any horizontal move.
+    .activeOffsetX(30)
     .onEnd((e) => {
       if (e.translationX > 40 && Math.abs(e.velocityX) > 0) {
         runOnJS(openSidebar)();

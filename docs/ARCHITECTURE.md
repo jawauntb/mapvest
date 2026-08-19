@@ -120,6 +120,28 @@ hot-swapped a Reanimated header while resolve returned. Expo/web
 it kept working. Charts still live behind an error boundary; SVG polylines
 with empty/NaN `points` are not mounted.
 
+Crash-hardening (TestFlight builds 64–86 all aborted on
+`com.facebook.react.ExceptionsManagerQueue`, i.e. an uncaught fatal **JS**
+error, per the device `.ips` logs — not a chart/native-view bug):
+
+- `react-native-reanimated` is pinned to the **3.19.x** line. 3.17.x only
+  supports RN ≤ 0.79 and the app runs RN 0.81 with the old architecture;
+  worklet errors from a mismatched Reanimated are rethrown on the JS
+  thread outside React's render phase, where no error boundary can catch
+  them, and release builds abort. Do not re-pin to 3.17 and do not move to
+  4.x while `newArchEnabled` is `false` (4.x is Fabric-only).
+- `src/util/fatalGuard.ts` replaces the release-mode global JS error
+  handler: an uncaught fatal error now renders a recovery screen (with the
+  error message, so a TestFlight screenshot doubles as a crash report)
+  instead of `abort()`ing the process. Dev builds keep RedBox.
+- The Investable header (`Stack.Screen` options) is memoized on the ticker
+  so the native `RNSScreenStackHeaderConfig` is not re-configured on every
+  render mid push-transition.
+- Home's Local Economy Brief reads the map region from the react-query
+  cache only (`queryFn` returns `undefined`, `enabled: false`). A missing
+  `queryFn` threw on every Home mount and is the same class of fatal JS
+  error that aborted TestFlight.
+
 ## Layering rules
 
 - `apps/*` may import `packages/*`.

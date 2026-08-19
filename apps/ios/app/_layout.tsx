@@ -9,6 +9,13 @@ import { registerForPush } from "@/notif/registerForPush";
 import { type NotifData, pathFromNotificationData } from "@/notif/router";
 import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
+import {
+  FATAL_JS_EVENT,
+  type FatalReport,
+  clearPendingFatal,
+  getPendingFatal,
+  installFatalGuard,
+} from "@/util/fatalGuard";
 import { Syne_700Bold, Syne_800ExtraBold } from "@expo-google-fonts/syne";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -21,6 +28,7 @@ import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { DeviceEventEmitter, Pressable, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -29,6 +37,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 // stall first paint on iOS 26 — we mount it after the first frame.
 
 SplashScreen.hideAsync().catch(() => {});
+
+// Must run before anything can throw: uncaught JS errors outside React's
+// render phase (timers, event handlers, worklets) otherwise abort() release
+// builds via the native ExceptionsManager. See src/util/fatalGuard.ts.
+installFatalGuard();
 
 try {
   Notifications.setNotificationHandler({
@@ -133,6 +146,18 @@ export default function RootLayout() {
   );
 
   const [rootReady, setRootReady] = useState(false);
+  // Fatal JS error captured by the guard: swap the tree for a recovery
+  // screen instead of the process dying. `epoch` keys the tree so Recover
+  // performs a full remount with fresh state.
+  const [fatal, setFatal] = useState<FatalReport | null>(() => getPendingFatal());
+  const [epoch, setEpoch] = useState(0);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(FATAL_JS_EVENT, (report: FatalReport) => {
+      setFatal((prev) => prev ?? report);
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     // Hide the splash on first paint, with a 3s absolute fallback so we
@@ -207,8 +232,23 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 
+  if (fatal) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <FatalRecovery
+          report={fatal}
+          onRecover={() => {
+            clearPendingFatal();
+            setFatal(null);
+            setEpoch((n) => n + 1);
+          }}
+        />
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView key={epoch} style={{ flex: 1 }}>
       <ChartErrorBoundary
         title="This screen hit a display error"
         detail="Retry to redraw. Header, quote, and actions should stay usable after a chart or identity glitch."
@@ -217,6 +257,55 @@ export default function RootLayout() {
         <DeferredShareIntent>{tree}</DeferredShareIntent>
       </ChartErrorBoundary>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Shown instead of a process kill when the fatal guard traps an uncaught JS
+ * error. Surfaces the message so TestFlight screenshots double as crash
+ * reports; Recover remounts the whole tree with fresh state.
+ */
+function FatalRecovery({ report, onRecover }: { report: FatalReport; onRecover: () => void }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.bg,
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 28,
+        gap: 14,
+      }}
+    >
+      <Text style={{ color: colors.fg, fontSize: 18, fontWeight: "800", textAlign: "center" }}>
+        Something went wrong
+      </Text>
+      <Text style={{ color: colors.fgMuted, fontSize: 13, textAlign: "center" }}>
+        Mapvest hit an unexpected error and stopped this screen instead of crashing.
+      </Text>
+      <Text
+        style={{ color: colors.fgMuted, fontSize: 11, textAlign: "center", opacity: 0.8 }}
+        numberOfLines={8}
+      >
+        {report.message}
+      </Text>
+      <Pressable
+        onPress={onRecover}
+        accessibilityRole="button"
+        accessibilityLabel="Recover"
+        style={({ pressed }) => ({
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 999,
+          paddingHorizontal: 22,
+          paddingVertical: 12,
+          backgroundColor: colors.bgElevated,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "700" }}>Recover</Text>
+      </Pressable>
+    </View>
   );
 }
 
