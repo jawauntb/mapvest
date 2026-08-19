@@ -112,6 +112,11 @@ const errorResponse = (description: string) => ({
   content: { "application/json": { schema: ErrorResponse } },
 });
 
+const flatErrorResponse = (description: string) => ({
+  description,
+  content: { "application/json": { schema: z.object({ error: z.string() }) } },
+});
+
 const quotaExceededResponse = {
   description:
     "Free-tier generation quota spent. Clients must present the paywall, not a generic error.",
@@ -385,15 +390,26 @@ registry.registerPath({
   path: "/v1/market-data/aggregates",
   summary: "Historical market aggregates",
   description:
-    "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are provider Unix milliseconds.",
+    "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are Unix seconds. The endpoint returns an opaque `nextCursor` when the provider has another page.",
   tags: ["finance"],
   request: {
     query: z.object({
       symbol: z.string().openapi({ example: "AAPL" }),
-      from: z.string().optional().openapi({ example: "2026-01-01" }),
-      to: z.string().optional().openapi({ example: "2026-01-31" }),
-      multiplier: z.coerce.number().optional().openapi({ example: 1 }),
-      timespan: z.string().optional().openapi({ example: "day" }),
+      from: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .openapi({ example: "2026-01-01" }),
+      to: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .openapi({ example: "2026-01-31" }),
+      multiplier: z.coerce.number().int().min(1).max(1_000).optional().openapi({ example: 1 }),
+      timespan: z
+        .enum(["minute", "hour", "day", "week", "month", "quarter", "year"])
+        .optional()
+        .openapi({ example: "day" }),
       adjusted: z.coerce.boolean().optional(),
       assetClass: z.enum(["stocks", "options"]).optional(),
     }),
@@ -403,10 +419,11 @@ registry.registerPath({
       description: "Aggregate bars.",
       content: { "application/json": { schema: S.AggregatesResponse } },
     },
-    400: errorResponses[400],
-    429: errorResponses[429],
-    502: errorResponse("Market-data aggregates unavailable."),
     ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Market-data aggregates unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 
@@ -422,8 +439,8 @@ registry.registerPath({
       underlying: z.string().openapi({ example: "AAPL" }),
       expiration_date: z.string().optional(),
       contract_type: z.enum(["call", "put"]).optional(),
-      strike_price: z.coerce.number().optional(),
-      limit: z.coerce.number().optional(),
+      strike_price: z.coerce.number().finite().optional(),
+      limit: z.coerce.number().int().min(1).max(250).optional(),
       cursor: z.string().optional(),
     }),
   },
@@ -432,10 +449,11 @@ registry.registerPath({
       description: "Options chain page.",
       content: { "application/json": { schema: S.OptionsResponse } },
     },
-    400: errorResponses[400],
-    429: errorResponses[429],
-    502: errorResponse("Options chain unavailable."),
     ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options chain unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 
@@ -453,7 +471,9 @@ registry.registerPath({
       expiration_date: z.string().optional(),
       contract_type: z.enum(["call", "put"]).optional(),
       expired: z.coerce.boolean().optional(),
-      limit: z.coerce.number().optional(),
+      as_of: z.string().optional(),
+      strike_price: z.coerce.number().finite().optional(),
+      limit: z.coerce.number().int().min(1).max(1_000).optional(),
       cursor: z.string().optional(),
     }),
   },
@@ -462,9 +482,11 @@ registry.registerPath({
       description: "Options contracts page.",
       content: { "application/json": { schema: S.OptionContractsResponse } },
     },
-    429: errorResponses[429],
-    502: errorResponse("Options contracts unavailable."),
     ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options contracts unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 
@@ -490,9 +512,10 @@ registry.registerPath({
         },
       },
     },
-    429: errorResponses[429],
-    502: errorResponse("Options contract unavailable."),
     ...errorResponses,
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Options contract unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 
@@ -516,9 +539,11 @@ registry.registerPath({
       description: "Market events.",
       content: { "application/json": { schema: S.MarketEventsResponse } },
     },
-    429: errorResponses[429],
-    502: errorResponse("Market events unavailable."),
     ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    502: flatErrorResponse("Market events unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
   },
 });
 

@@ -16,6 +16,8 @@ const savedEnv = {
   retries: process.env.MASSIVE_MAX_RETRIES,
   delay: process.env.MASSIVE_RETRY_DELAY_MS,
   freshness: process.env.MASSIVE_MARKET_DATA_FRESHNESS,
+  nodeEnv: process.env.NODE_ENV,
+  testBase: process.env.MASSIVE_ALLOW_TEST_BASE_URL,
 };
 
 function installFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -43,6 +45,8 @@ beforeEach(() => {
   process.env.MASSIVE_MAX_RETRIES = "0";
   process.env.MASSIVE_RETRY_DELAY_MS = "0";
   process.env.MASSIVE_MARKET_DATA_FRESHNESS = "real-time";
+  process.env.NODE_ENV = "test";
+  process.env.MASSIVE_ALLOW_TEST_BASE_URL = "1";
 });
 
 afterEach(() => {
@@ -54,6 +58,8 @@ afterEach(() => {
     MASSIVE_MAX_RETRIES: savedEnv.retries,
     MASSIVE_RETRY_DELAY_MS: savedEnv.delay,
     MASSIVE_MARKET_DATA_FRESHNESS: savedEnv.freshness,
+    NODE_ENV: savedEnv.nodeEnv,
+    MASSIVE_ALLOW_TEST_BASE_URL: savedEnv.testBase,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -122,9 +128,52 @@ describe("Massive provider adapter", () => {
     });
   });
 
+  test("rejects an unsafe Massive base URL before sending the bearer token", async () => {
+    process.env.MASSIVE_BASE_URL = "http://evil.example.test";
+    process.env.MASSIVE_ALLOW_TEST_BASE_URL = "0";
+    const fetchMock = installFetch(() => json({ status: "OK" }));
+    await expect(massiveClient.getQuote("ABC")).rejects.toMatchObject({
+      status: 503,
+      code: "invalid_configuration",
+    });
+    expect(fetchMock).toHaveLength(0);
+  });
+
   test("returns null for a snapshot with no usable price", async () => {
     installFetch(() => json({ ticker: { prevDay: { c: 100 } }, status: "OK" }));
     expect(await massiveClient.getQuote("ABC")).toBeNull();
+  });
+
+  test("uses a quote-only snapshot instead of falling back to the prior close", async () => {
+    installFetch(() =>
+      json({
+        ticker: {
+          prevDay: { c: 100 },
+          lastQuote: { P: 101, p: 103, t: 1_700_000_001_000 },
+        },
+        status: "OK",
+      }),
+    );
+    const quote = await massiveClient.getQuote("ABC");
+    expect(quote).toMatchObject({ price: 102, change: 2 });
+    expect(quote?.ts).toBe(new Date(1_700_000_001_000).toISOString());
+  });
+
+  test("uses the explicit Yahoo fallback after a null Massive quote", async () => {
+    process.env.MARKET_DATA_FALLBACK_PROVIDER = "yahoo";
+    let attempt = 0;
+    installFetch((url) => {
+      attempt += 1;
+      if (url.includes("massive.test")) return json({ ticker: { prevDay: { c: 100 } } });
+      return json({
+        chart: {
+          result: [{ meta: { symbol: "ABC", regularMarketPrice: 102, chartPreviousClose: 100 } }],
+        },
+      });
+    });
+    const quote = await getQuote("ABC");
+    expect(quote?.provider).toBe("yahoo");
+    expect(attempt).toBe(2);
   });
 
   test("maps stock aggregates to normalized OHLCV bars", async () => {
@@ -171,8 +220,8 @@ describe("Massive provider adapter", () => {
             implied_volatility: 0.22,
             open_interest: 55,
             greeks: { delta: 0.5 },
-            last_quote: { bid: 1, ask: 1.1 },
-            last_trade: { price: 1.05, size: 2 },
+            last_quote: { bid: 1, ask: 1.1, last_updated: 1_700_000_001_000_000_000 },
+            last_trade: { price: 1.05, size: 2, sip_timestamp: 1_700_000_002_000_000_000 },
           },
         ],
       }),
@@ -182,13 +231,14 @@ describe("Massive provider adapter", () => {
       expirationDate: "2026-01-16",
       limit: 1,
     });
-    expect(result.nextUrl).toContain("cursor=next");
+    expect(result.nextCursor).toBe("next");
     expect(result.results[0]).toMatchObject({
       ticker: "O:AAPL260116C00100000",
       contractType: "call",
       impliedVolatility: 0.22,
       greeks: { delta: 0.5 },
       quote: { bid: 1, ask: 1.1 },
+      trade: { ts: 1_700_000_002 },
     });
   });
 
@@ -212,7 +262,10 @@ describe("Massive provider adapter", () => {
       if (call === 2)
         return json({
           status: "OK",
-          results: [{ ticker: "AAPL", execution_date: "2025-01-01", split_from: 1, split_to: 2 }],
+          results: [
+            { ticker: "AAPL", execution_date: "2024-01-01", split_from: 1, split_to: 2 },
+            { ticker: "AAPL", execution_date: "2025-01-01", split_from: 1, split_to: 2 },
+          ],
         });
       return json({
         status: "OK",
@@ -220,12 +273,17 @@ describe("Massive provider adapter", () => {
       });
     });
     const contracts = await getOptionContracts({ underlyingTicker: "AAPL" });
-    const events = await getCorporateEvents({ ticker: "AAPL" });
+    const events = await getCorporateEvents({
+      ticker: "AAPL",
+      from: "2025-01-01",
+      to: "2025-12-31",
+    });
     expect(contracts.results[0]).toMatchObject({
       ticker: "O:AAPL260116C00100000",
       expirationDate: "2026-01-16",
       strikePrice: 100,
     });
     expect(events.map((event) => event.type).sort()).toEqual(["dividend", "split"]);
+    expect(events.every((event) => event.date?.startsWith("2025"))).toBe(true);
   });
 });

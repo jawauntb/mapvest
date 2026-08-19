@@ -1,6 +1,7 @@
 import type { Quote } from "../quote.js";
 import {
   type AggregateBar,
+  type AggregatePage,
   type AggregateQuery,
   type CorporateEvent,
   type HistoryPoint,
@@ -17,6 +18,33 @@ const DEFAULT_BASE_URL = "https://api.massive.com";
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_RETRIES = 2;
 
+export function massiveBaseUrl(): string {
+  const raw = process.env.MASSIVE_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new MarketDataProviderError("Invalid Massive base URL", {
+      provider: "massive",
+      status: 503,
+      code: "invalid_configuration",
+    });
+  }
+  const testOverride =
+    process.env.NODE_ENV === "test" && process.env.MASSIVE_ALLOW_TEST_BASE_URL === "1";
+  if (
+    (!testOverride && url.protocol !== "https:") ||
+    (!testOverride && url.hostname !== "api.massive.com")
+  ) {
+    throw new MarketDataProviderError("Massive base URL is not allowed", {
+      provider: "massive",
+      status: 503,
+      code: "invalid_configuration",
+    });
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
 type MassiveEnvelope<T> = {
   results?: T[] | T;
   next_url?: string;
@@ -32,6 +60,7 @@ type MassiveTickerSnapshot = {
     prevDay?: { c?: number };
     lastTrade?: { p?: number; t?: number };
     lastQuote?: { P?: number; p?: number; t?: number };
+    updated?: number;
     name?: string;
     currencyName?: string;
   };
@@ -97,6 +126,13 @@ function isoFromTimestamp(value: unknown): string {
   return new Date(millis).toISOString();
 }
 
+function unixSeconds(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+  if (value > 1_000_000_000_000_000) return Math.floor(value / 1_000_000_000);
+  if (value > 10_000_000_000) return Math.floor(value / 1_000);
+  return Math.floor(value);
+}
+
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -106,6 +142,15 @@ function dateRange(period: "1mo" | "3mo" | "6mo" | "1y"): { from: string; to: st
   const to = new Date();
   const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1_000);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
+function cursorFromNextUrl(nextUrl: string | undefined): string | undefined {
+  if (!nextUrl) return undefined;
+  try {
+    return new URL(nextUrl).searchParams.get("cursor") ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function mapContract(value: MassiveContract): OptionContract | null {
@@ -138,14 +183,14 @@ function mapSnapshot(value: MassiveOptionSnapshot): OptionSnapshot | null {
           ask: numberOrUndefined(value.last_quote.ask),
           bidSize: numberOrUndefined(value.last_quote.bid_size),
           askSize: numberOrUndefined(value.last_quote.ask_size),
-          ts: numberOrUndefined(value.last_quote.last_updated),
+          ts: unixSeconds(value.last_quote.last_updated),
         }
       : undefined,
     trade: value.last_trade
       ? {
           price: numberOrUndefined(value.last_trade.price),
           size: numberOrUndefined(value.last_trade.size),
-          ts: numberOrUndefined(value.last_trade.sip_timestamp),
+          ts: unixSeconds(value.last_trade.sip_timestamp),
         }
       : undefined,
     day: value.day,
@@ -229,7 +274,7 @@ export class MassiveClient {
   }
 
   private get baseUrl(): string {
-    return (process.env.MASSIVE_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, "");
+    return massiveBaseUrl();
   }
 
   private async request<T>(
@@ -283,7 +328,7 @@ export class MassiveClient {
         const delay =
           Number.isFinite(retryAfter) && retryAfter >= 0
             ? retryAfter * 1_000
-            : attempt * envNumber("MASSIVE_RETRY_DELAY_MS", 100);
+            : envNumber("MASSIVE_RETRY_DELAY_MS", 100) * 2 ** attempt + Math.random() * 25;
         await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 2_000)));
       } catch (error) {
         if (error instanceof MarketDataProviderError) throw error;
@@ -295,6 +340,8 @@ export class MassiveClient {
             requestId: lastRequestId,
           });
         }
+        const delay = envNumber("MASSIVE_RETRY_DELAY_MS", 100) * 2 ** attempt + Math.random() * 25;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 2_000)));
       } finally {
         clearTimeout(timer);
       }
@@ -316,8 +363,15 @@ export class MassiveClient {
     const ticker = (body as MassiveTickerSnapshot).ticker;
     const lastTrade = ticker?.lastTrade;
     const day = ticker?.day;
+    const lastQuote = ticker?.lastQuote;
     const previous = numberOrUndefined(ticker?.prevDay?.c);
-    const price = numberOrUndefined(lastTrade?.p) ?? numberOrUndefined(day?.c);
+    const bid = numberOrUndefined(lastQuote?.P);
+    const ask = numberOrUndefined(lastQuote?.p);
+    const quotePrice =
+      bid !== undefined && ask !== undefined
+        ? (bid + ask) / 2
+        : (ask ?? bid ?? numberOrUndefined(day?.c));
+    const price = numberOrUndefined(lastTrade?.p) ?? quotePrice;
     if (price === undefined || previous === undefined) return null;
     const change = price - previous;
     const mode = freshness();
@@ -335,7 +389,7 @@ export class MassiveClient {
       change,
       changePct: previous !== 0 ? (change / previous) * 100 : 0,
       currency: ticker?.currencyName ?? "USD",
-      ts: isoFromTimestamp(lastTrade?.t ?? day?.t),
+      ts: isoFromTimestamp(lastTrade?.t ?? lastQuote?.t ?? ticker?.updated ?? day?.t),
       disclaimer,
       name: ticker?.name,
       provider: "massive",
@@ -367,7 +421,7 @@ export class MassiveClient {
     return points.length >= 2 ? points : null;
   }
 
-  async getAggregates(query: AggregateQuery): Promise<AggregateBar[]> {
+  async getAggregatesPage(query: AggregateQuery): Promise<AggregatePage> {
     const body = await this.request<MassiveAggregate>(
       `/v2/aggs/ticker/${encodeURIComponent(query.symbol.trim().toUpperCase())}/range/${query.multiplier}/${query.timespan}/${query.from}/${query.to}`,
       {
@@ -377,7 +431,7 @@ export class MassiveClient {
       },
     );
     const rows = Array.isArray(body.results) ? body.results : [];
-    return rows.flatMap((row) => {
+    const points = rows.flatMap((row) => {
       const ts = numberOrUndefined(row.t);
       const open = numberOrUndefined(row.o);
       const high = numberOrUndefined(row.h);
@@ -404,6 +458,15 @@ export class MassiveClient {
         },
       ];
     });
+    return {
+      points,
+      nextCursor: cursorFromNextUrl(body.next_url),
+      requestId: body.request_id,
+    };
+  }
+
+  async getAggregates(query: AggregateQuery): Promise<AggregateBar[]> {
+    return (await this.getAggregatesPage(query)).points;
   }
 
   async getOptionsChain(query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>> {
@@ -422,7 +485,7 @@ export class MassiveClient {
         const mapped = mapSnapshot(row);
         return mapped ? [mapped] : [];
       }),
-      nextUrl: body.next_url,
+      nextCursor: cursorFromNextUrl(body.next_url),
       requestId: body.request_id,
     };
   }
@@ -444,7 +507,7 @@ export class MassiveClient {
         const mapped = mapContract(row);
         return mapped ? [mapped] : [];
       }),
-      nextUrl: body.next_url,
+      nextCursor: cursorFromNextUrl(body.next_url),
       requestId: body.request_id,
     };
   }
@@ -465,13 +528,11 @@ export class MassiveClient {
     const [splits, dividends] = await Promise.all([
       this.request<Record<string, unknown>>("/stocks/v1/splits", {
         ticker: query.ticker,
-        execution_date: query.from,
-        limit: query.limit ?? 100,
+        limit: Math.min(query.limit ?? 100, 250),
       }),
       this.request<Record<string, unknown>>("/stocks/v1/dividends", {
         ticker: query.ticker,
-        ex_dividend_date: query.from,
-        limit: query.limit ?? 100,
+        limit: Math.min(query.limit ?? 100, 250),
       }),
     ]);
     const splitEvents = (Array.isArray(splits.results) ? splits.results : []).map((row) => ({
@@ -494,9 +555,14 @@ export class MassiveClient {
       }),
     );
     return [...splitEvents, ...dividendEvents]
-      .filter((event) => !query.to || !event.date || event.date <= query.to)
+      .filter((event) => {
+        if (!event.date) return false;
+        if (query.from && event.date < query.from) return false;
+        if (query.to && event.date > query.to) return false;
+        return true;
+      })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
-      .slice(0, query.limit ?? 100);
+      .slice(0, Math.min(query.limit ?? 100, 500));
   }
 }
 

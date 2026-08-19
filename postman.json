@@ -427,7 +427,7 @@
                 }
               ]
             },
-            "description": "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are provider Unix milliseconds."
+            "description": "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are Unix seconds. The endpoint returns an opaque `nextCursor` when the provider has another page."
           }
         },
         {
@@ -436,7 +436,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/options/chain?underlying=AAPL&expiration_date=&contract_type=call&strike_price=0&limit=0&cursor=",
+              "raw": "{{baseUrl}}/v1/options/chain?underlying=AAPL&expiration_date=&contract_type=call&strike_price=0&limit=1&cursor=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -464,7 +464,7 @@
                 },
                 {
                   "key": "limit",
-                  "value": "0"
+                  "value": "1"
                 },
                 {
                   "key": "cursor",
@@ -481,7 +481,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/options/contracts?underlying=&ticker=&expiration_date=&contract_type=call&expired=false&limit=0&cursor=",
+              "raw": "{{baseUrl}}/v1/options/contracts?underlying=&ticker=&expiration_date=&contract_type=call&expired=false&as_of=&strike_price=0&limit=1&cursor=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -512,8 +512,16 @@
                   "value": "false"
                 },
                 {
-                  "key": "limit",
+                  "key": "as_of",
+                  "value": ""
+                },
+                {
+                  "key": "strike_price",
                   "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "1"
                 },
                 {
                   "key": "cursor",

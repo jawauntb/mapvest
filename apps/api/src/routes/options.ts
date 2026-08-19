@@ -7,12 +7,13 @@ import {
 import { type Context, Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { marketDataSource } from "../lib/marketDataSource.js";
+import { marketDataRateLimit } from "../middleware/marketDataRateLimit.js";
 
 const options = new Hono();
 
-function limitOf(raw: string | undefined, fallback: number): number {
+function limitOf(raw: string | undefined, fallback: number, maximum = 1_000): number {
   const value = Number(raw);
-  return Number.isFinite(value) ? Math.max(1, Math.min(1_000, Math.floor(value))) : fallback;
+  return Number.isFinite(value) ? Math.max(1, Math.min(maximum, Math.floor(value))) : fallback;
 }
 
 function optionError(c: Context, error: unknown) {
@@ -62,11 +63,16 @@ options.get("/", (c) => {
 });
 
 /** Additive Massive-backed option-chain snapshot. */
-options.get("/chain", async (c) => {
+options.get("/chain", marketDataRateLimit, async (c) => {
   const underlyingTicker = (c.req.query("underlying") ?? c.req.query("ticker") ?? "")
     .trim()
     .toUpperCase();
   if (!underlyingTicker) return c.json({ error: "underlying required" }, 400);
+  const strikePriceRaw = c.req.query("strike_price");
+  const strikePrice = strikePriceRaw ? Number(strikePriceRaw) : undefined;
+  if (strikePriceRaw && !Number.isFinite(strikePrice)) {
+    return c.json({ error: "strike_price must be a number" }, 400);
+  }
   try {
     const page = await getOptionsChain({
       underlyingTicker,
@@ -77,14 +83,14 @@ options.get("/chain", async (c) => {
           : c.req.query("contract_type") === "call"
             ? "call"
             : undefined,
-      strikePrice: c.req.query("strike_price") ? Number(c.req.query("strike_price")) : undefined,
-      limit: limitOf(c.req.query("limit"), 250),
+      strikePrice,
+      limit: limitOf(c.req.query("limit"), 250, 250),
       cursor: c.req.query("cursor"),
     });
     return c.json({
       underlyingTicker,
       contracts: page.results,
-      nextUrl: page.nextUrl,
+      nextCursor: page.nextCursor,
       requestId: page.requestId,
       sources: [marketDataSource()],
     });
@@ -94,7 +100,12 @@ options.get("/chain", async (c) => {
 });
 
 /** Additive Massive-backed options contract index with cursor pass-through. */
-options.get("/contracts", async (c) => {
+options.get("/contracts", marketDataRateLimit, async (c) => {
+  const strikePriceRaw = c.req.query("strike_price");
+  const strikePrice = strikePriceRaw ? Number(strikePriceRaw) : undefined;
+  if (strikePriceRaw && !Number.isFinite(strikePrice)) {
+    return c.json({ error: "strike_price must be a number" }, 400);
+  }
   try {
     const page = await getOptionContracts({
       underlyingTicker: c.req.query("underlying")?.trim().toUpperCase(),
@@ -107,7 +118,7 @@ options.get("/contracts", async (c) => {
           : c.req.query("contract_type") === "call"
             ? "call"
             : undefined,
-      strikePrice: c.req.query("strike_price") ? Number(c.req.query("strike_price")) : undefined,
+      strikePrice,
       expired:
         c.req.query("expired") === "true"
           ? true
@@ -119,7 +130,7 @@ options.get("/contracts", async (c) => {
     });
     return c.json({
       contracts: page.results,
-      nextUrl: page.nextUrl,
+      nextCursor: page.nextCursor,
       requestId: page.requestId,
       sources: [marketDataSource()],
     });
@@ -128,7 +139,7 @@ options.get("/contracts", async (c) => {
   }
 });
 
-options.get("/contracts/:ticker", async (c) => {
+options.get("/contracts/:ticker", marketDataRateLimit, async (c) => {
   const ticker = c.req.param("ticker").trim().toUpperCase();
   if (!ticker) return c.json({ error: "contract ticker required" }, 400);
   try {

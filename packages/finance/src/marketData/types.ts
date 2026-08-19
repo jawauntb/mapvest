@@ -16,6 +16,12 @@ export type AggregateBar = {
   transactions?: number;
 };
 
+export type AggregatePage = {
+  points: AggregateBar[];
+  nextCursor?: string;
+  requestId?: string;
+};
+
 export type AggregateQuery = {
   symbol: string;
   from: string;
@@ -102,7 +108,7 @@ export type OptionsChainQuery = OptionContractQuery & {
 
 export type ProviderPage<T> = {
   results: T[];
-  nextUrl?: string;
+  nextCursor?: string;
   requestId?: string;
 };
 
@@ -115,6 +121,7 @@ export type MarketDataProvider = {
     period: "1mo" | "3mo" | "6mo" | "1y",
   ): Promise<HistoryPoint[] | null>;
   getAggregates(query: AggregateQuery): Promise<AggregateBar[]>;
+  getAggregatesPage(query: AggregateQuery): Promise<AggregatePage>;
   getOptionsChain(query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>>;
   getOptionContracts(query: OptionContractQuery): Promise<ProviderPage<OptionContract>>;
   getOptionContract(ticker: string): Promise<OptionContract | null>;

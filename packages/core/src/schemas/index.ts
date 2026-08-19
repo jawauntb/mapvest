@@ -266,6 +266,8 @@ export const AggregatesResponse = z.object({
   multiplier: z.number(),
   timespan: z.string(),
   points: z.array(AggregatePoint),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
   sources: z.array(Source),
 });
 export type AggregatesResponse = z.infer<typeof AggregatesResponse>;
@@ -326,7 +328,7 @@ export type OptionSnapshot = z.infer<typeof OptionSnapshot>;
 export const OptionsResponse = z.object({
   underlyingTicker: z.string(),
   contracts: z.array(OptionSnapshot),
-  nextUrl: z.string().url().optional(),
+  nextCursor: z.string().optional(),
   requestId: z.string().optional(),
   sources: z.array(Source),
 });
@@ -334,7 +336,7 @@ export type OptionsResponse = z.infer<typeof OptionsResponse>;
 
 export const OptionContractsResponse = z.object({
   contracts: z.array(OptionContract),
-  nextUrl: z.string().url().optional(),
+  nextCursor: z.string().optional(),
   requestId: z.string().optional(),
   sources: z.array(Source),
 });

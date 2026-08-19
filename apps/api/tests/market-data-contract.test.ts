@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { fetchTickerNews } from "../src/lib/news-source.js";
+import { __resetMarketDataRateLimit } from "../src/middleware/marketDataRateLimit.js";
 import marketData from "../src/routes/market-data.js";
 import marketEvents from "../src/routes/market-events.js";
 import options from "../src/routes/options.js";
@@ -11,6 +13,7 @@ afterEach(() => {
   process.env = { ...originalEnv };
   globalThis.fetch = originalFetch;
   mock.restore();
+  __resetMarketDataRateLimit();
 });
 
 function massiveEnv(): void {
@@ -18,6 +21,8 @@ function massiveEnv(): void {
   process.env.MARKET_DATA_FALLBACK_PROVIDER = "";
   process.env.MASSIVE_API_KEY = "test-key";
   process.env.MASSIVE_BASE_URL = "https://massive.test";
+  process.env.NODE_ENV = "test";
+  process.env.MASSIVE_ALLOW_TEST_BASE_URL = "1";
 }
 
 function response(body: unknown, status = 200): Response {
@@ -32,6 +37,16 @@ describe("market-data additive API contracts", () => {
     const result = await marketData.fetch(new Request("http://test/aggregates"));
     expect(result.status).toBe(400);
     expect(await result.json()).toEqual({ error: "symbol required" });
+
+    const invalidDate = await marketData.fetch(
+      new Request("http://test/aggregates?symbol=AAPL&from=2024-02-31"),
+    );
+    expect(invalidDate.status).toBe(400);
+
+    const reversed = await marketData.fetch(
+      new Request("http://test/aggregates?symbol=AAPL&from=2024-03-01&to=2024-02-01"),
+    );
+    expect(reversed.status).toBe(400);
   });
 
   test("normalizes Massive aggregates without changing the public point shape", async () => {
@@ -99,7 +114,7 @@ describe("market-data additive API contracts", () => {
           quote: { bid: 1, ask: 2 },
         },
       ],
-      nextUrl: "https://massive.test/v3/snapshot/options/AAPL?cursor=next",
+      nextCursor: "next",
     });
   });
 
@@ -111,6 +126,29 @@ describe("market-data additive API contracts", () => {
     const result = await marketEvents.fetch(new Request("http://test/?ticker=AAPL"));
     expect(result.status).toBe(429);
     expect(await result.json()).toEqual({ error: "market data rate limited" });
+  });
+
+  test("requires a bounded range for broad market-event queries", async () => {
+    const result = await marketEvents.fetch(new Request("http://test/"));
+    expect(result.status).toBe(400);
+    expect(await result.json()).toEqual({ error: "ticker or bounded date range required" });
+  });
+
+  test("does not let unique device IDs bypass the provider-cost limiter", async () => {
+    massiveEnv();
+    process.env.MASSIVE_MAX_RETRIES = "0";
+    globalThis.fetch = mock(() =>
+      Promise.resolve(response({ status: "OK", results: [] })),
+    ) as typeof fetch;
+    let last: Response | undefined;
+    for (let index = 0; index < 61; index += 1) {
+      last = await marketData.fetch(
+        new Request("http://test/aggregates?symbol=AAPL", {
+          headers: { "X-Device-Id": `device-${index}` },
+        }),
+      );
+    }
+    expect(last?.status).toBe(429);
   });
 
   test("uses the explicit Yahoo history fallback and cites the actual provider", async () => {
@@ -137,5 +175,32 @@ describe("market-data additive API contracts", () => {
     const result = await quoteHistory.fetch(new Request("http://test/?symbol=AAPL&period=1mo"));
     expect(result.status).toBe(200);
     expect(await result.json()).toMatchObject({ sources: [{ provider: "yahoo" }] });
+  });
+
+  test("keeps the explicit Yahoo news fallback when Massive is unconfigured", async () => {
+    process.env.MASSIVE_API_KEY = "";
+    process.env.MARKET_DATA_FALLBACK_PROVIDER = "yahoo";
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(
+          "<rss><channel><item><title>Fallback headline</title><link>https://example.com/news</link><pubDate>Tue, 01 Jan 2025 00:00:00 GMT</pubDate></item></channel></rss>",
+          { status: 200, headers: { "content-type": "application/xml" } },
+        ),
+      ),
+    ) as typeof fetch;
+    const result = await fetchTickerNews("FALLBACK_NEWS_TEST", 1);
+    expect(result.provider).toBe("yahoo-rss");
+    expect(result.items[0]?.title).toBe("Fallback headline");
+  });
+
+  test("treats a Massive ERROR envelope as a failed provider response", async () => {
+    massiveEnv();
+    process.env.MASSIVE_MAX_RETRIES = "0";
+    globalThis.fetch = mock(() =>
+      Promise.resolve(response({ status: "ERROR", error: "entitlement missing" })),
+    ) as typeof fetch;
+    const result = await fetchTickerNews("MASSIVE_ERROR_TEST", 1);
+    expect(result.provider).toBe("error");
+    expect(result.items).toEqual([]);
   });
 });

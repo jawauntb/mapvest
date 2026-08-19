@@ -8,6 +8,7 @@ export { getHistoricalCloses, getHistoricalClosesWithProvider, VALID_PERIODS } f
 export type { HistoryPoint, Period } from "./history.js";
 export {
   getAggregates,
+  getAggregatesPage,
   getMarketDataCapabilities,
   getOptionContract,
   getOptionContracts,
@@ -17,8 +18,10 @@ export {
   getFallbackProvider,
   MarketDataProviderError,
 } from "./marketData/router.js";
+export { massiveBaseUrl } from "./marketData/massive.js";
 export type {
   AggregateBar,
+  AggregatePage,
   AggregateQuery,
   CorporateEvent,
   MarketDataCapabilities,

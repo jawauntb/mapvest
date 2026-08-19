@@ -1,3 +1,5 @@
+import { massiveBaseUrl } from "@mapvest/finance";
+
 /**
  * Per-ticker news source with Massive as the primary provider. Yahoo RSS and
  * Finnhub remain explicit legacy fallbacks while provider parity is proven.
@@ -205,10 +207,7 @@ type MassiveNewsItem = {
 };
 
 async function fetchMassive(ticker: string, apiKey: string): Promise<NewsItem[]> {
-  const base = (process.env.MASSIVE_BASE_URL?.trim() || "https://api.massive.com").replace(
-    /\/$/,
-    "",
-  );
+  const base = massiveBaseUrl();
   const url = new URL(`${base}/v2/reference/news`);
   url.searchParams.set("ticker", ticker);
   url.searchParams.set("limit", "25");
@@ -220,7 +219,12 @@ async function fetchMassive(ticker: string, apiKey: string): Promise<NewsItem[]>
     FETCH_TIMEOUT_MS,
   );
   if (!response.ok) throw new Error(`massive news ${response.status}`);
-  const body = (await response.json()) as { results?: MassiveNewsItem[] };
+  const body = (await response.json()) as {
+    status?: string;
+    error?: string;
+    results?: MassiveNewsItem[];
+  };
+  if (body.status === "ERROR") throw new Error(body.error || "massive news error");
   if (!Array.isArray(body.results)) return [];
   return body.results.flatMap((item) => {
     if (!item.title || !item.article_url) return [];
@@ -281,7 +285,10 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
           throw new Error("massive news unavailable");
         }
       }
-    } else if (process.env.MARKET_DATA_PROVIDER === "yahoo") {
+    } else if (
+      process.env.MARKET_DATA_PROVIDER === "yahoo" ||
+      process.env.MARKET_DATA_FALLBACK_PROVIDER === "yahoo"
+    ) {
       items = await fetchYahoo(norm);
       provider = "yahoo-rss";
     } else if (finnhubKey && process.env.MARKET_DATA_FALLBACK_PROVIDER === "finnhub") {
@@ -309,6 +316,6 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
   });
 
   const full: NewsFetchResult = { items, provider };
-  writeCache(norm, full);
+  if (provider !== "error") writeCache(norm, full);
   return { items: items.slice(0, cap), provider };
 }

@@ -1,6 +1,7 @@
 import type { Quote } from "../quote.js";
 import type {
   AggregateBar,
+  AggregatePage,
   AggregateQuery,
   CorporateEvent,
   HistoryPoint,
@@ -192,6 +193,8 @@ export const yahooProvider = {
   getQuote: getYahooQuote,
   getHistoricalCloses: getYahooHistoricalCloses,
   getAggregates: async (_query: AggregateQuery): Promise<AggregateBar[]> =>
+    unsupported("aggregates"),
+  getAggregatesPage: async (_query: AggregateQuery): Promise<AggregatePage> =>
     unsupported("aggregates"),
   getOptionsChain: async (_query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>> =>
     unsupported("options chains"),

@@ -1,6 +1,7 @@
 import { massiveClient } from "./massive.js";
 import type {
   AggregateBar,
+  AggregatePage,
   AggregateQuery,
   CorporateEvent,
   HistoryPoint,
@@ -46,17 +47,42 @@ async function withFallback<T>(
   }
 }
 
-async function withFallbackProvider<T>(
-  operation: (provider: MarketDataProvider) => Promise<T>,
-): Promise<{ value: T; provider: MarketDataProviderName }> {
+async function withNullableFallback<T>(
+  operation: (provider: MarketDataProvider) => Promise<T | null>,
+): Promise<T | null> {
   const primary = getPrimaryProvider();
+  let value: T | null;
   try {
-    return { value: await operation(primary), provider: primary.name };
+    value = await operation(primary);
+  } catch (error) {
+    const fallback = getFallbackProvider();
+    if (!fallback || fallback.name === primary.name) throw error;
+    return operation(fallback);
+  }
+  const usable = value !== null && (!Array.isArray(value) || value.length > 0);
+  if (usable) return value;
+  const fallback = getFallbackProvider();
+  if (!fallback || fallback.name === primary.name) return value;
+  return operation(fallback);
+}
+
+async function withNullableFallbackProvider<T>(
+  operation: (provider: MarketDataProvider) => Promise<T | null>,
+): Promise<{ value: T | null; provider: MarketDataProviderName }> {
+  const primary = getPrimaryProvider();
+  let value: T | null;
+  try {
+    value = await operation(primary);
   } catch (error) {
     const fallback = getFallbackProvider();
     if (!fallback || fallback.name === primary.name) throw error;
     return { value: await operation(fallback), provider: fallback.name };
   }
+  const usable = value !== null && (!Array.isArray(value) || value.length > 0);
+  if (usable) return { value, provider: primary.name };
+  const fallback = getFallbackProvider();
+  if (!fallback || fallback.name === primary.name) return { value, provider: primary.name };
+  return { value: await operation(fallback), provider: fallback.name };
 }
 
 export function getMarketDataCapabilities(): MarketDataCapabilities {
@@ -78,15 +104,18 @@ export function getMarketDataCapabilities(): MarketDataCapabilities {
   return { ...primaryCapabilities, datasets };
 }
 
-export const getQuote = (symbol: string) => withFallback((provider) => provider.getQuote(symbol));
+export const getQuote = (symbol: string) =>
+  withNullableFallback((provider) => provider.getQuote(symbol));
 export const getHistoricalCloses = (symbol: string, period: "1mo" | "3mo" | "6mo" | "1y") =>
-  withFallback((provider) => provider.getHistoricalCloses(symbol, period));
+  withNullableFallback((provider) => provider.getHistoricalCloses(symbol, period));
 export const getHistoricalClosesWithProvider = (
   symbol: string,
   period: "1mo" | "3mo" | "6mo" | "1y",
-) => withFallbackProvider((provider) => provider.getHistoricalCloses(symbol, period));
+) => withNullableFallbackProvider((provider) => provider.getHistoricalCloses(symbol, period));
 export const getAggregates = (query: AggregateQuery) =>
   withFallback((provider) => provider.getAggregates(query));
+export const getAggregatesPage = (query: AggregateQuery) =>
+  withFallback((provider) => provider.getAggregatesPage(query));
 export const getOptionsChain = (query: OptionsChainQuery) =>
   withFallback((provider) => provider.getOptionsChain(query));
 export const getOptionContracts = (query: OptionContractQuery) =>
@@ -102,6 +131,7 @@ export const getCorporateEvents = (query: {
 
 export type {
   AggregateBar,
+  AggregatePage,
   AggregateQuery,
   CorporateEvent,
   HistoryPoint,
