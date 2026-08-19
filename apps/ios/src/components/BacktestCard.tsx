@@ -34,7 +34,12 @@ export function BacktestCard({ tickers, token }: { tickers: string[]; token?: st
   // Fingerprint the ticker set so equivalent inputs share a cache slot but
   // reordering the watchlist doesn't re-fetch.
   const fp = useMemo(
-    () => [...tickers].map((t) => t.trim().toUpperCase()).filter(Boolean).sort().join(","),
+    () =>
+      [...tickers]
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean)
+        .sort()
+        .join(","),
     [tickers],
   );
 
@@ -104,10 +109,7 @@ function BacktestBody({ data }: { data: BacktestResponse }) {
             {formatPct(data.totalReturn)}
           </Text>
         </View>
-        <View
-          style={styles.sparkWrap}
-          onLayout={(e) => setSparkWidth(e.nativeEvent.layout.width)}
-        >
+        <View style={styles.sparkWrap} onLayout={(e) => setSparkWidth(e.nativeEvent.layout.width)}>
           {sparkWidth > 0 ? (
             <Sparkline series={data.series} width={sparkWidth} positive={up} />
           ) : null}
@@ -116,12 +118,7 @@ function BacktestBody({ data }: { data: BacktestResponse }) {
 
       <View style={styles.vsRow}>
         <Text style={styles.vsLabel}>vs S&amp;P 500</Text>
-        <Text
-          style={[
-            styles.vsValue,
-            { color: spreadUp ? colors.accent : colors.danger },
-          ]}
-        >
+        <Text style={[styles.vsValue, { color: spreadUp ? colors.accent : colors.danger }]}>
           {spreadUp ? "+" : ""}
           {formatPct(data.spread)}
           <Text style={styles.vsSub}>
@@ -141,9 +138,7 @@ function BacktestBody({ data }: { data: BacktestResponse }) {
       </View>
 
       {data.omitted && data.omitted.length > 0 ? (
-        <Text style={styles.omitted}>
-          No history for: {data.omitted.join(", ")}
-        </Text>
+        <Text style={styles.omitted}>No history for: {data.omitted.join(", ")}</Text>
       ) : null}
 
       <Text style={styles.footer}>
@@ -254,7 +249,6 @@ function Sparkline({
               backgroundColor: color,
               borderRadius: 1,
               transform: [{ rotate: `${deg}deg` }],
-              transformOrigin: "left center",
             }}
           />
         );

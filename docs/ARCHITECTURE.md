@@ -110,6 +110,13 @@ chevron. Leading `$` cashtags stay on map pins and in prose; list rows show
 the ticker without a prefix. Overlapped map tooltips use a two-tap sequence
 (reveal → open summary). Home search suggests tickers as you type. Detail
 staggers section render so the sheet never hangs on a blank spinner.
+Investable (`/detail/[id]`) is a **card push**, not a UIKit page sheet.
+TestFlight was dying on that loading spinner because the stack presented
+the screen as a modal, then nested Research / news-reader page sheets and
+hot-swapped a Reanimated header while resolve returned. Expo/web
+(`www.mapvest.app/app/ticker/RLX`) never used those native presenters, so
+it kept working. Charts still live behind an error boundary; SVG polylines
+with empty/NaN `points` are not mounted.
 
 ## Layering rules
 

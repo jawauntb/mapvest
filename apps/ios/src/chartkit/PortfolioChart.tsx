@@ -1,13 +1,14 @@
 import type { PortfolioDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { View } from "react-native";
-import { Polygon, Polyline } from "react-native-svg";
 import { PORTFOLIO_LINE_CYCLE, terminal } from "./palette";
 import {
   ChartShell,
   Crosshair,
   LegendRow,
   Panel,
+  SafePolygon,
+  SafePolyline,
   ScrubDot,
   ScrubTip,
   type ScrubTipLine,
@@ -120,7 +121,7 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
             <>
               <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtMoney} />
               {holdings.map(([ticker, series], idx) => (
-                <Polyline
+                <SafePolyline
                   key={ticker}
                   points={polylinePoints(series, dateIndex, x, y)}
                   fill="none"
@@ -130,7 +131,7 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
                 />
               ))}
               {benchmark ? (
-                <Polyline
+                <SafePolyline
                   points={polylinePoints(benchmark, dateIndex, x, y)}
                   fill="none"
                   stroke={terminal.cyan}
@@ -139,9 +140,9 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
                 />
               ) : null}
               {underfill ? (
-                <Polygon points={underfill} fill={terminal.amber} opacity={0.075} />
+                <SafePolygon points={underfill} fill={terminal.amber} opacity={0.075} />
               ) : null}
-              <Polyline
+              <SafePolyline
                 points={heroPts.join(" ")}
                 fill="none"
                 stroke={terminal.amberHot}

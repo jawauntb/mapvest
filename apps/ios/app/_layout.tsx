@@ -55,7 +55,21 @@ const persister = createAsyncStoragePersister({
 const persistOptions = {
   persister,
   maxAge: 1000 * 60 * 60 * 24,
-  buster: "v2",
+  // v3: drop hydrated auction/agent blobs that used to remount SVG inside
+  // the Investable transition and native-crash TestFlight.
+  buster: "v3",
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query: { queryKey: readonly unknown[] }) => {
+      const head = query.queryKey[0];
+      return (
+        head === "resolve-comparable" ||
+        head === "quote" ||
+        head === "watchlist" ||
+        head === "watchlists" ||
+        head === "session"
+      );
+    },
+  },
 };
 
 /**
@@ -158,7 +172,11 @@ export default function RootLayout() {
                 <Stack.Screen
                   name="detail/[id]"
                   options={{
-                    presentation: "modal",
+                    // Card push, not a page-sheet modal. Nested UIKit sheets
+                    // (Research / news reader) inside a stack modal SIGABRT
+                    // on TestFlight / iOS 26 — Expo web never hit this path.
+                    presentation: "card",
+                    animation: "slide_from_right",
                     headerShown: true,
                     title: "Mapvest",
                     headerStyle: { backgroundColor: colors.bgElevated },

@@ -106,9 +106,17 @@ export function polylinePoints(
   for (const p of series) {
     const i = dateIndex.get(p.date);
     if (i === undefined || !Number.isFinite(p.value)) continue;
-    parts.push(`${x(i).toFixed(1)},${y(p.value).toFixed(1)}`);
+    const px = x(i);
+    const py = y(p.value);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    parts.push(`${px.toFixed(1)},${py.toFixed(1)}`);
   }
   return parts.join(" ");
+}
+
+/** RNSVG on iOS SIGABRTs on empty or NaN `points` — never mount those. */
+export function isSafeSvgPoints(points: string | undefined): points is string {
+  return typeof points === "string" && points.length > 0 && !/\bNaN\b|\bInfinity\b/.test(points);
 }
 
 /** Evenly spread label indices across a category axis (first + last included). */
