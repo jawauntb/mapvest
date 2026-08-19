@@ -1,7 +1,6 @@
 import type { QuarterPoint, TorqueDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Circle, G, Line, Rect, Text as SvgText } from "react-native-svg";
 import { safeFixed, safeUpper } from "./format";
 import {
   MONO_FONT,
@@ -38,6 +37,7 @@ import {
   shortDate,
   tickIndices,
 } from "./scale";
+import { Circle, G, Line, Rect, Text as SvgText } from "./view-svg";
 
 const PRICE_HEIGHT = 205;
 const FUNDAMENTAL_HEIGHT = 150;

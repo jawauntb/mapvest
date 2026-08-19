@@ -1,7 +1,6 @@
 import type { FlowCompassDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Line, Rect } from "react-native-svg";
 import { MONO_FONT, flowComponentColor, terminal } from "./palette";
 import {
   ChartShell,
@@ -28,6 +27,7 @@ import {
   polylinePoints,
   shortDate,
 } from "./scale";
+import { Line, Rect } from "./view-svg";
 
 const PRICE_HEIGHT = 112;
 const SCORE_HEIGHT = 185;

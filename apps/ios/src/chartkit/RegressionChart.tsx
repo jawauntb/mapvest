@@ -1,7 +1,6 @@
 import type { RegressionDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { View } from "react-native";
-import { Rect } from "react-native-svg";
 import { safeFixed } from "./format";
 import { terminal } from "./palette";
 import {
@@ -30,6 +29,7 @@ import {
   polylinePoints,
   shortDate,
 } from "./scale";
+import { Rect } from "./view-svg";
 
 const PRICE_HEIGHT = 228;
 const VOLUME_HEIGHT = 76;

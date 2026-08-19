@@ -1,4 +1,5 @@
 import { type BacktestPeriod, type BacktestResponse, fetchBacktest } from "@/api/backtest";
+import { LineSparkline } from "@/chartkit/LineSparkline";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { useQuery } from "@tanstack/react-query";
@@ -10,8 +11,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  * BacktestCard — Home footer widget answering "if I'd equal-weighted this
  * watchlist N months ago, what would have happened?".
  *
- * Chart-library free: renders a price LINE of portfolio value (rotated View
- * segments + last-print dot — same technique as NativePriceChart, no svg).
+ * Chart-library free: renders a price LINE of portfolio value via the shared
+ * View-based sparkline (same path as NativePriceChart — no react-native-svg).
  * Jade when the window is up, red when down. The line is shape, not candles.
  *
  * Positioning: I recommend dropping this into home.tsx's ListFooterComponent
@@ -26,7 +27,6 @@ const PERIODS: { key: BacktestPeriod; label: string }[] = [
 ];
 
 const SPARKLINE_HEIGHT = 40;
-const LINE_WIDTH = 2;
 
 export function BacktestCard({ tickers, token }: { tickers: string[]; token?: string }) {
   const [period, setPeriod] = useState<BacktestPeriod>("3mo");
@@ -109,9 +109,20 @@ function BacktestBody({ data }: { data: BacktestResponse }) {
             {formatPct(data.totalReturn)}
           </Text>
         </View>
-        <View style={styles.sparkWrap} onLayout={(e) => setSparkWidth(e.nativeEvent.layout.width)}>
+        <View
+          style={styles.sparkWrap}
+          onLayout={(e) => setSparkWidth(e.nativeEvent.layout.width)}
+          accessibilityLabel="Portfolio value line"
+        >
           {sparkWidth > 0 ? (
-            <Sparkline series={data.series} width={sparkWidth} positive={up} />
+            <LineSparkline
+              series={data.series}
+              width={sparkWidth}
+              height={SPARKLINE_HEIGHT}
+              color={up ? colors.accent : colors.danger}
+              strokeWidth={2}
+              pad={4}
+            />
           ) : null}
         </View>
       </View>
@@ -184,87 +195,6 @@ function ContributorPill({
         </Text>
       </View>
     </Pressable>
-  );
-}
-
-/**
- * Close-to-close polyline of portfolio value — looks like a price line, not
- * a volume histogram. Jade when the window is up, red when down. Degenerate
- * range (< 1e-9) still draws a flat line so the widget doesn't go empty.
- */
-function Sparkline({
-  series,
-  width,
-  positive,
-}: {
-  series: number[];
-  width: number;
-  positive: boolean;
-}) {
-  const pts = useMemo(() => {
-    if (series.length < 2 || width <= 0) return [];
-    let mn = series[0] ?? 0;
-    let mx = series[0] ?? 1;
-    for (const v of series) {
-      if (v < mn) mn = v;
-      if (v > mx) mx = v;
-    }
-    const range = Math.max(mx - mn, 1e-9);
-    const pad = 4;
-    const innerH = SPARKLINE_HEIGHT - pad * 2;
-    const innerW = Math.max(width - pad * 2, 1);
-    return series.map((v, i) => ({
-      x: pad + (i / (series.length - 1)) * innerW,
-      y: pad + (1 - (v - mn) / range) * innerH,
-    }));
-  }, [series, width]);
-
-  const color = positive ? colors.accent : colors.danger;
-  const last = pts[pts.length - 1];
-  if (pts.length < 2 || !last) return null;
-
-  return (
-    <View
-      style={{ width, height: SPARKLINE_HEIGHT }}
-      pointerEvents="none"
-      accessibilityLabel="Portfolio value line"
-    >
-      {pts.slice(0, -1).map((a, i) => {
-        const b = pts[i + 1];
-        if (!b) return null;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
-        return (
-          <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: series index is stable per query
-            key={i}
-            style={{
-              position: "absolute",
-              left: a.x,
-              top: a.y,
-              width: Math.max(len, 1),
-              height: LINE_WIDTH,
-              backgroundColor: color,
-              borderRadius: 1,
-              transform: [{ rotate: `${deg}deg` }],
-            }}
-          />
-        );
-      })}
-      <View
-        style={{
-          position: "absolute",
-          left: last.x - 3.5,
-          top: last.y - 3.5,
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-          backgroundColor: color,
-        }}
-      />
-    </View>
   );
 }
 
