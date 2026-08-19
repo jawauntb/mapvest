@@ -18,15 +18,15 @@ though it has no `results[]` array.
 | Stock NBBO | `/v2/last/nbbo/{ticker}` | Not directly exposed | Additive quote-liquidity fields / diagnostics |
 | Stock trades | `/v3/trades/{ticker}` | Not directly exposed | Additive trades endpoint for research and auditability |
 | SMA | `/v1/indicators/sma/{ticker}` | Not consumed | Additive technical-indicator endpoint |
-| Financial ratios | `/stocks/financials/v1/ratios` | Not consumed | Highest-value immediate addition for Investable pages |
+| Financial ratios | `/stocks/financials/v1/ratios` | `/v1/financials/ratios`; web and iOS Investable detail | Shipped; daily/end-of-day freshness |
 | Income statements | `/stocks/financials/v1/income-statements` | Not consumed in Mapvest | Additive financials surface |
 | Balance sheets | `/stocks/financials/v1/balance-sheets` | Not consumed in Mapvest | Additive financials surface |
 | Cash-flow statements | `/stocks/financials/v1/cash-flow-statements` | Not consumed in Mapvest | Additive financials surface |
 | Option contracts | `/v3/reference/options/contracts` | `/v1/options/contracts*` | Already consumed |
 | Option chain | `/v3/snapshot/options/{underlying}` | `/v1/options/chain` | Already consumed; now usable with the upgraded account |
-| Option contract bars | `/v2/aggs/ticker/{optionsTicker}/range/...` | Generic aggregates only | Additive options analytics surface |
-| Option summary | `/v3/snapshot/options/{underlying}/{optionsTicker}` | Not consumed | Additive contract-level Greeks/IV/open-interest surface |
-| TMX events | `/tmx/v1/corporate-events` | `/v1/market-events` when enabled | Already implemented; enable the purchased partner feed |
+| Option contract bars | `/v2/aggs/ticker/{optionsTicker}/range/...` | `/v1/options/bars` | Shipped as an additive analytics endpoint |
+| Option summary | `/v3/snapshot/options/{underlying}/{optionsTicker}` | `/v1/options/summary` | Shipped as an additive contract-level Greeks/IV/open-interest endpoint |
+| TMX events | `/tmx/v1/corporate-events` | `/v1/market-events`; web catalysts/news panel | Shipped and enabled in production; calendar is not tick-realtime |
 
 ## Subscription and freshness limits
 
@@ -47,14 +47,12 @@ though it has no `results[]` array.
 
 ## Delivery priority
 
-1. Ship financial ratios and statement summaries into the web and iOS ticker
-   detail surfaces.
-2. Ship option contract summary/chain visibility with Greeks, IV, open
-   interest, bid/ask, and expiration filters.
-3. Enable TMX in production and keep the existing Yahoo/Massive headline feed
-   in the same catalysts panel.
-4. Add stock NBBO/trades and SMA as additive research endpoints after the first
+1. Keep financial ratios and option surfaces under fixture-backed contract
+   tests as the provider evolves.
+2. Add stock NBBO/trades and SMA as additive research endpoints after the first
    release is stable.
+3. Consider Massive WebSocket proxying only after the public API defines an
+   explicit streaming contract and freshness telemetry.
 
 ## Ownership boundary
 
