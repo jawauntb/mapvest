@@ -12,7 +12,7 @@ export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
 export const Source = z.object({
-  provider: z.enum(["exa", "openrouter", "gemini", "yahoo", "polygon", "sec", "manual"]),
+  provider: z.enum(["exa", "openrouter", "gemini", "massive", "yahoo", "polygon", "sec", "manual"]),
   url: z.string().url().optional(),
   fetchedAt: z.string(),
   confidence: Confidence,
@@ -160,7 +160,7 @@ export const ResolveComparableResponse = z.object({
 });
 export type ResolveComparableResponse = z.infer<typeof ResolveComparableResponse>;
 
-/** Daily Yahoo close for the native Overview price chart. `ts` is unix seconds. */
+/** Daily provider-routed close for the native Overview price chart. `ts` is unix seconds. */
 export const QuoteHistoryPoint = z.object({
   ts: z.number(),
   close: z.number(),

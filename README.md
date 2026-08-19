@@ -29,6 +29,25 @@ mapvest/
 └── infra/                   # Railway + Doppler config
 ```
 
+## Market data
+
+`packages/finance` owns the provider boundary. Massive is the default provider
+for quotes, daily/intraday aggregates, options chains and contracts, and
+corporate events exposed by this API. Existing quote and history endpoints keep
+their request and response contracts; new data is additive:
+
+- `GET /v1/market-data/capabilities`
+- `GET /v1/market-data/aggregates`
+- `GET /v1/options/chain`
+- `GET /v1/options/contracts` and `GET /v1/options/contracts/:ticker`
+- `GET /v1/market-events`
+
+Configure credentials with `doppler run -- ...`, using `MASSIVE_API_KEY` and
+the non-secret routing variables documented in [`docs/SECRETS.md`](docs/SECRETS.md).
+Yahoo is only used when explicitly selected or enabled as a temporary fallback;
+fallbacks never cover options or corporate-event datasets. The API reports the
+configured freshness and dataset access at `/v1/market-data/capabilities`.
+
 ## Quick start
 
 ```bash
@@ -54,6 +73,7 @@ bun run dev            # runs api, landing, and expo start
 - [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — the build plan
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
+- [`docs/MARKET_DATA_MIGRATION.md`](docs/MARKET_DATA_MIGRATION.md)
 - [`docs/SECRETS.md`](docs/SECRETS.md)
 - [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)

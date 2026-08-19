@@ -167,6 +167,33 @@ Heartbeats keep the Mapvest→client pipe open while Derivation and/or OpenRoute
 
 **What we are not doing**: A batch `/v1/quotes` endpoint. Home's 24-wide quote fan-out is absorbed by the 300/min user/device bucket.
 
+## D16 — Market data is provider-routed behind stable contracts
+
+**Decision**: Massive is the primary market-data provider inside
+`packages/finance/src/marketData`. Existing quote, history, news, and options
+link-out routes keep their names, request shapes, response fields, status codes,
+and timestamp conventions. New Massive capabilities are additive under
+`/v1/market-data/*`, `/v1/options/chain`, `/v1/options/contracts*`, and
+`/v1/market-events`.
+
+**Fallback**: Yahoo is available only when `MARKET_DATA_PROVIDER=yahoo` or the
+explicit `MARKET_DATA_FALLBACK_PROVIDER=yahoo` flag is set. The fallback is
+limited to quote/history parity; it is not silently substituted for options,
+aggregates, or events. Provider failures preserve the existing best-effort
+`null`/`502` behavior and map rate limits to `429`.
+
+**Freshness**: The purchased Massive subscription is authoritative for realtime,
+delayed, end-of-day, historical depth, options Greeks/IV, and event coverage.
+Mapvest reports configured freshness and dataset access through
+`GET /v1/market-data/capabilities`; unset plan metadata is treated as
+unverified. WebSocket tick streaming is not yet proxied, so REST consumers must
+not infer tick-by-tick guarantees.
+
+**Evidence**: The complete route/consumer inventory and endpoint mapping lives
+in `docs/MARKET_DATA_MIGRATION.md`. Sibling derivation-research and
+underlying-analyzer services remain separate and are not modified by this
+migration.
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

@@ -18,8 +18,8 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
           │                    (OpenRouter)         (ticker / ETF)     (Exa)
           │                              │                   │                │
           │                              ▼                   ▼                ▼
-          │                       OpenRouter          Yahoo · SEC       Exa Web Search
-          │                       (Gemini 2.5 /       Polygon · ETF.com
+          │                       OpenRouter          Massive · SEC     Exa Web Search
+          │                       (Gemini 2.5 /       Yahoo fallback
           │                        Claude 5 vision)
           │
           └── landing (Next.js) ── mapvest.app — docs, TestFlight link
@@ -96,7 +96,7 @@ our pins carry tickers; same-brand locations inherit a resolved ticker;
 overlapped chips go to the pin closest to the viewport center. The map
 renders a **My finds** layer — small jade camera badges where the user found
 things — toggleable from the nearby sheet. Overview
-shows a native Yahoo price series; analyzer PNGs live in an Analytics
+shows a native provider-routed price series; analyzer PNGs live in an Analytics
 section with auction / ridge / regression chips. A listed ticker page is
 ticker → name → chart → save/research/Robinhood/alert → comps → analytics
 → glance → financials → news → full brief. Detail is progressive
@@ -147,6 +147,11 @@ error, per the device `.ips` logs — not a chart/native-view bug):
 - `apps/*` may import `packages/*`.
 - `apps/*` may **not** import from another `apps/*`.
 - `packages/*` may import from other `packages/*` only if the DAG stays acyclic. `core` is the leaf.
+
+Market data follows the same boundary: `packages/finance/src/marketData` owns
+provider selection, Massive normalization, and the explicit Yahoo fallback.
+HTTP routes consume that interface and project stable zod response schemas;
+clients do not know which upstream provider supplied a response.
 
 ## Storage
 

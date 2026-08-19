@@ -57,6 +57,7 @@ components:
             - exa
             - openrouter
             - gemini
+            - massive
             - yahoo
             - polygon
             - sec
@@ -149,6 +150,7 @@ components:
                 - exa
                 - openrouter
                 - gemini
+                - massive
                 - yahoo
                 - polygon
                 - sec
@@ -197,6 +199,7 @@ components:
                   - exa
                   - openrouter
                   - gemini
+                  - massive
                   - yahoo
                   - polygon
                   - sec
@@ -279,6 +282,7 @@ components:
                         - exa
                         - openrouter
                         - gemini
+                        - massive
                         - yahoo
                         - polygon
                         - sec
@@ -327,6 +331,7 @@ components:
                       - exa
                       - openrouter
                       - gemini
+                      - massive
                       - yahoo
                       - polygon
                       - sec
@@ -369,6 +374,7 @@ components:
                   - exa
                   - openrouter
                   - gemini
+                  - massive
                   - yahoo
                   - polygon
                   - sec
@@ -407,6 +413,18 @@ components:
               type: string
             name:
               type: string
+            provider:
+              type: string
+              enum:
+                - massive
+                - yahoo
+            freshness:
+              type: string
+              enum:
+                - real-time
+                - delayed
+                - end-of-day
+                - unknown
           required:
             - symbol
             - price
@@ -590,6 +608,7 @@ components:
                               - exa
                               - openrouter
                               - gemini
+                              - massive
                               - yahoo
                               - polygon
                               - sec
@@ -638,6 +657,7 @@ components:
                             - exa
                             - openrouter
                             - gemini
+                            - massive
                             - yahoo
                             - polygon
                             - sec
@@ -680,6 +700,7 @@ components:
                         - exa
                         - openrouter
                         - gemini
+                        - massive
                         - yahoo
                         - polygon
                         - sec
@@ -718,6 +739,18 @@ components:
                     type: string
                   name:
                     type: string
+                  provider:
+                    type: string
+                    enum:
+                      - massive
+                      - yahoo
+                  freshness:
+                    type: string
+                    enum:
+                      - real-time
+                      - delayed
+                      - end-of-day
+                      - unknown
                 required:
                   - symbol
                   - price
@@ -913,6 +946,7 @@ components:
                             - exa
                             - openrouter
                             - gemini
+                            - massive
                             - yahoo
                             - polygon
                             - sec
@@ -961,6 +995,7 @@ components:
                           - exa
                           - openrouter
                           - gemini
+                          - massive
                           - yahoo
                           - polygon
                           - sec
@@ -1003,6 +1038,7 @@ components:
                       - exa
                       - openrouter
                       - gemini
+                      - massive
                       - yahoo
                       - polygon
                       - sec
@@ -1041,6 +1077,18 @@ components:
                   type: string
                 name:
                   type: string
+                provider:
+                  type: string
+                  enum:
+                    - massive
+                    - yahoo
+                freshness:
+                  type: string
+                  enum:
+                    - real-time
+                    - delayed
+                    - end-of-day
+                    - unknown
               required:
                 - symbol
                 - price
@@ -1150,6 +1198,7 @@ components:
                                   - exa
                                   - openrouter
                                   - gemini
+                                  - massive
                                   - yahoo
                                   - polygon
                                   - sec
@@ -1198,6 +1247,7 @@ components:
                                 - exa
                                 - openrouter
                                 - gemini
+                                - massive
                                 - yahoo
                                 - polygon
                                 - sec
@@ -1240,6 +1290,7 @@ components:
                             - exa
                             - openrouter
                             - gemini
+                            - massive
                             - yahoo
                             - polygon
                             - sec
@@ -1278,6 +1329,18 @@ components:
                         type: string
                       name:
                         type: string
+                      provider:
+                        type: string
+                        enum:
+                          - massive
+                          - yahoo
+                      freshness:
+                        type: string
+                        enum:
+                          - real-time
+                          - delayed
+                          - end-of-day
+                          - unknown
                     required:
                       - symbol
                       - price
@@ -1456,6 +1519,7 @@ components:
                         - exa
                         - openrouter
                         - gemini
+                        - massive
                         - yahoo
                         - polygon
                         - sec
@@ -1503,6 +1567,7 @@ components:
                       - exa
                       - openrouter
                       - gemini
+                      - massive
                       - yahoo
                       - polygon
                       - sec
@@ -1620,6 +1685,7 @@ components:
                   - exa
                   - openrouter
                   - gemini
+                  - massive
                   - yahoo
                   - polygon
                   - sec
@@ -1644,6 +1710,562 @@ components:
         - period
         - points
         - sources
+    AggregatePoint:
+      type: object
+      properties:
+        ts:
+          type: number
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+        vwap:
+          type: number
+        transactions:
+          type: number
+      required:
+        - ts
+        - open
+        - high
+        - low
+        - close
+    AggregatesResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        multiplier:
+          type: number
+        timespan:
+          type: string
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              ts:
+                type: number
+              open:
+                type: number
+              high:
+                type: number
+              low:
+                type: number
+              close:
+                type: number
+              volume:
+                type: number
+              vwap:
+                type: number
+              transactions:
+                type: number
+            required:
+              - ts
+              - open
+              - high
+              - low
+              - close
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - symbol
+        - from
+        - to
+        - multiplier
+        - timespan
+        - points
+        - sources
+    OptionContract:
+      type: object
+      properties:
+        ticker:
+          type: string
+        underlyingTicker:
+          type: string
+        contractType:
+          type: string
+          enum:
+            - call
+            - put
+            - other
+        expirationDate:
+          type: string
+        strikePrice:
+          type: number
+        exerciseStyle:
+          type: string
+          enum:
+            - american
+            - bermudan
+            - european
+        sharesPerContract:
+          type: number
+        primaryExchange:
+          type: string
+        cfi:
+          type: string
+      required:
+        - ticker
+    OptionSnapshot:
+      type: object
+      properties:
+        ticker:
+          type: string
+        underlyingTicker:
+          type: string
+        contractType:
+          type: string
+          enum:
+            - call
+            - put
+            - other
+        expirationDate:
+          type: string
+        strikePrice:
+          type: number
+        exerciseStyle:
+          type: string
+          enum:
+            - american
+            - bermudan
+            - european
+        sharesPerContract:
+          type: number
+        primaryExchange:
+          type: string
+        cfi:
+          type: string
+        breakEvenPrice:
+          type: number
+        impliedVolatility:
+          type: number
+        openInterest:
+          type: number
+        greeks:
+          type: object
+          properties:
+            delta:
+              type: number
+            gamma:
+              type: number
+            theta:
+              type: number
+            vega:
+              type: number
+        quote:
+          type: object
+          properties:
+            bid:
+              type: number
+            ask:
+              type: number
+            bidSize:
+              type: number
+            askSize:
+              type: number
+            ts:
+              type: number
+        trade:
+          type: object
+          properties:
+            price:
+              type: number
+            size:
+              type: number
+            ts:
+              type: number
+        day:
+          type: object
+          properties:
+            open:
+              type: number
+            high:
+              type: number
+            low:
+              type: number
+            close:
+              type: number
+            volume:
+              type: number
+      required:
+        - ticker
+    OptionsResponse:
+      type: object
+      properties:
+        underlyingTicker:
+          type: string
+        contracts:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              underlyingTicker:
+                type: string
+              contractType:
+                type: string
+                enum:
+                  - call
+                  - put
+                  - other
+              expirationDate:
+                type: string
+              strikePrice:
+                type: number
+              exerciseStyle:
+                type: string
+                enum:
+                  - american
+                  - bermudan
+                  - european
+              sharesPerContract:
+                type: number
+              primaryExchange:
+                type: string
+              cfi:
+                type: string
+              breakEvenPrice:
+                type: number
+              impliedVolatility:
+                type: number
+              openInterest:
+                type: number
+              greeks:
+                type: object
+                properties:
+                  delta:
+                    type: number
+                  gamma:
+                    type: number
+                  theta:
+                    type: number
+                  vega:
+                    type: number
+              quote:
+                type: object
+                properties:
+                  bid:
+                    type: number
+                  ask:
+                    type: number
+                  bidSize:
+                    type: number
+                  askSize:
+                    type: number
+                  ts:
+                    type: number
+              trade:
+                type: object
+                properties:
+                  price:
+                    type: number
+                  size:
+                    type: number
+                  ts:
+                    type: number
+              day:
+                type: object
+                properties:
+                  open:
+                    type: number
+                  high:
+                    type: number
+                  low:
+                    type: number
+                  close:
+                    type: number
+                  volume:
+                    type: number
+            required:
+              - ticker
+        nextUrl:
+          type: string
+          format: uri
+        requestId:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - underlyingTicker
+        - contracts
+        - sources
+    OptionContractsResponse:
+      type: object
+      properties:
+        contracts:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              underlyingTicker:
+                type: string
+              contractType:
+                type: string
+                enum:
+                  - call
+                  - put
+                  - other
+              expirationDate:
+                type: string
+              strikePrice:
+                type: number
+              exerciseStyle:
+                type: string
+                enum:
+                  - american
+                  - bermudan
+                  - european
+              sharesPerContract:
+                type: number
+              primaryExchange:
+                type: string
+              cfi:
+                type: string
+            required:
+              - ticker
+        nextUrl:
+          type: string
+          format: uri
+        requestId:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - contracts
+        - sources
+    CorporateEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        ticker:
+          type: string
+        type:
+          type: string
+        date:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - ticker
+        - type
+    MarketEventsResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              ticker:
+                type: string
+              type:
+                type: string
+              date:
+                type: string
+              status:
+                type: string
+              description:
+                type: string
+              sourceUrl:
+                type: string
+                format: uri
+            required:
+              - ticker
+              - type
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - events
+        - sources
+    MarketDataCapabilities:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+            - massive
+            - yahoo
+        configured:
+          type: boolean
+        freshness:
+          type: string
+          enum:
+            - real-time
+            - delayed
+            - end-of-day
+            - unknown
+        datasets:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              supported:
+                type: boolean
+              access:
+                type: string
+                enum:
+                  - primary
+                  - fallback
+                  - unconfigured
+              note:
+                type: string
+            required:
+              - supported
+              - access
+        subscription:
+          type: object
+          properties:
+            stocks:
+              type: string
+            options:
+              type: string
+            events:
+              type: string
+      required:
+        - provider
+        - configured
+        - freshness
+        - datasets
+        - subscription
     AnalysisSnapshot:
       type: object
       properties:
@@ -2701,8 +3323,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /v1/quote-history:
     get:
-      summary: Daily Yahoo price history
-      description: Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.
+      summary: Daily provider-routed price history
+      description: Daily adjusted closes from the configured market-data provider for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable.
       tags:
         - finance
       parameters:
@@ -2725,7 +3347,7 @@ paths:
           in: query
       responses:
         "200":
-          description: Daily close series with Yahoo source citation.
+          description: Daily close series with provider source citation.
           content:
             application/json:
               schema:
@@ -2761,7 +3383,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
-          description: Yahoo history unavailable.
+          description: Market-data history unavailable.
           content:
             application/json:
               schema:
@@ -2769,7 +3391,7 @@ paths:
   /v1/chart/{type}:
     get:
       summary: Underlying Analyzer chart image
-      description: Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`.
+      description: Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to the sibling analyzer's `1mo` period.
       tags:
         - finance
       parameters:
@@ -2831,6 +3453,434 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/market-data/capabilities:
+    get:
+      summary: Market-data provider capabilities
+      description: Returns the configured primary provider, freshness declaration, subscription labels, and dataset capability notes. The subscription labels are operational configuration and are not inferred from API responses.
+      tags:
+        - finance
+      responses:
+        "200":
+          description: Provider capability report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDataCapabilities"
+  /v1/market-data/aggregates:
+    get:
+      summary: Historical market aggregates
+      description: Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are provider Unix milliseconds.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: AAPL
+          required: true
+          name: symbol
+          in: query
+        - schema:
+            type: string
+            example: 2026-01-01
+          required: false
+          name: from
+          in: query
+        - schema:
+            type: string
+            example: 2026-01-31
+          required: false
+          name: to
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+            example: 1
+          required: false
+          name: multiplier
+          in: query
+        - schema:
+            type: string
+            example: day
+          required: false
+          name: timespan
+          in: query
+        - schema:
+            type:
+              - boolean
+              - "null"
+          required: false
+          name: adjusted
+          in: query
+        - schema:
+            type: string
+            enum:
+              - stocks
+              - options
+          required: false
+          name: assetClass
+          in: query
+      responses:
+        "200":
+          description: Aggregate bars.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregatesResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market-data aggregates unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/options/chain:
+    get:
+      summary: Options chain snapshot
+      description: Additive option-chain snapshot with Massive-normalized contracts, greeks, implied volatility, quotes, trades, and open interest when the subscribed Options plan includes them.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: AAPL
+          required: true
+          name: underlying
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: expiration_date
+          in: query
+        - schema:
+            type: string
+            enum:
+              - call
+              - put
+          required: false
+          name: contract_type
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+          required: false
+          name: strike_price
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: cursor
+          in: query
+      responses:
+        "200":
+          description: Options chain page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Options chain unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/options/contracts:
+    get:
+      summary: Options contract reference data
+      description: Additive, cursor-paginated options contract index. Massive exposes active and expired contracts with expiration dates, strikes, types, and exercise styles.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: false
+          name: underlying
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: ticker
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: expiration_date
+          in: query
+        - schema:
+            type: string
+            enum:
+              - call
+              - put
+          required: false
+          name: contract_type
+          in: query
+        - schema:
+            type:
+              - boolean
+              - "null"
+          required: false
+          name: expired
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: cursor
+          in: query
+      responses:
+        "200":
+          description: Options contracts page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionContractsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Options contracts unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/options/contracts/{ticker}:
+    get:
+      summary: Single options contract
+      description: Additive options contract reference lookup by Massive options ticker.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: O:AAPL260116C00100000
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Options contract.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contract:
+                    $ref: "#/components/schemas/OptionContract"
+                  sources:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Source"
+                required:
+                  - contract
+                  - sources
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Options contract unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/market-events:
+    get:
+      summary: Corporate actions and market events
+      description: Returns Massive stock splits and dividends, with optional partner event coverage documented by the capability report.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: false
+          name: ticker
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: from
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: to
+          in: query
+        - schema:
+            type:
+              - number
+              - "null"
+          required: false
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Market events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketEventsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market events unavailable.
           content:
             application/json:
               schema:

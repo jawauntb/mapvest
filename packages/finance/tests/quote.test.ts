@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { _clearQuoteCache, getQuote, parseYahooChart, QUOTE_DISCLAIMER } from "../src/quote.js";
+import { QUOTE_DISCLAIMER, _clearQuoteCache, getQuote, parseYahooChart } from "../src/quote.js";
 
 /**
  * Minimal Yahoo v7 chart payload — only the fields getQuote consumes.
@@ -26,15 +26,22 @@ function chartPayload(overrides: Record<string, unknown> = {}) {
 }
 
 const realFetch = globalThis.fetch;
+const originalEnv = {
+  provider: process.env.MARKET_DATA_PROVIDER,
+  fallback: process.env.MARKET_DATA_FALLBACK_PROVIDER,
+};
 
 type FetchCall = { url: string; init?: RequestInit };
 
 function installFetchMock(
-  handler: (call: FetchCall) => { status?: number; body: unknown } | Promise<{ status?: number; body: unknown }>,
+  handler: (
+    call: FetchCall,
+  ) => { status?: number; body: unknown } | Promise<{ status?: number; body: unknown }>,
 ): { calls: FetchCall[] } {
   const calls: FetchCall[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     calls.push({ url, init });
     const { status = 200, body } = await handler({ url, init });
     return new Response(JSON.stringify(body), {
@@ -93,10 +100,16 @@ describe("parseYahooChart", () => {
 describe("getQuote (mocked fetch)", () => {
   beforeEach(() => {
     _clearQuoteCache();
+    process.env.MARKET_DATA_PROVIDER = "yahoo";
+    process.env.MARKET_DATA_FALLBACK_PROVIDER = undefined;
   });
   afterEach(() => {
     globalThis.fetch = realFetch;
     _clearQuoteCache();
+    if (originalEnv.provider === undefined) process.env.MARKET_DATA_PROVIDER = undefined;
+    else process.env.MARKET_DATA_PROVIDER = originalEnv.provider;
+    if (originalEnv.fallback === undefined) process.env.MARKET_DATA_FALLBACK_PROVIDER = undefined;
+    else process.env.MARKET_DATA_FALLBACK_PROVIDER = originalEnv.fallback;
   });
 
   test("parses a Yahoo response into a Quote", async () => {

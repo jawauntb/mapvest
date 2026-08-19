@@ -1,6 +1,6 @@
 /**
- * Per-ticker news source with a keyless Yahoo Finance RSS default and an
- * optional Finnhub branch (activated when FINNHUB_API_KEY is set).
+ * Per-ticker news source with Massive as the primary provider. Yahoo RSS and
+ * Finnhub remain explicit legacy fallbacks while provider parity is proven.
  *
  * The Yahoo endpoint is public XML at
  *   https://finance.yahoo.com/rss/headline?s=<TICKER>
@@ -27,8 +27,7 @@ export type NewsFetchResult = {
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
-const DEFAULT_UA =
-  "Mozilla/5.0 (compatible; MapvestNewsBot/1.0; +https://mapvest.app)";
+const DEFAULT_UA = "Mozilla/5.0 (compatible; MapvestNewsBot/1.0; +https://mapvest.app)";
 
 type CacheEntry = { expiresAt: number; result: NewsFetchResult };
 const cache = new Map<string, CacheEntry>();
@@ -104,9 +103,10 @@ function pickTag(itemXml: string, tag: string): string | undefined {
 function parseYahooRss(xml: string): NewsItem[] {
   const items: NewsItem[] = [];
   const itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = itemRe.exec(xml)) !== null) {
+  let m = itemRe.exec(xml);
+  while (m !== null) {
     const inner = m[1];
+    m = itemRe.exec(xml);
     if (!inner) continue;
     const title = pickTag(inner, "title");
     const url = pickTag(inner, "link");
@@ -195,6 +195,50 @@ async function fetchFinnhub(ticker: string, apiKey: string): Promise<NewsItem[]>
   return items;
 }
 
+// -------- Massive news --------
+
+type MassiveNewsItem = {
+  title?: string;
+  article_url?: string;
+  publisher?: { name?: string };
+  published_utc?: string;
+};
+
+async function fetchMassive(ticker: string, apiKey: string): Promise<NewsItem[]> {
+  const base = (process.env.MASSIVE_BASE_URL?.trim() || "https://api.massive.com").replace(
+    /\/$/,
+    "",
+  );
+  const url = new URL(`${base}/v2/reference/news`);
+  url.searchParams.set("ticker", ticker);
+  url.searchParams.set("limit", "25");
+  url.searchParams.set("order", "desc");
+  url.searchParams.set("sort", "published_utc");
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` } },
+    FETCH_TIMEOUT_MS,
+  );
+  if (!response.ok) throw new Error(`massive news ${response.status}`);
+  const body = (await response.json()) as { results?: MassiveNewsItem[] };
+  if (!Array.isArray(body.results)) return [];
+  return body.results.flatMap((item) => {
+    if (!item.title || !item.article_url) return [];
+    const publishedAt =
+      item.published_utc && !Number.isNaN(Date.parse(item.published_utc))
+        ? new Date(item.published_utc).toISOString()
+        : new Date().toISOString();
+    return [
+      {
+        title: item.title,
+        url: item.article_url,
+        source: item.publisher?.name?.trim() || "Massive",
+        publishedAt,
+      },
+    ];
+  });
+}
+
 // -------- Public API --------
 
 /**
@@ -205,10 +249,7 @@ async function fetchFinnhub(ticker: string, apiKey: string): Promise<NewsItem[]>
  * @param ticker Case-insensitive ticker; normalized to upper case.
  * @param limit  Max items to return (default 6, cap 25).
  */
-export async function fetchTickerNews(
-  ticker: string,
-  limit = 6,
-): Promise<NewsFetchResult> {
+export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFetchResult> {
   const norm = ticker.trim().toUpperCase();
   if (!norm) return { items: [], provider: "none" };
   const cap = Math.max(1, Math.min(25, Math.floor(limit) || 6));
@@ -219,21 +260,39 @@ export async function fetchTickerNews(
     return { items: cached.items.slice(0, cap), provider: cached.provider };
   }
 
+  const massiveKey = process.env.MASSIVE_API_KEY?.trim();
   const finnhubKey = process.env.FINNHUB_API_KEY?.trim();
   let items: NewsItem[] = [];
-  let provider = "yahoo-rss";
+  let provider = "massive";
 
   try {
-    if (finnhubKey) {
+    if (massiveKey && process.env.MARKET_DATA_PROVIDER !== "yahoo") {
+      try {
+        items = await fetchMassive(norm, massiveKey);
+        provider = "massive";
+      } catch {
+        if (process.env.MARKET_DATA_FALLBACK_PROVIDER === "finnhub" && finnhubKey) {
+          items = await fetchFinnhub(norm, finnhubKey);
+          provider = "finnhub";
+        } else if (process.env.MARKET_DATA_FALLBACK_PROVIDER === "yahoo") {
+          items = await fetchYahoo(norm);
+          provider = "yahoo-rss";
+        } else {
+          throw new Error("massive news unavailable");
+        }
+      }
+    } else if (process.env.MARKET_DATA_PROVIDER === "yahoo") {
+      items = await fetchYahoo(norm);
+      provider = "yahoo-rss";
+    } else if (finnhubKey && process.env.MARKET_DATA_FALLBACK_PROVIDER === "finnhub") {
       try {
         items = await fetchFinnhub(norm, finnhubKey);
         provider = "finnhub";
       } catch {
-        items = await fetchYahoo(norm);
-        provider = "yahoo-rss";
+        throw new Error("finnhub news unavailable");
       }
     } else {
-      items = await fetchYahoo(norm);
+      throw new Error("massive news not configured");
     }
   } catch {
     // Silent failure — best-effort. Cache the empty result briefly so we

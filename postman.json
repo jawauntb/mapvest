@@ -302,7 +302,7 @@
           }
         },
         {
-          "name": "Daily Yahoo price history",
+          "name": "Daily provider-routed price history",
           "request": {
             "method": "GET",
             "header": [],
@@ -326,7 +326,7 @@
                 }
               ]
             },
-            "description": "Daily adjusted closes from Yahoo Finance v7 chart for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable."
+            "description": "Daily adjusted closes from the configured market-data provider for the native Overview price series. Period defaults to `1mo`. Does not invent prices — 502 when history is unavailable."
           }
         },
         {
@@ -359,7 +359,225 @@
                 }
               ]
             },
-            "description": "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to yfinance `1mo`."
+            "description": "Proxies `POST /api/charts/{type}` on Underlying Analyzer. Period aliases `1m`/`1M` normalize to the sibling analyzer's `1mo` period."
+          }
+        },
+        {
+          "name": "Market-data provider capabilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/market-data/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "market-data",
+                "capabilities"
+              ]
+            },
+            "description": "Returns the configured primary provider, freshness declaration, subscription labels, and dataset capability notes. The subscription labels are operational configuration and are not inferred from API responses."
+          }
+        },
+        {
+          "name": "Historical market aggregates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/market-data/aggregates?symbol=AAPL&from=2026-01-01&to=2026-01-31&multiplier=1&timespan=day&adjusted=false&assetClass=stocks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "market-data",
+                "aggregates"
+              ],
+              "query": [
+                {
+                  "key": "symbol",
+                  "value": "AAPL"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-01-31"
+                },
+                {
+                  "key": "multiplier",
+                  "value": "1"
+                },
+                {
+                  "key": "timespan",
+                  "value": "day"
+                },
+                {
+                  "key": "adjusted",
+                  "value": "false"
+                },
+                {
+                  "key": "assetClass",
+                  "value": "stocks"
+                }
+              ]
+            },
+            "description": "Additive OHLCV aggregate endpoint backed by Massive when configured. Dates are YYYY-MM-DD; timestamps in points are provider Unix milliseconds."
+          }
+        },
+        {
+          "name": "Options chain snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/options/chain?underlying=AAPL&expiration_date=&contract_type=call&strike_price=0&limit=0&cursor=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "options",
+                "chain"
+              ],
+              "query": [
+                {
+                  "key": "underlying",
+                  "value": "AAPL"
+                },
+                {
+                  "key": "expiration_date",
+                  "value": ""
+                },
+                {
+                  "key": "contract_type",
+                  "value": "call"
+                },
+                {
+                  "key": "strike_price",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "0"
+                },
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Additive option-chain snapshot with Massive-normalized contracts, greeks, implied volatility, quotes, trades, and open interest when the subscribed Options plan includes them."
+          }
+        },
+        {
+          "name": "Options contract reference data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/options/contracts?underlying=&ticker=&expiration_date=&contract_type=call&expired=false&limit=0&cursor=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "options",
+                "contracts"
+              ],
+              "query": [
+                {
+                  "key": "underlying",
+                  "value": ""
+                },
+                {
+                  "key": "ticker",
+                  "value": ""
+                },
+                {
+                  "key": "expiration_date",
+                  "value": ""
+                },
+                {
+                  "key": "contract_type",
+                  "value": "call"
+                },
+                {
+                  "key": "expired",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "0"
+                },
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Additive, cursor-paginated options contract index. Massive exposes active and expired contracts with expiration dates, strikes, types, and exercise styles."
+          }
+        },
+        {
+          "name": "Single options contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/options/contracts/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "options",
+                "contracts",
+                "{ticker}"
+              ]
+            },
+            "description": "Additive options contract reference lookup by Massive options ticker."
+          }
+        },
+        {
+          "name": "Corporate actions and market events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/market-events?ticker=&from=&to=&limit=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "market-events"
+              ],
+              "query": [
+                {
+                  "key": "ticker",
+                  "value": ""
+                },
+                {
+                  "key": "from",
+                  "value": ""
+                },
+                {
+                  "key": "to",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Returns Massive stock splits and dividends, with optional partner event coverage documented by the capability report."
           }
         },
         {

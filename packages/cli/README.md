@@ -82,7 +82,9 @@ mapvest resolve "In-N-Out" --sector Restaurants
 
 ### `mapvest quote <symbol>`
 
-GETs `/v1/quote?symbol=…` and pretty-prints the delayed quote. Yahoo's TOS disclaimer is printed verbatim (this is the source of truth for the disclaimer text — do not paraphrase).
+GETs `/v1/quote?symbol=…` and pretty-prints the provider-routed quote. The API's
+disclaimer is printed verbatim (the provider remains the source of truth for
+freshness and attribution).
 
 ```sh
 mapvest quote HSY

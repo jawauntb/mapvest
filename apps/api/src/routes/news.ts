@@ -1,15 +1,15 @@
 import { Hono } from "hono";
+import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { fetchArticle } from "../lib/news-read.js";
 import { fetchTickerNews } from "../lib/news-source.js";
-import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 
 /**
  * GET /v1/news?ticker=AAPL&limit=6
  *
  * Returns a compact list of recent headlines for `ticker`, sourced from a
- * keyless Yahoo Finance RSS by default (or Finnhub when FINNHUB_API_KEY is
- * set). Best-effort: on any provider failure the endpoint returns an empty
+ * Massive reference news by default, with Yahoo RSS or Finnhub only when the
+ * explicit fallback flag is set. Best-effort: on any provider failure the endpoint returns an empty
  * `items` array with `provider: "error"` and a 200 status — clients render
  * a graceful empty state rather than hitting an error path.
  *
@@ -42,7 +42,7 @@ news.get("/", optionalAuth, async (c) => {
 
     // Same caching envelope as /v1/quote: news moves slowly at the per-
     // minute scale but we still want to soak up bursty re-fetches from
-    // the detail screen without slamming Yahoo.
+    // the detail screen without slamming the upstream provider.
     c.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
     return c.json({
       items,

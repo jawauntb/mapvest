@@ -1,7 +1,29 @@
-import { Hono } from "hono";
+import {
+  MarketDataProviderError,
+  getOptionContract,
+  getOptionContracts,
+  getOptionsChain,
+} from "@mapvest/finance";
+import { type Context, Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { marketDataSource } from "../lib/marketDataSource.js";
 
 const options = new Hono();
+
+function limitOf(raw: string | undefined, fallback: number): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(1, Math.min(1_000, Math.floor(value))) : fallback;
+}
+
+function optionError(c: Context, error: unknown) {
+  if (error instanceof MarketDataProviderError && error.status === 429) {
+    return c.json({ error: "market data rate limited" }, 429);
+  }
+  if (error instanceof MarketDataProviderError && error.status === 503) {
+    return c.json({ error: "market data provider not configured" }, 503);
+  }
+  return c.json({ error: "options data unavailable" }, 502);
+}
 
 /**
  * GET /v1/options?ticker=XYZ
@@ -37,6 +59,85 @@ options.get("/", (c) => {
       note: "options derivation deferred to v0.2",
     });
   });
+});
+
+/** Additive Massive-backed option-chain snapshot. */
+options.get("/chain", async (c) => {
+  const underlyingTicker = (c.req.query("underlying") ?? c.req.query("ticker") ?? "")
+    .trim()
+    .toUpperCase();
+  if (!underlyingTicker) return c.json({ error: "underlying required" }, 400);
+  try {
+    const page = await getOptionsChain({
+      underlyingTicker,
+      expirationDate: c.req.query("expiration_date"),
+      contractType:
+        c.req.query("contract_type") === "put"
+          ? "put"
+          : c.req.query("contract_type") === "call"
+            ? "call"
+            : undefined,
+      strikePrice: c.req.query("strike_price") ? Number(c.req.query("strike_price")) : undefined,
+      limit: limitOf(c.req.query("limit"), 250),
+      cursor: c.req.query("cursor"),
+    });
+    return c.json({
+      underlyingTicker,
+      contracts: page.results,
+      nextUrl: page.nextUrl,
+      requestId: page.requestId,
+      sources: [marketDataSource()],
+    });
+  } catch (error) {
+    return optionError(c, error);
+  }
+});
+
+/** Additive Massive-backed options contract index with cursor pass-through. */
+options.get("/contracts", async (c) => {
+  try {
+    const page = await getOptionContracts({
+      underlyingTicker: c.req.query("underlying")?.trim().toUpperCase(),
+      ticker: c.req.query("ticker")?.trim().toUpperCase(),
+      expirationDate: c.req.query("expiration_date"),
+      asOf: c.req.query("as_of"),
+      contractType:
+        c.req.query("contract_type") === "put"
+          ? "put"
+          : c.req.query("contract_type") === "call"
+            ? "call"
+            : undefined,
+      strikePrice: c.req.query("strike_price") ? Number(c.req.query("strike_price")) : undefined,
+      expired:
+        c.req.query("expired") === "true"
+          ? true
+          : c.req.query("expired") === "false"
+            ? false
+            : undefined,
+      limit: limitOf(c.req.query("limit"), 100),
+      cursor: c.req.query("cursor"),
+    });
+    return c.json({
+      contracts: page.results,
+      nextUrl: page.nextUrl,
+      requestId: page.requestId,
+      sources: [marketDataSource()],
+    });
+  } catch (error) {
+    return optionError(c, error);
+  }
+});
+
+options.get("/contracts/:ticker", async (c) => {
+  const ticker = c.req.param("ticker").trim().toUpperCase();
+  if (!ticker) return c.json({ error: "contract ticker required" }, 400);
+  try {
+    const contract = await getOptionContract(ticker);
+    if (!contract) return c.json({ error: "option contract unavailable" }, 502);
+    return c.json({ contract, sources: [marketDataSource()] });
+  } catch (error) {
+    return optionError(c, error);
+  }
 });
 
 export default options;
