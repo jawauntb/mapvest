@@ -342,6 +342,110 @@ export const OptionContractsResponse = z.object({
 });
 export type OptionContractsResponse = z.infer<typeof OptionContractsResponse>;
 
+const MarketTicker = z.string().regex(/^[A-Z][A-Z0-9._-]{0,14}$/);
+const OptionTicker = z.string().regex(/^O:[A-Z0-9._-]{1,48}$/);
+const OpaqueCursor = z
+  .string()
+  .min(1)
+  .max(2_048)
+  .regex(/^[^\s]+$/);
+const QueryBoolean = z.preprocess((value) => {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value;
+}, z.boolean());
+
+export const FinancialRatiosRequest = z.object({
+  ticker: MarketTicker,
+  limit: z.coerce.number().int().min(1).max(500).default(1),
+  cursor: OpaqueCursor.optional(),
+});
+export type FinancialRatiosRequest = z.infer<typeof FinancialRatiosRequest>;
+
+export const FinancialRatio = z.object({
+  ticker: z.string(),
+  date: z.string().optional(),
+  averageVolume: z.number().optional(),
+  cash: z.number().optional(),
+  cik: z.string().optional(),
+  current: z.number().optional(),
+  debtToEquity: z.number().optional(),
+  dividendYield: z.number().optional(),
+  earningsPerShare: z.number().optional(),
+  enterpriseValue: z.number().optional(),
+  evToEbitda: z.number().optional(),
+  evToSales: z.number().optional(),
+  freeCashFlow: z.number().optional(),
+  marketCap: z.number().optional(),
+  price: z.number().optional(),
+  priceToBook: z.number().optional(),
+  priceToCashFlow: z.number().optional(),
+  priceToEarnings: z.number().optional(),
+  priceToFreeCashFlow: z.number().optional(),
+  priceToSales: z.number().optional(),
+  quick: z.number().optional(),
+  returnOnAssets: z.number().optional(),
+  returnOnEquity: z.number().optional(),
+});
+export type FinancialRatio = z.infer<typeof FinancialRatio>;
+
+export const FinancialRatiosResponse = z.object({
+  ticker: z.string(),
+  ratios: z.array(FinancialRatio),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type FinancialRatiosResponse = z.infer<typeof FinancialRatiosResponse>;
+
+export const OptionSummaryRequest = z.object({
+  underlying: MarketTicker,
+  contract: OptionTicker,
+});
+export type OptionSummaryRequest = z.infer<typeof OptionSummaryRequest>;
+
+export const OptionSummary = OptionSnapshot.extend({
+  underlyingPrice: z.number().optional(),
+  change: z.number().optional(),
+  changePct: z.number().optional(),
+  fmv: z.number().optional(),
+  fmvLastUpdated: z.number().optional(),
+});
+export type OptionSummary = z.infer<typeof OptionSummary>;
+
+export const OptionSummaryResponse = z.object({
+  underlyingTicker: z.string(),
+  contractTicker: z.string(),
+  summary: OptionSummary,
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionSummaryResponse = z.infer<typeof OptionSummaryResponse>;
+
+export const OptionBarsRequest = z.object({
+  ticker: OptionTicker,
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  multiplier: z.coerce.number().int().min(1).max(1_000).default(1),
+  timespan: z.enum(["minute", "hour", "day", "week", "month", "quarter", "year"]).default("day"),
+  adjusted: QueryBoolean.default(true),
+  cursor: OpaqueCursor.optional(),
+});
+export type OptionBarsRequest = z.infer<typeof OptionBarsRequest>;
+
+export const OptionBarsResponse = z.object({
+  contractTicker: z.string(),
+  from: z.string(),
+  to: z.string(),
+  multiplier: z.number(),
+  timespan: z.string(),
+  points: z.array(AggregatePoint),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionBarsResponse = z.infer<typeof OptionBarsResponse>;
+
 export const CorporateEvent = z.object({
   id: z.string().optional(),
   ticker: z.string(),

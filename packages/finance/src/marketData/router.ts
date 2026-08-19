@@ -4,13 +4,18 @@ import type {
   AggregatePage,
   AggregateQuery,
   CorporateEvent,
+  FinancialRatio,
+  FinancialRatios,
+  FinancialRatiosQuery,
   HistoryPoint,
   MarketDataCapabilities,
   MarketDataProvider,
   MarketDataProviderName,
+  OptionAggregateQuery,
   OptionContract,
   OptionContractQuery,
   OptionSnapshot,
+  OptionSnapshotQuery,
   OptionsChainQuery,
   ProviderPage,
 } from "./types.js";
@@ -117,12 +122,56 @@ export const getAggregates = (query: AggregateQuery) =>
   withFallback((provider) => provider.getAggregates(query));
 export const getAggregatesPage = (query: AggregateQuery) =>
   withFallback((provider) => provider.getAggregatesPage(query));
+export const getFinancialRatios = (query: FinancialRatiosQuery = {}) =>
+  withFallback((provider) => {
+    if (!provider.getFinancialRatios) {
+      throw new MarketDataProviderError("Provider does not support financial ratios", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return provider.getFinancialRatios(query);
+  });
 export const getOptionsChain = (query: OptionsChainQuery) =>
   withFallback((provider) => provider.getOptionsChain(query));
 export const getOptionContracts = (query: OptionContractQuery) =>
   withFallback((provider) => provider.getOptionContracts(query));
 export const getOptionContract = (ticker: string) =>
   withFallback((provider) => provider.getOptionContract(ticker));
+export const getOptionSnapshot = (query: OptionSnapshotQuery) =>
+  withFallback((provider) => {
+    if (!provider.getOptionSnapshot) {
+      throw new MarketDataProviderError("Provider does not support option snapshots", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return provider.getOptionSnapshot(query);
+  });
+export const getOptionAggregatesPage = (query: OptionAggregateQuery) =>
+  withFallback((provider) => {
+    if (!provider.getOptionAggregatesPage) {
+      throw new MarketDataProviderError("Provider does not support option aggregates", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return provider.getOptionAggregatesPage(query);
+  });
+export const getOptionAggregates = (query: OptionAggregateQuery) =>
+  withFallback((provider) => {
+    if (!provider.getOptionAggregates) {
+      throw new MarketDataProviderError("Provider does not support option aggregates", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return provider.getOptionAggregates(query);
+  });
 export const getCorporateEvents = (query: {
   ticker?: string;
   from?: string;
@@ -141,12 +190,17 @@ export type {
   AggregatePage,
   AggregateQuery,
   CorporateEvent,
+  FinancialRatio,
+  FinancialRatios,
+  FinancialRatiosQuery,
   HistoryPoint,
   MarketDataCapabilities,
   MarketDataProviderName,
   OptionContract,
   OptionContractQuery,
+  OptionAggregateQuery,
   OptionSnapshot,
+  OptionSnapshotQuery,
   OptionsChainQuery,
   ProviderPage,
 } from "./types.js";

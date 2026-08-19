@@ -175,6 +175,113 @@ export const QuoteHistoryResponse = z.object({
 });
 export type QuoteHistoryResponse = z.infer<typeof QuoteHistoryResponse>;
 
+// -------- Massive options market data --------
+
+export const OptionContract = z.object({
+  ticker: z.string(),
+  underlyingTicker: z.string().optional(),
+  contractType: z.enum(["call", "put", "other"]).optional(),
+  expirationDate: z.string().optional(),
+  strikePrice: z.number().optional(),
+  exerciseStyle: z.enum(["american", "bermudan", "european"]).optional(),
+  sharesPerContract: z.number().optional(),
+  primaryExchange: z.string().optional(),
+  cfi: z.string().optional(),
+});
+export type OptionContract = z.infer<typeof OptionContract>;
+
+export const OptionSnapshot = OptionContract.extend({
+  breakEvenPrice: z.number().optional(),
+  impliedVolatility: z.number().optional(),
+  openInterest: z.number().optional(),
+  greeks: z
+    .object({
+      delta: z.number().optional(),
+      gamma: z.number().optional(),
+      theta: z.number().optional(),
+      vega: z.number().optional(),
+    })
+    .optional(),
+  quote: z
+    .object({
+      bid: z.number().optional(),
+      ask: z.number().optional(),
+      bidSize: z.number().optional(),
+      askSize: z.number().optional(),
+      ts: z.number().optional(),
+    })
+    .optional(),
+  trade: z
+    .object({
+      price: z.number().optional(),
+      size: z.number().optional(),
+      ts: z.number().optional(),
+    })
+    .optional(),
+  day: z
+    .object({
+      open: z.number().optional(),
+      high: z.number().optional(),
+      low: z.number().optional(),
+      close: z.number().optional(),
+      volume: z.number().optional(),
+    })
+    .optional(),
+});
+export type OptionSnapshot = z.infer<typeof OptionSnapshot>;
+
+export const OptionsResponse = z.object({
+  underlyingTicker: z.string(),
+  contracts: z.array(OptionSnapshot),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionsResponse = z.infer<typeof OptionsResponse>;
+
+export const OptionContractsResponse = z.object({
+  contracts: z.array(OptionContract),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type OptionContractsResponse = z.infer<typeof OptionContractsResponse>;
+
+export const FinancialRatio = z.object({
+  ticker: z.string(),
+  date: z.string().optional(),
+  averageVolume: z.number().optional(),
+  cash: z.number().optional(),
+  current: z.number().optional(),
+  debtToEquity: z.number().optional(),
+  dividendYield: z.number().optional(),
+  earningsPerShare: z.number().optional(),
+  enterpriseValue: z.number().optional(),
+  evToEbitda: z.number().optional(),
+  evToSales: z.number().optional(),
+  freeCashFlow: z.number().optional(),
+  marketCap: z.number().optional(),
+  price: z.number().optional(),
+  priceToBook: z.number().optional(),
+  priceToCashFlow: z.number().optional(),
+  priceToEarnings: z.number().optional(),
+  priceToFreeCashFlow: z.number().optional(),
+  priceToSales: z.number().optional(),
+  quick: z.number().optional(),
+  returnOnAssets: z.number().optional(),
+  returnOnEquity: z.number().optional(),
+});
+export type FinancialRatio = z.infer<typeof FinancialRatio>;
+
+export const FinancialRatiosResponse = z.object({
+  ticker: z.string(),
+  ratios: z.array(FinancialRatio),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type FinancialRatiosResponse = z.infer<typeof FinancialRatiosResponse>;
+
 // -------- auth --------
 
 export const User = z.object({

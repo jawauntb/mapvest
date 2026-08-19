@@ -2,6 +2,7 @@ import {
   addToWatchlist,
   agentChat,
   fetchAnalysis,
+  fetchFinancialRatios,
   fetchQuote,
   generateMemo,
   listWatchlist,
@@ -17,6 +18,7 @@ import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { ChartsSection } from "@/components/ChartsSection";
+import { OptionsChainSection } from "@/components/OptionsChainSection";
 import { RichText } from "@/components/RichText";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
@@ -93,6 +95,13 @@ export default function DetailSheet() {
     enabled: !!ticker && stage >= 1,
     queryFn: () => fetchAnalysis(ticker!, { token: session?.token }),
     staleTime: 5 * 60_000,
+  });
+
+  const ratiosQ = useQuery({
+    queryKey: ["financial-ratios", ticker],
+    enabled: !!ticker && stage >= 1,
+    queryFn: () => fetchFinancialRatios(ticker!, { token: session?.token }),
+    staleTime: 30 * 60_000,
   });
 
   const secQ = useQuery({
@@ -306,8 +315,29 @@ export default function DetailSheet() {
               </Section>
             ) : null}
 
-            {analysisQ.data ? <AnalysisSnapshotBlock data={analysisQ.data} /> : null}
-            {analysisQ.data ? <AnalysisAdvancedBlock data={analysisQ.data} /> : null}
+            {ticker ? (
+              <FinancialRatiosSection
+                data={analysisQ.data}
+                isError={analysisQ.isError}
+                isLoading={analysisQ.isLoading}
+              />
+            ) : null}
+
+            {ticker ? (
+              <MassiveRatiosSection
+                data={ratiosQ.data}
+                isError={ratiosQ.isError}
+                isLoading={ratiosQ.isLoading}
+              />
+            ) : null}
+
+            {stage >= 2 && ticker ? (
+              <OptionsChainSection
+                ticker={ticker}
+                token={session?.token}
+                underlyingPrice={quote?.price}
+              />
+            ) : null}
 
             {ticker ? (
               <CollapsibleSection title="SEC filings">
@@ -710,42 +740,37 @@ function AgentOverviewBlock({
   );
 }
 
-function AnalysisSnapshotBlock({
+function FinancialRatiosSection({
   data,
+  isError,
+  isLoading,
 }: {
-  data: Awaited<ReturnType<typeof fetchAnalysis>>;
+  data?: Awaited<ReturnType<typeof fetchAnalysis>>;
+  isError: boolean;
+  isLoading: boolean;
 }) {
-  return (
-    <Section title="At a glance">
-      <Text style={[styles.muted, { flexShrink: 1 }]}>
-        {[
-          data.sector,
-          data.industry,
-          data.annualVolatility != null ? `vol ${(data.annualVolatility * 100).toFixed(1)}%` : null,
-          data.fiftyTwoWeekLow != null || data.fiftyTwoWeekHigh != null
-            ? `52w ${fmtLvl(data.fiftyTwoWeekLow)}–${fmtLvl(data.fiftyTwoWeekHigh)}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || "—"}
-      </Text>
-      {data.brief ? (
-        <View style={{ marginTop: 10, alignSelf: "stretch", width: "100%" }}>
-          <RichText text={data.brief} mutedStyle={styles.muted} />
+  if (isLoading) {
+    return (
+      <CollapsibleSection title="Financial ratios">
+        <View style={styles.statusRow}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.muted}>Loading ratios…</Text>
         </View>
-      ) : null}
-    </Section>
-  );
-}
+      </CollapsibleSection>
+    );
+  }
+  if (isError) {
+    return (
+      <CollapsibleSection title="Financial ratios">
+        <Text style={styles.muted}>Financial ratios unavailable right now.</Text>
+      </CollapsibleSection>
+    );
+  }
+  if (!data) return null;
 
-function AnalysisAdvancedBlock({
-  data,
-}: {
-  data: Awaited<ReturnType<typeof fetchAnalysis>>;
-}) {
   const rows: [string, string][] = [
-    ["Sector", data.sector ?? "—"],
-    ["Industry", data.industry ?? "—"],
+    ["P/E", data.trailingPe != null ? String(data.trailingPe) : "—"],
+    ["Mkt cap", data.marketCap != null ? String(data.marketCap) : "—"],
     ["Price", data.price != null ? `$${data.price.toFixed(2)}` : "—"],
     [
       "Ann. vol",
@@ -753,20 +778,79 @@ function AnalysisAdvancedBlock({
     ],
     ["52w low", fmtLvl(data.fiftyTwoWeekLow)],
     ["52w high", fmtLvl(data.fiftyTwoWeekHigh)],
-    ["P/E", data.trailingPe != null ? String(data.trailingPe) : "—"],
-    ["Mkt cap", data.marketCap != null ? String(data.marketCap) : "—"],
   ];
+  const hasRatio = rows.some(([, value]) => value !== "—");
+  if (!hasRatio) {
+    return (
+      <CollapsibleSection title="Financial ratios">
+        <Text style={styles.muted}>No financial ratios were reported for this ticker.</Text>
+      </CollapsibleSection>
+    );
+  }
+
   return (
-    <CollapsibleSection title="Financials">
-      {rows.map(([k, v]) => (
-        <View key={k} style={styles.finRow}>
-          <Text style={styles.finKey}>{k}</Text>
-          <Text style={styles.finVal}>{v}</Text>
-        </View>
-      ))}
+    <CollapsibleSection title="Financial ratios">
+      <View style={styles.ratioGrid}>
+        {rows.map(([label, value]) => (
+          <View key={label} style={styles.ratioCard}>
+            <Text style={styles.ratioLabel}>{label}</Text>
+            <Text style={styles.ratioValue}>{value}</Text>
+          </View>
+        ))}
+      </View>
       {data.brief ? <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text> : null}
     </CollapsibleSection>
   );
+}
+
+function MassiveRatiosSection({
+  data,
+  isError,
+  isLoading,
+}: {
+  data?: Awaited<ReturnType<typeof fetchFinancialRatios>>;
+  isError: boolean;
+  isLoading: boolean;
+}) {
+  const ratio = data?.ratios[0];
+  return (
+    <CollapsibleSection title="Massive financial ratios">
+      {isLoading ? <Text style={styles.muted}>Loading end-of-day ratios…</Text> : null}
+      {!isLoading && isError ? (
+        <Text style={styles.muted}>Ratios unavailable right now.</Text>
+      ) : null}
+      {!isLoading && !isError && !ratio ? (
+        <Text style={styles.muted}>No ratios reported for this ticker.</Text>
+      ) : null}
+      {ratio ? (
+        <View style={styles.ratioGrid}>
+          {[
+            ["P/E", formatRatio(ratio.priceToEarnings)],
+            ["P/B", formatRatio(ratio.priceToBook)],
+            ["P/S", formatRatio(ratio.priceToSales)],
+            ["Div. yield", formatPercent(ratio.dividendYield)],
+            ["ROE", formatPercent(ratio.returnOnEquity)],
+            ["ROA", formatPercent(ratio.returnOnAssets)],
+            ["D/E", formatRatio(ratio.debtToEquity)],
+            ["As of", ratio.date ?? "—"],
+          ].map(([label, value]) => (
+            <View key={label} style={styles.ratioCard}>
+              <Text style={styles.ratioLabel}>{label}</Text>
+              <Text style={styles.ratioValue}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </CollapsibleSection>
+  );
+}
+
+function formatRatio(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function formatPercent(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
 }
 
 function fmtLvl(n?: number): string {
@@ -1136,6 +1220,7 @@ const styles = StyleSheet.create({
   h2: { color: colors.fg, ...type.label, fontSize: 15 },
   sub: { color: colors.fgMuted, marginTop: 4 },
   muted: { color: colors.fgMuted, fontSize: 13 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28 },
   card: {
     backgroundColor: colors.bgElevated,
     borderColor: colors.border,
@@ -1288,13 +1373,16 @@ const styles = StyleSheet.create({
   },
   researchBtnText: { color: colors.accentInk, fontSize: 15, fontWeight: "800" },
   researchBtnSub: { color: colors.accentInk, opacity: 0.85, fontSize: 12, fontWeight: "600" },
-  finRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+  ratioGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  ratioCard: {
+    minWidth: "30%",
+    flexGrow: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: 9,
+    backgroundColor: colors.bgElevated,
   },
-  finKey: { color: colors.fgMuted, fontSize: 13 },
-  finVal: { color: colors.fg, fontSize: 13, fontWeight: "600" },
+  ratioLabel: { color: colors.fgDim, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  ratioValue: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 3 },
 });

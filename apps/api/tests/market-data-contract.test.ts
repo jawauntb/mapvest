@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { fetchTickerNews } from "../src/lib/news-source.js";
 import { __resetMarketDataRateLimit } from "../src/middleware/marketDataRateLimit.js";
+import financials from "../src/routes/financials.js";
 import marketData from "../src/routes/market-data.js";
 import marketEvents from "../src/routes/market-events.js";
 import options from "../src/routes/options.js";
@@ -117,6 +118,121 @@ describe("market-data additive API contracts", () => {
       ],
       nextCursor: "next",
     });
+  });
+
+  test("strictly validates additive option summary and bars inputs", async () => {
+    expect((await options.fetch(new Request("http://test/summary?underlying=AAPL"))).status).toBe(
+      400,
+    );
+    expect(
+      (
+        await options.fetch(
+          new Request("http://test/bars?ticker=O:AAPL260116C00100000&from=2025-01-01"),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await options.fetch(
+          new Request(
+            "http://test/bars?ticker=O:AAPL260116C00100000&from=2025-01-01&to=2025-01-02&cursor=bad%20cursor",
+          ),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await options.fetch(
+          new Request(
+            "http://test/bars?ticker=O:AAPL260116C00100000&from=2025-01-01&to=2025-01-02&adjusted=not-a-boolean",
+          ),
+        )
+      ).status,
+    ).toBe(400);
+  });
+
+  test("returns an additive option summary envelope", async () => {
+    massiveEnv();
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        response({
+          results: [
+            {
+              details: {
+                ticker: "O:AAPL260116C00100000",
+                underlying_ticker: "AAPL",
+                contract_type: "call",
+                expiration_date: "2026-01-16",
+                strike_price: 100,
+              },
+              break_even_price: 101.25,
+              implied_volatility: 0.22,
+              open_interest: 55,
+              last_quote: { bid: 1, ask: 1.1 },
+            },
+          ],
+          request_id: "option-summary",
+        }),
+      ),
+    ) as typeof fetch;
+
+    const result = await options.fetch(
+      new Request("http://test/summary?underlying=AAPL&contract=O:AAPL260116C00100000"),
+    );
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      underlyingTicker: "AAPL",
+      contractTicker: "O:AAPL260116C00100000",
+      summary: {
+        breakEvenPrice: 101.25,
+        impliedVolatility: 0.22,
+        quote: { bid: 1, ask: 1.1 },
+      },
+      sources: [{ provider: "massive" }],
+    });
+  });
+
+  test("returns cursor continuation for option bars", async () => {
+    massiveEnv();
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        response({
+          results: [{ t: 1_700_000_000_000, o: 1, h: 3, l: 0.5, c: 2, v: 10 }],
+          next_url: "https://massive.test/v2/aggs/ticker/O:AAPL260116C00100000?cursor=opaque-next",
+          request_id: "option-bars",
+        }),
+      ),
+    ) as typeof fetch;
+
+    const result = await options.fetch(
+      new Request(
+        "http://test/bars?ticker=O:AAPL260116C00100000&from=2025-01-01&to=2025-01-02&timespan=day&cursor=opaque-in",
+      ),
+    );
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      contractTicker: "O:AAPL260116C00100000",
+      points: [{ ts: 1_700_000_000, open: 1, high: 3, low: 0.5, close: 2 }],
+      nextCursor: "opaque-next",
+      requestId: "option-bars",
+      sources: [{ provider: "massive" }],
+    });
+  });
+
+  test("rejects invalid financial-ratios input and reports an unavailable provider", async () => {
+    const missingTicker = await financials.fetch(new Request("http://test/ratios"));
+    expect(missingTicker.status).toBe(400);
+
+    massiveEnv();
+    process.env.MASSIVE_MAX_RETRIES = "0";
+    globalThis.fetch = mock(() =>
+      Promise.resolve(response({ status: "ERROR", message: "down" }, 503)),
+    ) as typeof fetch;
+    const unavailable = await financials.fetch(
+      new Request("http://test/ratios?ticker=AAPL&limit=1"),
+    );
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ error: "financial ratios unavailable" });
   });
 
   test("maps provider rate limits to the API's stable 429 error", async () => {

@@ -6,9 +6,12 @@ import type {
   BillingPlatform,
   BillingPortalResponse,
   EntitlementState,
+  FinancialRatiosResponse,
   IdentifyResponse,
   LatLng,
   NearbyResponse,
+  OptionContractsResponse,
+  OptionsResponse,
   QuoteHistoryResponse,
   ResolveComparableResponse,
   Session,
@@ -111,11 +114,10 @@ export async function identifyPhoto(
   const form = new FormData();
   // React Native's FormData accepts { uri, name, type } as the file value.
   form.append("image", {
-    // biome-ignore lint/suspicious/noExplicitAny: RN FormData file value shape
     uri: args.imageUri,
     name: "capture.jpg",
     type: "image/jpeg",
-    // biome-ignore lint/suspicious/noExplicitAny: same
+    // biome-ignore lint/suspicious/noExplicitAny: React Native FormData file value shape
   } as any);
   if (args.location) {
     form.append("location", JSON.stringify(args.location));
@@ -123,7 +125,7 @@ export async function identifyPhoto(
   if (args.roi) {
     form.append("roi", JSON.stringify(args.roi));
   }
-  if (args.hint && args.hint.trim()) {
+  if (args.hint?.trim()) {
     form.append("hint", args.hint.trim());
   }
   const headers = new Headers();
@@ -218,6 +220,60 @@ export function fetchQuoteHistory(
 ): Promise<QuoteHistoryResponse> {
   const qs = new URLSearchParams({ symbol, period });
   return jsonFetch(`/v1/quote-history?${qs.toString()}`, { method: "GET" }, opts);
+}
+
+export function fetchFinancialRatios(
+  ticker: string,
+  opts: FetchOpts = {},
+): Promise<FinancialRatiosResponse> {
+  return jsonFetch(
+    `/v1/financials/ratios?ticker=${encodeURIComponent(ticker.toUpperCase())}&limit=1`,
+    { method: "GET" },
+    opts,
+  );
+}
+
+export function fetchOptionContracts(
+  underlyingTicker: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    limit?: number;
+    cursor?: string;
+  } = {},
+  opts: FetchOpts = {},
+): Promise<OptionContractsResponse> {
+  const qs = new URLSearchParams({
+    underlying: underlyingTicker.toUpperCase(),
+    expired: "false",
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return jsonFetch(`/v1/options/contracts?${qs.toString()}`, { method: "GET" }, opts);
+}
+
+export function fetchOptionsChain(
+  underlyingTicker: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    strikePrice?: number;
+    limit?: number;
+    cursor?: string;
+  } = {},
+  opts: FetchOpts = {},
+): Promise<OptionsResponse> {
+  const qs = new URLSearchParams({
+    underlying: underlyingTicker.toUpperCase(),
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.strikePrice != null) qs.set("strike_price", String(args.strikePrice));
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return jsonFetch(`/v1/options/chain?${qs.toString()}`, { method: "GET" }, opts);
 }
 
 /** Best-effort parallel quotes for list/map pins (cap 24). */
@@ -431,7 +487,7 @@ function nextSseBoundary(buf: string): { idx: number; sep: number } {
 
 export async function agentChatStream(
   message: string,
-  args: { ticker?: string; threadId?: string } = {},
+  args: { ticker?: string; threadId?: string },
   onEvent: (event: AgentStreamEvent) => void,
   opts: FetchOpts = {},
 ): Promise<{ article: ResearchArticle; threadId?: string }> {

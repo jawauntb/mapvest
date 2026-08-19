@@ -95,6 +95,11 @@ source of truth for configured freshness and dataset access. “Configured” do
 not mean “real-time”: the purchased Massive plan and optional TMX entitlement
 must be verified in Doppler.
 
+The upgraded-account audit and live endpoint matrix is maintained in
+[`MASSIVE_CAPABILITY_MATRIX.md`](MASSIVE_CAPABILITY_MATRIX.md). It covers the
+financial ratios/statements, NBBO/trades, technical indicators, option
+summary/bars, and TMX datasets that are now available to Mapvest.
+
 ## What we do NOT use
 
 - Paid market-data feeds (Polygon paid tier, IEX Cloud paid tier) — not until unit economics justify.

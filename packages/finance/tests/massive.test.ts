@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getAggregates,
   getCorporateEvents,
+  getFinancialRatios,
+  getOptionAggregates,
   getOptionContracts,
+  getOptionSnapshot,
   getOptionsChain,
   getPrimaryProvider,
   getQuote,
@@ -21,6 +24,7 @@ const savedEnv = {
   freshness: process.env.MASSIVE_MARKET_DATA_FRESHNESS,
   nodeEnv: process.env.NODE_ENV,
   testBase: process.env.MASSIVE_ALLOW_TEST_BASE_URL,
+  corporateEventsEnabled: process.env.MASSIVE_CORPORATE_EVENTS_ENABLED,
 };
 
 function installFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -51,6 +55,7 @@ beforeEach(() => {
   process.env.MASSIVE_MARKET_DATA_FRESHNESS = "real-time";
   process.env.NODE_ENV = "test";
   process.env.MASSIVE_ALLOW_TEST_BASE_URL = "1";
+  process.env.MASSIVE_CORPORATE_EVENTS_ENABLED = undefined;
 });
 
 afterEach(() => {
@@ -65,6 +70,7 @@ afterEach(() => {
     MASSIVE_MARKET_DATA_FRESHNESS: savedEnv.freshness,
     NODE_ENV: savedEnv.nodeEnv,
     MASSIVE_ALLOW_TEST_BASE_URL: savedEnv.testBase,
+    MASSIVE_CORPORATE_EVENTS_ENABLED: savedEnv.corporateEventsEnabled,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -215,6 +221,54 @@ describe("Massive provider adapter", () => {
     ]);
   });
 
+  test("maps financial ratios to normalized camelCase fields", async () => {
+    const calls = installFetch((url) => {
+      expect(url).toContain("/stocks/financials/v1/ratios");
+      expect(url).toContain("ticker=AAPL");
+      expect(url).toContain("limit=1");
+      expect(url).toContain("sort=ticker.asc");
+      return json({
+        status: "OK",
+        request_id: "req-ratios",
+        next_url: "https://massive.test/stocks/financials/v1/ratios?cursor=next",
+        results: [
+          {
+            ticker: "AAPL",
+            cik: "320193",
+            date: "2026-08-18",
+            average_volume: 47_500_000,
+            market_cap: 3_000_000_000_000,
+            earnings_per_share: 6.57,
+            price_to_earnings: 34.84,
+            return_on_equity: 1.5284,
+            ev_to_ebitda: 26.98,
+            free_cash_flow: 104_339_000_000,
+          },
+        ],
+      });
+    });
+    const result = await getFinancialRatios({ ticker: "AAPL", limit: 1, sort: "ticker.asc" });
+    expect(result).toMatchObject({
+      requestId: "req-ratios",
+      nextCursor: "next",
+      results: [
+        {
+          ticker: "AAPL",
+          cik: "320193",
+          date: "2026-08-18",
+          averageVolume: 47_500_000,
+          marketCap: 3_000_000_000_000,
+          earningsPerShare: 6.57,
+          priceToEarnings: 34.84,
+          returnOnEquity: 1.5284,
+          evToEbitda: 26.98,
+          freeCashFlow: 104_339_000_000,
+        },
+      ],
+    });
+    expect(calls).toHaveLength(1);
+  });
+
   test("maps options chain snapshots and preserves cursor pagination", async () => {
     installFetch(() =>
       json({
@@ -253,9 +307,71 @@ describe("Massive provider adapter", () => {
     });
   });
 
+  test("maps a single option snapshot and option aggregates", async () => {
+    const calls = installFetch((url) => {
+      if (url.includes("/v3/snapshot/options/")) {
+        expect(url).toContain("/v3/snapshot/options/AAPL/O%3AAAPL260116C00100000");
+        return json({
+          status: "OK",
+          request_id: "req-snapshot",
+          results: {
+            details: {
+              ticker: "O:AAPL260116C00100000",
+              underlying_ticker: "AAPL",
+              contract_type: "call",
+              expiration_date: "2026-01-16",
+              strike_price: 100,
+            },
+            break_even_price: 105,
+            implied_volatility: 0.22,
+            open_interest: 55,
+            last_quote: {
+              bid: 1,
+              ask: 1.1,
+              last_updated: 1_700_000_001_000_000,
+            },
+            last_trade: {
+              price: 1.05,
+              size: 2,
+              sip_timestamp: 1_700_000_002_000_000_000,
+            },
+          },
+        });
+      }
+      expect(url).toContain(
+        "/v2/aggs/ticker/O%3AAAPL260116C00100000/range/1/day/2026-01-01/2026-01-02",
+      );
+      return json({
+        status: "OK",
+        request_id: "req-option-bars",
+        results: [{ t: 1_700_000_000_000, o: 1, h: 3, l: 0.5, c: 2, v: 10 }],
+      });
+    });
+    const snapshot = await getOptionSnapshot({
+      underlyingTicker: "aapl",
+      optionTicker: "O:AAPL260116C00100000",
+    });
+    const bars = await getOptionAggregates({
+      optionTicker: "O:AAPL260116C00100000",
+      from: "2026-01-01",
+      to: "2026-01-02",
+      multiplier: 1,
+      timespan: "day",
+    });
+    expect(snapshot).toMatchObject({
+      ticker: "O:AAPL260116C00100000",
+      underlyingTicker: "AAPL",
+      breakEvenPrice: 105,
+      quote: { bid: 1, ask: 1.1, ts: 1_700_000_001 },
+      trade: { price: 1.05, size: 2, ts: 1_700_000_002 },
+    });
+    expect(bars).toEqual([{ ts: 1_700_000_000, open: 1, high: 3, low: 0.5, close: 2, volume: 10 }]);
+    expect(calls).toHaveLength(2);
+  });
+
   test("maps contracts and corporate action events", async () => {
     let call = 0;
-    installFetch(() => {
+    const calls = installFetch(() => {
       call += 1;
       if (call === 1)
         return json({
@@ -296,6 +412,10 @@ describe("Massive provider adapter", () => {
     });
     expect(events.map((event) => event.type).sort()).toEqual(["dividend", "split"]);
     expect(events.every((event) => event.date?.startsWith("2025"))).toBe(true);
+    expect(calls[1]?.url).toContain("execution_date.gte=2025-01-01");
+    expect(calls[1]?.url).toContain("execution_date.lte=2025-12-31");
+    expect(calls[2]?.url).toContain("ex_dividend_date.gte=2025-01-01");
+    expect(calls[2]?.url).toContain("ex_dividend_date.lte=2025-12-31");
   });
 
   test("maps the optional TMX corporate-events partner dataset", async () => {
