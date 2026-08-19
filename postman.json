@@ -431,6 +431,117 @@
           }
         },
         {
+          "name": "Financial ratios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/financials/ratios?ticker=&limit=1&cursor=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "financials",
+                "ratios"
+              ],
+              "query": [
+                {
+                  "key": "ticker",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "1"
+                },
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Additive financial-ratios page backed by the configured market-data provider. Continuation cursors are opaque and must be passed back unchanged."
+          }
+        },
+        {
+          "name": "Option contract summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/options/summary?underlying=&contract=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "options",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "underlying",
+                  "value": ""
+                },
+                {
+                  "key": "contract",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Additive single-contract snapshot backed by Massive options data, including normalized contract details, greeks, quote, trade, and day fields when available."
+          }
+        },
+        {
+          "name": "Option contract bars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/options/bars?ticker=&from=&to=&multiplier=1&timespan=day&adjusted=true&cursor=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "options",
+                "bars"
+              ],
+              "query": [
+                {
+                  "key": "ticker",
+                  "value": ""
+                },
+                {
+                  "key": "from",
+                  "value": ""
+                },
+                {
+                  "key": "to",
+                  "value": ""
+                },
+                {
+                  "key": "multiplier",
+                  "value": "1"
+                },
+                {
+                  "key": "timespan",
+                  "value": "day"
+                },
+                {
+                  "key": "adjusted",
+                  "value": "true"
+                },
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Additive OHLCV bars for an options contract. The provider continuation cursor is opaque and must be passed back unchanged."
+          }
+        },
+        {
           "name": "Options chain snapshot",
           "request": {
             "method": "GET",

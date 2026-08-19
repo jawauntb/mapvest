@@ -30,6 +30,7 @@ export type AggregateQuery = {
   timespan: "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
   adjusted?: boolean;
   assetClass?: "stocks" | "options";
+  cursor?: string;
 };
 
 export type OptionContract = {
@@ -67,6 +68,70 @@ export type OptionSnapshot = OptionContract & {
   trade?: OptionTrade;
   day?: { open?: number; high?: number; low?: number; close?: number; volume?: number };
 };
+
+/** Normalized response from Massive's financial ratios endpoint. */
+export type FinancialRatios = {
+  ticker: string;
+  cik?: string;
+  date?: string;
+  price?: number;
+  averageVolume?: number;
+  marketCap?: number;
+  earningsPerShare?: number;
+  priceToEarnings?: number;
+  priceToBook?: number;
+  priceToSales?: number;
+  priceToCashFlow?: number;
+  priceToFreeCashFlow?: number;
+  dividendYield?: number;
+  returnOnAssets?: number;
+  returnOnEquity?: number;
+  debtToEquity?: number;
+  current?: number;
+  quick?: number;
+  cash?: number;
+  evToSales?: number;
+  evToEbitda?: number;
+  enterpriseValue?: number;
+  freeCashFlow?: number;
+};
+
+export type FinancialRatio = FinancialRatios;
+
+export type FinancialRatiosQuery = {
+  ticker?: string;
+  cik?: string;
+  price?: number;
+  averageVolume?: number;
+  marketCap?: number;
+  earningsPerShare?: number;
+  priceToEarnings?: number;
+  priceToBook?: number;
+  priceToSales?: number;
+  priceToCashFlow?: number;
+  priceToFreeCashFlow?: number;
+  dividendYield?: number;
+  returnOnAssets?: number;
+  returnOnEquity?: number;
+  debtToEquity?: number;
+  current?: number;
+  quick?: number;
+  cash?: number;
+  evToSales?: number;
+  evToEbitda?: number;
+  enterpriseValue?: number;
+  freeCashFlow?: number;
+  limit?: number;
+  sort?: string;
+  cursor?: string;
+};
+
+export type OptionSnapshotQuery =
+  | { underlyingTicker: string; optionTicker: string }
+  | { underlyingTicker: string; ticker: string };
+
+export type OptionAggregateQuery = Omit<AggregateQuery, "symbol" | "assetClass"> &
+  ({ optionTicker: string } | { ticker: string });
 
 export type CorporateEvent = {
   id?: string;
@@ -130,6 +195,10 @@ export type MarketDataProvider = {
   getOptionsChain(query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>>;
   getOptionContracts(query: OptionContractQuery): Promise<ProviderPage<OptionContract>>;
   getOptionContract(ticker: string): Promise<OptionContract | null>;
+  getFinancialRatios?: (query: FinancialRatiosQuery) => Promise<ProviderPage<FinancialRatios>>;
+  getOptionSnapshot?: (query: OptionSnapshotQuery) => Promise<OptionSnapshot | null>;
+  getOptionAggregates?: (query: OptionAggregateQuery) => Promise<AggregateBar[]>;
+  getOptionAggregatesPage?: (query: OptionAggregateQuery) => Promise<AggregatePage>;
   getCorporateEvents(query: {
     ticker?: string;
     from?: string;

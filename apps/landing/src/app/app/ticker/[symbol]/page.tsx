@@ -10,6 +10,7 @@ import {
   generateMemo,
   getAnalysis,
   getChart,
+  getFinancialRatios,
   getMarketEvents,
   getQuote,
   getTickerNews,
@@ -103,6 +104,9 @@ export default function TickerDetail() {
   const [analysis, setAnalysis] = useState<AnalysisSnapshot | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisErr, setAnalysisErr] = useState<string | null>(null);
+  const [ratios, setRatios] = useState<Awaited<ReturnType<typeof getFinancialRatios>> | null>(null);
+  const [ratiosLoading, setRatiosLoading] = useState(false);
+  const [ratiosErr, setRatiosErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -168,6 +172,9 @@ export default function TickerDetail() {
     setAnalysis(null);
     setAnalysisLoading(false);
     setAnalysisErr(null);
+    setRatios(null);
+    setRatiosLoading(false);
+    setRatiosErr(null);
     setMemo(null);
     setMemoSaved(false);
     setTab("overview");
@@ -194,8 +201,17 @@ export default function TickerDetail() {
           setAnalysisErr(null);
           getAnalysis(t)
             .then(setAnalysis)
-            .catch((e) => setAnalysisErr(e instanceof Error ? e.message : "Financial ratios unavailable."))
+            .catch((e) =>
+              setAnalysisErr(e instanceof Error ? e.message : "Financial ratios unavailable."),
+            )
             .finally(() => setAnalysisLoading(false));
+          setRatiosLoading(true);
+          getFinancialRatios(t)
+            .then(setRatios)
+            .catch((e) =>
+              setRatiosErr(e instanceof Error ? e.message : "Financial ratios unavailable."),
+            )
+            .finally(() => setRatiosLoading(false));
           if (authed) {
             // Prefer API deep-link; fall back to public RH URL when settings
             // say MCP is connected so the CTA isn't lost on a flaky 403.
@@ -539,7 +555,7 @@ export default function TickerDetail() {
 
           {ticker ? (
             <section className="app-panel">
-              <h2>Financial ratios</h2>
+              <h2>At a glance</h2>
               {analysisLoading ? <p className="app-muted">Loading ratios…</p> : null}
               {!analysisLoading && analysisErr ? <p className="app-err">{analysisErr}</p> : null}
               {!analysisLoading && !analysisErr && !analysis ? (
@@ -549,25 +565,49 @@ export default function TickerDetail() {
                 <>
                   <dl className="app-snapshot">
                     {analysis.sector ? (
-                      <div><dt>Sector</dt><dd>{analysis.sector}</dd></div>
+                      <div>
+                        <dt>Sector</dt>
+                        <dd>{analysis.sector}</dd>
+                      </div>
                     ) : null}
                     {analysis.industry ? (
-                      <div><dt>Industry</dt><dd>{analysis.industry}</dd></div>
+                      <div>
+                        <dt>Industry</dt>
+                        <dd>{analysis.industry}</dd>
+                      </div>
                     ) : null}
                     {analysis.price != null ? (
-                      <div><dt>Price</dt><dd>${analysis.price.toFixed(2)}</dd></div>
+                      <div>
+                        <dt>Price</dt>
+                        <dd>${analysis.price.toFixed(2)}</dd>
+                      </div>
                     ) : null}
                     {analysis.trailingPe != null ? (
-                      <div><dt>P/E</dt><dd>{analysis.trailingPe}</dd></div>
+                      <div>
+                        <dt>P/E</dt>
+                        <dd>{analysis.trailingPe}</dd>
+                      </div>
                     ) : null}
                     {analysis.marketCap != null ? (
-                      <div><dt>Mkt cap</dt><dd>{String(analysis.marketCap)}</dd></div>
+                      <div>
+                        <dt>Mkt cap</dt>
+                        <dd>{String(analysis.marketCap)}</dd>
+                      </div>
                     ) : null}
                     {analysis.annualVolatility != null ? (
-                      <div><dt>Ann. vol</dt><dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd></div>
+                      <div>
+                        <dt>Ann. vol</dt>
+                        <dd>{(analysis.annualVolatility * 100).toFixed(1)}%</dd>
+                      </div>
                     ) : null}
                     {analysis.fiftyTwoWeekLow != null || analysis.fiftyTwoWeekHigh != null ? (
-                      <div><dt>52w range</dt><dd>${analysis.fiftyTwoWeekLow?.toFixed(2) ?? "—"}–${analysis.fiftyTwoWeekHigh?.toFixed(2) ?? "—"}</dd></div>
+                      <div>
+                        <dt>52w range</dt>
+                        <dd>
+                          ${analysis.fiftyTwoWeekLow?.toFixed(2) ?? "—"}–$
+                          {analysis.fiftyTwoWeekHigh?.toFixed(2) ?? "—"}
+                        </dd>
+                      </div>
                     ) : null}
                   </dl>
                   {analysis.brief ? (
@@ -577,6 +617,53 @@ export default function TickerDetail() {
                     </p>
                   ) : null}
                 </>
+              ) : null}
+            </section>
+          ) : null}
+
+          {ticker ? (
+            <section className="app-panel">
+              <h2>Massive financial ratios</h2>
+              {ratiosLoading ? <p className="app-muted">Loading end-of-day ratios…</p> : null}
+              {!ratiosLoading && ratiosErr ? <p className="app-err">{ratiosErr}</p> : null}
+              {!ratiosLoading && !ratiosErr && !ratios?.ratios.length ? (
+                <p className="app-muted">No ratios were reported for this ticker.</p>
+              ) : null}
+              {ratios?.ratios[0] ? (
+                <dl className="app-snapshot">
+                  <div>
+                    <dt>P/E</dt>
+                    <dd>{formatRatio(ratios.ratios[0].priceToEarnings)}</dd>
+                  </div>
+                  <div>
+                    <dt>P/B</dt>
+                    <dd>{formatRatio(ratios.ratios[0].priceToBook)}</dd>
+                  </div>
+                  <div>
+                    <dt>P/S</dt>
+                    <dd>{formatRatio(ratios.ratios[0].priceToSales)}</dd>
+                  </div>
+                  <div>
+                    <dt>Div. yield</dt>
+                    <dd>{formatPercent(ratios.ratios[0].dividendYield)}</dd>
+                  </div>
+                  <div>
+                    <dt>ROE</dt>
+                    <dd>{formatPercent(ratios.ratios[0].returnOnEquity)}</dd>
+                  </div>
+                  <div>
+                    <dt>ROA</dt>
+                    <dd>{formatPercent(ratios.ratios[0].returnOnAssets)}</dd>
+                  </div>
+                  <div>
+                    <dt>D/E</dt>
+                    <dd>{formatRatio(ratios.ratios[0].debtToEquity)}</dd>
+                  </div>
+                  <div>
+                    <dt>As of</dt>
+                    <dd>{ratios.ratios[0].date ?? "—"}</dd>
+                  </div>
+                </dl>
               ) : null}
             </section>
           ) : null}
@@ -834,4 +921,12 @@ export default function TickerDetail() {
       )}
     </div>
   );
+}
+
+function formatRatio(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function formatPercent(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
 }

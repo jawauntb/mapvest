@@ -54,6 +54,11 @@ corporate events merely because those datasets are unavailable from Massive.
 | Splits and dividends | `/stocks/v1/splits`, `/stocks/v1/dividends` | Additive `/v1/market-events` |
 | TMX Global Corporate Events | `/tmx/v1/corporate-events` | Additive `/v1/market-events`; merged with Yahoo/Massive headlines in the Investable UI |
 | Market news | `/v2/reference/news` | Existing `/v1/news` normalized into its stable response |
+| Financial ratios | `/stocks/financials/v1/ratios` | Additive `/v1/financials/ratios`; daily valuation, profitability, liquidity, and leverage metrics |
+| Financial statements | `/stocks/financials/v1/income-statements`, `/balance-sheets`, `/cash-flow-statements` | Additive financials endpoints for ticker research |
+| Stock microstructure | `/v2/last/nbbo/{ticker}`, `/v3/trades/{ticker}` | Additive liquidity and trade-detail endpoints |
+| Technical indicators | `/v1/indicators/sma/{ticker}` | Additive research endpoint |
+| Option analytics | `/v3/snapshot/options/{underlying}/{optionsTicker}`, option aggregate bars | Additive contract summary and options chart surfaces |
 
 The adapter preserves upstream timestamps as ISO strings in the existing
 responses and uses Unix seconds for history/aggregate points, matching the

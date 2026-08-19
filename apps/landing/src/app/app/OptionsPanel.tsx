@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  type OptionSnapshot,
-  getOptionContracts,
-  getOptionsChain,
-} from "@/lib/mapvest-api";
+import { type OptionSnapshot, getOptionContracts, getOptionsChain } from "@/lib/mapvest-api";
 import { useEffect, useMemo, useState } from "react";
 
 type Props = {
@@ -34,11 +30,13 @@ export function OptionsPanel({ ticker, underlyingPrice }: Props) {
     getOptionContracts(ticker, { limit: 250 })
       .then((response) => {
         if (!active) return;
-        const dates = [...new Set(
-          response.contracts
-            .map((contract) => contract.expirationDate)
-            .filter((date): date is string => Boolean(date)),
-        )].sort();
+        const dates = [
+          ...new Set(
+            response.contracts
+              .map((contract) => contract.expirationDate)
+              .filter((date): date is string => Boolean(date)),
+          ),
+        ].sort();
         setExpirations(dates);
         setExpiration(dates[0] ?? null);
         if (dates.length === 0) setError("No active option expirations reported.");
@@ -119,9 +117,18 @@ export function OptionsPanel({ ticker, underlyingPrice }: Props) {
           </div>
 
           <dl className="app-snapshot">
-            <div><dt>Spot</dt><dd>{formatMoney(underlyingPrice)}</dd></div>
-            <div><dt>Contracts</dt><dd>{chain.length}</dd></div>
-            <div><dt>Avg IV</dt><dd>{formatPercent(averageIv)}</dd></div>
+            <div>
+              <dt>Spot</dt>
+              <dd>{formatMoney(underlyingPrice)}</dd>
+            </div>
+            <div>
+              <dt>Contracts</dt>
+              <dd>{chain.length}</dd>
+            </div>
+            <div>
+              <dt>Avg IV</dt>
+              <dd>{formatPercent(averageIv)}</dd>
+            </div>
             <div>
               <dt>Max OI</dt>
               <dd>
@@ -150,22 +157,37 @@ export function OptionsPanel({ ticker, underlyingPrice }: Props) {
           {chainLoading ? <p className="app-muted">Loading {expiration} chain…</p> : null}
           {!chainLoading && chainError ? <p className="app-err">{chainError}</p> : null}
           {!chainLoading && !chainError && visibleContracts.length === 0 ? (
-            <p className="app-muted">No {side} contracts reported for {expiration}.</p>
+            <p className="app-muted">
+              No {side} contracts reported for {expiration}.
+            </p>
           ) : null}
           {!chainLoading && !chainError && visibleContracts.length > 0 ? (
-            <div className="app-options-table" role="table" aria-label={`${side} options chain`}>
-              <div className="app-options-row app-options-head" role="row">
-                <span>Strike</span><span>Bid / ask</span><span>IV · Δ</span><span>OI</span>
-              </div>
-              {visibleContracts.map((contract) => (
-                <div className="app-options-row" role="row" key={contract.ticker}>
-                  <strong>{formatMoney(contract.strikePrice)}</strong>
-                  <span>{formatMoney(contract.quote?.bid)} / {formatMoney(contract.quote?.ask)}</span>
-                  <span>{formatPercent(contract.impliedVolatility)} · {formatDecimal(contract.greeks?.delta)}</span>
-                  <span>{formatNumber(contract.openInterest)}</span>
-                </div>
-              ))}
-            </div>
+            <table className="app-options-table">
+              <caption className="app-sr-only">{side} options chain</caption>
+              <thead>
+                <tr className="app-options-row app-options-head">
+                  <th scope="col">Strike</th>
+                  <th scope="col">Bid / ask</th>
+                  <th scope="col">IV · Δ</th>
+                  <th scope="col">OI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleContracts.map((contract) => (
+                  <tr className="app-options-row" key={contract.ticker}>
+                    <th scope="row">{formatMoney(contract.strikePrice)}</th>
+                    <td>
+                      {formatMoney(contract.quote?.bid)} / {formatMoney(contract.quote?.ask)}
+                    </td>
+                    <td>
+                      {formatPercent(contract.impliedVolatility)} ·{" "}
+                      {formatDecimal(contract.greeks?.delta)}
+                    </td>
+                    <td>{formatNumber(contract.openInterest)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : null}
         </>
       ) : null}
@@ -174,7 +196,9 @@ export function OptionsPanel({ ticker, underlyingPrice }: Props) {
 }
 
 function average(values: Array<number | undefined>): number | undefined {
-  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const finite = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value),
+  );
   return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : undefined;
 }
 

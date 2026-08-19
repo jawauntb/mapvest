@@ -2,6 +2,7 @@ import {
   addToWatchlist,
   agentChat,
   fetchAnalysis,
+  fetchFinancialRatios,
   fetchQuote,
   generateMemo,
   listWatchlist,
@@ -94,6 +95,13 @@ export default function DetailSheet() {
     enabled: !!ticker && stage >= 1,
     queryFn: () => fetchAnalysis(ticker!, { token: session?.token }),
     staleTime: 5 * 60_000,
+  });
+
+  const ratiosQ = useQuery({
+    queryKey: ["financial-ratios", ticker],
+    enabled: !!ticker && stage >= 1,
+    queryFn: () => fetchFinancialRatios(ticker!, { token: session?.token }),
+    staleTime: 30 * 60_000,
   });
 
   const secQ = useQuery({
@@ -312,6 +320,14 @@ export default function DetailSheet() {
                 data={analysisQ.data}
                 isError={analysisQ.isError}
                 isLoading={analysisQ.isLoading}
+              />
+            ) : null}
+
+            {ticker ? (
+              <MassiveRatiosSection
+                data={ratiosQ.data}
+                isError={ratiosQ.isError}
+                isLoading={ratiosQ.isLoading}
               />
             ) : null}
 
@@ -785,6 +801,56 @@ function FinancialRatiosSection({
       {data.brief ? <Text style={[styles.muted, { marginTop: 10 }]}>{data.brief}</Text> : null}
     </CollapsibleSection>
   );
+}
+
+function MassiveRatiosSection({
+  data,
+  isError,
+  isLoading,
+}: {
+  data?: Awaited<ReturnType<typeof fetchFinancialRatios>>;
+  isError: boolean;
+  isLoading: boolean;
+}) {
+  const ratio = data?.ratios[0];
+  return (
+    <CollapsibleSection title="Massive financial ratios">
+      {isLoading ? <Text style={styles.muted}>Loading end-of-day ratios…</Text> : null}
+      {!isLoading && isError ? (
+        <Text style={styles.muted}>Ratios unavailable right now.</Text>
+      ) : null}
+      {!isLoading && !isError && !ratio ? (
+        <Text style={styles.muted}>No ratios reported for this ticker.</Text>
+      ) : null}
+      {ratio ? (
+        <View style={styles.ratioGrid}>
+          {[
+            ["P/E", formatRatio(ratio.priceToEarnings)],
+            ["P/B", formatRatio(ratio.priceToBook)],
+            ["P/S", formatRatio(ratio.priceToSales)],
+            ["Div. yield", formatPercent(ratio.dividendYield)],
+            ["ROE", formatPercent(ratio.returnOnEquity)],
+            ["ROA", formatPercent(ratio.returnOnAssets)],
+            ["D/E", formatRatio(ratio.debtToEquity)],
+            ["As of", ratio.date ?? "—"],
+          ].map(([label, value]) => (
+            <View key={label} style={styles.ratioCard}>
+              <Text style={styles.ratioLabel}>{label}</Text>
+              <Text style={styles.ratioValue}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </CollapsibleSection>
+  );
+}
+
+function formatRatio(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function formatPercent(value?: number): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
 }
 
 function fmtLvl(n?: number): string {

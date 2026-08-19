@@ -247,6 +247,41 @@ export const OptionContractsResponse = z.object({
 });
 export type OptionContractsResponse = z.infer<typeof OptionContractsResponse>;
 
+export const FinancialRatio = z.object({
+  ticker: z.string(),
+  date: z.string().optional(),
+  averageVolume: z.number().optional(),
+  cash: z.number().optional(),
+  current: z.number().optional(),
+  debtToEquity: z.number().optional(),
+  dividendYield: z.number().optional(),
+  earningsPerShare: z.number().optional(),
+  enterpriseValue: z.number().optional(),
+  evToEbitda: z.number().optional(),
+  evToSales: z.number().optional(),
+  freeCashFlow: z.number().optional(),
+  marketCap: z.number().optional(),
+  price: z.number().optional(),
+  priceToBook: z.number().optional(),
+  priceToCashFlow: z.number().optional(),
+  priceToEarnings: z.number().optional(),
+  priceToFreeCashFlow: z.number().optional(),
+  priceToSales: z.number().optional(),
+  quick: z.number().optional(),
+  returnOnAssets: z.number().optional(),
+  returnOnEquity: z.number().optional(),
+});
+export type FinancialRatio = z.infer<typeof FinancialRatio>;
+
+export const FinancialRatiosResponse = z.object({
+  ticker: z.string(),
+  ratios: z.array(FinancialRatio),
+  nextCursor: z.string().optional(),
+  requestId: z.string().optional(),
+  sources: z.array(Source),
+});
+export type FinancialRatiosResponse = z.infer<typeof FinancialRatiosResponse>;
+
 // -------- auth --------
 
 export const User = z.object({

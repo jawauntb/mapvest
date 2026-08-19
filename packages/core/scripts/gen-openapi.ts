@@ -71,6 +71,14 @@ const S = {
   OptionSnapshot: component("OptionSnapshot", raw.OptionSnapshot),
   OptionsResponse: component("OptionsResponse", raw.OptionsResponse),
   OptionContractsResponse: component("OptionContractsResponse", raw.OptionContractsResponse),
+  FinancialRatiosRequest: component("FinancialRatiosRequest", raw.FinancialRatiosRequest),
+  FinancialRatio: component("FinancialRatio", raw.FinancialRatio),
+  FinancialRatiosResponse: component("FinancialRatiosResponse", raw.FinancialRatiosResponse),
+  OptionSummaryRequest: component("OptionSummaryRequest", raw.OptionSummaryRequest),
+  OptionSummary: component("OptionSummary", raw.OptionSummary),
+  OptionSummaryResponse: component("OptionSummaryResponse", raw.OptionSummaryResponse),
+  OptionBarsRequest: component("OptionBarsRequest", raw.OptionBarsRequest),
+  OptionBarsResponse: component("OptionBarsResponse", raw.OptionBarsResponse),
   CorporateEvent: component("CorporateEvent", raw.CorporateEvent),
   MarketEventsResponse: component("MarketEventsResponse", raw.MarketEventsResponse),
   MarketDataCapabilities: component("MarketDataCapabilities", raw.MarketDataCapabilities),
@@ -423,6 +431,73 @@ registry.registerPath({
     400: flatErrorResponse("Bad request."),
     429: flatErrorResponse("Market-data rate limit exceeded."),
     502: flatErrorResponse("Market-data aggregates unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/financials/ratios",
+  summary: "Financial ratios",
+  description:
+    "Additive financial-ratios page backed by the configured market-data provider. Continuation cursors are opaque and must be passed back unchanged.",
+  tags: ["finance"],
+  request: { query: S.FinancialRatiosRequest },
+  responses: {
+    200: {
+      description: "Financial ratios page.",
+      content: { "application/json": { schema: S.FinancialRatiosResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    501: flatErrorResponse("Financial ratios are unsupported."),
+    502: flatErrorResponse("Financial ratios unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/options/summary",
+  summary: "Option contract summary",
+  description:
+    "Additive single-contract snapshot backed by Massive options data, including normalized contract details, greeks, quote, trade, and day fields when available.",
+  tags: ["finance"],
+  request: { query: S.OptionSummaryRequest },
+  responses: {
+    200: {
+      description: "Option summary.",
+      content: { "application/json": { schema: S.OptionSummaryResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    404: flatErrorResponse("Option summary not found."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    501: flatErrorResponse("Option snapshots are unsupported."),
+    502: flatErrorResponse("Option summary unavailable."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/options/bars",
+  summary: "Option contract bars",
+  description:
+    "Additive OHLCV bars for an options contract. The provider continuation cursor is opaque and must be passed back unchanged.",
+  tags: ["finance"],
+  request: { query: S.OptionBarsRequest },
+  responses: {
+    200: {
+      description: "Option aggregate bars page.",
+      content: { "application/json": { schema: S.OptionBarsResponse } },
+    },
+    ...errorResponses,
+    400: flatErrorResponse("Bad request."),
+    429: flatErrorResponse("Market-data rate limit exceeded."),
+    501: flatErrorResponse("Option aggregates are unsupported."),
+    502: flatErrorResponse("Option bars unavailable."),
     503: flatErrorResponse("Market-data provider is not configured."),
   },
 });

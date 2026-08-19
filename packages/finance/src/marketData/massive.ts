@@ -4,12 +4,16 @@ import {
   type AggregatePage,
   type AggregateQuery,
   type CorporateEvent,
+  type FinancialRatios,
+  type FinancialRatiosQuery,
   type HistoryPoint,
   type MarketDataCapabilities,
   MarketDataProviderError,
+  type OptionAggregateQuery,
   type OptionContract,
   type OptionContractQuery,
   type OptionSnapshot,
+  type OptionSnapshotQuery,
   type OptionsChainQuery,
   type ProviderPage,
 } from "./types.js";
@@ -115,6 +119,31 @@ type MassiveOptionSnapshot = MassiveContract & {
   last_trade?: { price?: number; size?: number; sip_timestamp?: number };
   day?: { open?: number; high?: number; low?: number; close?: number; volume?: number };
 };
+type MassiveFinancialRatios = {
+  ticker?: string;
+  cik?: string;
+  date?: string;
+  price?: number;
+  average_volume?: number;
+  market_cap?: number;
+  earnings_per_share?: number;
+  price_to_earnings?: number;
+  price_to_book?: number;
+  price_to_sales?: number;
+  price_to_cash_flow?: number;
+  price_to_free_cash_flow?: number;
+  dividend_yield?: number;
+  return_on_assets?: number;
+  return_on_equity?: number;
+  debt_to_equity?: number;
+  current?: number;
+  quick?: number;
+  cash?: number;
+  ev_to_sales?: number;
+  ev_to_ebitda?: number;
+  enterprise_value?: number;
+  free_cash_flow?: number;
+};
 
 function envNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -133,15 +162,23 @@ function isoFromTimestamp(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return new Date().toISOString();
   }
-  const millis =
-    value > 10_000_000_000_000 ? value / 1_000_000 : value > 10_000_000_000 ? value : value * 1_000;
+  const seconds =
+    value >= 100_000_000_000_000_000
+      ? value / 1_000_000_000
+      : value >= 100_000_000_000_000
+        ? value / 1_000_000
+        : value >= 100_000_000_000
+          ? value / 1_000
+          : value;
+  const millis = seconds * 1_000;
   return new Date(millis).toISOString();
 }
 
 function unixSeconds(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
-  if (value > 1_000_000_000_000_000) return Math.floor(value / 1_000_000_000);
-  if (value > 10_000_000_000) return Math.floor(value / 1_000);
+  if (value >= 100_000_000_000_000_000) return Math.floor(value / 1_000_000_000);
+  if (value >= 100_000_000_000_000) return Math.floor(value / 1_000_000);
+  if (value >= 100_000_000_000) return Math.floor(value / 1_000);
   return Math.floor(value);
 }
 
@@ -165,6 +202,11 @@ function cursorFromNextUrl(nextUrl: string | undefined): string | undefined {
   }
 }
 
+function optionTicker(query: OptionSnapshotQuery | OptionAggregateQuery): string {
+  if ("optionTicker" in query) return query.optionTicker;
+  return query.ticker;
+}
+
 function mapContract(value: MassiveContract): OptionContract | null {
   if (!value.ticker) return null;
   return {
@@ -180,11 +222,15 @@ function mapContract(value: MassiveContract): OptionContract | null {
   };
 }
 
-function mapSnapshot(value: MassiveOptionSnapshot): OptionSnapshot | null {
+function mapSnapshot(
+  value: MassiveOptionSnapshot,
+  fallbackUnderlyingTicker?: string,
+): OptionSnapshot | null {
   const contract = mapContract(value.details ?? value);
   if (!contract) return null;
   return {
     ...contract,
+    underlyingTicker: contract.underlyingTicker ?? fallbackUnderlyingTicker,
     breakEvenPrice: numberOrUndefined(value.break_even_price),
     impliedVolatility: numberOrUndefined(value.implied_volatility),
     openInterest: numberOrUndefined(value.open_interest),
@@ -263,6 +309,21 @@ export class MassiveClient {
           supported: process.env.MASSIVE_CORPORATE_EVENTS_ENABLED === "1",
           access: process.env.MASSIVE_CORPORATE_EVENTS_ENABLED === "1" ? access : "unconfigured",
           note: "TMX/Wall Street Horizon events are an optional partner dataset; enable only when subscribed.",
+        },
+        financialRatios: {
+          supported: true,
+          access,
+          note: "End-of-day ratios calculated from TTM financials and the latest available stock price.",
+        },
+        optionSnapshot: {
+          supported: true,
+          access,
+          note: "Single-contract snapshot with Greeks, IV, open interest, quote, and trade data.",
+        },
+        optionAggregates: {
+          supported: true,
+          access,
+          note: "Historical option OHLCV bars use the standard aggregate endpoint.",
         },
         websockets: {
           supported: true,
@@ -434,12 +495,20 @@ export class MassiveClient {
   }
 
   async getAggregatesPage(query: AggregateQuery): Promise<AggregatePage> {
+    return this.getAggregatePageForSymbol(query.symbol, query);
+  }
+
+  private async getAggregatePageForSymbol(
+    symbol: string,
+    query: Pick<AggregateQuery, "from" | "to" | "multiplier" | "timespan" | "adjusted" | "cursor">,
+  ): Promise<AggregatePage> {
     const body = await this.request<MassiveAggregate>(
-      `/v2/aggs/ticker/${encodeURIComponent(query.symbol.trim().toUpperCase())}/range/${query.multiplier}/${query.timespan}/${query.from}/${query.to}`,
+      `/v2/aggs/ticker/${encodeURIComponent(symbol.trim().toUpperCase())}/range/${query.multiplier}/${query.timespan}/${query.from}/${query.to}`,
       {
         adjusted: query.adjusted ?? true,
         sort: "asc",
         limit: 50_000,
+        cursor: query.cursor,
       },
     );
     const rows = Array.isArray(body.results) ? body.results : [];
@@ -481,6 +550,72 @@ export class MassiveClient {
     return (await this.getAggregatesPage(query)).points;
   }
 
+  async getFinancialRatios(
+    query: FinancialRatiosQuery = {},
+  ): Promise<ProviderPage<FinancialRatios>> {
+    const body = await this.request<MassiveFinancialRatios>("/stocks/financials/v1/ratios", {
+      ticker: query.ticker,
+      cik: query.cik,
+      price: query.price,
+      average_volume: query.averageVolume,
+      market_cap: query.marketCap,
+      earnings_per_share: query.earningsPerShare,
+      price_to_earnings: query.priceToEarnings,
+      price_to_book: query.priceToBook,
+      price_to_sales: query.priceToSales,
+      price_to_cash_flow: query.priceToCashFlow,
+      price_to_free_cash_flow: query.priceToFreeCashFlow,
+      dividend_yield: query.dividendYield,
+      return_on_assets: query.returnOnAssets,
+      return_on_equity: query.returnOnEquity,
+      debt_to_equity: query.debtToEquity,
+      current: query.current,
+      quick: query.quick,
+      cash: query.cash,
+      ev_to_sales: query.evToSales,
+      ev_to_ebitda: query.evToEbitda,
+      enterprise_value: query.enterpriseValue,
+      free_cash_flow: query.freeCashFlow,
+      limit: Math.min(query.limit ?? 100, 50_000),
+      sort: query.sort,
+      cursor: query.cursor,
+    });
+    return {
+      results: (Array.isArray(body.results) ? body.results : []).flatMap((row) => {
+        if (!row.ticker) return [];
+        return [
+          {
+            ticker: row.ticker,
+            cik: row.cik,
+            date: row.date,
+            price: numberOrUndefined(row.price),
+            averageVolume: numberOrUndefined(row.average_volume),
+            marketCap: numberOrUndefined(row.market_cap),
+            earningsPerShare: numberOrUndefined(row.earnings_per_share),
+            priceToEarnings: numberOrUndefined(row.price_to_earnings),
+            priceToBook: numberOrUndefined(row.price_to_book),
+            priceToSales: numberOrUndefined(row.price_to_sales),
+            priceToCashFlow: numberOrUndefined(row.price_to_cash_flow),
+            priceToFreeCashFlow: numberOrUndefined(row.price_to_free_cash_flow),
+            dividendYield: numberOrUndefined(row.dividend_yield),
+            returnOnAssets: numberOrUndefined(row.return_on_assets),
+            returnOnEquity: numberOrUndefined(row.return_on_equity),
+            debtToEquity: numberOrUndefined(row.debt_to_equity),
+            current: numberOrUndefined(row.current),
+            quick: numberOrUndefined(row.quick),
+            cash: numberOrUndefined(row.cash),
+            evToSales: numberOrUndefined(row.ev_to_sales),
+            evToEbitda: numberOrUndefined(row.ev_to_ebitda),
+            enterpriseValue: numberOrUndefined(row.enterprise_value),
+            freeCashFlow: numberOrUndefined(row.free_cash_flow),
+          },
+        ];
+      }),
+      nextCursor: cursorFromNextUrl(body.next_url),
+      requestId: body.request_id,
+    };
+  }
+
   async getOptionsChain(query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>> {
     const body = await this.request<MassiveOptionSnapshot>(
       `/v3/snapshot/options/${encodeURIComponent(query.underlyingTicker.trim().toUpperCase())}`,
@@ -494,12 +629,31 @@ export class MassiveClient {
     );
     return {
       results: (Array.isArray(body.results) ? body.results : []).flatMap((row) => {
-        const mapped = mapSnapshot(row);
+        const mapped = mapSnapshot(row, query.underlyingTicker.trim().toUpperCase());
         return mapped ? [mapped] : [];
       }),
       nextCursor: cursorFromNextUrl(body.next_url),
       requestId: body.request_id,
     };
+  }
+
+  async getOptionSnapshot(query: OptionSnapshotQuery): Promise<OptionSnapshot | null> {
+    const underlying = query.underlyingTicker.trim().toUpperCase();
+    const ticker = optionTicker(query).trim().toUpperCase();
+    if (!underlying || !ticker) return null;
+    const body = await this.request<MassiveOptionSnapshot>(
+      `/v3/snapshot/options/${encodeURIComponent(underlying)}/${encodeURIComponent(ticker)}`,
+    );
+    const value = Array.isArray(body.results) ? body.results[0] : body.results;
+    return value ? mapSnapshot(value, underlying) : null;
+  }
+
+  async getOptionAggregatesPage(query: OptionAggregateQuery): Promise<AggregatePage> {
+    return this.getAggregatePageForSymbol(optionTicker(query), query);
+  }
+
+  async getOptionAggregates(query: OptionAggregateQuery): Promise<AggregateBar[]> {
+    return (await this.getOptionAggregatesPage(query)).points;
   }
 
   async getOptionContracts(query: OptionContractQuery): Promise<ProviderPage<OptionContract>> {
@@ -540,10 +694,14 @@ export class MassiveClient {
     const [splits, dividends] = await Promise.all([
       this.request<Record<string, unknown>>("/stocks/v1/splits", {
         ticker: query.ticker,
+        "execution_date.gte": query.from,
+        "execution_date.lte": query.to,
         limit: Math.min(query.limit ?? 100, 250),
       }),
       this.request<Record<string, unknown>>("/stocks/v1/dividends", {
         ticker: query.ticker,
+        "ex_dividend_date.gte": query.from,
+        "ex_dividend_date.lte": query.to,
         limit: Math.min(query.limit ?? 100, 250),
       }),
     ]);

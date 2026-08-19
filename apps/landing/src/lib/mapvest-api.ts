@@ -286,6 +286,45 @@ export type OptionSnapshot = OptionContract & {
   day?: { open?: number; high?: number; low?: number; close?: number; volume?: number };
 };
 
+export type FinancialRatio = {
+  ticker: string;
+  date?: string;
+  averageVolume?: number;
+  cash?: number;
+  current?: number;
+  debtToEquity?: number;
+  dividendYield?: number;
+  earningsPerShare?: number;
+  enterpriseValue?: number;
+  evToEbitda?: number;
+  evToSales?: number;
+  freeCashFlow?: number;
+  marketCap?: number;
+  price?: number;
+  priceToBook?: number;
+  priceToCashFlow?: number;
+  priceToEarnings?: number;
+  priceToFreeCashFlow?: number;
+  priceToSales?: number;
+  quick?: number;
+  returnOnAssets?: number;
+  returnOnEquity?: number;
+};
+
+export function getFinancialRatios(symbol: string, limit = 1) {
+  const qs = new URLSearchParams({
+    ticker: symbol.toUpperCase(),
+    limit: String(Math.min(Math.max(1, limit), 50)),
+  });
+  return req<{
+    ticker: string;
+    ratios: FinancialRatio[];
+    nextCursor?: string;
+    requestId?: string;
+    sources: Array<{ provider: string; url?: string; fetchedAt: string; confidence: string }>;
+  }>(`/v1/financials/ratios?${qs.toString()}`);
+}
+
 export function getOptionContracts(
   symbol: string,
   args: {

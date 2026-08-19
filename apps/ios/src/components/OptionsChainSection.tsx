@@ -32,11 +32,13 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
     fetchOptionContracts(ticker, { limit: 250 }, { token })
       .then((response) => {
         if (!active) return;
-        const dates = [...new Set(
-          response.contracts
-            .map((contract) => contract.expirationDate)
-            .filter((date): date is string => Boolean(date)),
-        )].sort();
+        const dates = [
+          ...new Set(
+            response.contracts
+              .map((contract) => contract.expirationDate)
+              .filter((date): date is string => Boolean(date)),
+          ),
+        ].sort();
         setExpirations(dates);
         setExpiration(dates[0] ?? null);
         if (dates.length === 0) setError("No active option expirations reported.");
@@ -104,7 +106,11 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
         <Text style={styles.muted}>No active options data for {ticker}.</Text>
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+          >
             {expirations.slice(0, 8).map((date) => (
               <Pressable
                 key={date}
@@ -126,7 +132,11 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
             <Summary label="Avg IV" value={formatPercent(averageIv)} />
             <Summary
               label="Max OI"
-              value={highestOpenInterest ? `${formatNumber(highestOpenInterest.openInterest)} · ${formatMoney(highestOpenInterest.strikePrice)}` : "—"}
+              value={
+                highestOpenInterest
+                  ? `${formatNumber(highestOpenInterest.openInterest)} · ${formatMoney(highestOpenInterest.strikePrice)}`
+                  : "—"
+              }
             />
           </View>
 
@@ -154,7 +164,9 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
           ) : chainError ? (
             <Text style={styles.muted}>{chainError}</Text>
           ) : visibleContracts.length === 0 ? (
-            <Text style={styles.muted}>No {side} contracts reported for {expiration}.</Text>
+            <Text style={styles.muted}>
+              No {side} contracts reported for {expiration}.
+            </Text>
           ) : (
             <View style={styles.table}>
               <View style={styles.tableRow}>
@@ -165,12 +177,15 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
               </View>
               {visibleContracts.map((contract) => (
                 <View key={contract.ticker} style={styles.tableRow}>
-                  <Text style={[styles.cell, styles.strike]}>{formatMoney(contract.strikePrice)}</Text>
+                  <Text style={[styles.cell, styles.strike]}>
+                    {formatMoney(contract.strikePrice)}
+                  </Text>
                   <Text style={styles.cell}>
                     {formatMoney(contract.quote?.bid)} / {formatMoney(contract.quote?.ask)}
                   </Text>
                   <Text style={styles.cell}>
-                    {formatPercent(contract.impliedVolatility)} · {formatDecimal(contract.greeks?.delta)}
+                    {formatPercent(contract.impliedVolatility)} ·{" "}
+                    {formatDecimal(contract.greeks?.delta)}
                   </Text>
                   <Text style={styles.cell}>{formatNumber(contract.openInterest)}</Text>
                 </View>
@@ -187,13 +202,17 @@ function Summary({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.summaryItem}>
       <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
+      <Text style={styles.summaryValue} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 function average(values: Array<number | undefined>): number | undefined {
-  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const finite = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value),
+  );
   return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : undefined;
 }
 
@@ -241,7 +260,12 @@ const styles = StyleSheet.create({
     padding: 9,
     backgroundColor: colors.bgElevated,
   },
-  summaryLabel: { color: colors.fgDim, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryLabel: {
+    color: colors.fgDim,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   summaryValue: { color: colors.fg, fontSize: 13, fontWeight: "700", marginTop: 3 },
   sideRow: { flexDirection: "row", gap: 6 },
   sideButton: {

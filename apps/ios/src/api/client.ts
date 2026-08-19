@@ -6,6 +6,7 @@ import type {
   BillingPlatform,
   BillingPortalResponse,
   EntitlementState,
+  FinancialRatiosResponse,
   IdentifyResponse,
   LatLng,
   NearbyResponse,
@@ -113,11 +114,10 @@ export async function identifyPhoto(
   const form = new FormData();
   // React Native's FormData accepts { uri, name, type } as the file value.
   form.append("image", {
-    // biome-ignore lint/suspicious/noExplicitAny: RN FormData file value shape
     uri: args.imageUri,
     name: "capture.jpg",
     type: "image/jpeg",
-    // biome-ignore lint/suspicious/noExplicitAny: same
+    // biome-ignore lint/suspicious/noExplicitAny: React Native FormData file value shape
   } as any);
   if (args.location) {
     form.append("location", JSON.stringify(args.location));
@@ -125,7 +125,7 @@ export async function identifyPhoto(
   if (args.roi) {
     form.append("roi", JSON.stringify(args.roi));
   }
-  if (args.hint && args.hint.trim()) {
+  if (args.hint?.trim()) {
     form.append("hint", args.hint.trim());
   }
   const headers = new Headers();
@@ -220,6 +220,17 @@ export function fetchQuoteHistory(
 ): Promise<QuoteHistoryResponse> {
   const qs = new URLSearchParams({ symbol, period });
   return jsonFetch(`/v1/quote-history?${qs.toString()}`, { method: "GET" }, opts);
+}
+
+export function fetchFinancialRatios(
+  ticker: string,
+  opts: FetchOpts = {},
+): Promise<FinancialRatiosResponse> {
+  return jsonFetch(
+    `/v1/financials/ratios?ticker=${encodeURIComponent(ticker.toUpperCase())}&limit=1`,
+    { method: "GET" },
+    opts,
+  );
 }
 
 export function fetchOptionContracts(
@@ -476,7 +487,7 @@ function nextSseBoundary(buf: string): { idx: number; sep: number } {
 
 export async function agentChatStream(
   message: string,
-  args: { ticker?: string; threadId?: string } = {},
+  args: { ticker?: string; threadId?: string },
   onEvent: (event: AgentStreamEvent) => void,
   opts: FetchOpts = {},
 ): Promise<{ article: ResearchArticle; threadId?: string }> {
