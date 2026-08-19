@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
-      "buildNumber": "85",
+      "buildNumber": "87",
       "infoPlist": {
         "NSCameraUsageDescription": "Mapvest uses your camera to identify brands you see in the wild and map them to public tickers.",
         "NSLocationWhenInUseUsageDescription": "Mapvest uses your location to show investable brands near you on the map.",
@@ -98,7 +98,7 @@
             {
               "name": "NearbyWidget",
               "label": "Mapvest Nearby",
-              "description": "Investable brands near you — map + list.",
+              "description": "Investable brands near you \u2014 map + list.",
               "minWidth": "250dp",
               "minHeight": "150dp",
               "maxResizeWidth": "300dp",
