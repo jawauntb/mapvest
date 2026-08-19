@@ -92,6 +92,13 @@ brokerage authentication, or order execution.
 
 ## Verification checklist
 
+Production rollout verification on 2026-08-19 completed successfully: the
+`shared/prd` Doppler sync is attached to Railway `mapvest / api / production`,
+the service redeployed, and public probes returned Massive-backed quotes,
+aggregates, ratios, options contracts/chains, and TMX events. Mapvest has no
+separate Railway worker service; the API is the only service that needs these
+provider credentials.
+
 Before enabling the primary route in a deployment:
 
 1. Confirm the account has the required stocks, options, aggregates, contracts,
