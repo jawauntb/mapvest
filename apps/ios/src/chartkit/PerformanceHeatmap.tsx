@@ -2,8 +2,9 @@ import type { PerformanceDataset } from "@/api/underlying";
 import { hapticSelect } from "@/util/haptics";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { safeFixed, safeUpper } from "./format";
 import { MONO_FONT, returnHeatColor, terminal } from "./palette";
-import { ChartShell } from "./primitives";
+import { ChartShell, PanelNote } from "./primitives";
 
 /**
  * Monthly-return heatmap: 12 month rows (rotated so the requested month is
@@ -12,7 +13,23 @@ import { ChartShell } from "./primitives";
  */
 export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
   const [sel, setSel] = useState<{ month: number; col: string } | null>(null);
-  const { columns, rows } = data.table;
+  const columns = data.table?.columns ?? [];
+  const rows = data.table?.rows ?? [];
+  if (rows.length === 0 || columns.length === 0) {
+    return (
+      <ChartShell
+        title={`${data.ticker} monthly return grid`}
+        subtitle="SEASONALITY"
+        footerLeft={`${data.ticker} seasonality map`}
+        footerRight={`source ${data.provider ?? "n/a"}`}
+      >
+        <PanelNote
+          title="No seasonality table"
+          detail="Underlying returned no monthly grid for this name."
+        />
+      </ChartShell>
+    );
+  }
 
   let maxAbs = 5;
   for (const row of rows) {
@@ -31,7 +48,7 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
   return (
     <ChartShell
       title={`${data.ticker} monthly return grid`}
-      subtitle={`ROLLING 10 YEARS | ROTATED FROM ${data.meta.selected_month.toUpperCase()} | MEAN 5Y ${data.meta.mean_5y.toFixed(1)}%`}
+      subtitle={`ROLLING 10 YEARS | ROTATED FROM ${safeUpper(data.meta?.selected_month)} | MEAN 5Y ${safeFixed(data.meta?.mean_5y, 1)}%`}
       footerLeft={`${data.ticker} seasonality map`}
       footerRight={`source ${data.provider ?? "n/a"}`}
     >

@@ -2,6 +2,7 @@ import type { QuarterPoint, TorqueDataset, ValuePoint } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from "react-native-svg";
+import { safeFixed } from "./format";
 import {
   MONO_FONT,
   TORQUE_STAGE_COLORS,
@@ -55,8 +56,8 @@ export function TorqueDashboard({ data }: { data: TorqueDataset }) {
   return (
     <ChartShell
       title={`${data.ticker} misclassified revenue torque`}
-      subtitle={`STAGE ${m.stage_label} | TOTAL ${m.total_score.toFixed(1)} | REC ${m.recommendation} | ZONE ${m.target_zone}`}
-      footerLeft={`${data.ticker} torque ${m.total_score.toFixed(0)} | stage ${m.stage_label} | ${m.recommendation}`}
+      subtitle={`STAGE ${m.stage_label ?? "—"} | TOTAL ${safeFixed(m.total_score, 1)} | REC ${m.recommendation ?? "—"} | ZONE ${m.target_zone ?? "—"}`}
+      footerLeft={`${data.ticker} torque ${safeFixed(m.total_score, 0)} | stage ${m.stage_label ?? "—"} | ${m.recommendation ?? "—"}`}
       footerRight="misclassified revenue torque"
     >
       <View style={styles.stageChips}>
@@ -137,7 +138,7 @@ export function TorqueDashboard({ data }: { data: TorqueDataset }) {
             style={[
               styles.gaugeFill,
               {
-                width: `${Math.min(100, Math.max(0, m.total_score))}%`,
+                width: `${Math.min(100, Math.max(0, m.total_score ?? 0))}%`,
                 backgroundColor: gaugeColor,
               },
             ]}
@@ -146,7 +147,7 @@ export function TorqueDashboard({ data }: { data: TorqueDataset }) {
             style={[
               styles.gaugeMarker,
               {
-                left: `${Math.min(100, Math.max(0, m.total_score))}%`,
+                left: `${Math.min(100, Math.max(0, m.total_score ?? 0))}%`,
                 backgroundColor: gaugeColor,
               },
             ]}

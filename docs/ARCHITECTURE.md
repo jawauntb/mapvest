@@ -28,7 +28,7 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 ## Request flow — “what is this?”
 
 1. Client sends `POST /v1/identify` with `image` + optional `location {lat, lng}`.
-2. API validates via `packages/core` zod, applies auth + rate limit.
+2. API validates via `packages/core` zod, applies auth + the global limiter (300/min, keyed by session then device then IP; see SYSTEM_DESIGN D14).
 3. `packages/vision.identifyFromImage(bytes, {location})` calls OpenRouter with a multimodal model. Prompt asks for `{brand, product, sector, visible_text, confidence}`.
 4. `packages/finance.resolveTicker(brand)` looks up a first-party mapping table. On miss, calls `packages/search.searchBrand()` (Exa) and asks the LLM to extract a ticker with citations.
 5. If the brand is private, `packages/finance.resolveComparable()` finds the closest public co and an ETF with meaningful exposure. Sources attached.

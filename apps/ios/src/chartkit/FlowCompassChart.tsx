@@ -42,11 +42,11 @@ export function FlowCompassChart({ data }: { data: FlowCompassDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
   const s = data.series;
-  const signals = s.signals;
+  const signals = s?.signals ?? [];
   const dates = signals.map((p) => p.date);
   const dateIndex = indexByDate(dates);
-  const trigger = data.levels.trigger_level;
-  const strong = data.levels.strong_level;
+  const trigger = data.levels?.trigger_level;
+  const strong = data.levels?.strong_level;
 
   const freshLongs = signals.filter((p) => p.fresh_long);
   const freshShorts = signals.filter((p) => p.fresh_short);

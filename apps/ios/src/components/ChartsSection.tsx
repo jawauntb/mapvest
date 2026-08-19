@@ -15,6 +15,7 @@ import {
   TorqueDashboard,
   VolatilityChart,
 } from "@/chartkit";
+import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { Skeleton } from "@/components/Skeleton";
@@ -153,13 +154,15 @@ export function ChartsSection({ ticker, token }: { ticker: string; token?: strin
         </View>
       ) : null}
 
-      <ActiveChart
-        ticker={ticker}
-        token={token}
-        chartId={chartId}
-        period={period}
-        ridgeWindow={ridgeWindow}
-      />
+      <ChartErrorBoundary key={chartId}>
+        <ActiveChart
+          ticker={ticker}
+          token={token}
+          chartId={chartId}
+          period={period}
+          ridgeWindow={ridgeWindow}
+        />
+      </ChartErrorBoundary>
     </View>
   );
 }

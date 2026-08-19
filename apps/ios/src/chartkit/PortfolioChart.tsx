@@ -38,18 +38,18 @@ const MAX_POINTS = 160;
 export function PortfolioChart({ data }: { data: PortfolioDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
-  const portfolio = decimate(data.series.portfolio, MAX_POINTS);
+  const portfolio = decimate(data.series?.portfolio ?? [], MAX_POINTS);
   const dates = portfolio.map((p) => p.date);
   const dateIndex = indexByDate(dates);
-  const holdings = Object.entries(data.series.holdings);
-  const benchmark = data.series.benchmark;
+  const holdings = Object.entries(data.series?.holdings ?? {});
+  const benchmark = data.series?.benchmark;
   const benchmarkBy = new Map((benchmark ?? []).map((p) => [p.date, p.value]));
 
   const subtitleParts = [
-    `${data.tickers.length} HOLDINGS`,
-    `$${Math.round(m.investment_per_stock)}/STOCK`,
+    `${(data.tickers ?? []).length} HOLDINGS`,
+    `$${Math.round(m?.investment_per_stock ?? 0)}/STOCK`,
   ];
-  if (m.benchmark_ticker && m.alpha_vs_benchmark != null) {
+  if (m?.benchmark_ticker && m.alpha_vs_benchmark != null) {
     const alpha = m.alpha_vs_benchmark;
     subtitleParts.push(`ALPHA VS ${m.benchmark_ticker} ${alpha >= 0 ? "+" : ""}${fmtPct(alpha)}`);
   }
@@ -58,7 +58,7 @@ export function PortfolioChart({ data }: { data: PortfolioDataset }) {
     <ChartShell
       title="Portfolio equity curve"
       subtitle={subtitleParts.join(" | ")}
-      footerLeft={`Return ${fmtPct(m.total_return)} | drawdown ${fmtPct(m.max_drawdown)} | vol ${fmtPct(m.annualized_volatility)}`}
+      footerLeft={`Return ${fmtPct(m?.total_return ?? 0)} | drawdown ${fmtPct(m?.max_drawdown ?? 0)} | vol ${fmtPct(m?.annualized_volatility ?? 0)}`}
       footerRight="portfolio scanner"
     >
       <Panel height={PANEL_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>

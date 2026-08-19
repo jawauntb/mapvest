@@ -151,6 +151,14 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 Heartbeats keep the Mapvest→client pipe open while Derivation and/or OpenRouter run. `/chat` remains the source of truth if the stream still dies. Fixing Derivation's blocked/budget path is still a sibling-service change.
 
+## D14 — Global rate limit keys by session, not shared NAT IP
+
+**Decision**: The API limiter (`apps/api/src/middleware/rateLimit.ts`) is 300 req/min, keyed by session `sub` when a bearer token is present, else `X-Device-Id`, else IP. OPTIONS/HEAD, `/v1/health`, `/v1/config`, and the Stripe webhook do not count.
+
+**Why**: Production on 2026-08-19: opening Home (10 parallel quotes + watchlist + finds + brief) then Investable (`resolve-comparable` + analysis + SEC) burned a shared 60/min IP bucket. The Investable page then replaced the whole sheet with `rate limit exceeded`. Auth middleware runs per-route *after* the global limiter, so the old `c.get("user")` key never fired. Phone + laptop + web on one NAT looked like one client.
+
+**What we are not doing**: Redis yet. Per-route quotas stay on identify (`identifyGuards`) and generation (`requireGenerationQuota`).
+
 ## Open questions
 
 - **Model routing cost budget**: at what monthly OpenRouter spend do we self-host a fine-tuned vision model?

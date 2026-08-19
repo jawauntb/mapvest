@@ -2,6 +2,7 @@ import type { VolatilityDataset } from "@/api/underlying";
 import { hapticSelect } from "@/util/haptics";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { safeFixed } from "./format";
 import { MONO_FONT, VOLATILITY_BAR_CYCLE, terminal } from "./palette";
 import { ChartShell } from "./primitives";
 import { fmtPct } from "./scale";
@@ -12,8 +13,8 @@ import { fmtPct } from "./scale";
  */
 export function VolatilityChart({ data }: { data: VolatilityDataset }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const rows = data.rows;
-  const maxVol = Math.max(0.0001, ...rows.map((r) => r.annual_vol));
+  const rows = data.rows ?? [];
+  const maxVol = Math.max(0.0001, ...rows.map((r) => r.annual_vol || 0));
 
   return (
     <ChartShell
@@ -44,20 +45,20 @@ export function VolatilityChart({ data }: { data: VolatilityDataset }) {
                   <View style={[styles.bar, { width: `${frac * 100}%`, backgroundColor: color }]} />
                 </View>
                 <Text style={styles.rangeLabel} numberOfLines={1}>
-                  {fmtPct(row.annual_vol)}
+                  {fmtPct(row.annual_vol || 0)}
                   {"  |  1W ± "}
-                  {row.one_week_range.toFixed(2)}
+                  {safeFixed(row.one_week_range)}
                   {"  |  1M ± "}
-                  {row.one_month_range.toFixed(2)}
+                  {safeFixed(row.one_month_range)}
                 </Text>
                 {selected === row.ticker ? (
                   <Text style={[styles.rangeLabel, { color }]} numberOfLines={1}>
                     {"PX "}
-                    {row.price.toFixed(2)}
+                    {safeFixed(row.price)}
                     {"  |  DAILY ±"}
-                    {fmtPct(row.daily_vol)}
+                    {fmtPct(row.daily_vol || 0)}
                     {"  |  ANNUAL "}
-                    {fmtPct(row.annual_vol)}
+                    {fmtPct(row.annual_vol || 0)}
                   </Text>
                 ) : null}
               </View>

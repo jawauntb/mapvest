@@ -2,6 +2,7 @@ import type { RidgeGrowthDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Line, Polyline, Rect } from "react-native-svg";
+import { safeFixed, safeUpper } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import {
   ChartShell,
@@ -42,18 +43,18 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
   const m = data.meta;
   const s = data.series;
-  const signals = s.signals;
+  const signals = s?.signals ?? [];
   const dates = signals.map((p) => p.date);
   const dateIndex = indexByDate(dates);
-  const auction = m.auction;
-  const equityColor = m.total_return >= 0 ? terminal.green : terminal.red;
-  const equityBy = new Map(s.equity.map((p) => [p.date, p.value]));
+  const auction = m?.auction;
+  const equityColor = (m?.total_return ?? 0) >= 0 ? terminal.green : terminal.red;
+  const equityBy = new Map((s?.equity ?? []).map((p) => [p.date, p.value]));
 
   return (
     <ChartShell
       title={`${data.ticker} ridge core growth control`}
-      subtitle={`1D ${data.period.toUpperCase()} | STATE ${m.state} | REC ${m.recommendation}`}
-      footerLeft={`${data.ticker} ${data.period} | buys ${m.buy_count} | sells ${m.sell_count} | flow ${m.flow_compass.state}`}
+      subtitle={`1D ${safeUpper(data.period)} | STATE ${m?.state ?? "—"} | REC ${m?.recommendation ?? "—"}`}
+      footerLeft={`${data.ticker} ${data.period} | buys ${m?.buy_count ?? 0} | sells ${m?.sell_count ?? 0} | flow ${m?.flow_compass?.state ?? "—"}`}
       footerRight="ridge growth"
     >
       <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
@@ -61,13 +62,15 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
           if (dates.length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
           const domain = padDomain(
-            extent([
-              ...s.close.map((p) => p.value),
-              ...s.major_ma.map((p) => p.value),
-              ...s.base_ma.map((p) => p.value),
-              auction.vah,
-              auction.val,
-            ]),
+            extent(
+              [
+                ...(s?.close ?? []).map((p) => p.value),
+                ...(s?.major_ma ?? []).map((p) => p.value),
+                ...(s?.base_ma ?? []).map((p) => p.value),
+                auction?.vah,
+                auction?.val,
+              ].filter((n): n is number => typeof n === "number" && Number.isFinite(n)),
+            ),
             0.05,
           );
           const y = linearScale(domain, [h - 18, 8]);
@@ -124,44 +127,48 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                   opacity={0.055}
                 />
               ))}
-              <Rect
-                x={0}
-                y={y(auction.vah)}
-                width={w}
-                height={Math.max(0, y(auction.val) - y(auction.vah))}
-                fill={terminal.amber}
-                opacity={0.04}
-              />
-              <Line
-                x1={0}
-                x2={w}
-                y1={y(auction.poc)}
-                y2={y(auction.poc)}
-                stroke={terminal.amberHot}
-                strokeWidth={1.5}
-                strokeDasharray="8 3 2 3"
-                opacity={0.78}
-              />
+              {typeof auction?.vah === "number" && typeof auction?.val === "number" ? (
+                <Rect
+                  x={0}
+                  y={y(auction.vah)}
+                  width={w}
+                  height={Math.max(0, y(auction.val) - y(auction.vah))}
+                  fill={terminal.amber}
+                  opacity={0.04}
+                />
+              ) : null}
+              {typeof auction?.poc === "number" ? (
+                <Line
+                  x1={0}
+                  x2={w}
+                  y1={y(auction.poc)}
+                  y2={y(auction.poc)}
+                  stroke={terminal.amberHot}
+                  strokeWidth={1.5}
+                  strokeDasharray="8 3 2 3"
+                  opacity={0.78}
+                />
+              ) : null}
               <Polyline
-                points={polylinePoints(s.major_ma, dateIndex, x, y)}
+                points={polylinePoints(s?.major_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.muted}
                 strokeWidth={1.4}
               />
               <Polyline
-                points={polylinePoints(s.base_ma, dateIndex, x, y)}
+                points={polylinePoints(s?.base_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.amber}
                 strokeWidth={1.6}
               />
               <Polyline
-                points={polylinePoints(s.fast_ma, dateIndex, x, y)}
+                points={polylinePoints(s?.fast_ma ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.cyan}
                 strokeWidth={1.6}
               />
               <Polyline
-                points={polylinePoints(s.close, dateIndex, x, y)}
+                points={polylinePoints(s?.close ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={terminal.textStrong}
                 strokeWidth={1.35}
@@ -216,17 +223,17 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
           { color: terminal.muted, label: "Major SMA 200" },
           { color: terminal.green, label: "Buy / long exposure" },
           { color: terminal.red, label: "Sell" },
-          { color: terminal.amberHot, label: `POC ${auction.poc.toFixed(2)}`, dashed: true },
+          { color: terminal.amberHot, label: `POC ${safeFixed(auction?.poc)}`, dashed: true },
         ]}
       />
 
       <PanelHeading label="Strategy equity" />
       <Panel height={EQUITY_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
-          if (s.equity.length === 0) return null;
+          if ((s?.equity ?? []).length === 0) return null;
           const x = linearScale([0, Math.max(1, dates.length - 1)], [6, w - 6]);
           const domain = padDomain(
-            extent([...s.equity.map((p) => p.value), INITIAL_CAPITAL]),
+            extent([...(s?.equity ?? []).map((p) => p.value), INITIAL_CAPITAL]),
             0.08,
           );
           const y = linearScale(domain, [h - 4, 6]);
@@ -246,7 +253,7 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
                 opacity={0.62}
               />
               <Polyline
-                points={polylinePoints(s.equity, dateIndex, x, y)}
+                points={polylinePoints(s?.equity ?? [], dateIndex, x, y)}
                 fill="none"
                 stroke={equityColor}
                 strokeWidth={2}
@@ -269,16 +276,16 @@ export function RidgeGrowthChart({ data }: { data: RidgeGrowthDataset }) {
 
 function RidgeDashboard({ data }: { data: RidgeGrowthDataset }) {
   const m = data.meta;
-  const long = m.state === "LONG";
+  const long = m?.state === "LONG";
   const rows: Array<[string, string]> = [
-    ["State", m.state],
-    ["Recommendation", m.recommendation],
-    ["Equity", fmtMoney(m.ending_equity)],
-    ["Return", fmtPct(m.total_return)],
-    ["Drawdown", fmtPct(m.max_drawdown)],
-    ["Win rate", `${fmtPct(m.win_rate, 0)} of ${m.closed_trades} closed`],
-    ["Flow", `${m.flow_compass.state} ${(m.flow_compass.score ?? 0).toFixed(1)}`],
-    ["AMT", `${m.auction.location} / POC ${m.auction.poc.toFixed(2)}`],
+    ["State", m?.state ?? "—"],
+    ["Recommendation", m?.recommendation ?? "—"],
+    ["Equity", fmtMoney(m?.ending_equity ?? 0)],
+    ["Return", fmtPct(m?.total_return ?? 0)],
+    ["Drawdown", fmtPct(m?.max_drawdown ?? 0)],
+    ["Win rate", `${fmtPct(m?.win_rate ?? 0, 0)} of ${m?.closed_trades ?? 0} closed`],
+    ["Flow", `${m?.flow_compass?.state ?? "—"} ${safeFixed(m?.flow_compass?.score, 1)}`],
+    ["AMT", `${m?.auction?.location ?? "—"} / POC ${safeFixed(m?.auction?.poc)}`],
     ["Caveat", "persistent large-cap trend bias"],
   ];
   return (
