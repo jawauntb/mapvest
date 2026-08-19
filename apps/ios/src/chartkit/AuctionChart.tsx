@@ -1,6 +1,7 @@
 import type { AuctionDataset } from "@/api/underlying";
 import { useState } from "react";
 import { G, Line, Polyline, Rect } from "react-native-svg";
+import { safeFixed, safeUpper } from "./format";
 import { terminal } from "./palette";
 import {
   ChartShell,
@@ -33,15 +34,15 @@ const MAX_BARS = 110;
  */
 export function AuctionChart({ data }: { data: AuctionDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
-  const { vah, val, poc } = data.levels;
-  const bars = bucketOhlc(data.series.ohlcv, MAX_BARS);
+  const { vah, val, poc } = data.levels ?? { vah: undefined, val: undefined, poc: undefined };
+  const bars = bucketOhlc(data.series?.ohlcv ?? [], MAX_BARS);
   const dates = bars.map((b) => b.date);
 
   return (
     <ChartShell
       title={`${data.ticker} auction map`}
-      subtitle={`${data.period.toUpperCase()} | PROVIDER ${data.provider ?? "n/a"} | ${data.meta.location.toUpperCase()}`}
-      footerLeft={`Fair price ${poc.toFixed(2)} | high ${vah.toFixed(2)} | low ${val.toFixed(2)}`}
+      subtitle={`${safeUpper(data.period)} | PROVIDER ${data.provider ?? "n/a"} | ${safeUpper(data.meta?.location)}`}
+      footerLeft={`Fair price ${safeFixed(poc)} | high ${safeFixed(vah)} | low ${safeFixed(val)}`}
       footerRight={`${data.ticker} ${data.period}`}
     >
       <Panel
@@ -53,7 +54,11 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
           const plotRight = w - PILL_GUTTER;
           const x = linearScale([0, Math.max(1, bars.length - 1)], [6, plotRight - 6]);
           const domain = padDomain(
-            extent([...bars.flatMap((b) => [b.low, b.high]), vah, val, poc]),
+            extent(
+              [...bars.flatMap((b) => [b.low, b.high]), vah, val, poc].filter(
+                (n): n is number => typeof n === "number" && Number.isFinite(n),
+              ),
+            ),
             0.05,
           );
           const y = linearScale(domain, [h - 18, 10]);
@@ -87,31 +92,36 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
           return (
             <>
               <YGrid width={w} ticks={niceTicks(domain, 4)} y={y} format={fmtPrice} />
-              {/* Value-area shading: VAL→VAH amber, POC→VAH green, VAL→POC red */}
-              <Rect
-                x={0}
-                y={y(vah)}
-                width={plotRight}
-                height={Math.max(0, y(val) - y(vah))}
-                fill={terminal.amber}
-                opacity={0.055}
-              />
-              <Rect
-                x={0}
-                y={y(vah)}
-                width={plotRight}
-                height={Math.max(0, y(poc) - y(vah))}
-                fill={terminal.green}
-                opacity={0.11}
-              />
-              <Rect
-                x={0}
-                y={y(poc)}
-                width={plotRight}
-                height={Math.max(0, y(val) - y(poc))}
-                fill={terminal.red}
-                opacity={0.11}
-              />
+              {typeof vah === "number" && typeof val === "number" ? (
+                <Rect
+                  x={0}
+                  y={y(vah)}
+                  width={plotRight}
+                  height={Math.max(0, y(val) - y(vah))}
+                  fill={terminal.amber}
+                  opacity={0.055}
+                />
+              ) : null}
+              {typeof vah === "number" && typeof poc === "number" ? (
+                <Rect
+                  x={0}
+                  y={y(vah)}
+                  width={plotRight}
+                  height={Math.max(0, y(poc) - y(vah))}
+                  fill={terminal.green}
+                  opacity={0.11}
+                />
+              ) : null}
+              {typeof poc === "number" && typeof val === "number" ? (
+                <Rect
+                  x={0}
+                  y={y(poc)}
+                  width={plotRight}
+                  height={Math.max(0, y(val) - y(poc))}
+                  fill={terminal.red}
+                  opacity={0.11}
+                />
+              ) : null}
               {bars.map((b, i) => {
                 const color = b.close >= b.open ? terminal.green : terminal.red;
                 const cx = x(i);
@@ -144,52 +154,64 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
                 stroke={terminal.textStrong}
                 strokeWidth={1.4}
               />
-              <Line
-                x1={0}
-                x2={plotRight}
-                y1={y(vah)}
-                y2={y(vah)}
-                stroke={terminal.green}
-                strokeWidth={1.5}
-                strokeDasharray="6 4"
-              />
-              <Line
-                x1={0}
-                x2={plotRight}
-                y1={y(val)}
-                y2={y(val)}
-                stroke={terminal.red}
-                strokeWidth={1.5}
-                strokeDasharray="6 4"
-              />
-              <Line
-                x1={0}
-                x2={plotRight}
-                y1={y(poc)}
-                y2={y(poc)}
-                stroke={terminal.amberHot}
-                strokeWidth={2}
-                strokeDasharray="8 3 2 3"
-              />
+              {typeof vah === "number" ? (
+                <Line
+                  x1={0}
+                  x2={plotRight}
+                  y1={y(vah)}
+                  y2={y(vah)}
+                  stroke={terminal.green}
+                  strokeWidth={1.5}
+                  strokeDasharray="6 4"
+                />
+              ) : null}
+              {typeof val === "number" ? (
+                <Line
+                  x1={0}
+                  x2={plotRight}
+                  y1={y(val)}
+                  y2={y(val)}
+                  stroke={terminal.red}
+                  strokeWidth={1.5}
+                  strokeDasharray="6 4"
+                />
+              ) : null}
+              {typeof poc === "number" ? (
+                <Line
+                  x1={0}
+                  x2={plotRight}
+                  y1={y(poc)}
+                  y2={y(poc)}
+                  stroke={terminal.amberHot}
+                  strokeWidth={2}
+                  strokeDasharray="8 3 2 3"
+                />
+              ) : null}
               <XDateLabels dates={dates} x={x} height={h} />
-              <LevelPill
-                plotWidth={w}
-                y={y(vah)}
-                label={`VAH ${vah.toFixed(2)}`}
-                color={terminal.green}
-              />
-              <LevelPill
-                plotWidth={w}
-                y={y(poc)}
-                label={`POC ${poc.toFixed(2)}`}
-                color={terminal.amber}
-              />
-              <LevelPill
-                plotWidth={w}
-                y={y(val)}
-                label={`VAL ${val.toFixed(2)}`}
-                color={terminal.red}
-              />
+              {typeof vah === "number" ? (
+                <LevelPill
+                  plotWidth={w}
+                  y={y(vah)}
+                  label={`VAH ${safeFixed(vah)}`}
+                  color={terminal.green}
+                />
+              ) : null}
+              {typeof poc === "number" ? (
+                <LevelPill
+                  plotWidth={w}
+                  y={y(poc)}
+                  label={`POC ${safeFixed(poc)}`}
+                  color={terminal.amber}
+                />
+              ) : null}
+              {typeof val === "number" ? (
+                <LevelPill
+                  plotWidth={w}
+                  y={y(val)}
+                  label={`VAL ${safeFixed(val)}`}
+                  color={terminal.red}
+                />
+              ) : null}
               {scrub}
             </>
           );

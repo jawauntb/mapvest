@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AnalysisSnapshot,
+  type ChartImage,
+  type ResearchArticle,
   addToWatchlist,
   agentChat,
   fetchSettings,
@@ -17,10 +17,10 @@ import {
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
-  type AnalysisSnapshot,
-  type ChartImage,
-  type ResearchArticle,
 } from "@/lib/mapvest-api";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { Component, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ChartFigure } from "../../ChartFigure";
 import { FormattedBrief } from "../../FormattedBrief";
 import { presentPaywallIfQuota, usePaywall } from "../../Paywall";
@@ -60,13 +60,36 @@ function hostLabel(url?: string): string {
   }
 }
 
+class ChartRenderBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <p className="app-err">
+          Chart failed to render.{" "}
+          <button type="button" className="app-link" onClick={() => this.setState({ error: null })}>
+            Retry
+          </button>
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function TickerDetail() {
   const params = useParams<{ symbol: string }>();
   const { presentPaywall } = usePaywall();
   const symbolOrBrand = decodeURIComponent(params.symbol ?? "");
-  const [data, setData] = useState<Resolved | null>(null);
+  const urlTicker = looksLikeTicker(symbolOrBrand);
+  const [resolved, setResolved] = useState<Resolved | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [chartTicker, setChartTicker] = useState<string | null>(null);
+  const [chartTicker, setChartTicker] = useState<string | null>(() =>
+    looksLikeTicker(decodeURIComponent(params.symbol ?? "")),
+  );
   const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
   const [chart, setChart] = useState<ChartImage | null>(null);
@@ -86,6 +109,7 @@ export default function TickerDetail() {
   const [overview, setOverview] = useState<ResearchArticle | null>(null);
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [wantBrief, setWantBrief] = useState(false);
   const [rhLink, setRhLink] = useState<string | null>(null);
 
   const authed = !!getToken();
@@ -133,45 +157,26 @@ export default function TickerDetail() {
     setMemo(null);
     setMemoSaved(false);
     setTab("overview");
-    setData(null);
+    setResolved(null);
     setErr(null);
     setQuote(null);
     setOverview(null);
     setOverviewErr(null);
+    setWantBrief(false);
     setRhLink(null);
-
-    const urlTicker = looksLikeTicker(symbolOrBrand);
+    setChartTicker(urlTicker);
 
     resolveComparable(symbolOrBrand)
       .then((r) => {
-        setData(r);
+        setResolved(r);
         // Prefer listed brand ticker, then URL symbol, then top comparable.
         // Never let a comparable steal charts for a typed ticker like MCD.
-        const t =
-          r.brand.ticker?.symbol ?? urlTicker ?? r.comparables[0]?.ticker ?? null;
+        const t = r.brand.ticker?.symbol ?? urlTicker ?? r.comparables[0]?.ticker ?? null;
         setChartTicker(t);
         if (t) {
-          void loadChart(t, "auction", "1mo");
           getAnalysis(t)
             .then(setAnalysis)
             .catch(() => {});
-          setOverviewLoading(true);
-          agentChat(
-            `Write a detailed investor overview of $${t} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
-            { ticker: t },
-          )
-            .then((r) => {
-              setOverview(r.article);
-              setOverviewErr(null);
-            })
-            .catch((e) => {
-              if (presentPaywallIfQuota(e, presentPaywall)) {
-                setOverviewErr("Free generations used. Subscribe to keep researching.");
-                return;
-              }
-              setOverviewErr(e instanceof Error ? e.message : "overview failed");
-            })
-            .finally(() => setOverviewLoading(false));
           if (authed) {
             // Prefer API deep-link; fall back to public RH URL when settings
             // say MCP is connected so the CTA isn't lost on a flaky 403.
@@ -193,7 +198,7 @@ export default function TickerDetail() {
           }
         }
       })
-      .catch((e) => setErr(e.message));
+      .catch((e) => setErr(e instanceof Error ? e.message : "resolve failed"));
 
     getQuote(symbolOrBrand)
       .then((r) => r.quote && setQuote(r.quote))
@@ -207,7 +212,7 @@ export default function TickerDetail() {
         })
         .catch(() => {});
     }
-  }, [symbolOrBrand, authed, loadChart]);
+  }, [symbolOrBrand, authed, urlTicker]);
 
   useEffect(() => {
     if (!chartTicker) return;
@@ -219,8 +224,58 @@ export default function TickerDetail() {
     void loadChart(chartTicker, chartType, period);
   }, [chartTicker, chartType, period, tab, loadChart]);
 
-  if (err) return <div className="app-detail"><p className="app-err">{err}</p></div>;
-  if (!data) return <div className="app-detail"><p className="app-muted">Loading…</p></div>;
+  const loadOverview = useCallback(
+    (ticker: string) => {
+      setWantBrief(true);
+      setOverviewLoading(true);
+      setOverviewErr(null);
+      agentChat(
+        `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
+        { ticker },
+      )
+        .then((r) => {
+          setOverview(r.article);
+          setOverviewErr(null);
+        })
+        .catch((e) => {
+          if (presentPaywallIfQuota(e, presentPaywall)) {
+            setOverviewErr("Free generations used. Subscribe to keep researching.");
+            return;
+          }
+          setOverviewErr(e instanceof Error ? e.message : "overview failed");
+        })
+        .finally(() => setOverviewLoading(false));
+    },
+    [presentPaywall],
+  );
+
+  if (!resolved && !urlTicker) {
+    if (err) {
+      return (
+        <div className="app-detail">
+          <p className="app-err">{err}</p>
+          <button type="button" className="app-btn" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="app-detail">
+        <p className="app-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  const data: Resolved = resolved ?? {
+    brand: {
+      name: urlTicker ?? symbolOrBrand,
+      isPublic: Boolean(urlTicker),
+      ticker: urlTicker ? { symbol: urlTicker } : undefined,
+    },
+    comparables: [],
+    etfs: [],
+  };
 
   const brand = data.brand;
   const ticker = brand.ticker?.symbol ?? chartTicker;
@@ -330,6 +385,15 @@ export default function TickerDetail() {
         ← Back to app
       </Link>
 
+      {err ? (
+        <p className="app-err">
+          {err}{" "}
+          <button type="button" className="app-link" onClick={() => window.location.reload()}>
+            Retry identity
+          </button>
+        </p>
+      ) : null}
+
       <header className="app-detail-hero">
         <h1>{brand.name}</h1>
         <p className="app-sub">
@@ -350,9 +414,7 @@ export default function TickerDetail() {
         <div className="app-quote">
           <span className="app-quote-price">${quote.price.toFixed(2)}</span>
           <span
-            className={`app-quote-change ${
-              quote.change >= 0 ? "app-quote-up" : "app-quote-down"
-            }`}
+            className={`app-quote-change ${quote.change >= 0 ? "app-quote-up" : "app-quote-down"}`}
           >
             {quote.change >= 0 ? "+" : ""}
             {quote.change.toFixed(2)} ({quote.changePct.toFixed(2)}%)
@@ -395,22 +457,20 @@ export default function TickerDetail() {
       {tab === "overview" ? (
         <>
           <section className="app-panel app-chart">
-            <h2 className="app-chart-title">
-              Auction · ${chartTicker ?? "…"} · 1mo
-            </h2>
+            <h2 className="app-chart-title">Auction · ${chartTicker ?? "…"} · 1mo</h2>
             {chart && !chartLoading && chart.image?.data ? (
-              <ChartFigure
-                src={`data:${chart.image.mime};base64,${chart.image.data}`}
-                alt={`${chart.ticker} 1mo auction chart`}
-                filename={
-                  chart.image.filename ?? `${chart.ticker}-auction-1mo.png`
-                }
-                caption={
-                  chart.levels
-                    ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? "yfinance"}`
-                    : chart.provider
-                }
-              />
+              <ChartRenderBoundary>
+                <ChartFigure
+                  src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                  alt={`${chart.ticker} 1mo auction chart`}
+                  filename={chart.image.filename ?? `${chart.ticker}-auction-1mo.png`}
+                  caption={
+                    chart.levels
+                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? "yfinance"}`
+                      : chart.provider
+                  }
+                />
+              </ChartRenderBoundary>
             ) : chartErr ? (
               <p className="app-err">{chartErr}</p>
             ) : (
@@ -431,7 +491,11 @@ export default function TickerDetail() {
           {ticker ? (
             <section className="app-panel">
               <h2>Agent overview · ${ticker}</h2>
-              {overviewLoading ? (
+              {!wantBrief ? (
+                <button type="button" className="app-btn" onClick={() => loadOverview(ticker)}>
+                  Load full brief
+                </button>
+              ) : overviewLoading ? (
                 <p className="app-muted">Researching a longer brief…</p>
               ) : overviewErr ? (
                 <p className="app-err">{overviewErr}</p>
@@ -502,11 +566,7 @@ export default function TickerDetail() {
                 </button>
               ) : null}
               {authed ? (
-                <button
-                  className="app-btn"
-                  onClick={onGenerateMemo}
-                  disabled={busy === "memo"}
-                >
+                <button className="app-btn" onClick={onGenerateMemo} disabled={busy === "memo"}>
                   {busy === "memo" ? "…" : memo ? "↻ Memo" : "Memo"}
                 </button>
               ) : null}
@@ -535,11 +595,7 @@ export default function TickerDetail() {
                   onClick={onSaveMemo}
                   disabled={busy === "memoSave" || memoSaved}
                 >
-                  {busy === "memoSave"
-                    ? "Saving…"
-                    : memoSaved
-                      ? "✓ Memo saved"
-                      : "💾 Save memo"}
+                  {busy === "memoSave" ? "Saving…" : memoSaved ? "✓ Memo saved" : "💾 Save memo"}
                 </button>
               </div>
               <pre className="app-memo-body">{memo.text}</pre>
@@ -557,8 +613,7 @@ export default function TickerDetail() {
                     <Link href={`/app/ticker/${encodeURIComponent(c.ticker)}`}>
                       <span className="app-ticker">${c.ticker}</span>
                     </Link>{" "}
-                    · {c.name}{" "}
-                    <span className="app-score">{Math.round(c.score * 100)}%</span>
+                    · {c.name} <span className="app-score">{Math.round(c.score * 100)}%</span>
                     {c.sources?.length ? (
                       <div className="app-source-links">
                         {c.sources.slice(0, 3).map((s, j) =>
@@ -646,19 +701,18 @@ export default function TickerDetail() {
               ))}
             </div>
             {chart && !chartLoading && chart.image?.data ? (
-              <ChartFigure
-                src={`data:${chart.image.mime};base64,${chart.image.data}`}
-                alt={`${chart.ticker} ${chipLabel} ${period} chart`}
-                filename={
-                  chart.image.filename ??
-                  `${chart.ticker}-${chartType}-${period}.png`
-                }
-                caption={
-                  chartType === "auction" && chart.levels
-                    ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`
-                    : chart.provider
-                }
-              />
+              <ChartRenderBoundary>
+                <ChartFigure
+                  src={`data:${chart.image.mime};base64,${chart.image.data}`}
+                  alt={`${chart.ticker} ${chipLabel} ${period} chart`}
+                  filename={chart.image.filename ?? `${chart.ticker}-${chartType}-${period}.png`}
+                  caption={
+                    chartType === "auction" && chart.levels
+                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`
+                      : chart.provider
+                  }
+                />
+              </ChartRenderBoundary>
             ) : chartErr ? (
               <p className="app-err">{chartErr}</p>
             ) : (

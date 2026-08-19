@@ -1,6 +1,6 @@
-import { Hono } from "hono";
 import type { ResolveComparableResponse } from "@mapvest/core";
 import { resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
+import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const resolve = new Hono();
@@ -13,9 +13,7 @@ resolve.post("/", async (c) => {
       return c.json({ error: "brand required" }, 400);
     }
 
-    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get(
-      "user",
-    );
+    const user = (c as unknown as { get: (k: string) => { id?: string } | undefined }).get("user");
     span.setAttributes({
       brand: body.brand,
       hint_sector: body.hintSector,
@@ -24,9 +22,19 @@ resolve.post("/", async (c) => {
 
     const started = performance.now();
     const { brand } = await resolveTicker(body.brand);
+    // Exa / comparable lookups fail soft — a 429 or timeout must not 500
+    // the Investable page. Charts and quote still work from the URL ticker.
     const [comparables, etfs] = await Promise.all([
-      brand.isPublic ? Promise.resolve([]) : resolveComparable(body.brand, body.hintSector),
-      resolveEtfExposure(body.hintSector ?? body.brand),
+      brand.isPublic
+        ? Promise.resolve([])
+        : resolveComparable(body.brand, body.hintSector).catch((err) => {
+            console.warn("[resolve] comparable failed", err);
+            return [];
+          }),
+      resolveEtfExposure(body.hintSector ?? body.brand).catch((err) => {
+        console.warn("[resolve] etf exposure failed", err);
+        return [];
+      }),
     ]);
     const latencyMs = Math.round(performance.now() - started);
 
@@ -34,16 +42,15 @@ resolve.post("/", async (c) => {
     // >=0.66 → high, >=0.33 → medium, else low. If the brand is already
     // public we mark high; if we have nothing we mark low.
     const topScore = comparables[0]?.score;
-    const topConfidence =
-      brand.isPublic
-        ? "high"
-        : typeof topScore === "number"
-          ? topScore >= 0.66
-            ? "high"
-            : topScore >= 0.33
-              ? "medium"
-              : "low"
-          : "low";
+    const topConfidence = brand.isPublic
+      ? "high"
+      : typeof topScore === "number"
+        ? topScore >= 0.66
+          ? "high"
+          : topScore >= 0.33
+            ? "medium"
+            : "low"
+        : "low";
     span.setAttributes({
       latency_ms: latencyMs,
       is_public: brand.isPublic,

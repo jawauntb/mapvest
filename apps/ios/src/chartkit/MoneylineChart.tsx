@@ -2,6 +2,7 @@ import type { MoneylineDataset } from "@/api/underlying";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { G, Line, Rect, Text as SvgText } from "react-native-svg";
+import { safeFixed } from "./format";
 import { MONO_FONT, terminal } from "./palette";
 import { ChartShell, Crosshair, LegendRow, Panel, ScrubDot, ScrubTip } from "./primitives";
 import { fmtCompact, linearScale } from "./scale";
@@ -14,17 +15,18 @@ const PANEL_HEIGHT = 210;
  */
 export function MoneylineChart({ data }: { data: MoneylineDataset }) {
   const [scrubIdx, setScrubIdx] = useState<number | null>(null);
-  const strikes = data.series.strikes;
-  const spot = data.meta.current_price;
-  const maxOi = Math.max(
-    ...strikes.map((r) => Math.max(r.call_open_interest, r.put_open_interest)),
-  );
+  const strikes = data.series?.strikes ?? [];
+  const spot = data.meta?.current_price;
+  const maxOi =
+    strikes.length === 0
+      ? 0
+      : Math.max(...strikes.map((r) => Math.max(r.call_open_interest, r.put_open_interest)));
   const hasOi = maxOi > 0;
 
   return (
     <ChartShell
       title={`${data.ticker} moneyline`}
-      subtitle={`EXPIRY ${data.meta.expiry} | SPOT ${spot.toFixed(2)}${hasOi ? "" : " | NO OPEN INTEREST REPORTED"}`}
+      subtitle={`EXPIRY ${data.meta?.expiry ?? "—"} | SPOT ${safeFixed(spot)}${hasOi ? "" : " | NO OPEN INTEREST REPORTED"}`}
       footerLeft={`${data.ticker} open interest mirror`}
       footerRight="moneyline"
     >

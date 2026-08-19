@@ -11,9 +11,10 @@ import {
   saveMemoToWatchlist,
   secFilings,
 } from "@/api/client";
-import type { Comparable, EtfExposure, Source } from "@/api/types";
+import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
+import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { ChartsSection } from "@/components/ChartsSection";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { RichText } from "@/components/RichText";
@@ -42,6 +43,14 @@ import {
   View,
 } from "react-native";
 import { ResearchSheet } from "../ResearchSheet";
+
+function fallbackResolve(ticker: string): ResolveComparableResponse {
+  return {
+    brand: { name: ticker, isPublic: true, ticker: { symbol: ticker } },
+    comparables: [],
+    etfs: [],
+  };
+}
 
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -104,7 +113,7 @@ export default function DetailSheet() {
 
   // Paint a skeleton shell immediately — never block the whole modal on
   // resolveComparable. Brian: "hang on loading… Maybe stagger the renderings."
-  if (q.isLoading && !q.data) {
+  if (q.isLoading && !q.data && !urlTicker) {
     return (
       <ScreenFade>
         <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 16 }}>
@@ -165,14 +174,18 @@ export default function DetailSheet() {
       </ScreenFade>
     );
   }
-  if (q.isError) {
+  const data: ResolveComparableResponse | undefined =
+    q.data ?? (urlTicker ? fallbackResolve(urlTicker) : undefined);
+  if (q.isError && !data) {
     return (
       <View style={styles.center}>
         <Text style={styles.err}>{(q.error as Error).message}</Text>
+        <Pressable onPress={() => void q.refetch()} style={styles.miniBtn}>
+          <Text style={styles.miniBtnText}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
-  const data = q.data;
   if (!data) return null;
 
   const publicTicker = data.brand.ticker?.symbol;
@@ -261,6 +274,17 @@ export default function DetailSheet() {
             ),
           }}
         />
+        {q.isError ? (
+          <View style={styles.staggerSkeleton}>
+            <Text style={styles.errInline}>
+              {(q.error as Error).message || "Could not refresh identity"}
+            </Text>
+            <Pressable onPress={() => void q.refetch()} style={styles.miniBtn}>
+              <Text style={styles.miniBtnText}>Retry identity</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View>
           <Text style={styles.h1}>{listedTicker ?? data.brand.name}</Text>
           {companyName ? <Text style={styles.sub}>{companyName}</Text> : null}
@@ -300,7 +324,11 @@ export default function DetailSheet() {
           </Section>
         ) : null}
 
-        {stage >= 1 && ticker ? <ChartsSection ticker={ticker} token={session?.token} /> : null}
+        {stage >= 1 && ticker ? (
+          <ChartErrorBoundary>
+            <ChartsSection ticker={ticker} token={session?.token} />
+          </ChartErrorBoundary>
+        ) : null}
 
         {stage >= 2 && ticker ? (
           <View style={{ gap: 10 }}>

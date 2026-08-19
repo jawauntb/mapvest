@@ -63,10 +63,13 @@ export function NativePriceChart({ ticker, token, period = "1mo", onPeriod }: Pr
 
       {q.isLoading || q.isPending ? (
         <ChartSkeleton />
-      ) : q.isError || !q.data || q.data.points.length < 2 ? (
+      ) : q.isError || !q.data || q.data.points.filter(isFiniteClose).length < 2 ? (
         <Text style={styles.error}>Price history unavailable</Text>
       ) : (
-        <ChartBody data={q.data.points} fetchedAt={q.data.sources[0]?.fetchedAt} />
+        <ChartBody
+          data={q.data.points.filter(isFiniteClose)}
+          fetchedAt={q.data.sources[0]?.fetchedAt}
+        />
       )}
     </View>
   );
@@ -86,11 +89,18 @@ function ChartBody({
   const first = data[0];
   const last = data[data.length - 1];
   const shown = (scrubIndex !== null ? data[scrubIndex] : last) ?? last;
-  if (!first || !last || !shown) {
+  if (
+    !first ||
+    !last ||
+    !shown ||
+    !isFiniteClose(shown) ||
+    !isFiniteClose(first) ||
+    !isFiniteClose(last)
+  ) {
     return <Text style={styles.error}>Price history unavailable</Text>;
   }
 
-  const windowChange = (last.close - first.close) / first.close;
+  const windowChange = first.close === 0 ? 0 : (last.close - first.close) / first.close;
   const up = windowChange >= 0;
 
   const onScrub = (x: number) => {
@@ -237,6 +247,10 @@ function ChartSkeleton() {
       <View style={[styles.skel, { width: 140, height: 10 }]} />
     </>
   );
+}
+
+function isFiniteClose(p: QuoteHistoryPoint): boolean {
+  return typeof p.close === "number" && Number.isFinite(p.close);
 }
 
 /** Nearest-index resample for the bar strip. Stats/scrub still use full points. */
