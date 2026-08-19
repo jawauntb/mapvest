@@ -264,6 +264,80 @@ export function getMarketEvents(symbol: string, limit = 8) {
   );
 }
 
+export type OptionContract = {
+  ticker: string;
+  underlyingTicker?: string;
+  contractType?: "call" | "put" | "other";
+  expirationDate?: string;
+  strikePrice?: number;
+  exerciseStyle?: "american" | "bermudan" | "european";
+  sharesPerContract?: number;
+  primaryExchange?: string;
+  cfi?: string;
+};
+
+export type OptionSnapshot = OptionContract & {
+  breakEvenPrice?: number;
+  impliedVolatility?: number;
+  openInterest?: number;
+  greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number };
+  quote?: { bid?: number; ask?: number; bidSize?: number; askSize?: number; ts?: number };
+  trade?: { price?: number; size?: number; ts?: number };
+  day?: { open?: number; high?: number; low?: number; close?: number; volume?: number };
+};
+
+export function getOptionContracts(
+  symbol: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    limit?: number;
+    cursor?: string;
+  } = {},
+) {
+  const qs = new URLSearchParams({
+    underlying: symbol.toUpperCase(),
+    expired: "false",
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return req<{
+    contracts: OptionContract[];
+    nextCursor?: string;
+    requestId?: string;
+    sources: Array<{ provider: string; url?: string; fetchedAt: string; confidence: string }>;
+  }>(`/v1/options/contracts?${qs.toString()}`);
+}
+
+export function getOptionsChain(
+  symbol: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    strikePrice?: number;
+    limit?: number;
+    cursor?: string;
+  } = {},
+) {
+  const qs = new URLSearchParams({
+    underlying: symbol.toUpperCase(),
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.strikePrice != null) qs.set("strike_price", String(args.strikePrice));
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return req<{
+    underlyingTicker: string;
+    contracts: OptionSnapshot[];
+    nextCursor?: string;
+    requestId?: string;
+    sources: Array<{ provider: string; url?: string; fetchedAt: string; confidence: string }>;
+  }>(`/v1/options/chain?${qs.toString()}`);
+}
+
 /** Best-effort parallel quotes for list/saved (cap 10). */
 export async function getQuotesMap(symbols: string[]): Promise<Record<string, Quote>> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 10);

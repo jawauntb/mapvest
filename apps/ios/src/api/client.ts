@@ -9,6 +9,8 @@ import type {
   IdentifyResponse,
   LatLng,
   NearbyResponse,
+  OptionContractsResponse,
+  OptionsResponse,
   QuoteHistoryResponse,
   ResolveComparableResponse,
   Session,
@@ -218,6 +220,49 @@ export function fetchQuoteHistory(
 ): Promise<QuoteHistoryResponse> {
   const qs = new URLSearchParams({ symbol, period });
   return jsonFetch(`/v1/quote-history?${qs.toString()}`, { method: "GET" }, opts);
+}
+
+export function fetchOptionContracts(
+  underlyingTicker: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    limit?: number;
+    cursor?: string;
+  } = {},
+  opts: FetchOpts = {},
+): Promise<OptionContractsResponse> {
+  const qs = new URLSearchParams({
+    underlying: underlyingTicker.toUpperCase(),
+    expired: "false",
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return jsonFetch(`/v1/options/contracts?${qs.toString()}`, { method: "GET" }, opts);
+}
+
+export function fetchOptionsChain(
+  underlyingTicker: string,
+  args: {
+    expirationDate?: string;
+    contractType?: "call" | "put";
+    strikePrice?: number;
+    limit?: number;
+    cursor?: string;
+  } = {},
+  opts: FetchOpts = {},
+): Promise<OptionsResponse> {
+  const qs = new URLSearchParams({
+    underlying: underlyingTicker.toUpperCase(),
+    limit: String(Math.min(args.limit ?? 250, 250)),
+  });
+  if (args.expirationDate) qs.set("expiration_date", args.expirationDate);
+  if (args.contractType) qs.set("contract_type", args.contractType);
+  if (args.strikePrice != null) qs.set("strike_price", String(args.strikePrice));
+  if (args.cursor) qs.set("cursor", args.cursor);
+  return jsonFetch(`/v1/options/chain?${qs.toString()}`, { method: "GET" }, opts);
 }
 
 /** Best-effort parallel quotes for list/map pins (cap 24). */
