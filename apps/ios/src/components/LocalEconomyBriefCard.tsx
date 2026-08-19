@@ -83,8 +83,12 @@ function BriefChrome({
 type MapRegion = { latitude: number; longitude: number };
 
 export function LocalEconomyBriefCard({ token }: { token: string | undefined }) {
+  // Cache-only read of the map tab's last region. Map writes via
+  // setQueryData; we never fetch. A missing queryFn used to throw a
+  // fatal JS error on Home (and abort TestFlight release builds).
   const mapRegion = useQuery<MapRegion | undefined>({
     queryKey: ["tab-state", "map-region"],
+    queryFn: () => undefined,
     enabled: false,
     staleTime: Number.POSITIVE_INFINITY,
   }).data;

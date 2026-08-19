@@ -137,6 +137,10 @@ error, per the device `.ips` logs — not a chart/native-view bug):
 - The Investable header (`Stack.Screen` options) is memoized on the ticker
   so the native `RNSScreenStackHeaderConfig` is not re-configured on every
   render mid push-transition.
+- Home's Local Economy Brief reads the map region from the react-query
+  cache only (`queryFn` returns `undefined`, `enabled: false`). A missing
+  `queryFn` threw on every Home mount and is the same class of fatal JS
+  error that aborted TestFlight.
 
 ## Layering rules
 
