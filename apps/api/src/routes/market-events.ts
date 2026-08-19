@@ -1,4 +1,8 @@
-import { MarketDataProviderError, getCorporateEvents } from "@mapvest/finance";
+import {
+  MarketDataProviderError,
+  getCorporateEvents,
+  getTmxCorporateEvents,
+} from "@mapvest/finance";
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { marketDataSource } from "../lib/marketDataSource.js";
@@ -38,7 +42,26 @@ events.get("/", marketDataRateLimit, async (c) => {
         to: c.req.query("to"),
         limit,
       });
-      return c.json({ ticker, events: result, sources: [marketDataSource()] });
+      let tmxAvailable = false;
+      let tmxEvents: Awaited<ReturnType<typeof getTmxCorporateEvents>> = [];
+      if (process.env.MASSIVE_CORPORATE_EVENTS_ENABLED === "1") {
+        try {
+          tmxEvents = await getTmxCorporateEvents({
+            ticker,
+            from: c.req.query("from"),
+            to: c.req.query("to"),
+            limit,
+          });
+          tmxAvailable = true;
+        } catch {
+          // TMX is a separately subscribed partner dataset. Its absence must
+          // not remove the existing splits/dividends response.
+        }
+      }
+      const events = [...result, ...tmxEvents]
+        .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+        .slice(0, limit);
+      return c.json({ ticker, events, tmxAvailable, sources: [marketDataSource()] });
     } catch (error) {
       if (error instanceof MarketDataProviderError && error.status === 429) {
         return c.json({ error: "market data rate limited" }, 429);

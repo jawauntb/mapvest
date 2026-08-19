@@ -524,7 +524,7 @@ registry.registerPath({
   path: "/v1/market-events",
   summary: "Corporate actions and market events",
   description:
-    "Returns Massive stock splits and dividends, with optional partner event coverage documented by the capability report.",
+    "Returns Massive stock splits and dividends, plus optional TMX/Wall Street Horizon corporate events when the partner dataset is enabled.",
   tags: ["finance"],
   request: {
     query: z.object({

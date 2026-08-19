@@ -6,11 +6,11 @@ Mapvest never claims a ticker without a source. This doc lists every provider we
 
 | Provider | Purpose | Key |
 | --- | --- | --- |
-| **OpenRouter** | Multimodal LLM (image → brand) + comparable-judge step. Prefer `openai/gpt-5.6-terra`, fall back to `anthropic/claude-opus-4.8` then `x-ai/grok-4.6`. | `OPENROUTER_API_KEY` (Doppler `mapvest/dev`) |
+| **OpenRouter** | Multimodal LLM (image → brand) + comparable-judge step. Prefer `openai/gpt-5.6-terra`, fall back to `anthropic/claude-opus-4.8` then `x-ai/grok-4.6`. | `OPENROUTER_API_KEY` (shared Doppler) |
 | **Gemini (direct)** | Fallback multimodal if OpenRouter degrades. | `GEMINI_API_KEY` |
 | **Exa** | Open-web search for ticker discovery, parent-company lookup, ETF constituent lookup. | `EXA_API_KEY` |
 | **Google Places** | Nearby POI enumeration for the map view (primary). Multi-type queries (`restaurant`, `cafe`, `store`, `bank`, …) merged + de-noised (no hospitals/doctors/parks). | `GOOGLE_MAPS_API_KEY` (Doppler; billed GCP project `steady-force-468319-u7`) |
-| **Massive** | Primary market-data provider for routed quotes, aggregates, options contracts/chains, reference news, and splits/dividends. | `MASSIVE_API_KEY` and account entitlements in personal Doppler `mapvest` |
+| **Massive** | Primary market-data provider for routed quotes, aggregates, options contracts/chains, reference news, splits/dividends, and optional TMX Global Corporate Events. | `MASSIVE_API_KEY` and account entitlements in personal Doppler `shared/prd`; TMX is a separately subscribed partner dataset |
 
 ## Secondary / free-tier
 
@@ -92,7 +92,8 @@ See [`MARKET_DATA_MIGRATION.md`](MARKET_DATA_MIGRATION.md) for the audited flow
 map, route compatibility, Massive endpoint mapping, fallback routing, and
 subscription assumptions. `GET /v1/market-data/capabilities` is the runtime
 source of truth for configured freshness and dataset access. “Configured” does
-not mean “real-time”: the purchased Massive plan must be verified in Doppler.
+not mean “real-time”: the purchased Massive plan and optional TMX entitlement
+must be verified in Doppler.
 
 ## What we do NOT use
 

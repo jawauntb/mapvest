@@ -10,7 +10,7 @@ One Doppler **project per Railway project**, plus `shared`.
 
 | Doppler project | Railway `production` source | Configs |
 |---|---|---|
-| `shared` | majority provider tokens + GIC extras | `dev` / `prd` |
+| `shared` | majority provider tokens + GIC extras, including Massive | `dev_personal` / `prd` |
 | `mapvest` | service `api` | `dev` / `prd`; `prd_landing` |
 | `derivation-research-console` | service `derivation-research-console` | `dev` / `prd`; `prd_railway_campaign_worker` |
 | `inquiry-black-box` | `inquiry-black-box-api` | `dev` / `prd` |
@@ -28,7 +28,7 @@ One Doppler **project per Railway project**, plus `shared`.
 Re-sync (never prints values):
 
 ```
-bash infra/doppler/sync-from-railway.sh          # mapvest/api → mapvest/prd
+bash infra/doppler/sync-from-railway.sh          # service-owned Railway vars only
 python3 infra/doppler/sync-personal-apps.py      # all Railway apps + shared
 ```
 
@@ -46,8 +46,10 @@ When the **same underlying token** is on several apps, `shared` stores it once u
 - `ANTHROPIC_API_KEY` — derivation + objetdart
 - `GOOGLE_MAPS_API_KEY` — mapvest
 - `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` — mapvest + derivation
-- `MASSIVE_API_KEY` — mapvest primary market-data provider; keep only in the
-  personal `mapvest` Doppler project and never copy it into repo config
+- `MASSIVE_API_KEY` and the four Massive flat-file variables — keep only in the
+  personal `shared` Doppler project and never copy them into repo config or
+  Railway variables. Railway should use the Doppler integration targeting
+  `shared/prd`.
 
 ## Same name, different credentials
 
@@ -81,8 +83,7 @@ Derivation’s runtime secrets were already on Railway, not in GIC `research`.
 
 ```bash
 doppler login --scope . --overwrite   # workplace "jawaun personal"
-doppler setup                         # project mapvest, config dev
-doppler run -- bun run dev
+doppler run --project shared --config dev_personal -- bun run dev
 ```
 
 Sibling checkouts (objetdart, derivation, compiler, …) do not need a new browser login. This worktree already has the personal token:

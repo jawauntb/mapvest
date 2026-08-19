@@ -14,6 +14,7 @@ export {
   getOptionContracts,
   getOptionsChain,
   getCorporateEvents,
+  getTmxCorporateEvents,
   getPrimaryProvider,
   getFallbackProvider,
   MarketDataProviderError,

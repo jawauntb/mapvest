@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Copy Railway production API variables into Doppler mapvest/prd.
+# Copy Railway production API variables into the service-owned Doppler project.
+# This helper is not the Massive credential source; Massive lives in shared/prd.
 # Never prints secret values. Refuses to run against the GIC workplace.
 set -euo pipefail
 

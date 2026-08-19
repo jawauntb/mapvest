@@ -230,6 +230,40 @@ export function getQuote(symbol: string) {
   return req<{ quote?: Quote; error?: string }>(`/v1/quote?symbol=${encodeURIComponent(symbol)}`);
 }
 
+export type NewsItem = {
+  title: string;
+  url: string;
+  source: string;
+  publishedAt: string;
+};
+
+export type MarketEvent = {
+  ticker: string;
+  type: string;
+  date?: string;
+  status?: string;
+  description?: string;
+  sourceUrl?: string;
+  provider?: "massive" | "tmx";
+  companyName?: string;
+};
+
+export function getTickerNews(symbol: string, limit = 6) {
+  return req<{ items: NewsItem[]; provider: string; ts: string }>(
+    `/v1/news?ticker=${encodeURIComponent(symbol)}&limit=${Math.min(25, Math.max(1, limit))}`,
+  );
+}
+
+export function getMarketEvents(symbol: string, limit = 8) {
+  return req<{
+    ticker?: string;
+    events: MarketEvent[];
+    tmxAvailable?: boolean;
+  }>(
+    `/v1/market-events?ticker=${encodeURIComponent(symbol)}&limit=${Math.min(25, Math.max(1, limit))}`,
+  );
+}
+
 /** Best-effort parallel quotes for list/saved (cap 10). */
 export async function getQuotesMap(symbols: string[]): Promise<Record<string, Quote>> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 10);

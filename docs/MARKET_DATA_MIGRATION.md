@@ -16,7 +16,7 @@ independent sibling deployments.
 | Options link-out | `GET /v1/options?ticker=`; iOS detail sheet | Independent derivation-research link-out | Still the sibling link-out | Unchanged; no sibling code is duplicated |
 | Options data | No prior first-party market-data endpoint | Sibling derivation research only | Additive Massive chain, contracts, snapshots, expirations | New endpoints; legacy link-out is unchanged |
 | Aggregates | Analyzer/sibling integrations and internal history needs | Yahoo chart-shaped daily data | Additive Massive aggregate endpoint | New endpoint; no old route renamed |
-| Corporate events | No stable Mapvest endpoint | Scattered provider assumptions | Additive Massive splits/dividends/events route | New endpoint; subscription/partner access is reported |
+| Corporate events | `GET /v1/market-events`; Investable “News & catalysts” panel | Scattered provider assumptions | Massive splits/dividends plus optional TMX Global Corporate Events | Existing envelope is stable; TMX fields and `tmxAvailable` are additive |
 
 ### Explicit legacy audit
 
@@ -35,11 +35,12 @@ legacy quote/history adapter, and `router.ts` owns provider selection and the
 explicit fallback policy. API routes consume the interface and core schemas;
 they do not call either provider directly.
 
-The default is `MARKET_DATA_PROVIDER=massive`. Set
-`MARKET_DATA_PROVIDER=yahoo` only for an intentional legacy run, or set
+The default is `MARKET_DATA_PRIMARY=massive`. Set
+`MARKET_DATA_PRIMARY=yahoo` only for an intentional legacy run, or set
 `MARKET_DATA_FALLBACK_PROVIDER=yahoo` to allow quote/history fallback while
 parity is being proven. The fallback is not used for options, aggregates, or
 corporate events merely because those datasets are unavailable from Massive.
+`MARKET_DATA_PROVIDER` remains a compatibility alias for older deployments.
 
 ## Massive mapping
 
@@ -51,6 +52,7 @@ corporate events merely because those datasets are unavailable from Massive.
 | Contracts / expirations | `/v3/reference/options/contracts` | Additive contracts endpoint with cursor and expiration filters |
 | Single option contract | `/v3/reference/options/contracts/{ticker}` | Additive contract detail endpoint |
 | Splits and dividends | `/stocks/v1/splits`, `/stocks/v1/dividends` | Additive `/v1/market-events` |
+| TMX Global Corporate Events | `/tmx/v1/corporate-events` | Additive `/v1/market-events`; merged with Yahoo/Massive headlines in the Investable UI |
 | Market news | `/v2/reference/news` | Existing `/v1/news` normalized into its stable response |
 
 The adapter preserves upstream timestamps as ISO strings in the existing
@@ -61,10 +63,11 @@ behavior at the API boundary.
 
 ## Freshness, subscription assumptions, and gaps
 
-The repository cannot verify the purchased Massive account from this checkout:
-the available Doppler token does not currently have access to the `mapvest`
-project. Deployment must populate `MASSIVE_API_KEY` and the plan/freshness
-metadata from the account before claiming real-time or options coverage.
+The purchased Massive account is authoritative for realtime, delayed, historical,
+options, and event coverage. The canonical credentials are in personal Doppler
+`shared/dev_personal` for local work and `shared/prd` for Railway. This checkout
+must not print or persist those values. The optional plan/freshness metadata is
+reported when present; no plan variable is required for the REST adapter.
 
 Massive plan capabilities vary. Stocks may be end-of-day, delayed, or real-time;
 options quotes/Greeks and historical depth likewise depend on the purchased
@@ -74,9 +77,13 @@ label means “unverified,” not “real-time.”
 
 REST snapshots and aggregates are implemented here. Massive WebSocket streaming
 is not proxied through Mapvest yet; realtime UI streaming remains a follow-up,
-so the current API must not promise tick-by-tick delivery. Corporate events are
-implemented for splits/dividends; broader partner event feeds require explicit
-account enablement and `MASSIVE_CORPORATE_EVENTS_ENABLED=1`.
+so the current API must not promise tick-by-tick delivery. Corporate events
+include splits/dividends by default and TMX events when the separate partner
+entitlement is enabled with `MASSIVE_CORPORATE_EVENTS_ENABLED=1`. TMX data is
+event-calendar data updated every two hours, not realtime ticks. Yahoo remains a
+headline fallback, not a corporate-event source. Massive can replace Robinhood
+for quotes, history, options, and corporate events, but not account holdings,
+brokerage authentication, or order execution.
 
 ## Verification checklist
 
@@ -84,8 +91,9 @@ Before enabling the primary route in a deployment:
 
 1. Confirm the account has the required stocks, options, aggregates, contracts,
    news, and event entitlements.
-2. Set `MASSIVE_*` values in personal Doppler only and run the capabilities
-   endpoint through `doppler run`.
+2. Verify the five shared Massive variables in `shared/dev_personal` or
+   `shared/prd` without printing their values, then run the capabilities endpoint
+   through `doppler run`.
 3. Run the fixture parity tests and targeted endpoint tests in this repository.
 4. Compare sampled quotes/history/options against the current fallback during a
    staged window, then remove the fallback when parity is proven.

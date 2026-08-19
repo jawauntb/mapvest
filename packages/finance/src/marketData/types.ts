@@ -77,6 +77,11 @@ export type CorporateEvent = {
   description?: string;
   sourceUrl?: string;
   raw?: Record<string, unknown>;
+  provider?: "massive" | "tmx";
+  companyName?: string;
+  isin?: string;
+  tradingVenue?: string;
+  tmxRecordId?: string;
 };
 
 export type MarketDataCapabilities = {
@@ -126,6 +131,12 @@ export type MarketDataProvider = {
   getOptionContracts(query: OptionContractQuery): Promise<ProviderPage<OptionContract>>;
   getOptionContract(ticker: string): Promise<OptionContract | null>;
   getCorporateEvents(query: {
+    ticker?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }): Promise<CorporateEvent[]>;
+  getTmxCorporateEvents(query: {
     ticker?: string;
     from?: string;
     to?: string;

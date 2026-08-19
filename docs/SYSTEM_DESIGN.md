@@ -176,7 +176,8 @@ and timestamp conventions. New Massive capabilities are additive under
 `/v1/market-data/*`, `/v1/options/chain`, `/v1/options/contracts*`, and
 `/v1/market-events`.
 
-**Fallback**: Yahoo is available only when `MARKET_DATA_PROVIDER=yahoo` or the
+**Fallback**: Yahoo is available only when `MARKET_DATA_PRIMARY=yahoo` (with
+the legacy `MARKET_DATA_PROVIDER=yahoo` alias) or the
 explicit `MARKET_DATA_FALLBACK_PROVIDER=yahoo` flag is set. The fallback is
 limited to quote/history parity; it is not silently substituted for options,
 aggregates, or events. Provider failures preserve the existing best-effort
@@ -186,8 +187,16 @@ aggregates, or events. Provider failures preserve the existing best-effort
 delayed, end-of-day, historical depth, options Greeks/IV, and event coverage.
 Mapvest reports configured freshness and dataset access through
 `GET /v1/market-data/capabilities`; unset plan metadata is treated as
-unverified. WebSocket tick streaming is not yet proxied, so REST consumers must
-not infer tick-by-tick guarantees.
+unverified. TMX corporate events are a separately subscribed partner dataset
+updated every two hours and are surfaced in the Investable News & catalysts
+panel when enabled. WebSocket tick streaming is not yet proxied, so REST
+consumers must not infer tick-by-tick guarantees.
+
+**Robinhood boundary**: Massive replaces Robinhood only for market-data reads
+(quotes, history, options, and corporate events). Robinhood remains an optional
+broker/account integration for holdings, account state, authentication, and
+order workflows; market-data flakiness does not require routing those reads
+through Robinhood.
 
 **Evidence**: The complete route/consumer inventory and endpoint mapping lives
 in `docs/MARKET_DATA_MIGRATION.md`. Sibling derivation-research and

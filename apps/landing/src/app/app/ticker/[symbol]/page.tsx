@@ -10,7 +10,9 @@ import {
   generateMemo,
   getAnalysis,
   getChart,
+  getMarketEvents,
   getQuote,
+  getTickerNews,
   getToken,
   listWatchlist,
   openInRobinhood,
@@ -105,12 +107,19 @@ export default function TickerDetail() {
   const [memoSaved, setMemoSaved] = useState(false);
   const [busy, setBusy] = useState<"" | "memo" | "save" | "memoSave">("");
   const [tab, setTab] = useState<"overview" | "advanced">("overview");
-  const [researchOpen, setResearchOpen] = useState(false);
+  const [_researchOpen, setResearchOpen] = useState(false);
   const [overview, setOverview] = useState<ResearchArticle | null>(null);
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [wantBrief, setWantBrief] = useState(false);
   const [rhLink, setRhLink] = useState<string | null>(null);
+  const [marketNews, setMarketNews] = useState<Awaited<ReturnType<typeof getTickerNews>> | null>(
+    null,
+  );
+  const [marketEvents, setMarketEvents] = useState<Awaited<
+    ReturnType<typeof getMarketEvents>
+  > | null>(null);
+  const [marketFeedLoading, setMarketFeedLoading] = useState(false);
 
   const authed = !!getToken();
 
@@ -164,6 +173,8 @@ export default function TickerDetail() {
     setOverviewErr(null);
     setWantBrief(false);
     setRhLink(null);
+    setMarketNews(null);
+    setMarketEvents(null);
     setChartTicker(urlTicker);
 
     resolveComparable(symbolOrBrand)
@@ -223,6 +234,24 @@ export default function TickerDetail() {
     }
     void loadChart(chartTicker, chartType, period);
   }, [chartTicker, chartType, period, tab, loadChart]);
+
+  useEffect(() => {
+    if (!chartTicker) return;
+    let active = true;
+    setMarketFeedLoading(true);
+    Promise.allSettled([getTickerNews(chartTicker, 6), getMarketEvents(chartTicker, 8)])
+      .then(([newsResult, eventsResult]) => {
+        if (!active) return;
+        if (newsResult.status === "fulfilled") setMarketNews(newsResult.value);
+        if (eventsResult.status === "fulfilled") setMarketEvents(eventsResult.value);
+      })
+      .finally(() => {
+        if (active) setMarketFeedLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [chartTicker]);
 
   const loadOverview = useCallback(
     (ticker: string) => {
@@ -539,6 +568,49 @@ export default function TickerDetail() {
           ) : null}
 
           {ticker ? (
+            <section className="app-panel">
+              <h2>News &amp; catalysts</h2>
+              {marketFeedLoading ? <p className="app-muted">Loading market events…</p> : null}
+              {!marketFeedLoading && !marketNews?.items.length && !marketEvents?.events.length ? (
+                <p className="app-muted">No recent headlines or corporate events.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "0.7rem" }}>
+                  {marketEvents?.events.map((event, index) => (
+                    <a
+                      className="app-link"
+                      href={event.sourceUrl}
+                      key={`${event.provider ?? "event"}-${event.date}-${index}`}
+                      target={event.sourceUrl ? "_blank" : undefined}
+                      rel={event.sourceUrl ? "noopener noreferrer" : undefined}
+                    >
+                      <strong>{event.description ?? event.type.replaceAll("_", " ")}</strong>
+                      <span className="app-muted">
+                        {event.date ?? "date pending"} ·{" "}
+                        {event.provider === "tmx" ? "TMX" : "Massive"}
+                        {event.status ? ` · ${event.status}` : ""}
+                      </span>
+                    </a>
+                  ))}
+                  {marketNews?.items.map((item, index) => (
+                    <a
+                      className="app-link"
+                      href={item.url}
+                      key={`${item.url}-${index}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <strong>{item.title}</strong>
+                      <span className="app-muted">
+                        {item.source} · {hostLabel(item.url)}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {ticker ? (
             <div className="app-action-row">
               <button
                 type="button"
@@ -549,6 +621,7 @@ export default function TickerDetail() {
               </button>
               {authed ? (
                 <button
+                  type="button"
                   className={`app-btn ${saved ? "app-btn-active" : ""}`}
                   onClick={onSave}
                   disabled={busy === "save"}
@@ -559,7 +632,12 @@ export default function TickerDetail() {
                 </button>
               ) : null}
               {authed ? (
-                <button className="app-btn" onClick={onGenerateMemo} disabled={busy === "memo"}>
+                <button
+                  type="button"
+                  className="app-btn"
+                  onClick={onGenerateMemo}
+                  disabled={busy === "memo"}
+                >
                   {busy === "memo" ? "…" : memo ? "↻ Memo" : "Memo"}
                 </button>
               ) : null}
@@ -567,9 +645,9 @@ export default function TickerDetail() {
           ) : null}
 
           {status ? (
-            <p className="app-status" role="status" aria-live="polite">
+            <output className="app-status" aria-live="polite">
               {status}
-            </p>
+            </output>
           ) : null}
           {err ? <p className="app-err">{err}</p> : null}
 
@@ -584,6 +662,7 @@ export default function TickerDetail() {
               <div className="app-memo-header">
                 <span className="app-memo-provider">{memo.provider} · investment brief</span>
                 <button
+                  type="button"
                   className={`app-btn ${memoSaved ? "app-btn-active" : ""}`}
                   onClick={onSaveMemo}
                   disabled={busy === "memoSave" || memoSaved}
@@ -609,10 +688,10 @@ export default function TickerDetail() {
                     · {c.name} <span className="app-score">{Math.round(c.score * 100)}%</span>
                     {c.sources?.length ? (
                       <div className="app-source-links">
-                        {c.sources.slice(0, 3).map((s, j) =>
+                        {c.sources.slice(0, 3).map((s) =>
                           s.url ? (
                             <a
-                              key={j}
+                              key={s.url}
                               className="app-source-chip"
                               href={s.url}
                               target="_blank"
@@ -719,8 +798,8 @@ export default function TickerDetail() {
               <p className="app-muted">No cited sources yet.</p>
             ) : (
               <ul className="app-simple-list">
-                {sources.map((s, i) => (
-                  <li key={i}>
+                {sources.map((s) => (
+                  <li key={`${s.label}-${s.provider}-${s.url ?? ""}`}>
                     <span className="app-ticker">{s.label}</span> · {s.provider}
                     {s.url ? (
                       <>

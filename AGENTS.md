@@ -8,7 +8,7 @@ A map + camera product that turns **places and objects into investable tickers**
 
 ## 2. Non‑negotiables
 
-1. **No secret ever hardcoded.** All secrets flow through Doppler **personal workplace** (jawaun personal). Mapvest uses project `mapvest` (`dev` / `stg` / `prd`). Sibling Railway apps each have their own project; identical provider tokens live in `shared`. Not GIC `cofounder`. Read via `doppler run -- ...` in scripts or via `process.env.*` populated by Doppler. If a secret has to reach the iOS app, hash/mask it via `jq` before writing to the runtime bundle — see `docs/SECRETS.md` and `infra/doppler/README.md`.
+1. **No secret ever hardcoded.** All secrets flow through Doppler **Jawaun personal**. Shared Massive credentials use project `shared`, config `dev_personal` locally and `prd` in production/Railway. Not GIC `cofounder`, and never the sibling projects. Read via `doppler run -- ...` in scripts or via `process.env.*` populated by Doppler. If a secret has to reach the iOS app, hash/mask it via `jq` before writing to the runtime bundle — see `docs/SECRETS.md` and `infra/doppler/README.md`.
 2. **API layer vs implementation layer is a hard boundary.** `apps/api` exposes HTTP; it must not import from `apps/ios` or `apps/landing`. Everything shared lives in `packages/*`. Any downstream web/mobile client can plug in without changes to `apps/api`.
 3. **Types are the source of truth.** Every request and response is a zod schema in `packages/core/src/schemas`. Never invent a JSON shape at the call site.
 4. **Never fake financial data.** Ticker resolution, ETF matches, and comparables always cite a source (Exa result URL, provider name, timestamp). If confidence is low, return `confidence: "low"` and let the client decide.
@@ -41,7 +41,7 @@ Do not add a package outside `packages/`. Do not add an app outside `apps/`. If 
 
 ## 5. Secrets contract
 
-Every secret this repo touches is in Doppler `mapvest/dev` (or `stg` / `prd`) in the personal workplace. The names below are the exact env var names — do not rename:
+Every shared provider secret this repo touches is in Doppler project `shared`, config `dev_personal` locally or `prd` in production, in the personal workplace. The names below are the exact env var names — do not rename:
 
 | Purpose | Env var |
 |---|---|
@@ -68,7 +68,7 @@ type Source = {
 
 If you cannot cite a source, return an empty `sources: []` and set overall `confidence: "low"` — do not fabricate.
 
-Market-data provider routing is owned by `packages/finance/src/marketData`. Massive is primary when `MARKET_DATA_PROVIDER` is unset or `massive` and `MASSIVE_API_KEY` is available. Yahoo is only used when `MARKET_DATA_PROVIDER=yahoo` or `MARKET_DATA_FALLBACK_PROVIDER=yahoo`; fallback is never implicit. Massive credentials and plan declarations flow through Doppler as `MASSIVE_API_KEY`, `MASSIVE_BASE_URL`, `MASSIVE_MARKET_DATA_FRESHNESS`, `MASSIVE_STOCKS_PLAN`, `MASSIVE_OPTIONS_PLAN`, and `MASSIVE_EVENTS_PLAN`. Never put their values in `.env` files or source.
+Market-data provider routing is owned by `packages/finance/src/marketData`. Massive is primary when `MARKET_DATA_PRIMARY` is unset or `massive` and `MASSIVE_API_KEY` is available. Yahoo is only used when `MARKET_DATA_PRIMARY=yahoo` (or the legacy `MARKET_DATA_PROVIDER=yahoo`) or `MARKET_DATA_FALLBACK_PROVIDER=yahoo`; fallback is never implicit. The five shared Massive variables flow through Doppler: `MASSIVE_API_KEY`, `MASSIVE_S3_FLAT_FILE_ACCESS_KEY_ID`, `MASSIVE_S3_FLAT_FILE_SECRET_ACCESS_KEY`, `MASSIVE_S3_ENDPOINT`, and `MASSIVE_S3_BUCKET`. `MASSIVE_BASE_URL` remains a non-secret application setting. Optional plan/freshness metadata is never invented. Never put values in `.env` files or source.
 
 **API contract artifacts.** `openapi.yaml` and `postman.json` at the repo root are **generated files** — never hand-edit. Regenerate whenever a schema in `packages/core` changes:
 
@@ -83,7 +83,7 @@ Downstream clients (iOS, landing, external integrators) consume `openapi.yaml` a
 
 ```
 # from repo root
-doppler setup --project mapvest --config dev
+doppler run --project shared --config dev_personal -- <existing command>
 bun install
 bun run dev        # api :3001, landing :3000, expo :8081
 bun test           # runs all package + api tests

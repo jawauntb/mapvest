@@ -266,11 +266,13 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
 
   const massiveKey = process.env.MASSIVE_API_KEY?.trim();
   const finnhubKey = process.env.FINNHUB_API_KEY?.trim();
+  const primary =
+    (process.env.MARKET_DATA_PRIMARY?.trim() || process.env.MARKET_DATA_PROVIDER?.trim())?.toLowerCase();
   let items: NewsItem[] = [];
   let provider = "massive";
 
   try {
-    if (massiveKey && process.env.MARKET_DATA_PROVIDER !== "yahoo") {
+    if (massiveKey && primary !== "yahoo") {
       try {
         items = await fetchMassive(norm, massiveKey);
         provider = "massive";
@@ -286,7 +288,7 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
         }
       }
     } else if (
-      process.env.MARKET_DATA_PROVIDER === "yahoo" ||
+      primary === "yahoo" ||
       process.env.MARKET_DATA_FALLBACK_PROVIDER === "yahoo"
     ) {
       items = await fetchYahoo(norm);

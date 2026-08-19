@@ -17,6 +17,7 @@ afterEach(() => {
 });
 
 function massiveEnv(): void {
+  process.env.MARKET_DATA_PRIMARY = "massive";
   process.env.MARKET_DATA_PROVIDER = "massive";
   process.env.MARKET_DATA_FALLBACK_PROVIDER = "";
   process.env.MASSIVE_API_KEY = "test-key";
@@ -132,6 +133,46 @@ describe("market-data additive API contracts", () => {
     const result = await marketEvents.fetch(new Request("http://test/"));
     expect(result.status).toBe(400);
     expect(await result.json()).toEqual({ error: "ticker or bounded date range required" });
+  });
+
+  test("merges optional TMX events without changing the legacy event envelope", async () => {
+    massiveEnv();
+    process.env.MASSIVE_CORPORATE_EVENTS_ENABLED = "1";
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/stocks/v1/splits")) {
+        return Promise.resolve(
+          response({ results: [{ ticker: "AAPL", execution_date: "2025-01-02" }] }),
+        );
+      }
+      if (url.includes("/stocks/v1/dividends")) {
+        return Promise.resolve(response({ results: [] }));
+      }
+      expect(url).toContain("/tmx/v1/corporate-events");
+      return Promise.resolve(
+        response({
+          results: [
+            {
+              ticker: "AAPL",
+              date: "2025-01-03",
+              type: "earnings_announcement_date",
+              name: "Earnings",
+              status: "confirmed",
+              tmx_record_id: "tmx-1",
+            },
+          ],
+        }),
+      );
+    }) as typeof fetch;
+    const result = await marketEvents.fetch(new Request("http://test/?ticker=AAPL&limit=10"));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      tmxAvailable: true,
+      events: [
+        { provider: "tmx", type: "earnings_announcement_date", tmxRecordId: "tmx-1" },
+        { provider: "massive", type: "split" },
+      ],
+    });
   });
 
   test("does not let unique device IDs bypass the provider-cost limiter", async () => {

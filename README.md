@@ -42,8 +42,11 @@ their request and response contracts; new data is additive:
 - `GET /v1/options/contracts` and `GET /v1/options/contracts/:ticker`
 - `GET /v1/market-events`
 
-Configure credentials with `doppler run -- ...`, using `MASSIVE_API_KEY` and
-the non-secret routing variables documented in [`docs/SECRETS.md`](docs/SECRETS.md).
+Configure credentials with the shared personal Doppler project: local commands
+use `doppler run --project shared --config dev_personal -- ...`; production
+verification uses `doppler run --project shared --config prd -- ...`. The
+runtime reads `MASSIVE_API_KEY` and the non-secret routing variables documented
+in [`docs/SECRETS.md`](docs/SECRETS.md).
 Yahoo is only used when explicitly selected or enabled as a temporary fallback;
 fallbacks never cover options or corporate-event datasets. The API reports the
 configured freshness and dataset access at `/v1/market-data/capabilities`.
@@ -51,14 +54,14 @@ configured freshness and dataset access at `/v1/market-data/capabilities`.
 ## Quick start
 
 ```bash
-# 1. Doppler: personal workplace, project mapvest
-doppler setup --project mapvest --config dev
+# 1. Doppler: personal workplace, shared provider config
+doppler run --project shared --config dev_personal -- bun install
 
 # 2. Install
 bun install
 
 # 3. Dev
-bun run dev            # runs api, landing, and expo start
+doppler run --project shared --config dev_personal -- bun run dev
 ```
 
 ## Deploy
