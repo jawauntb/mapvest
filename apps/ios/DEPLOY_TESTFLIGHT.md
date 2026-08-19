@@ -4,13 +4,19 @@ Everything is pre-configured. The three commands below run against the current
 `eas.json`, `app.json`, and the deployed API at
 `https://api-production-4b27.up.railway.app`.
 
-## CI (preferred)
+## CI (required for TestFlight)
 
-Repo secret `EXPO_TOKEN` (Expo access token; never commit it). Then:
+Repo secret `EXPO_TOKEN` (Expo access token; never commit it). Then, after the
+`buildNumber` in `app.json` is past the last App Store Connect version:
 
 ```
 gh workflow run ios-eas-production.yml --ref main
 ```
+
+Do not set `EAS_NO_VCS=1`. The EAS worker keeps the git root as
+`/Users/expo/workingdir/build` and looks for `apps/ios/package.json`. A
+VCS-less archive from `apps/ios` (or a worktree pack that drops that nested
+path) fails in `PRE_INSTALL_HOOK` before native compilation.
 
 The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then `eas build --auto-submit --no-wait`. Watch the EAS build past `PRE_INSTALL_HOOK` — Actions only queues it.
 
