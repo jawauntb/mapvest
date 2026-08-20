@@ -5,7 +5,7 @@ import { UNDERLYING_URL, isTicker, normalizePeriod, upstreamFetch } from "../lib
 /**
  * Chart proxies → underlying-analyzer-reboot `POST /api/charts/<type>`.
  *
- * GET /v1/chart/:type?ticker=MCD&period=1mo&month=1
+ * GET /v1/chart/:type?ticker=MCD&period=1mo&interval=1d&month=1
  */
 
 const CHART_TYPES = new Set([
@@ -53,12 +53,16 @@ chart.get("/:type", async (c) => {
     }
     const defaultPeriod = type === "auction" ? "1mo" : type === "torque" ? "2y" : "1y";
     const period = normalizePeriod(c.req.query("period") ?? undefined, defaultPeriod);
+    const interval = (c.req.query("interval") ?? "1d").trim().toLowerCase() || "1d";
+    if (!["15m", "15min", "1d", "1w", "1wk"].includes(interval)) {
+      return c.json({ error: "interval must be 15m, 1d, or 1w" }, 400);
+    }
     const monthRaw = c.req.query("month");
     const month = monthRaw ? Number(monthRaw) : undefined;
 
-    span.setAttributes({ chart_type: type, ticker, period, upstream: UNDERLYING_URL });
+    span.setAttributes({ chart_type: type, ticker, period, interval, upstream: UNDERLYING_URL });
 
-    const body: Record<string, unknown> = { ticker, period };
+    const body: Record<string, unknown> = { ticker, period, interval };
     if (type === "performance" && Number.isFinite(month) && month! >= 1 && month! <= 12) {
       body.month = month;
     }
@@ -102,6 +106,7 @@ chart.get("/:type", async (c) => {
       ticker,
       type,
       period,
+      interval,
       image: {
         mime: img.mime ?? "image/png",
         data: img.data,

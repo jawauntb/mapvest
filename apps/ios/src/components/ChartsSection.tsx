@@ -1,8 +1,8 @@
+import type { QuoteHistoryInterval } from "@/api/client";
 import {
   type ChartDataEnvelope,
   fetchChartData,
   fetchMoneylineData,
-  fetchTorqueData,
 } from "@/api/underlying";
 import {
   AuctionChart,
@@ -77,10 +77,26 @@ const DEFAULT_PERIOD: Partial<Record<ChartId, string>> = {
 };
 
 const RIDGE_WINDOWS = ["6mo", "1y", "2y"] as const;
+const INTERVAL_CHIPS: { key: QuoteHistoryInterval; label: string }[] = [
+  { key: "15m", label: "15m" },
+  { key: "1d", label: "1D" },
+  { key: "1w", label: "1W" },
+];
+const INTERVAL_CHARTS = new Set<ChartId>([
+  "price",
+  "auction",
+  "regression",
+  "ridge-growth",
+  "flow-compass",
+  "torque",
+  "portfolio",
+  "volatility",
+]);
 const STALE_TIME = 5 * 60_000;
 
 export function ChartsSection({ ticker, token }: { ticker: string; token?: string }) {
   const [chartId, setChartId] = useState<ChartId>("price");
+  const [interval, setInterval] = useState<QuoteHistoryInterval>("1d");
   const [periods, setPeriods] = useState<Partial<Record<ChartId, string>>>({});
   const [ridgeWindow, setRidgeWindow] = useState<(typeof RIDGE_WINDOWS)[number]>("1y");
 
@@ -113,6 +129,31 @@ export function ChartsSection({ ticker, token }: { ticker: string; token?: strin
         </View>
       </ScrollView>
       <Text style={styles.explainer}>{CHART_EXPLAINERS[chartId]}</Text>
+
+      {INTERVAL_CHARTS.has(chartId) ? (
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {INTERVAL_CHIPS.map((chip) => (
+            <Pressable
+              key={chip.key}
+              onPress={() => {
+                hapticSelect();
+                setInterval(chip.key);
+                if (chip.key === "15m") {
+                  setPeriods((prev) => ({ ...prev, [chartId]: "5d" }));
+                }
+              }}
+              style={[styles.periodBtn, interval === chip.key && styles.periodBtnActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: interval === chip.key }}
+              accessibilityLabel={`Chart interval ${chip.label}`}
+            >
+              <Text style={[styles.periodText, interval === chip.key && styles.periodTextActive]}>
+                {chip.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {periodChips ? (
         <View style={{ flexDirection: "row", gap: 6 }}>
@@ -160,6 +201,7 @@ export function ChartsSection({ ticker, token }: { ticker: string; token?: strin
           token={token}
           chartId={chartId}
           period={period}
+          interval={interval}
           ridgeWindow={ridgeWindow}
         />
       </ChartErrorBoundary>
@@ -172,37 +214,39 @@ function ActiveChart({
   token,
   chartId,
   period,
+  interval,
   ridgeWindow,
 }: {
   ticker: string;
   token?: string;
   chartId: ChartId;
   period?: string;
+  interval: QuoteHistoryInterval;
   ridgeWindow: string;
 }) {
   switch (chartId) {
     case "price":
       return (
         <View style={styles.priceCard}>
-          <NativePriceChart ticker={ticker} token={token} />
+          <NativePriceChart ticker={ticker} token={token} interval={interval} hideIntervalChips />
         </View>
       );
     case "auction":
-      return <AuctionBlock ticker={ticker} period={period ?? "1y"} />;
+      return <AuctionBlock ticker={ticker} period={period ?? "1y"} interval={interval} />;
     case "performance":
       return <PerformanceBlock ticker={ticker} />;
     case "regression":
-      return <RegressionBlock ticker={ticker} period={period ?? "1y"} />;
+      return <RegressionBlock ticker={ticker} period={period ?? "1y"} interval={interval} />;
     case "ridge-growth":
-      return <RidgeBlock ticker={ticker} window={ridgeWindow} />;
+      return <RidgeBlock ticker={ticker} window={ridgeWindow} interval={interval} />;
     case "flow-compass":
-      return <FlowBlock ticker={ticker} period={period ?? "1y"} />;
+      return <FlowBlock ticker={ticker} period={period ?? "1y"} interval={interval} />;
     case "torque":
-      return <TorqueBlock ticker={ticker} />;
+      return <TorqueBlock ticker={ticker} interval={interval} />;
     case "portfolio":
-      return <PortfolioBlock ticker={ticker} />;
+      return <PortfolioBlock ticker={ticker} interval={interval} />;
     case "volatility":
-      return <VolatilityBlock ticker={ticker} />;
+      return <VolatilityBlock ticker={ticker} interval={interval} />;
     case "moneyline":
       return <MoneylineBlock ticker={ticker} />;
   }
@@ -239,10 +283,18 @@ function ChartError({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function AuctionBlock({ ticker, period }: { ticker: string; period: string }) {
+function AuctionBlock({
+  ticker,
+  period,
+  interval,
+}: {
+  ticker: string;
+  period: string;
+  interval: QuoteHistoryInterval;
+}) {
   const q = useQuery({
-    queryKey: ["underlying", "auction", ticker, period],
-    queryFn: () => fetchChartData("auction", { ticker, period }),
+    queryKey: ["underlying", "auction", ticker, period, interval],
+    queryFn: () => fetchChartData("auction", { ticker, period, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
@@ -270,10 +322,18 @@ function PerformanceBlock({ ticker }: { ticker: string }) {
   return <PerformanceHeatmap data={dataset} />;
 }
 
-function RegressionBlock({ ticker, period }: { ticker: string; period: string }) {
+function RegressionBlock({
+  ticker,
+  period,
+  interval,
+}: {
+  ticker: string;
+  period: string;
+  interval: QuoteHistoryInterval;
+}) {
   const q = useQuery({
-    queryKey: ["underlying", "regression", ticker, period],
-    queryFn: () => fetchChartData("regression", { ticker, period }),
+    queryKey: ["underlying", "regression", ticker, period, interval],
+    queryFn: () => fetchChartData("regression", { ticker, period, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
@@ -285,11 +345,19 @@ function RegressionBlock({ ticker, period }: { ticker: string; period: string })
   return <RegressionChart data={dataset} />;
 }
 
-function RidgeBlock({ ticker, window }: { ticker: string; window: string }) {
+function RidgeBlock({
+  ticker,
+  window,
+  interval,
+}: {
+  ticker: string;
+  window: string;
+  interval: QuoteHistoryInterval;
+}) {
   // One request returns all three windows (6mo/1y/2y); switching is local.
   const q = useQuery({
-    queryKey: ["underlying", "ridge-growth", ticker],
-    queryFn: () => fetchChartData("ridge-growth", { ticker }),
+    queryKey: ["underlying", "ridge-growth", ticker, interval],
+    queryFn: () => fetchChartData("ridge-growth", { ticker, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
@@ -320,10 +388,18 @@ function RidgeBlock({ ticker, window }: { ticker: string; window: string }) {
   );
 }
 
-function FlowBlock({ ticker, period }: { ticker: string; period: string }) {
+function FlowBlock({
+  ticker,
+  period,
+  interval,
+}: {
+  ticker: string;
+  period: string;
+  interval: QuoteHistoryInterval;
+}) {
   const q = useQuery({
-    queryKey: ["underlying", "flow-compass", ticker, period],
-    queryFn: () => fetchChartData("flow-compass", { ticker, period }),
+    queryKey: ["underlying", "flow-compass", ticker, period, interval],
+    queryFn: () => fetchChartData("flow-compass", { ticker, period, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
@@ -335,24 +411,25 @@ function FlowBlock({ ticker, period }: { ticker: string; period: string }) {
   return <FlowCompassChart data={dataset} />;
 }
 
-function TorqueBlock({ ticker }: { ticker: string }) {
-  // Tool route pins a 2y daily window server-side.
+function TorqueBlock({ ticker, interval }: { ticker: string; interval: QuoteHistoryInterval }) {
   const q = useQuery({
-    queryKey: ["underlying", "torque", ticker],
-    queryFn: () => fetchTorqueData({ ticker }),
+    queryKey: ["underlying", "torque", ticker, interval],
+    queryFn: () => fetchChartData("torque", { ticker, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
   });
   if (q.isPending) return <ChartLoading />;
   if (q.isError) return <ChartError message={(q.error as Error).message} onRetry={q.refetch} />;
-  return <TorqueDashboard data={q.data} />;
+  const { dataset, error } = firstDataset(q.data);
+  if (!dataset) return <ChartError message={error ?? "No data"} onRetry={q.refetch} />;
+  return <TorqueDashboard data={dataset} />;
 }
 
-function PortfolioBlock({ ticker }: { ticker: string }) {
+function PortfolioBlock({ ticker, interval }: { ticker: string; interval: QuoteHistoryInterval }) {
   const q = useQuery({
-    queryKey: ["underlying", "portfolio", ticker],
-    queryFn: () => fetchChartData("portfolio", { ticker }),
+    queryKey: ["underlying", "portfolio", ticker, interval],
+    queryFn: () => fetchChartData("portfolio", { ticker, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,
@@ -364,10 +441,10 @@ function PortfolioBlock({ ticker }: { ticker: string }) {
   return <PortfolioChart data={dataset} />;
 }
 
-function VolatilityBlock({ ticker }: { ticker: string }) {
+function VolatilityBlock({ ticker, interval }: { ticker: string; interval: QuoteHistoryInterval }) {
   const q = useQuery({
-    queryKey: ["underlying", "volatility", ticker],
-    queryFn: () => fetchChartData("volatility", { ticker }),
+    queryKey: ["underlying", "volatility", ticker, interval],
+    queryFn: () => fetchChartData("volatility", { ticker, interval }),
     enabled: !!ticker,
     staleTime: STALE_TIME,
     retry: 1,

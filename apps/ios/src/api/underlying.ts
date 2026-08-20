@@ -359,6 +359,8 @@ export type ChartDataRequest = {
   max_results?: number;
   /** auction / regression / flow-compass / torque */
   period?: string;
+  /** 15m / 1d / 1w — last bar is the live snapshot */
+  interval?: string;
   /** performance: 1–12 */
   month?: number;
   /** portfolio */

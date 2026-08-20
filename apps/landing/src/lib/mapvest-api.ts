@@ -414,11 +414,12 @@ export type AuctionChart = ChartImage;
 export function getChart(
   type: string,
   ticker: string,
-  opts: { period?: string; month?: number } = {},
+  opts: { period?: string; interval?: string; month?: number } = {},
 ) {
   const qs = new URLSearchParams({
     ticker,
     period: opts.period ?? "1mo",
+    interval: opts.interval ?? "1d",
   });
   if (opts.month != null) qs.set("month", String(opts.month));
   return req<ChartImage>(`/v1/chart/${encodeURIComponent(type)}?${qs.toString()}`);

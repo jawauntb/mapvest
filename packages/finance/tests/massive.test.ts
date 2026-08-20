@@ -456,4 +456,32 @@ describe("Massive provider adapter", () => {
       }),
     ]);
   });
+
+  test("maps 15m and 1w history onto the matching aggregate range", async () => {
+    const calls = installFetch((url) => {
+      if (url.includes("/range/15/minute/")) {
+        return json({
+          results: [
+            { t: 1_700_000_000_000, c: 180 },
+            { t: 1_700_000_900_000, c: 181 },
+          ],
+        });
+      }
+      if (url.includes("/range/1/week/")) {
+        return json({
+          results: [
+            { t: 1_700_000_000_000, c: 180 },
+            { t: 1_700_604_800_000, c: 190 },
+          ],
+        });
+      }
+      return json({ results: [] }, 404);
+    });
+    const fifteen = await massiveClient.getHistoricalCloses("AAPL", "5d", "15m");
+    const weekly = await massiveClient.getHistoricalCloses("AAPL", "2y", "1w");
+    expect(calls[0]?.url).toContain("/range/15/minute/");
+    expect(calls[1]?.url).toContain("/range/1/week/");
+    expect(fifteen?.at(-1)?.close).toBe(181);
+    expect(weekly?.at(-1)?.close).toBe(190);
+  });
 });

@@ -215,14 +215,17 @@ export function fetchQuote(
 }
 
 export type QuoteHistoryPeriod = QuoteHistoryResponse["period"];
+export type QuoteHistoryInterval = QuoteHistoryResponse["interval"];
 
-/** Daily provider-routed closes for the native Overview price chart. Never invents prices. */
+/** Provider-routed closes for the native Overview price chart. Last bar is live. */
 export function fetchQuoteHistory(
   symbol: string,
-  period: QuoteHistoryPeriod = "1mo",
+  query: { period?: QuoteHistoryPeriod; interval?: QuoteHistoryInterval } = {},
   opts: FetchOpts = {},
 ): Promise<QuoteHistoryResponse> {
-  const qs = new URLSearchParams({ symbol, period });
+  const interval = query.interval ?? "1d";
+  const period = query.period ?? (interval === "15m" ? "5d" : interval === "1w" ? "2y" : "1y");
+  const qs = new URLSearchParams({ symbol, period, interval });
   return jsonFetch(`/v1/quote-history?${qs.toString()}`, { method: "GET" }, opts);
 }
 

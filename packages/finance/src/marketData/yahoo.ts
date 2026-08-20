@@ -4,6 +4,8 @@ import type {
   AggregatePage,
   AggregateQuery,
   CorporateEvent,
+  HistoryInterval,
+  HistoryPeriod,
   HistoryPoint,
   MarketDataCapabilities,
   OptionContract,
@@ -121,16 +123,18 @@ type YahooHistoryResponse = {
 
 export async function getYahooHistoricalCloses(
   symbol: string,
-  period: "1mo" | "3mo" | "6mo" | "1y",
+  period: HistoryPeriod,
+  interval: HistoryInterval = "1d",
 ): Promise<HistoryPoint[] | null> {
   const sym = symbol.trim().toUpperCase();
-  const key = `${sym}::${period}`;
+  const key = `${sym}::${period}::${interval}`;
   const now = Date.now();
   const cached = historyCache.get(key);
   if (cached && now - cached.at < HISTORY_TTL_MS) return cached.value;
   try {
+    const yahooBar = interval === "1w" ? "1wk" : interval;
     const response = await fetchJson(
-      `${YAHOO_CHART_BASE}/${encodeURIComponent(sym)}?interval=1d&range=${period}`,
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(sym)}?interval=${yahooBar}&range=${period}`,
     );
     if (!response.ok) throw new Error(`Yahoo history ${response.status}`);
     const result = ((await response.json()) as YahooHistoryResponse)?.chart?.result?.[0];

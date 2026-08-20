@@ -1,5 +1,6 @@
 import type { Source } from "@mapvest/core";
 import type { Quote } from "../quote.js";
+import { historyDateRange, massiveIntervalSpec, type HistoryInterval, type HistoryPeriod } from "./historyIntervals.js";
 import {
   type AggregateBar,
   type AggregatePage,
@@ -385,11 +386,8 @@ function mapCashFlowStatement(
   };
 }
 
-function dateRange(period: "1mo" | "3mo" | "6mo" | "1y"): { from: string; to: string } {
-  const days = { "1mo": 45, "3mo": 110, "6mo": 220, "1y": 400 }[period];
-  const to = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1_000);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+function dateRange(period: HistoryPeriod): { from: string; to: string } {
+  return historyDateRange(period);
 }
 
 function cursorFromNextUrl(nextUrl: string | undefined): string | undefined {
@@ -684,11 +682,13 @@ export class MassiveClient {
 
   async getHistoricalCloses(
     symbol: string,
-    period: "1mo" | "3mo" | "6mo" | "1y",
+    period: HistoryPeriod,
+    interval: HistoryInterval = "1d",
   ): Promise<HistoryPoint[] | null> {
     const { from, to } = dateRange(period);
+    const { multiplier, timespan } = massiveIntervalSpec(interval);
     const body = await this.request<MassiveAggregate>(
-      `/v2/aggs/ticker/${encodeURIComponent(symbol.trim().toUpperCase())}/range/1/day/${from}/${to}`,
+      `/v2/aggs/ticker/${encodeURIComponent(symbol.trim().toUpperCase())}/range/${multiplier}/${timespan}/${from}/${to}`,
       {
         adjusted: true,
         sort: "asc",

@@ -3,7 +3,10 @@ import type { Quote } from "../quote.js";
 export type MarketDataProviderName = "massive" | "yahoo";
 export type MarketDataFreshness = "real-time" | "delayed" | "end-of-day" | "unknown";
 
+import type { HistoryInterval, HistoryPeriod } from "./historyIntervals.js";
+
 export type HistoryPoint = { ts: number; close: number };
+export type { HistoryInterval, HistoryPeriod };
 
 export type AggregateBar = {
   ts: number;
@@ -188,7 +191,8 @@ export type MarketDataProvider = {
   getQuote(symbol: string): Promise<Quote | null>;
   getHistoricalCloses(
     symbol: string,
-    period: "1mo" | "3mo" | "6mo" | "1y",
+    period: HistoryPeriod,
+    interval?: HistoryInterval,
   ): Promise<HistoryPoint[] | null>;
   getAggregates(query: AggregateQuery): Promise<AggregateBar[]>;
   getAggregatesPage(query: AggregateQuery): Promise<AggregatePage>;
