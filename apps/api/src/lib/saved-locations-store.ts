@@ -172,9 +172,7 @@ export async function listSavedLocalBriefs(userId: string): Promise<SavedLocalBr
       return items;
     }
   }
-  return [...memBucket(userId).values()].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
+  return [...memBucket(userId).values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function deleteSavedLocalBrief(userId: string, id: string): Promise<boolean> {

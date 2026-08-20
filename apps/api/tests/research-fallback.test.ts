@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  isMachineErrorText,
-  RESEARCH_FALLBACK_MODELS,
-} from "../src/lib/research-fallback.js";
+import { RESEARCH_FALLBACK_MODELS, isMachineErrorText } from "../src/lib/research-fallback.js";
 
 describe("isMachineErrorText", () => {
   test("flags MODEL_BUDGET_EXHAUSTED", () => {

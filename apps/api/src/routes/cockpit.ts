@@ -51,14 +51,7 @@ function cell(v: unknown): string | number | undefined {
   if (typeof v === "string" || typeof v === "number") return v;
   if (typeof v === "object") {
     const o = v as Record<string, unknown>;
-    for (const k of [
-      "recommendation",
-      "state",
-      "location",
-      "signal",
-      "score",
-      "setup",
-    ]) {
+    for (const k of ["recommendation", "state", "location", "signal", "score", "setup"]) {
       const x = o[k];
       if (typeof x === "string" || typeof x === "number") return x;
     }
@@ -71,7 +64,8 @@ function mapCockpitRow(r: UpstreamRow, i: number) {
   return {
     rank: typeof r.rank === "number" ? r.rank : i + 1,
     ticker,
-    score: typeof r.score === "number" ? r.score : typeof r.total === "number" ? r.total : undefined,
+    score:
+      typeof r.score === "number" ? r.score : typeof r.total === "number" ? r.total : undefined,
     lane: typeof r.lane === "string" ? r.lane : typeof r.regime === "string" ? r.regime : undefined,
     ridge: cell(r.ridge ?? r.ridge_growth ?? r.ridgeScore),
     flow: cell(r.flow ?? r.flow_compass ?? r.flowScore),
@@ -120,10 +114,7 @@ cockpit.post("/", async (c) => {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return c.json(
-        { error: `underlying cockpit ${res.status}`, detail: text.slice(0, 300) },
-        502,
-      );
+      return c.json({ error: `underlying cockpit ${res.status}`, detail: text.slice(0, 300) }, 502);
     }
 
     const j = await res.json();
@@ -173,10 +164,7 @@ alerts.post("/", async (c) => {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return c.json(
-        { error: `underlying alerts ${res.status}`, detail: text.slice(0, 300) },
-        502,
-      );
+      return c.json({ error: `underlying alerts ${res.status}`, detail: text.slice(0, 300) }, 502);
     }
 
     const j = await res.json();

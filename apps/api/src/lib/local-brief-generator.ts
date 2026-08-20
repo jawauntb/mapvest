@@ -124,10 +124,7 @@ function revGeoKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)},${lng.toFixed(3)}`;
 }
 
-async function reverseGeocode(
-  lat: number,
-  lng: number,
-): Promise<GeoPlace> {
+async function reverseGeocode(lat: number, lng: number): Promise<GeoPlace> {
   const key = revGeoKey(lat, lng);
   const cached = revGeoCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.place;
@@ -243,11 +240,7 @@ async function tryOverpassMirror(
   }
 }
 
-async function fetchNearbyBrands(
-  lat: number,
-  lng: number,
-  radius = 800,
-): Promise<NearbyBrand[]> {
+async function fetchNearbyBrands(lat: number, lng: number, radius = 800): Promise<NearbyBrand[]> {
   const settled = await Promise.allSettled(
     OVERPASS_MIRRORS.map((mirror) => tryOverpassMirror(mirror, lat, lng, radius)),
   );
@@ -365,10 +358,7 @@ function buildUserContent(input: {
     : "(no brand data returned)";
   const exaBlock = exa.length
     ? exa
-        .map(
-          (s, i) =>
-            `[${i + 1}] (${s.bucket}) ${s.title}\n${s.snippet}\n(source: ${s.url})`,
-        )
+        .map((s, i) => `[${i + 1}] (${s.bucket}) ${s.title}\n${s.snippet}\n(source: ${s.url})`)
         .join("\n\n")
     : "(no exa snippets)";
   return [
@@ -434,9 +424,7 @@ async function requestOpenRouter(
       .map((p) => (typeof p === "string" ? p.trim() : ""))
       .filter((p) => p.length > 0);
     if (cleaned.length < 3) {
-      throw new Error(
-        `LLM returned ${cleaned.length} non-empty paragraph(s); need at least 3`,
-      );
+      throw new Error(`LLM returned ${cleaned.length} non-empty paragraph(s); need at least 3`);
     }
     // Cap at 4 — the schema allows an optional closing sentence but nothing beyond.
     return { paragraphs: cleaned.slice(0, 4) };
@@ -519,9 +507,7 @@ export async function generateLocalBrief(input: {
   const exa = place.city || place.neighborhood ? await fetchExaSnippets(place) : [];
 
   try {
-    const output = await callOpenRouter(
-      buildUserContent({ place, brands, exa }),
-    );
+    const output = await callOpenRouter(buildUserContent({ place, brands, exa }));
     const brief: LocalBrief = {
       paragraphs: output.paragraphs,
       place,

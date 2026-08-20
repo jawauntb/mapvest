@@ -1,5 +1,12 @@
 import { type Quote, fetchNearby, fetchQuotesMap } from "@/api/client";
-import { type Find, listFinds } from "@/api/finds";
+import {
+  EVOLUTION_TIER_COLORS,
+  EVOLUTION_TIER_LABELS,
+  type Find,
+  changeSinceFoundPct,
+  evolutionTierForChange,
+  listFinds,
+} from "@/api/finds";
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
@@ -148,6 +155,42 @@ export default function MapScreen() {
   }, [findsQuery.data]);
 
   /**
+   * Quotes for the *finds* layer (roadmap A2 tier rings). The nearby quote map
+   * only covers what is currently on screen as a pin, and a find badge needs
+   * its own symbol priced to know whether it has evolved. Shares the
+   * ["find-quotes", …] cache with Home and the journal; fails soft — no quote
+   * simply means no ring.
+   */
+  const findQuoteSyms = useMemo(() => {
+    const out = new Set<string>();
+    for (const { find } of geoFinds) {
+      if (!find.foundPrice) continue; // no basis → no delta → no tier
+      const sym = (find.ticker ?? find.comparable)?.trim().toUpperCase();
+      if (sym) out.add(sym);
+    }
+    return [...out].slice(0, 24);
+  }, [geoFinds]);
+
+  const findQuotesQuery = useQuery({
+    queryKey: ["find-quotes", findQuoteSyms.join(",")],
+    enabled: findQuoteSyms.length > 0,
+    queryFn: () => fetchQuotesMap(findQuoteSyms, { token: session?.token }),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const findQuotes: Record<string, Quote> = findQuotesQuery.data ?? {};
+
+  /** Evolution tier for a find, or null when it has no basis or no quote yet. */
+  const tierForFind = useCallback(
+    (find: Find) => {
+      const sym = (find.ticker ?? find.comparable)?.trim().toUpperCase();
+      const price = sym ? findQuotes[sym]?.price : undefined;
+      return evolutionTierForChange(changeSinceFoundPct(find, price));
+    },
+    [findQuotes],
+  );
+
+  /**
    * Everything the user has already caught, keyed by the same effective ticker
    * a pin resolves to: the public symbol when listed, otherwise the
    * private→public comparable. Ungeocoded finds still count — a catch is a
@@ -194,10 +237,13 @@ export default function MapScreen() {
     return () => clearTimeout(t);
     // caughtTickers/showUncaught change the pin bitmaps (silhouette ⇄ jade), so
     // they have to reopen the tracking window or the change never rasterizes.
+    // Same for late find quotes: they only change the badge's ring ink, but ink
+    // still has to be redrawn into the marker bitmap once.
   }, [
     items,
     quotesQuery.isFetching,
     quotesQuery.dataUpdatedAt,
+    findQuotesQuery.dataUpdatedAt,
     focusedPlaceId,
     caughtTickers,
     showUncaught,
@@ -298,26 +344,40 @@ export default function MapScreen() {
           );
         })}
         {showFinds
-          ? geoFinds.map(({ find, lat, lng }) => (
-              <Marker
-                key={`find-${find.id}`}
-                coordinate={{ latitude: lat, longitude: lng }}
-                tracksViewChanges={trackMarkers}
-                anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={1}
-                accessibilityLabel={`Your find: ${find.brand}${find.ticker ? ` — ${find.ticker}` : ""}`}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  openFind(find);
-                }}
-              >
-                {/* Static (no entrance anim) so late-arriving finds rasterize
-                    correctly after the trackMarkers window has closed. */}
-                <View style={styles.findBadge} collapsable={false}>
-                  <Ionicons name="camera" size={10} color={colors.accent} />
-                </View>
-              </Marker>
-            ))
+          ? geoFinds.map(({ find, lat, lng }) => {
+              // Evolution tier (roadmap A2). The badge keeps its exact 18pt
+              // canvas — only the border ink changes, the same trick the
+              // silhouette layer uses — so the Google-provider anchor stays put.
+              const tier = tierForFind(find);
+              return (
+                <Marker
+                  key={`find-${find.id}`}
+                  coordinate={{ latitude: lat, longitude: lng }}
+                  tracksViewChanges={trackMarkers}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  zIndex={tier ? 2 : 1}
+                  accessibilityLabel={`Your find: ${find.brand}${find.ticker ? ` — ${find.ticker}` : ""}${
+                    tier ? ` — ${EVOLUTION_TIER_LABELS[tier]} evolution` : ""
+                  }`}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    openFind(find);
+                  }}
+                >
+                  {/* Static (no entrance anim) so late-arriving finds rasterize
+                      correctly after the trackMarkers window has closed. */}
+                  <View
+                    style={[
+                      styles.findBadge,
+                      tier ? { borderColor: EVOLUTION_TIER_COLORS[tier] } : null,
+                    ]}
+                    collapsable={false}
+                  >
+                    <Ionicons name="camera" size={10} color={colors.accent} />
+                  </View>
+                </Marker>
+              );
+            })
           : null}
       </MapView>
 

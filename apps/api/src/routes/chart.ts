@@ -1,11 +1,6 @@
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import {
-  UNDERLYING_URL,
-  isTicker,
-  normalizePeriod,
-  upstreamFetch,
-} from "../lib/underlying.js";
+import { UNDERLYING_URL, isTicker, normalizePeriod, upstreamFetch } from "../lib/underlying.js";
 
 /**
  * Chart proxies → underlying-analyzer-reboot `POST /api/charts/<type>`.

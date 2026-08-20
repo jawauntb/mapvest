@@ -3,6 +3,9 @@ import { UserProgress } from "@mapvest/core";
 import {
   XP_PER_FIND,
   applyFind,
+  applyXpGrant,
+  awardBadge,
+  awardXp,
   bumpProgressOnFind,
   dayDiff,
   defaultProgress,
@@ -200,5 +203,135 @@ describe("progress-store (in-memory)", () => {
     await bumpProgressOnFind(a, "2026-08-19T12:00:00.000Z");
     expect((await getProgress(a)).xp).toBe(10);
     expect((await getProgress(b)).xp).toBe(0);
+  });
+
+  test("the default row carries an empty badges array", async () => {
+    expect((await getProgress(userId())).badges).toEqual([]);
+  });
+
+  test("a find preserves badges already earned", () => {
+    const next = applyFind(
+      at({ badges: ["sector:Energy"], lastFindDay: "2026-08-19" }),
+      "2026-08-20",
+    );
+    expect(next.badges).toEqual(["sector:Energy"]);
+  });
+});
+
+describe("applyXpGrant (pure grant rule)", () => {
+  test("adds XP and re-derives the level", () => {
+    const next = applyXpGrant(at({ xp: 80, level: 1 }), 25);
+    expect(next.xp).toBe(105);
+    expect(next.level).toBe(2);
+    UserProgress.parse(next);
+  });
+
+  test("appends a badge once and leaves the array alone on a repeat", () => {
+    const first = applyXpGrant(defaultProgress(), 50, "sector:Energy");
+    expect(first.badges).toEqual(["sector:Energy"]);
+    const second = applyXpGrant(first, 50, "sector:Energy");
+    expect(second.badges).toEqual(["sector:Energy"]);
+  });
+
+  test("never subtracts XP", () => {
+    expect(applyXpGrant(at({ xp: 30 }), -100).xp).toBe(30);
+  });
+
+  test("leaves streak state untouched", () => {
+    const next = applyXpGrant(
+      at({ streakDays: 9, streakFreezes: 2, lastFindDay: "2026-08-19" }),
+      10,
+    );
+    expect(next.streakDays).toBe(9);
+    expect(next.streakFreezes).toBe(2);
+    expect(next.lastFindDay).toBe("2026-08-19");
+  });
+});
+
+describe("awardXp / awardBadge idempotency (in-memory)", () => {
+  const userId = () => `u_grant_${Math.random().toString(36).slice(2)}`;
+
+  test("the first grant for a key returns true and adds XP; repeats are no-ops", async () => {
+    const uid = userId();
+    expect(await awardXp(uid, 25, "quest:2026-08-20:new_tile")).toBe(true);
+    expect((await getProgress(uid)).xp).toBe(25);
+
+    expect(await awardXp(uid, 25, "quest:2026-08-20:new_tile")).toBe(false);
+    expect(await awardXp(uid, 25, "quest:2026-08-20:new_tile")).toBe(false);
+    expect((await getProgress(uid)).xp).toBe(25);
+  });
+
+  test("distinct grant keys stack, and the level follows the total", async () => {
+    const uid = userId();
+    await awardXp(uid, 10, "quest:2026-08-20:catch_any");
+    await awardXp(uid, 20, "quest:2026-08-20:catch_private");
+    await awardXp(uid, 25, "quest:2026-08-21:catch_any");
+    const p = await getProgress(uid);
+    expect(p.xp).toBe(55);
+    expect(p.level).toBe(levelForXp(55));
+    UserProgress.parse(p);
+  });
+
+  test("grants are isolated per user", async () => {
+    const a = userId();
+    const b = userId();
+    expect(await awardXp(a, 10, "quest:2026-08-20:catch_any")).toBe(true);
+    // Same key, different user → still a first grant.
+    expect(await awardXp(b, 10, "quest:2026-08-20:catch_any")).toBe(true);
+    expect((await getProgress(a)).xp).toBe(10);
+    expect((await getProgress(b)).xp).toBe(10);
+  });
+
+  test("XP from finds and XP from grants accumulate on the same row", async () => {
+    const uid = userId();
+    await bumpProgressOnFind(uid, "2026-08-20T12:00:00.000Z");
+    await awardXp(uid, 25, "quest:2026-08-20:new_tile");
+    const p = await getProgress(uid);
+    expect(p.xp).toBe(XP_PER_FIND + 25);
+    expect(p.streakDays).toBe(1);
+  });
+
+  test("awardBadge appends the badge exactly once and grants its XP once", async () => {
+    const uid = userId();
+    expect(await awardBadge(uid, "sector:Consumer Staples", 50)).toBe(true);
+    let p = await getProgress(uid);
+    expect(p.badges).toEqual(["sector:Consumer Staples"]);
+    expect(p.xp).toBe(50);
+
+    expect(await awardBadge(uid, "sector:Consumer Staples", 50)).toBe(false);
+    p = await getProgress(uid);
+    expect(p.badges).toEqual(["sector:Consumer Staples"]);
+    expect(p.xp).toBe(50);
+    UserProgress.parse(p);
+  });
+
+  test("different badges accumulate in earn order", async () => {
+    const uid = userId();
+    await awardBadge(uid, "sector:Energy", 50);
+    await awardBadge(uid, "sector:Utilities", 50);
+    const p = await getProgress(uid);
+    expect(p.badges).toEqual(["sector:Energy", "sector:Utilities"]);
+    expect(p.xp).toBe(100);
+  });
+
+  test("a badge and a raw grant share the ledger without colliding", async () => {
+    const uid = userId();
+    // awardBadge claims "badge:sector:Energy"; the bare name is a different key.
+    expect(await awardBadge(uid, "sector:Energy", 50)).toBe(true);
+    expect(await awardXp(uid, 5, "sector:Energy")).toBe(true);
+    // …and re-offering the badge's own key is declined.
+    expect(await awardXp(uid, 50, "badge:sector:Energy")).toBe(false);
+    const p = await getProgress(uid);
+    expect(p.xp).toBe(55);
+    expect(p.badges).toEqual(["sector:Energy"]);
+  });
+
+  test("badges survive a later find bump", async () => {
+    const uid = userId();
+    await awardBadge(uid, "sector:Energy", 50);
+    await bumpProgressOnFind(uid, "2026-08-20T12:00:00.000Z");
+    const p = await getProgress(uid);
+    expect(p.badges).toEqual(["sector:Energy"]);
+    expect(p.xp).toBe(50 + XP_PER_FIND);
   });
 });

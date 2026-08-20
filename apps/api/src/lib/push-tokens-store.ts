@@ -38,6 +38,7 @@ export const PUSH_EVENT_KEYS = [
   "identify_done",
   "watchlist_mover",
   "find_evolution",
+  "uncaught_nearby",
 ] as const;
 
 export type PushEventKey = (typeof PUSH_EVENT_KEYS)[number];

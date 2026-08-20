@@ -96,12 +96,10 @@ analysis.get("/:ticker", async (c) => {
       marketCap: j.marketCap ?? j.market_cap ?? fund.marketCap ?? fund.market_cap,
       trailingPe: j.trailingPe ?? j.trailing_pe ?? fund.trailingPE ?? fund.trailing_pe,
       annualVolatility: num(j.annualVolatility ?? j.annual_volatility ?? fund.annualVolatility),
-      fiftyTwoWeekHigh: num(
-        j.fiftyTwoWeekHigh ?? j.fifty_two_week_high ?? quote.fiftyTwoWeekHigh,
-      ),
+      fiftyTwoWeekHigh: num(j.fiftyTwoWeekHigh ?? j.fifty_two_week_high ?? quote.fiftyTwoWeekHigh),
       fiftyTwoWeekLow: num(j.fiftyTwoWeekLow ?? j.fifty_two_week_low ?? quote.fiftyTwoWeekLow),
       brief,
-      briefProvider: brief ? j.brief_provider ?? j.provider : undefined,
+      briefProvider: brief ? (j.brief_provider ?? j.provider) : undefined,
       sourceUrl: `${UNDERLYING_URL}/`,
     });
   });

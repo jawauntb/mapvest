@@ -4,6 +4,7 @@ import { PaywallProvider } from "@/billing/Paywall";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { FirstOpenSheet } from "@/components/FirstOpenSheet";
+import { syncWidgetFixIfFresh } from "@/location/heartbeat";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerForPush } from "@/notif/registerForPush";
 import { type NotifData, pathFromNotificationData } from "@/notif/router";
@@ -27,8 +28,15 @@ import { Stack, useRouter } from "expo-router";
 import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { DeviceEventEmitter, Pressable, Text, View } from "react-native";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AppState,
+  type AppStateStatus,
+  DeviceEventEmitter,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -96,6 +104,23 @@ function PushBridge() {
   useEffect(() => {
     if (!session?.token) return;
     void registerForPush(session);
+  }, [session?.token]);
+
+  // Relay any fix the WidgetKit extension captured while the app was closed
+  // (roadmap §2 B3). It posts to the same /v1/push/prefs heartbeat this
+  // bridge already owns, and is a no-op until the next `expo prebuild`
+  // links the extension. Cold "active" transitions only — iOS fires change
+  // events for control-center pulls that never left the foreground.
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    if (!session?.token) return;
+    void syncWidgetFixIfFresh();
+    const sub = AppState.addEventListener("change", (next) => {
+      const prev = appState.current;
+      appState.current = next;
+      if (next === "active" && prev !== "active") void syncWidgetFixIfFresh();
+    });
+    return () => sub.remove();
   }, [session?.token]);
 
   useEffect(() => {

@@ -31,7 +31,5 @@ export function stripControlChars(s: string): string {
 export function sanitizeOcrString(s: string | undefined | null): string | undefined {
   if (s === undefined || s === null) return undefined;
   const cleaned = stripControlChars(s);
-  return cleaned.length > MAX_OCR_STRING_LENGTH
-    ? cleaned.slice(0, MAX_OCR_STRING_LENGTH)
-    : cleaned;
+  return cleaned.length > MAX_OCR_STRING_LENGTH ? cleaned.slice(0, MAX_OCR_STRING_LENGTH) : cleaned;
 }

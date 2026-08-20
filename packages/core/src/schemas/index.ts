@@ -6,7 +6,17 @@ export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
 export const Source = z.object({
-  provider: z.enum(["exa", "openrouter", "gemini", "massive", "yahoo", "polygon", "sec", "manual"]),
+  provider: z.enum([
+    "exa",
+    "openrouter",
+    "gemini",
+    "massive",
+    "yahoo",
+    "polygon",
+    "sec",
+    "fred",
+    "manual",
+  ]),
   url: z.string().url().optional(),
   fetchedAt: z.string(), // ISO
   confidence: Confidence,
@@ -740,6 +750,13 @@ export type BillingAppleRequest = z.infer<typeof BillingAppleRequest>;
  * `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`), not an ISO timestamp:
  * streaks are counted in days, and the day boundary must not move with the
  * device timezone.
+ *
+ * `badges` holds earned badge keys (e.g. `"sector:Consumer Staples"` for a
+ * completed sector dex). Written server-side by the same progression writer
+ * that awards XP — the client never posts a badge it thinks it earned; read
+ * back on `GET /v1/progress`. Keys are opaque strings so a new badge family
+ * ships without a schema change; unknown keys must render generically rather
+ * than crash.
  */
 export const UserProgress = z.object({
   xp: z.number(),
@@ -747,6 +764,7 @@ export const UserProgress = z.object({
   streakDays: z.number(),
   streakFreezes: z.number(),
   lastFindDay: z.string().optional(), // YYYY-MM-DD (UTC)
+  badges: z.array(z.string()).default([]),
   updatedAt: z.string(), // ISO
 });
 export type UserProgress = z.infer<typeof UserProgress>;
@@ -795,15 +813,30 @@ export const DexSector = z.object({
 export type DexSector = z.infer<typeof DexSector>;
 
 /**
+ * Per-find rarity histogram: how many of the caller's finds landed in each
+ * `DexRarity` tier. Derived on read alongside the rest of the dex — every find
+ * is classified into exactly one tier, so the four counts sum to `totalFinds`.
+ */
+export const DexRarityCounts = z.object({
+  common: z.number(),
+  uncommon: z.number(),
+  rare: z.number(),
+  legendary: z.number(),
+});
+export type DexRarityCounts = z.infer<typeof DexRarityCounts>;
+
+/**
  * Collection progress from `GET /v1/dex`. Written by nothing — it is derived
  * on read by reconciling the caller's `user_finds` against the `brands.json`
  * seed in `packages/finance`. `tilesVisited` is the regional dex: distinct
- * geohash-6 tiles with at least one find.
+ * geohash-6 tiles with at least one find. `rarityCounts` is the per-find
+ * rarity histogram over the same finds (see `DexRarity`).
  */
 export const DexResponse = z.object({
   sectors: z.array(DexSector),
   tilesVisited: z.number(),
   totalFinds: z.number(),
+  rarityCounts: DexRarityCounts,
 });
 export type DexResponse = z.infer<typeof DexResponse>;
 
@@ -851,3 +884,257 @@ export const CompanyGraphResponse = z.object({
   sources: z.array(Source),
 });
 export type CompanyGraphResponse = z.infer<typeof CompanyGraphResponse>;
+
+// -------- daily quests (Universe Roadmap A5) --------
+
+/**
+ * The verifiable actions a daily quest can ask for. Every kind is decidable
+ * from the find stream alone — `catch_any` (any find today), `catch_private`
+ * (a find whose brand resolved through a comparable rather than a direct
+ * ticker), `new_tile` (a find in a geohash-6 tile the user has never found in),
+ * `new_sector` (a find in a sector with no prior finds). No kind may require
+ * the client to report anything.
+ */
+export const QuestKind = z.enum(["catch_any", "catch_private", "new_tile", "new_sector"]);
+export type QuestKind = z.infer<typeof QuestKind>;
+
+/**
+ * One daily quest for the signed-in user. Generated per UTC day and evaluated
+ * server-side against the find stream by the quests store; read back via
+ * `GET /v1/quests`. Completion is never self-reported — the client renders
+ * `progress`/`target` and `completed` exactly as returned.
+ *
+ * `id` is deterministic per day and kind (`"{YYYY-MM-DD}:{kind}"`) so the same
+ * quest is stable across refreshes and XP is granted at most once per id.
+ */
+export const Quest = z.object({
+  id: z.string(), // "{YYYY-MM-DD}:{kind}"
+  kind: QuestKind,
+  title: z.string(),
+  xp: z.number(),
+  completed: z.boolean(),
+  progress: z.number(),
+  target: z.number(),
+});
+export type Quest = z.infer<typeof Quest>;
+
+/**
+ * `GET /v1/quests` payload. `day` is the UTC calendar day the quest set belongs
+ * to (`YYYY-MM-DD`), matching the `lastFindDay` convention on `UserProgress`,
+ * so the daily reset does not move with the device timezone.
+ * `xpGrantedToday` is the XP already written to `user_progress` for completed
+ * quests on `day` — the client displays it, it never adds to it.
+ */
+export const QuestsResponse = z.object({
+  quests: z.array(Quest),
+  day: z.string(), // YYYY-MM-DD (UTC)
+  xpGrantedToday: z.number(),
+});
+export type QuestsResponse = z.infer<typeof QuestsResponse>;
+
+// -------- territory (Universe Roadmap A6) --------
+
+/**
+ * Tile completion for the geohash-6 cell containing a lat/lng, from
+ * `GET /v1/territory`. Derived on read: `investablesTotal` is how many
+ * investable brands the nearby cascade resolves inside the tile, `found` is how
+ * many of those the caller has already caught, and `pioneer` is true when the
+ * caller has NOT yet recorded a find in this tile — i.e. the pioneer XP bonus
+ * (granted at write time on their first find here) is still available.
+ *
+ * The counts come from a live places + brand join, which is a finance-shaped
+ * answer, so it carries `sources: Source[]` (AGENTS.md §6) — an uncitable
+ * lookup returns fewer sources, never an invented one.
+ */
+export const TerritoryResponse = z.object({
+  tile: z.string(), // geohash-6
+  investablesTotal: z.number(),
+  found: z.number(),
+  pioneer: z.boolean(),
+  sources: z.array(Source),
+});
+export type TerritoryResponse = z.infer<typeof TerritoryResponse>;
+
+// -------- events (Universe Roadmap A7) --------
+
+/**
+ * A scheduler-driven quest modifier that is open right now — e.g. Sector
+ * Saturday doubling XP for one sector, or an earnings-week window. Written by
+ * the events schedule (global, not per-user), read by `GET /v1/events/current`.
+ *
+ * `multiplier` applies to find XP only, inside `[startsAt, endsAt)` (quest XP
+ * is awarded at face value — a quest multiplier is future work);
+ * `sector` scopes it when present and is absent for an all-sector event.
+ * Timestamps are ISO instants because an event window is a real instant range,
+ * unlike the UTC calendar days used for streaks and quests.
+ */
+export const ActiveEvent = z.object({
+  key: z.string(),
+  title: z.string(),
+  sector: z.string().optional(),
+  multiplier: z.number(),
+  startsAt: z.string(), // ISO
+  endsAt: z.string(), // ISO
+});
+export type ActiveEvent = z.infer<typeof ActiveEvent>;
+
+/**
+ * `GET /v1/events/current`. `active` is explicitly `null` — not omitted — when
+ * no window is open, so the client can distinguish "no event" from a failed
+ * fetch. Unauthenticated: the event schedule is global.
+ */
+export const EventsResponse = z.object({
+  active: ActiveEvent.nullable(),
+});
+export type EventsResponse = z.infer<typeof EventsResponse>;
+
+// -------- rivalries (Universe Roadmap C6) --------
+
+/**
+ * A solo weekly matchup between one of the caller's finds and a comparable
+ * (e.g. NVDA vs AMD). Written by the rivalries store on `POST /v1/rivalries`
+ * and updated at each weekly close from provider quotes; read by
+ * `GET /v1/rivalries`.
+ *
+ * This is a collection and comprehension mechanic, not advice and not a
+ * position: `currentPick` is an optional pre-registered guess for XP, and the
+ * running `wins`/`losses`/`draws` record is the only outcome. `weekStart` is
+ * the Monday of the current round as a UTC calendar day (`YYYY-MM-DD`), so the
+ * round boundary does not move with the device timezone.
+ */
+export const Rivalry = z.object({
+  id: z.string(),
+  ticker: z.string(),
+  rivalTicker: z.string(),
+  wins: z.number(),
+  losses: z.number(),
+  draws: z.number(),
+  currentPick: z.enum(["ticker", "rival"]).optional(),
+  weekStart: z.string(), // YYYY-MM-DD (Monday, UTC)
+  createdAt: z.string(), // ISO
+});
+export type Rivalry = z.infer<typeof Rivalry>;
+
+export const RivalriesResponse = z.object({
+  rivalries: z.array(Rivalry),
+  count: z.number(),
+});
+export type RivalriesResponse = z.infer<typeof RivalriesResponse>;
+
+/**
+ * `POST /v1/rivalries` body. Omit `rivalTicker` to let the server pick the
+ * opponent from the existing comparables pipeline in `packages/finance` — the
+ * client must not invent a rival.
+ */
+export const CreateRivalryRequest = z.object({
+  ticker: z.string(),
+  rivalTicker: z.string().optional(),
+});
+export type CreateRivalryRequest = z.infer<typeof CreateRivalryRequest>;
+
+// -------- demand pulse (Universe Roadmap C3) --------
+
+/**
+ * One buyer contributing to a demand pulse: a counterparty on the subject
+ * ticker's `buys_from` edges, joined to provider fundamentals. `revenueYoY` and
+ * `capexYoY` are percent changes and are **omitted** when the provider returned
+ * no usable series — never zero-filled (AGENTS.md §2.4). `weight` is the
+ * originating `CompanyEdge.weight`, normalized across resolved buyers.
+ */
+export const DemandPulseBuyer = z.object({
+  ticker: z.string(),
+  name: z.string().optional(),
+  revenueYoY: z.number().optional(),
+  capexYoY: z.number().optional(),
+  weight: z.number().min(0).max(1),
+});
+export type DemandPulseBuyer = z.infer<typeof DemandPulseBuyer>;
+
+/**
+ * `GET /v1/pulse/{ticker}`: is the money upstream of this company growing or
+ * shrinking. Computed by `apps/api/src/lib/demand-pulse.ts` (same placement
+ * precedent as the local-brief generator) from the ticker's `buys_from` edges
+ * (see `CompanyEdge`) joined to provider income-statement / cash-flow data
+ * fetched via `packages/finance`.
+ *
+ * `pulse` is the weighted average buyer YoY percent and is `null` — not 0 —
+ * when no buyer fundamentals resolved; `interpretation` is then `"unknown"`.
+ * Metered like `/v1/graph`: cache hits are free, a miss spends provider money.
+ * Carries `sources: Source[]` per buyer series actually fetched (AGENTS.md §6).
+ */
+export const DemandPulse = z.object({
+  ticker: z.string(),
+  buyers: z.array(DemandPulseBuyer),
+  pulse: z.number().nullable(),
+  interpretation: z.enum(["expanding", "contracting", "mixed", "unknown"]),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type DemandPulse = z.infer<typeof DemandPulse>;
+
+// -------- environment layer (Universe Roadmap C4) --------
+
+/**
+ * One macro series cited by an environment brief (FRED id, e.g. `"FEDFUNDS"`).
+ * `latest` is the most recent observation and `asOf` its observation date —
+ * a series with no observation is dropped from the brief rather than carried
+ * with a placeholder value.
+ */
+export const EnvironmentSeries = z.object({
+  id: z.string(),
+  label: z.string(),
+  latest: z.number(),
+  unit: z.string().optional(),
+  asOf: z.string(),
+});
+export type EnvironmentSeries = z.infer<typeof EnvironmentSeries>;
+
+/**
+ * `GET /v1/environment/{sector}`: the gather → LLM → tailwinds/headwinds brief
+ * at sector scale, cached 24h. Written by the environment generator in
+ * `apps/api/src/lib/environment-brief-generator.ts` (same placement precedent
+ * as the local-brief generator), read by the sector sheet in the client.
+ *
+ * `series` are the quantitative FRED observations behind the brief; the
+ * policy/culture color gathered via Exa is qualitative and is cited in
+ * `sources` alongside them, never promoted into `series`. Metered like
+ * `/v1/graph`. Degrades honestly: with `FRED_API_KEY` unset the brief ships
+ * with `series: []` and Exa color only; 503 only when neither FRED nor Exa
+ * (nor the LLM) is configured. Macro numbers are never synthesized.
+ */
+export const EnvironmentBrief = z.object({
+  sector: z.string(),
+  headline: z.string(),
+  body: z.string(), // markdown
+  tailwinds: z.array(z.string()),
+  headwinds: z.array(z.string()),
+  series: z.array(EnvironmentSeries),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type EnvironmentBrief = z.infer<typeof EnvironmentBrief>;
+
+// -------- synthesis memo (Universe Roadmap C5) --------
+
+/**
+ * `POST /v1/memo/synthesis`: the layered memo. The prompt receives the three
+ * layer briefs — upstream (`CompanyGraphResponse`), demand (`DemandPulse`), and
+ * environment (`EnvironmentBrief`) — plus ratios, and is asked exactly three
+ * questions, which come back as the three optional fields.
+ *
+ * Those fields are optional because the memo **degrades to a plain memo** when
+ * the layer data is empty: no graph, no pulse, and no environment brief means
+ * `memo` alone, with the layer answers omitted rather than guessed. Every layer
+ * fact carried into the answer is cited in `sources` (AGENTS.md §6). Metered
+ * like `/v1/graph`.
+ */
+export const SynthesisMemoResponse = z.object({
+  ticker: z.string(),
+  memo: z.string(),
+  bindingConstraint: z.string().optional(),
+  demandDurability: z.string().optional(),
+  pricingPower: z.string().optional(),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type SynthesisMemoResponse = z.infer<typeof SynthesisMemoResponse>;

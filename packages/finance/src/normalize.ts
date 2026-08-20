@@ -25,11 +25,7 @@
  *  - collapses runs of internal whitespace to a single space
  */
 export function normalizeBrand(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[‘’ʼ]/g, "'")
-    .replace(/\s+/g, " ");
+  return input.trim().toLowerCase().replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ");
 }
 
 // Order matters when a suffix is a prefix of another: check the longer

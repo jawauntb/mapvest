@@ -7,6 +7,7 @@ import {
   computeDex,
   effectiveTicker,
   isInSeed,
+  rarityCounts,
   rarityForFind,
   sectorTotals,
   seedTickerSectors,
@@ -251,8 +252,99 @@ describe("computeDex — empty and schema", () => {
 
   test("an empty seed yields no sector rows but still counts finds and tiles", () => {
     const dex = computeDex([find({ ticker: "NKE", lat: 37.7749, lng: -122.4194 })], {});
-    expect(dex).toEqual({ sectors: [], tilesVisited: 1, totalFinds: 1 });
+    expect(dex).toEqual({
+      sectors: [],
+      tilesVisited: 1,
+      totalFinds: 1,
+      // Nothing is in an empty seed, so the one catch is legendary.
+      rarityCounts: { common: 0, uncommon: 0, rare: 0, legendary: 1 },
+    });
     expect(DexResponse.parse(dex)).toEqual(dex);
+  });
+});
+
+describe("rarityCounts", () => {
+  test("buckets each catch by its tier", () => {
+    const counts = rarityCounts(
+      [
+        find({ brand: "Nike", ticker: "NKE", isPublic: true }), // common
+        find({ brand: "Apple", ticker: "AAPL", isPublic: true }), // common
+        find({ brand: "Blue Bottle", isPublic: false, comparable: "SBUX" }), // rare
+        find({ brand: "Some New Chain", ticker: "ZZZZ", isPublic: true }), // legendary
+      ],
+      SEED,
+    );
+    expect(counts).toEqual({ common: 2, uncommon: 0, rare: 1, legendary: 1 });
+  });
+
+  test("a private brand whose comparable is off-seed is legendary, not rare", () => {
+    expect(rarityCounts([find({ isPublic: false, comparable: "ZZZZ" })], SEED)).toEqual({
+      common: 0,
+      uncommon: 0,
+      rare: 0,
+      legendary: 1,
+    });
+  });
+
+  test("an unresolved find (no ticker, no comparable) is legendary", () => {
+    expect(rarityCounts([find({ brand: "Unresolved Storefront" })], SEED)).toEqual({
+      common: 0,
+      uncommon: 0,
+      rare: 0,
+      legendary: 1,
+    });
+  });
+
+  test("duplicate identities count once, matching the dex's counting unit", () => {
+    const counts = rarityCounts(
+      [
+        find({ brand: "McDonald's", ticker: "MCD", isPublic: true }),
+        find({ brand: "McDonalds", ticker: "mcd", isPublic: true }), // same ticker
+        find({ brand: "Nike", ticker: "NKE", isPublic: true }),
+      ],
+      SEED,
+    );
+    expect(counts).toEqual({ common: 2, uncommon: 0, rare: 0, legendary: 0 });
+  });
+
+  test("empty finds yield an all-zero histogram", () => {
+    expect(rarityCounts([], SEED)).toEqual({ common: 0, uncommon: 0, rare: 0, legendary: 0 });
+  });
+
+  test("uncommon is never populated — reserved for the market-cap pass", () => {
+    const counts = rarityCounts(
+      Object.values(SEED).map((e) => find({ ticker: e.ticker, isPublic: true })),
+      SEED,
+    );
+    expect(counts.uncommon).toBe(0);
+  });
+
+  test("over a journal unique per identity the counts sum to totalFinds", () => {
+    // This is the shape `GET /v1/dex` feeds in: listFinds is already unique
+    // per effective ticker, which is the invariant DexRarityCounts documents.
+    const finds = [
+      find({ ticker: "NKE", isPublic: true }),
+      find({ ticker: "KO", isPublic: true }),
+      find({ isPublic: false, comparable: "SBUX" }),
+      find({ ticker: "ZZZZ", isPublic: true }),
+      find({ brand: "Unresolved" }),
+    ];
+    const dex = computeDex(finds, SEED);
+    const summed =
+      dex.rarityCounts.common +
+      dex.rarityCounts.uncommon +
+      dex.rarityCounts.rare +
+      dex.rarityCounts.legendary;
+    expect(summed).toBe(dex.totalFinds);
+  });
+
+  test("computeDex surfaces the same histogram as rarityCounts", () => {
+    const finds = [
+      find({ ticker: "NKE", isPublic: true }),
+      find({ isPublic: false, comparable: "KO" }),
+      find({ ticker: "ZZZZ" }),
+    ];
+    expect(computeDex(finds, SEED).rarityCounts).toEqual(rarityCounts(finds, SEED));
   });
 });
 

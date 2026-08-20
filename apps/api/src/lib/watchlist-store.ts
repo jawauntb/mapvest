@@ -226,8 +226,7 @@ export async function listWatchLists(
         userId: r.user_id,
         name: r.name,
         isDefault: r.is_default,
-        createdAt:
-          typeof r.created_at === "string" ? r.created_at : r.created_at.toISOString(),
+        createdAt: typeof r.created_at === "string" ? r.created_at : r.created_at.toISOString(),
         tickerCount: Number(r.ticker_count ?? 0),
       }));
     }
@@ -311,8 +310,7 @@ export async function renameWatchList(
         userId: r.user_id,
         name: r.name,
         isDefault: r.is_default,
-        createdAt:
-          typeof r.created_at === "string" ? r.created_at : r.created_at.toISOString(),
+        createdAt: typeof r.created_at === "string" ? r.created_at : r.created_at.toISOString(),
       };
     }
   }
@@ -378,10 +376,7 @@ export async function deleteWatchList(
 
 // -------- watch entry CRUD --------
 
-export async function listWatchEntries(
-  userId: string,
-  listId?: string,
-): Promise<WatchEntry[]> {
+export async function listWatchEntries(userId: string, listId?: string): Promise<WatchEntry[]> {
   await ensureListsDDL();
   // Guarantee default exists (so legacy rows get list_id back-filled).
   const defaultList = await ensureDefaultList(userId);

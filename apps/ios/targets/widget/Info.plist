@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Widget extension Info.plist — checked in ON PURPOSE.
+
+  `@bacons/apple-targets` generates this file on `expo prebuild` only when it
+  does not already exist (see node_modules/@bacons/apple-targets/build/with-widget.js
+  — `if (!fs.existsSync(filePath)) writeFileSync(...)`), and its `Config` type
+  has no `infoPlist` field. Committing the file is therefore the supported way
+  to add keys the plugin doesn't know about.
+
+  Everything under NSExtension is byte-for-byte what the plugin would have
+  generated for `type: "widget"`. The one addition is NSWidgetWantsLocation,
+  which lets the WidgetKit extension read Core Location under the *containing
+  app's* When-In-Use grant — no new permission prompt, no Always ask. See
+  WidgetLocationHeartbeat.swift for the capture side.
+
+  Like the rest of targets/widget/, this is inert until the next
+  `expo prebuild` + device build (same deferred-acceptance gate as Phase 9).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+	<key>NSWidgetWantsLocation</key>
+	<true/>
+</dict>
+</plist>

@@ -5,8 +5,8 @@ process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
 process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 
 import { app } from "../src/index.js";
-import { __resetStore } from "../src/lib/store.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
+import { __resetStore } from "../src/lib/store.js";
 import { __resetRateLimit } from "../src/middleware/rateLimit.js";
 
 function url(path: string) {
@@ -118,7 +118,8 @@ describe("maps-token + places proxy", () => {
     const originalFetch = globalThis.fetch;
     let capturedUrl: string | undefined;
     globalThis.fetch = (async (input: URL | Request | string) => {
-      const s = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const s =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       capturedUrl = s;
       return new Response(JSON.stringify({ results: [{ place_id: "abc" }] }), {
         status: 200,
