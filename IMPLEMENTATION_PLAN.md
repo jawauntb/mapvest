@@ -286,7 +286,7 @@ the game board (constellations). Filings stay proxied via `underlying-terminal`;
 - [x] C1 `company_edges` store + `valueChain.ts` extraction + `GET /v1/graph/:ticker`
 - [~] C2 Orbit view + universe constellations (uncaught nodes grayed) — Orbit view ships on detail + `/orbit/:ticker`; the universe constellation view and edge-based quests are not built
 - [x] C3 demand pulse (wire Massive fundamentals; aggregate buyer capex/revenue)
-- [~] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief) — brief ships; FRED half is dark until `FRED_API_KEY` lands in Doppler
+- [~] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief) — brief + FRED series ship; per-company region still US-national only
 - [x] C5 synthesis memo (binding constraint · demand durability · pricing power)
 - [x] C6 rivalries (find vs comparable, weekly; PvP rejected)
 

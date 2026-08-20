@@ -45,6 +45,7 @@ When the **same underlying token** is on several apps, `shared` stores it once u
 - `OPENAI_API_KEY` — inquiry + reafference-chat + GIC `cofounder/prd` (same value)
 - `ANTHROPIC_API_KEY` — derivation + objetdart
 - `GOOGLE_MAPS_API_KEY` — mapvest
+- `FRED_API_KEY` — mapvest macro series / environment layer
 - `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` — mapvest + derivation
 - `MASSIVE_API_KEY` and the four Massive flat-file variables — keep only in the
   personal `shared` Doppler project and never copy them into repo config or

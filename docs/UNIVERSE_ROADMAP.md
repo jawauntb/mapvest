@@ -311,9 +311,9 @@ move; pulse cites per-buyer sources.
 
 - [~] FRED provider (free API) in `marketData/` style: rates, CPI,
       sector-mapped series. Region resolved per company listing/HQ.
-      (Ships dark: `FRED_API_KEY` is not in Doppler yet, so `fredConfigured()`
-      is false and briefs omit `series[]` entirely. Series are sector-mapped;
-      per-company region resolution is NOT built — every series is US national.)
+      (`FRED_API_KEY` is in Doppler `mapvest` + `shared` and on the Railway
+      API. Series are sector-mapped; per-company region resolution is NOT
+      built — every series is US national.)
 - [x] Environment brief per sector: the local-brief generator shape (gather →
       Opus → Tailwinds/Headwinds → cache) at sector scale; policy/culture via
       Exa with recency filters, treated as qualitative color, never as data.
