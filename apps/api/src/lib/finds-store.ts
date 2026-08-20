@@ -19,6 +19,7 @@
  */
 import type { Confidence, Find } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
+import { bumpProgressOnFind } from "./progress-store.js";
 
 export type FindInput = {
   brand: string;
@@ -120,6 +121,9 @@ export async function recordFind(userId: string, find: FindInput): Promise<Find>
     foundPrice: find.foundPrice,
     createdAt: new Date().toISOString(),
   };
+  // Progression (XP / streak) is server truth — fire-and-forget so a
+  // progression write can never fail an identify. See lib/progress-store.ts.
+  bumpProgressOnFind(userId, entry.createdAt).catch(() => {});
   const bucket = memBucket(userId);
   bucket.unshift(entry);
   if (bucket.length > MEMORY_CAP) bucket.length = MEMORY_CAP;

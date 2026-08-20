@@ -109,6 +109,91 @@
               ]
             }
           }
+        },
+        {
+          "name": "Progression (XP, level, streak) for the signed-in user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "Server-side truth for XP, level, streak length, and streak-freeze inventory. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Counterfactual universe portfolio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/universe/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "universe",
+                "summary"
+              ]
+            },
+            "description": "The `$100 per find at found price` aggregate: what the caller's universe would be worth if $100 had gone into every find at the moment it was found. Computed from each find's `foundPrice` against the current quote. Finds without a `foundPrice` are excluded from the valued totals, never estimated (AGENTS.md §2.4). Hypothetical only — not a holdings statement. `sources` cites each quote provider that actually declared itself, with confidence derived from the quote's own freshness declaration (AGENTS.md §6 — a quote reporting no provider adds no citation rather than a fabricated one).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Collection progress (sector dexes + regional tiles)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/dex",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "dex"
+              ]
+            },
+            "description": "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find). Rarity tiers are enumerated by the `DexRarity` component.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -716,6 +801,25 @@
               ]
             },
             "description": "Lightweight stock summary (+ brief when present). Full Anthropic brief via POST /v1/memo."
+          }
+        },
+        {
+          "name": "Company value-chain graph",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/graph/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "graph",
+                "{ticker}"
+              ]
+            },
+            "description": "Cache-first: served from the `company_edges` store, extracted on miss with in-flight dedupe per ticker and refreshed when a new 10-K lands rather than on a short TTL. Cache hits are free and identity-less; a cache MISS spends provider money, so generation requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent; concurrent callers sharing one in-flight extraction are charged once). Edges are cited from 10-K items 1/1A evidence (supplier concentration and >10% customers are disclosed there) plus Exa open-web results; every edge carries `sources` (AGENTS.md §6) and an edge that cannot be cited is not emitted. Private counterparties keep `dstName` with no `dstTicker` — never an invented one. Empty and failing extractions are negatively cached for an hour. Returns 502 when extraction fails."
           }
         },
         {

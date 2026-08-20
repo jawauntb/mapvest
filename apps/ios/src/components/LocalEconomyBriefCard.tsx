@@ -23,10 +23,13 @@ import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  type AppStateStatus,
   Modal,
   Pressable,
   StyleSheet,
@@ -40,6 +43,28 @@ type LocState =
   | { kind: "checking" }
   | { kind: "denied" }
   | { kind: "ready"; lat: number; lng: number };
+
+type Coords = { lat: number; lng: number };
+
+/** Mirrors the server's MOVE_METERS_THRESHOLD — a new area is a new brief. */
+const MOVE_METERS_THRESHOLD = 2000;
+/** Foreground flaps (control center, permission sheets) collapse into one check. */
+const MOVE_CHECK_MIN_INTERVAL_MS = 30_000;
+/** How far the map camera must travel before it takes the brief back from a
+ *  detected physical move (small camera settles on tab-open don't count). */
+const MAP_RECLAIM_METERS = 250;
+
+/** Great-circle meters. Local copy — map.tsx / list.tsx keep their own. */
+function haversineMeters(a: Coords, b: Coords): number {
+  const R = 6371000;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
 
 /** Read or request foreground location, then resolve coords. */
 async function resolveLocation(request: boolean): Promise<LocState> {
@@ -98,6 +123,9 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
   const [slowLabel, setSlowLabel] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [labelDraft, setLabelDraft] = useState("");
+  /** Fresh fix taken on foreground/focus when the user moved out of the area
+   *  the visible brief describes. Wins over the map tab's cached region. */
+  const [movedFix, setMovedFix] = useState<Coords | null>(null);
 
   // Resolve current coordinates on mount. Other screens (map/list/camera)
   // already request permission; we only *read* the current grant here so we
@@ -132,12 +160,17 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     }
   }
 
-  const coords =
-    mapRegion && Number.isFinite(mapRegion.latitude)
-      ? { lat: mapRegion.latitude, lng: mapRegion.longitude }
-      : loc.kind === "ready"
-        ? { lat: loc.lat, lng: loc.lng }
-        : null;
+  const mapLat = mapRegion && Number.isFinite(mapRegion.latitude) ? mapRegion.latitude : undefined;
+  const mapLng =
+    mapRegion && Number.isFinite(mapRegion.longitude) ? mapRegion.longitude : undefined;
+  const mapCoords: Coords | null =
+    mapLat !== undefined && mapLng !== undefined ? { lat: mapLat, lng: mapLng } : null;
+
+  // A move detected on foreground outranks the map tab's cached camera — that
+  // stale region is exactly what pinned the brief to wherever the app was last
+  // opened. Released again once the user pans the map somewhere new.
+  const coords: Coords | null =
+    movedFix ?? mapCoords ?? (loc.kind === "ready" ? { lat: loc.lat, lng: loc.lng } : null);
 
   // Heartbeat the resolved coords to the push scheduler once per mount —
   // powers the "you moved to a new area" local-brief notification.
@@ -170,6 +203,80 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 6000),
   });
+
+  // ---- Foreground staleness (roadmap B1) --------------------------------
+  // The brief the user is reading was fetched for these coordinates. Remember
+  // them so a later fix can be measured against the brief itself, not against
+  // whatever `coords` currently resolves to.
+  const briefCoords = useRef<Coords | null>(null);
+  useEffect(() => {
+    if (briefQ.data && lat !== undefined && lng !== undefined) {
+      briefCoords.current = { lat, lng };
+    }
+  }, [briefQ.data, lat, lng]);
+
+  const checkInFlight = useRef(false);
+  const lastCheckAt = useRef(0);
+  const mapAnchorAtMove = useRef<Coords | null>(null);
+
+  /** One position read per activation: bail if another is running, if we ran
+   *  within the debounce window, or if there's no brief to compare against. */
+  const checkForMove = useCallback(async () => {
+    const anchor = briefCoords.current;
+    if (!token || !anchor || checkInFlight.current) return;
+    const now = Date.now();
+    if (now - lastCheckAt.current < MOVE_CHECK_MIN_INTERVAL_MS) return;
+    checkInFlight.current = true;
+    lastCheckAt.current = now;
+    try {
+      const next = await resolveLocation(false);
+      if (next.kind !== "ready") return;
+      const fix = { lat: next.lat, lng: next.lng };
+      if (haversineMeters(fix, anchor) <= MOVE_METERS_THRESHOLD) return;
+      // New coordinates ⇒ new query key ⇒ React Query fetches the new area's
+      // brief on its own; no manual refetch (and no visual change) needed.
+      mapAnchorAtMove.current =
+        mapLat !== undefined && mapLng !== undefined ? { lat: mapLat, lng: mapLng } : null;
+      setLoc(next);
+      setMovedFix(fix);
+    } catch {
+      // Keep showing the brief we have; the next activation tries again.
+    } finally {
+      checkInFlight.current = false;
+    }
+  }, [token, mapLat, mapLng]);
+
+  // Cold "active" transitions only — iOS fires change events for control
+  // center pulls and permission sheets that never left the foreground.
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      const prev = appState.current;
+      appState.current = next;
+      if (next === "active" && prev !== "active") void checkForMove();
+    });
+    return () => sub.remove();
+  }, [checkForMove]);
+
+  // Covers moving with the app open and coming back to Home from another tab.
+  // Shares the debounce with the AppState path, so the two never double-fetch.
+  useFocusEffect(
+    useCallback(() => {
+      void checkForMove();
+    }, [checkForMove]),
+  );
+
+  // An intentional map pan takes the brief back from the detected move.
+  useEffect(() => {
+    if (!movedFix || mapLat === undefined || mapLng === undefined) return;
+    const region = { lat: mapLat, lng: mapLng };
+    const anchor = mapAnchorAtMove.current;
+    if (!anchor) {
+      mapAnchorAtMove.current = region;
+      return;
+    }
+    if (haversineMeters(region, anchor) > MAP_RECLAIM_METERS) setMovedFix(null);
+  }, [mapLat, mapLng, movedFix]);
 
   // "Almost there…" copy after 3s while the query is still pending.
   useEffect(() => {

@@ -15,6 +15,8 @@
  *   - 7am server-local time: daily-brief fan-out. For each opted-in user we
  *     call `generateWatchlistBrief` (24h cache-hit is free) then push.
  *   - Every 5min: watchlist mover scan (±5% intraday).
+ *   - Every 15min (offset to :07): find-evolution scan — finds up +10/25/50/
+ *     100% since their `found_price`, one push per find per tier ever.
  *
  * All schedules fire on wall-clock alignment (not "every N minutes from
  * start") — a check on each 1-minute tick reads `new Date()` and fires the
@@ -24,14 +26,11 @@
 import { generateLocalBrief } from "./local-brief-generator.js";
 import { safeExecuteWithSpan } from "./logfire.js";
 import { onDailyBriefGenerated } from "./notifiers/dailyBriefNotifier.js";
+import { runFindEvolutionScan } from "./notifiers/findEvolutionNotifier.js";
 import { onLocalBriefGenerated } from "./notifiers/localBriefNotifier.js";
-import { runPriceAlertScan } from "./notifiers/priceAlertsNotifier.js";
 import { runWatchlistMoverScan } from "./notifiers/moverNotifier.js";
-import {
-  listTokensForEvent,
-  type PushToken,
-  updatePrefs,
-} from "./push-tokens-store.js";
+import { runPriceAlertScan } from "./notifiers/priceAlertsNotifier.js";
+import { type PushToken, listTokensForEvent, updatePrefs } from "./push-tokens-store.js";
 import { generateWatchlistBrief } from "./watchlist-brief.js";
 import { listWatchEntries } from "./watchlist-store.js";
 
@@ -77,8 +76,7 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);
   const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
@@ -103,9 +101,7 @@ async function runLocalBriefTick(): Promise<void> {
       let lng: number | undefined;
       let lastSeenAt = 0;
       for (const t of userTokens) {
-        const at = t.prefs.last_location_at
-          ? Date.parse(t.prefs.last_location_at) || 0
-          : 0;
+        const at = t.prefs.last_location_at ? Date.parse(t.prefs.last_location_at) || 0 : 0;
         if (
           typeof t.prefs.last_lat === "number" &&
           typeof t.prefs.last_lng === "number" &&
@@ -178,6 +174,16 @@ async function runDailyBriefTick(): Promise<void> {
   });
 }
 
+async function runFindEvolutionTick(): Promise<void> {
+  return safeExecuteWithSpan("scheduler.find_evolution", async (span) => {
+    const result = await runFindEvolutionScan();
+    span.setAttributes({
+      users_scanned: result.usersScanned,
+      evolutions_pushed: result.evolutionsPushed,
+    });
+  });
+}
+
 // ---- Main tick ----
 
 let started = false;
@@ -205,6 +211,11 @@ export function startPushScheduler(): void {
       fireOncePerMinute("mover", now, async () => {
         await runWatchlistMoverScan();
       });
+    }
+    // Every 15 minutes: find-evolution scan. Offset off the 5-minute grid so
+    // it never shares a tick with the mover scan's quote fan-out.
+    if (minute % 15 === 7) {
+      fireOncePerMinute("find_evolution", now, runFindEvolutionTick);
     }
     // Every hour, at minute 0: local brief opportunity.
     if (minute === 0) {

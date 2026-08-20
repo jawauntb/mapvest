@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -48,6 +48,8 @@ export default function MapScreen() {
   const [focusedPlaceId, setFocusedPlaceId] = useState<string | null>(null);
   /** "Map of your life" — the user's camera finds as a toggleable layer. */
   const [showFinds, setShowFinds] = useState(true);
+  /** Silhouette layer — nearby investables the user has not caught yet. */
+  const [showUncaught, setShowUncaught] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -145,6 +147,44 @@ export default function MapScreen() {
     return out;
   }, [findsQuery.data]);
 
+  /**
+   * Everything the user has already caught, keyed by the same effective ticker
+   * a pin resolves to: the public symbol when listed, otherwise the
+   * private→public comparable. Ungeocoded finds still count — a catch is a
+   * catch regardless of whether the snap carried coordinates.
+   */
+  const caughtTickers = useMemo(() => {
+    const out = new Set<string>();
+    for (const find of findsQuery.data?.finds ?? []) {
+      const t = (find.ticker ?? find.comparable)?.trim().toUpperCase();
+      if (t) out.add(t);
+    }
+    return out;
+  }, [findsQuery.data]);
+
+  /** Investable (has a resolvable ticker) and absent from the finds journal. */
+  const isUncaught = useCallback(
+    (item: NearbyItem) => {
+      const pin = resolvePinTicker(item, brandTickers);
+      return !!pin && !caughtTickers.has(pin.symbol);
+    },
+    [brandTickers, caughtTickers],
+  );
+
+  /**
+   * Rendered pins. Filtering here (rather than at draw time) keeps the overlap
+   * cluster + chip math consistent with what is actually on screen, and can
+   * only shrink the marker count below the existing nearby cap.
+   */
+  const mapItems = useMemo(
+    () => (showUncaught ? items : items.filter((item) => !isUncaught(item))),
+    [items, showUncaught, isUncaught],
+  );
+  const uncaughtCount = useMemo(
+    () => items.reduce((n, item) => n + (isUncaught(item) ? 1 : 0), 0),
+    [items, isUncaught],
+  );
+
   useEffect(() => {
     setTrackMarkers(true);
     // Long enough for the staggered pin-drop springs (~315ms max delay +
@@ -152,7 +192,16 @@ export default function MapScreen() {
     const delay = quotesQuery.isFetching ? 1600 : 1100;
     const t = setTimeout(() => setTrackMarkers(false), delay);
     return () => clearTimeout(t);
-  }, [items, quotesQuery.isFetching, quotesQuery.dataUpdatedAt, focusedPlaceId]);
+    // caughtTickers/showUncaught change the pin bitmaps (silhouette ⇄ jade), so
+    // they have to reopen the tracking window or the change never rasterizes.
+  }, [
+    items,
+    quotesQuery.isFetching,
+    quotesQuery.dataUpdatedAt,
+    focusedPlaceId,
+    caughtTickers,
+    showUncaught,
+  ]);
 
   function openItem(item: NearbyItem) {
     const pin = resolvePinTicker(item);
@@ -172,7 +221,7 @@ export default function MapScreen() {
    */
   function onPinPress(item: NearbyItem) {
     hapticSelect();
-    const cluster = items.filter(
+    const cluster = mapItems.filter(
       (other) =>
         other.place.id === item.place.id ||
         haversineMeters(item.place.location, other.place.location) <= OVERLAP_METERS,
@@ -206,12 +255,14 @@ export default function MapScreen() {
         showsPointsOfInterest={false}
         showsBuildings={false}
       >
-        {items.map((item, idx) => {
+        {mapItems.map((item, idx) => {
           const pin = resolvePinTicker(item, brandTickers);
           const quote = pin ? quotes[pin.symbol] : undefined;
           const hasTicker = !!pin;
           const revealed = focusedPlaceId === item.place.id;
-          const showChip = shouldShowChip(item, items, region, focusedPlaceId, brandTickers);
+          const showChip = shouldShowChip(item, mapItems, region, focusedPlaceId, brandTickers);
+          // Silhouette: investable, but missing from the finds journal.
+          const uncaught = pin ? !caughtTickers.has(pin.symbol) : false;
           return (
             <Marker
               key={item.place.id}
@@ -221,10 +272,12 @@ export default function MapScreen() {
               }}
               tracksViewChanges={trackMarkers || revealed}
               anchor={{ x: 0.5, y: 1 }}
-              zIndex={revealed ? 100 : showChip ? 3 : hasTicker ? 2 : 1}
+              zIndex={revealed ? 100 : uncaught ? 1 : showChip ? 3 : hasTicker ? 2 : 1}
               accessibilityLabel={
                 pin
-                  ? `${item.place.name} — ${pin.isPublic ? "" : "comparable "}${pin.symbol}`
+                  ? `${item.place.name} — ${pin.isPublic ? "" : "comparable "}${pin.symbol}${
+                      uncaught ? " — not caught yet" : ""
+                    }`
                   : item.place.name
               }
               onPress={(e) => {
@@ -236,8 +289,9 @@ export default function MapScreen() {
                 placeName={item.place.name}
                 pin={showChip ? pin : null}
                 quote={quote}
-                accent={pinColor(item)}
+                accent={uncaught ? "gray" : pinColor(item)}
                 revealed={revealed}
+                uncaught={uncaught}
                 dropDelay={(idx % 10) * 35}
               />
             </Marker>
@@ -296,19 +350,23 @@ export default function MapScreen() {
         items={items}
         brandTickers={brandTickers}
         quotes={quotes}
+        caughtTickers={caughtTickers}
         loading={nearbyQuery.isFetching && items.length === 0}
         focusedPlaceId={focusedPlaceId}
         showFindsToggle={geoFinds.length > 0}
         findsVisible={showFinds}
         onToggleFinds={() => setShowFinds((v) => !v)}
+        showUncaughtToggle={uncaughtCount > 0}
+        uncaughtVisible={showUncaught}
+        onToggleUncaught={() => setShowUncaught((v) => !v)}
         onOpen={openItem}
         onViewAsList={() => router.push("/(tabs)/list")}
         onChat={() =>
           openChatAbout(router, {
             kind: "map",
-            label: `${items.length} pins on screen`,
+            label: `${mapItems.length} pins on screen`,
             center: { lat: region.latitude, lng: region.longitude },
-            nearby: items.slice(0, 20).map((i) => {
+            nearby: mapItems.slice(0, 20).map((i) => {
               const pin = resolvePinTicker(i, brandTickers);
               return {
                 ticker: pin?.symbol,
@@ -326,11 +384,15 @@ function NearbySheet({
   items,
   brandTickers,
   quotes,
+  caughtTickers,
   loading,
   focusedPlaceId,
   showFindsToggle,
   findsVisible,
   onToggleFinds,
+  showUncaughtToggle,
+  uncaughtVisible,
+  onToggleUncaught,
   onOpen,
   onViewAsList,
   onChat,
@@ -338,12 +400,17 @@ function NearbySheet({
   items: NearbyItem[];
   brandTickers: Map<string, PinTicker>;
   quotes: Record<string, Quote>;
+  caughtTickers: Set<string>;
   loading: boolean;
   focusedPlaceId: string | null;
   /** Finds-layer chip — hidden when the user has no geo-tagged finds. */
   showFindsToggle: boolean;
   findsVisible: boolean;
   onToggleFinds: () => void;
+  /** Silhouette-layer chip — hidden when everything nearby is already caught. */
+  showUncaughtToggle: boolean;
+  uncaughtVisible: boolean;
+  onToggleUncaught: () => void;
   onOpen: (item: NearbyItem) => void;
   onViewAsList: () => void;
   onChat: () => void;
@@ -397,6 +464,30 @@ function NearbySheet({
                 </Text>
               </Pressable>
             ) : null}
+            {showUncaughtToggle ? (
+              <Pressable
+                onPress={() => {
+                  hapticSelect();
+                  onToggleUncaught();
+                }}
+                hitSlop={8}
+                style={styles.viewAsListBtn}
+                accessibilityRole="button"
+                accessibilityState={{ selected: uncaughtVisible }}
+                accessibilityLabel={
+                  uncaughtVisible ? "Hide uncaught brands" : "Show uncaught brands"
+                }
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={14}
+                  color={uncaughtVisible ? colors.accent : colors.fgMuted}
+                />
+                <Text style={[styles.sheetSeeAll, !uncaughtVisible && { color: colors.fgMuted }]}>
+                  Uncaught
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => {
                 hapticSelect();
@@ -427,6 +518,7 @@ function NearbySheet({
             const quote = pin ? quotes[pin.symbol] : undefined;
             const up = (quote?.change ?? 0) >= 0;
             const focused = focusedPlaceId === item.place.id;
+            const uncaught = pin ? !caughtTickers.has(pin.symbol) : false;
             return (
               <Pressable
                 key={item.place.id}
@@ -439,8 +531,12 @@ function NearbySheet({
                   <Text style={styles.sheetPlace} numberOfLines={1}>
                     {item.place.name}
                   </Text>
-                  <Text style={styles.sheetTicker} numberOfLines={1}>
+                  <Text
+                    style={[styles.sheetTicker, uncaught && styles.sheetTickerUncaught]}
+                    numberOfLines={1}
+                  >
                     {pin ? `${pin.isPublic ? "$" : "≈"}${pin.symbol}` : "Tap to look up"}
+                    {uncaught ? " · uncaught" : ""}
                   </Text>
                 </View>
                 {quote ? (
@@ -466,7 +562,10 @@ type PinTicker = {
 };
 
 function brandKey(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function brandTickerIndex(items: NearbyItem[]): Map<string, PinTicker> {
@@ -542,6 +641,7 @@ function TickerPin({
   quote,
   accent,
   revealed,
+  uncaught,
   dropDelay = 0,
 }: {
   placeName: string;
@@ -549,14 +649,26 @@ function TickerPin({
   quote?: Quote;
   accent: string;
   revealed?: boolean;
+  /**
+   * Silhouette variant — same fixed canvas, desaturated ink. Opacity lives on
+   * the (non-animated) canvas, never on the entering Animated.View, whose
+   * animated opacity would override a static one.
+   */
+  uncaught?: boolean;
   /** Staggered entrance so pins land like a wave, not a wall. */
   dropDelay?: number;
 }) {
   if (!pin) {
     return (
-      <View style={styles.plainCanvas} collapsable={false}>
+      <View style={[styles.plainCanvas, uncaught && styles.silhouette]} collapsable={false}>
         <Animated.View entering={FadeIn.duration(220).delay(dropDelay)}>
-          <View style={[styles.plainDot, { backgroundColor: accentHex(accent) }]} />
+          <View
+            style={[
+              styles.plainDot,
+              { backgroundColor: accentHex(accent) },
+              uncaught && styles.plainDotUncaught,
+            ]}
+          />
         </Animated.View>
       </View>
     );
@@ -566,7 +678,10 @@ function TickerPin({
   const w = revealed ? PIN_W_REVEALED : PIN_W;
   const h = revealed ? PIN_H_REVEALED : PIN_H;
   return (
-    <View style={[styles.pinCanvas, { width: w, height: h }]} collapsable={false}>
+    <View
+      style={[styles.pinCanvas, { width: w, height: h }, uncaught && styles.silhouette]}
+      collapsable={false}
+    >
       <Animated.View
         entering={FadeInDown.springify()
           .damping(motion.springSnappy.damping)
@@ -583,10 +698,15 @@ function TickerPin({
               borderWidth: revealed ? 2.5 : 1.5,
               backgroundColor: revealed ? "rgba(12, 14, 16, 0.98)" : "rgba(12, 14, 16, 0.94)",
             },
+            uncaught && styles.bubbleUncaught,
           ]}
         >
           <Text
-            style={[styles.tickerText, revealed && { fontSize: 14 }]}
+            style={[
+              styles.tickerText,
+              revealed && { fontSize: 14 },
+              uncaught && styles.tickerTextUncaught,
+            ]}
             numberOfLines={1}
             allowFontScaling={false}
           >
@@ -595,12 +715,20 @@ function TickerPin({
           </Text>
           {quote ? (
             <Text
-              style={[styles.priceText, revealed && { fontSize: 12 }]}
+              style={[
+                styles.priceText,
+                revealed && { fontSize: 12 },
+                uncaught && styles.priceTextUncaught,
+              ]}
               numberOfLines={1}
               allowFontScaling={false}
             >
               ${quote.price.toFixed(2)}{" "}
-              <Text style={{ color: up ? colors.accent : colors.danger }}>
+              <Text
+                style={{
+                  color: uncaught ? colors.fgDim : up ? colors.accent : colors.danger,
+                }}
+              >
                 {up ? "+" : ""}
                 {quote.changePct.toFixed(1)}%
               </Text>
@@ -611,7 +739,11 @@ function TickerPin({
             </Text>
           )}
           <Text
-            style={[styles.placeHint, revealed && { fontSize: 11, maxWidth: w - 12 }]}
+            style={[
+              styles.placeHint,
+              revealed && { fontSize: 11, maxWidth: w - 12 },
+              uncaught && styles.placeHintUncaught,
+            ]}
             numberOfLines={1}
             allowFontScaling={false}
           >
@@ -619,7 +751,13 @@ function TickerPin({
           </Text>
         </View>
         <View style={[styles.stem, { borderTopColor: accentHex(accent) }]} />
-        <View style={[styles.dot, { backgroundColor: accentHex(accent) }]} />
+        <View
+          style={[
+            styles.dot,
+            { backgroundColor: accentHex(accent) },
+            uncaught && styles.dotUncaught,
+          ]}
+        />
       </Animated.View>
     </View>
   );
@@ -739,6 +877,7 @@ const styles = StyleSheet.create({
   },
   sheetPlace: { color: colors.fg, fontSize: 14, fontWeight: "600" },
   sheetTicker: { color: colors.fgMuted, fontSize: 12, marginTop: 1 },
+  sheetTickerUncaught: { color: colors.fgDim },
   sheetQuote: { fontSize: 13, fontWeight: "700" },
   loadingPill: {
     width: 36,
@@ -825,6 +964,20 @@ const styles = StyleSheet.create({
     borderColor: colors.fg,
     marginBottom: 2,
   },
+  /**
+   * Silhouette layer (roadmap B2) — uncaught investables. Canvas dimensions are
+   * untouched; only ink changes, so the Google-provider anchor stays put.
+   */
+  silhouette: { opacity: 0.6 },
+  bubbleUncaught: {
+    backgroundColor: colors.bgSunken,
+    borderColor: colors.borderStrong,
+  },
+  tickerTextUncaught: { color: colors.fgMuted },
+  priceTextUncaught: { color: colors.fgDim },
+  placeHintUncaught: { color: colors.fgDim },
+  dotUncaught: { borderColor: colors.fgMuted },
+  plainDotUncaught: { borderColor: colors.fgMuted },
   /** 18pt jade-ring camera badge — distinct from the 14pt filled nearby dots. */
   findBadge: {
     width: 18,

@@ -3,7 +3,7 @@
  * signed-in user ("things you found, and where"). The server writes finds
  * automatically inside POST /v1/identify; this client only reads them.
  */
-import { apiFetch, type FetchOpts } from "./http";
+import { type FetchOpts, apiFetch } from "./http";
 
 export type Find = {
   id: string;
@@ -30,6 +30,20 @@ export function listFinds(
     { method: "GET" },
     opts,
   );
+}
+
+/**
+ * The streak to render. `GET /v1/progress` is the source of truth (it survives
+ * reinstall and counts days in UTC), but it may 404 while the progression
+ * store is still shipping — in that case we fall back to the local derivation
+ * below so the journal header never goes blank.
+ */
+export function resolveStreakDays(
+  serverStreakDays: number | undefined,
+  finds: Find[],
+  now = new Date(),
+): number {
+  return typeof serverStreakDays === "number" ? serverStreakDays : findStreakDays(finds, now);
 }
 
 /** Consecutive-day find streak ending today or yesterday, from newest-first finds. */

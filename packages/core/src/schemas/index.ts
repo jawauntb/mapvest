@@ -727,3 +727,127 @@ export const BillingAppleRequest = z.object({
   signedTransaction: z.string().min(32).max(16_384),
 });
 export type BillingAppleRequest = z.infer<typeof BillingAppleRequest>;
+
+// -------- universe progression (Universe Roadmap A1/A3/A4) --------
+
+/**
+ * Server-side progression for one signed-in user — the single source of truth
+ * for XP, level, and streak. Written by `recordFind` on every successful
+ * `/v1/identify` (the same hook that appends to the finds journal); read back
+ * by `GET /v1/progress`. The client renders this, it never derives a streak
+ * locally, so the streak survives reinstall.
+ *
+ * `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`), not an ISO timestamp:
+ * streaks are counted in days, and the day boundary must not move with the
+ * device timezone.
+ */
+export const UserProgress = z.object({
+  xp: z.number(),
+  level: z.number(),
+  streakDays: z.number(),
+  streakFreezes: z.number(),
+  lastFindDay: z.string().optional(), // YYYY-MM-DD (UTC)
+  updatedAt: z.string(), // ISO
+});
+export type UserProgress = z.infer<typeof UserProgress>;
+
+export const ProgressResponse = z.object({
+  progress: UserProgress,
+});
+export type ProgressResponse = z.infer<typeof ProgressResponse>;
+
+/**
+ * The counterfactual universe portfolio from `GET /v1/universe/summary`:
+ * "if you'd put $100 into every find at the moment you found it, your universe
+ * would be worth $X." Computed server-side from each find's `foundPrice`
+ * against the current quote — finds without a `foundPrice` are excluded from
+ * `valuedFinds` / `hypotheticalBasis` / `hypotheticalValue` rather than
+ * estimated (AGENTS.md §2.4: never fake financial data). It is a
+ * hypothetical aggregate, not a holdings statement, and it carries
+ * `sources: Source[]` for the quotes behind it (AGENTS.md §6).
+ */
+export const UniverseSummary = z.object({
+  findCount: z.number(),
+  valuedFinds: z.number(),
+  hypotheticalBasis: z.number(),
+  hypotheticalValue: z.number(),
+  changePct: z.number(),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type UniverseSummary = z.infer<typeof UniverseSummary>;
+
+/**
+ * Rarity tier of a caught brand, derived from data already on the find:
+ * public mega-cap = `common`, small-cap = `uncommon`, private-resolved-via-
+ * comparable = `rare`, and resolved by the vision pipeline but absent from the
+ * `brands.json` seed = `legendary` (that catch feeds the seed table).
+ */
+export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
+export type DexRarity = z.infer<typeof DexRarity>;
+
+/** One sector row of the dex: how many of that sector's seed brands are caught. */
+export const DexSector = z.object({
+  sector: z.string(),
+  found: z.number(),
+  total: z.number(),
+});
+export type DexSector = z.infer<typeof DexSector>;
+
+/**
+ * Collection progress from `GET /v1/dex`. Written by nothing — it is derived
+ * on read by reconciling the caller's `user_finds` against the `brands.json`
+ * seed in `packages/finance`. `tilesVisited` is the regional dex: distinct
+ * geohash-6 tiles with at least one find.
+ */
+export const DexResponse = z.object({
+  sectors: z.array(DexSector),
+  tilesVisited: z.number(),
+  totalFinds: z.number(),
+});
+export type DexResponse = z.infer<typeof DexResponse>;
+
+// -------- company graph (Universe Roadmap C1) --------
+
+/**
+ * Direction of a company-to-company relationship. `supplies` / `buys_from` are
+ * the vertical value chain; `competes_with` / `complements` are lateral.
+ */
+export const CompanyEdgeType = z.enum(["supplies", "buys_from", "competes_with", "complements"]);
+export type CompanyEdgeType = z.infer<typeof CompanyEdgeType>;
+
+/**
+ * One cited edge in a company's value chain, persisted in the `company_edges`
+ * store and refreshed when a new 10-K lands (not on a short TTL). Written by
+ * the extraction pipeline in `packages/finance/src/valueChain.ts` — 10-K items
+ * 1/1A evidence (supplier concentration and >10% customers are disclosed
+ * there) plus Exa open-web results, judged by the same LLM cascade and
+ * plausible-ticker rules as `comparable.ts`; read by `GET /v1/graph/{ticker}`.
+ *
+ * Private counterparties keep `dstName` with **no** `dstTicker` — never invent
+ * one. Every edge carries `sources: Source[]` (AGENTS.md §6); an edge that
+ * cannot be cited is not emitted. `asOf` is the filing period the evidence
+ * came from, when known.
+ */
+export const CompanyEdge = z.object({
+  id: z.string(),
+  srcTicker: z.string(),
+  dstTicker: z.string().optional(),
+  dstName: z.string(),
+  edgeType: CompanyEdgeType,
+  weight: z.number().min(0).max(1),
+  reasoning: z.string(),
+  sources: z.array(Source),
+  asOf: z.string().optional(),
+  createdAt: z.string(), // ISO
+});
+export type CompanyEdge = z.infer<typeof CompanyEdge>;
+
+export const CompanyGraphResponse = z.object({
+  ticker: z.string(),
+  edges: z.array(CompanyEdge),
+  count: z.number(),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type CompanyGraphResponse = z.infer<typeof CompanyGraphResponse>;

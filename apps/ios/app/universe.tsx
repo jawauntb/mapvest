@@ -3,16 +3,25 @@
  * grouped day by day. Home shows the 8 newest as a strip; this screen is the
  * whole record. Shares the ["finds", token] cache with Home.
  */
-import { type Quote, fetchQuotesMap } from "@/api/client";
-import { type Find, findStreakDays, listFinds } from "@/api/finds";
+import {
+  type DexSector,
+  type Quote,
+  type UniverseSummary,
+  fetchDex,
+  fetchProgress,
+  fetchQuotesMap,
+  fetchUniverseSummary,
+} from "@/api/client";
+import { type Find, listFinds, resolveStreakDays } from "@/api/finds";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
-import { colors, type } from "@/theme/tokens";
+import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
@@ -39,6 +48,15 @@ function dayLabel(iso: string, now = new Date()): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** Whole dollars once we're past $1,000 — the counterfactual line is a headline, not a statement. */
+function money(n: number): string {
+  const decimals = Math.abs(n) < 1000 ? 2 : 0;
+  return `$${n.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
+
 export default function UniverseScreen() {
   const router = useRouter();
   const { session } = useSession();
@@ -51,7 +69,39 @@ export default function UniverseScreen() {
   });
   const finds = findsQ.data?.finds ?? [];
   const count = findsQ.data?.count ?? finds.length;
-  const streak = findStreakDays(finds);
+
+  // Progression / counterfactual / dex all fail soft: `retry: false` and we
+  // only ever read `.data`, so a 404 (server slice not deployed yet) leaves
+  // the journal rendering exactly as it did before these endpoints existed.
+  const progressQ = useQuery({
+    queryKey: ["progress", session?.token],
+    queryFn: () => fetchProgress({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const streak = resolveStreakDays(progressQ.data?.progress.streakDays, finds);
+
+  const summaryQ = useQuery({
+    queryKey: ["universe-summary", session?.token],
+    queryFn: () => fetchUniverseSummary({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const summary: UniverseSummary | undefined = summaryQ.data;
+
+  const dexQ = useQuery({
+    queryKey: ["dex", session?.token],
+    queryFn: () => fetchDex({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const dexSectors = useMemo(
+    () => (dexQ.data?.sectors ?? []).filter((s) => s.found > 0 && s.total > 0),
+    [dexQ.data],
+  );
 
   const syms = useMemo(
     () =>
@@ -143,10 +193,39 @@ export default function UniverseScreen() {
             keyExtractor={(r) => r.key}
             contentContainerStyle={{ paddingBottom: 32 }}
             ListHeaderComponent={
-              <Text style={styles.summary}>
-                {count} find{count === 1 ? "" : "s"}
-                {streak >= 2 ? ` · ${streak} day streak` : ""}
-              </Text>
+              <View>
+                <Text style={styles.summary}>
+                  {count} find{count === 1 ? "" : "s"}
+                  {streak >= 2 ? ` · ${streak} day streak` : ""}
+                </Text>
+                {/* Counterfactual portfolio — hypothetical, and only ever drawn
+                    from finds the server could actually value. */}
+                {summary && summary.valuedFinds > 0 ? (
+                  <View style={styles.counterfactual}>
+                    <Text style={styles.cfLine}>
+                      <Text style={styles.cfLabel}>$100 per find → worth </Text>
+                      <Text style={styles.cfValue}>{money(summary.hypotheticalValue)}</Text>
+                      <Text
+                        style={[
+                          styles.cfDelta,
+                          {
+                            color: summary.changePct >= 0 ? colors.accent : colors.danger,
+                          },
+                        ]}
+                      >
+                        {"  "}
+                        {summary.changePct >= 0 ? "+" : ""}
+                        {summary.changePct.toFixed(1)}%
+                      </Text>
+                    </Text>
+                    <Text style={styles.cfFoot}>
+                      Hypothetical · {summary.valuedFinds} of {summary.findCount} find
+                      {summary.findCount === 1 ? "" : "s"} priced when found
+                    </Text>
+                  </View>
+                ) : null}
+                <DexStrip sectors={dexSectors} />
+              </View>
             }
             renderItem={({ item }) =>
               item.type === "header" ? (
@@ -170,6 +249,50 @@ export default function UniverseScreen() {
         )}
       </ScreenFade>
     </SafeAreaView>
+  );
+}
+
+/**
+ * Compact sector-completion strip (Universe Roadmap A4). SectorRing draws a
+ * share-of-total composition bar, which answers a different question than
+ * "how much of this sector have I caught" — so this is its own row of chips,
+ * borrowing the same per-sector palette. Renders nothing until /v1/dex answers
+ * with at least one sector the user has actually caught something in.
+ */
+function DexStrip({ sectors }: { sectors: DexSector[] }) {
+  if (sectors.length === 0) return null;
+  return (
+    <FlatList
+      data={sectors}
+      keyExtractor={(s) => s.sector}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.dexRow}
+      renderItem={({ item }) => {
+        const pct = Math.max(0, Math.min(1, item.found / item.total));
+        const tint = sectorColor(item.sector);
+        return (
+          <View
+            style={styles.dexChip}
+            accessibilityRole="text"
+            accessibilityLabel={`${item.sector}, ${item.found} of ${item.total} found`}
+          >
+            <Text style={styles.dexSector} numberOfLines={1}>
+              {item.sector}
+            </Text>
+            <Text style={styles.dexCount}>
+              {item.found}/{item.total}
+            </Text>
+            <View style={styles.dexTrack}>
+              <View
+                style={[styles.dexFill, { backgroundColor: tint, flex: Math.max(0.02, pct) }]}
+              />
+              <View style={{ flex: Math.max(0.02, 1 - pct) }} />
+            </View>
+          </View>
+        );
+      }}
+    />
   );
 }
 
@@ -233,6 +356,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
+  counterfactual: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  cfLine: { color: colors.fg },
+  cfLabel: { color: colors.fgMuted, fontSize: 14 },
+  cfValue: { color: colors.fg, fontSize: 18, fontWeight: "800" },
+  cfDelta: { fontSize: 13, fontWeight: "700" },
+  cfFoot: { color: colors.fgDim, fontSize: 11, marginTop: 2 },
+  dexRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 2,
+    gap: 8,
+  },
+  dexChip: {
+    minWidth: 104,
+    maxWidth: 150,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    gap: 3,
+  },
+  dexSector: { color: colors.fgMuted, ...type.caption, fontSize: 10 },
+  dexCount: { color: colors.fg, fontSize: 14, fontWeight: "800" },
+  dexTrack: {
+    flexDirection: "row",
+    height: 3,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    backgroundColor: colors.bgSunken,
+    marginTop: 2,
+  },
+  dexFill: { height: 3 },
   dayHeader: {
     color: colors.fgMuted,
     ...type.label,

@@ -2,6 +2,7 @@ import {
   type Quote,
   type WatchEntry,
   type WatchlistSummary,
+  fetchProgress,
   fetchQuote,
   fetchQuotesMap,
   fetchWatchlistBrief,
@@ -9,8 +10,9 @@ import {
   listWatchlists,
   removeFromWatchlist,
 } from "@/api/client";
-import { findStreakDays, listFinds } from "@/api/finds";
+import { listFinds, resolveStreakDays } from "@/api/finds";
 import { useSession } from "@/auth/session";
+import { AppTopBar } from "@/components/AppTopBar";
 import { BacktestCard } from "@/components/BacktestCard";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -20,7 +22,6 @@ import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
-import { AppTopBar } from "@/components/AppTopBar";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -162,7 +163,16 @@ export default function HomeScreen() {
   });
   const finds = findsQ.data?.finds ?? [];
   const recentFinds = finds.slice(0, 8);
-  const findStreak = findStreakDays(finds);
+  // Server progression is the streak's source of truth; `retry: false` plus a
+  // local fallback means a 404 here leaves the universe subtitle unchanged.
+  const progressQ = useQuery({
+    queryKey: ["progress", session?.token],
+    queryFn: () => fetchProgress({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const findStreak = resolveStreakDays(progressQ.data?.progress.streakDays, finds);
   const findSyms = [
     ...new Set(
       recentFinds
