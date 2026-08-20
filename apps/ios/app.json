@@ -13,11 +13,14 @@
       "resizeMode": "contain",
       "backgroundColor": "#0C0E10"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
-      "buildNumber": "94",
+      "buildNumber": "95",
+      "appleTeamId": "58877MPK38",
       "infoPlist": {
         "NSCameraUsageDescription": "Mapvest uses your camera to identify brands you see in the wild and map them to public tickers.",
         "NSLocationWhenInUseUsageDescription": "Mapvest uses your location to show investable brands near you on the map.",
@@ -28,7 +31,9 @@
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
+        "com.apple.security.application-groups": [
+          "group.com.mapvest.app.widget"
+        ]
       }
     },
     "android": {
@@ -60,7 +65,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Mapvest uses your location to show investable brands near you on the map."
+          "locationWhenInUsePermission": "Mapvest uses your location to show investable brands near you on the map.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ],
       "expo-asset",
@@ -80,7 +88,10 @@
             "NSExtensionActivationSupportsText": true
           },
           "iosShareExtensionName": "Share to Mapvest",
-          "androidIntentFilters": ["text/*", "image/*"]
+          "androidIntentFilters": [
+            "text/*",
+            "image/*"
+          ]
         }
       ],
       "@bacons/apple-targets",
@@ -91,7 +102,7 @@
             {
               "name": "NearbyWidget",
               "label": "Mapvest Nearby",
-              "description": "Investable brands near you \u2014 map + list.",
+              "description": "Investable brands near you — map + list.",
               "minWidth": "250dp",
               "minHeight": "150dp",
               "maxResizeWidth": "300dp",

@@ -229,7 +229,7 @@ this environment can't run — that step is the "acceptance" gate below.
 - [ ] `expo prebuild --clean` run at least once against these changes and
       verified in a simulator/device (share sheet target appears; both
       widgets render and refresh)
-- [ ] `ios.appleTeamId` set in `app.json` before the next EAS build (needed
+- [x] `ios.appleTeamId` set in `app.json` before the next EAS build (needed
       for the widget extension to code-sign)
 - [ ] Real simulator/device screenshots of both widgets + the share sheet
       replace the placeholder description above once verified
