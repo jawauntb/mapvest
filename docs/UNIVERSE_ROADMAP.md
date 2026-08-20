@@ -59,13 +59,13 @@ free-tier progression must not fight the paywall.
 
 ### A1 — Server-side progression store + real streak
 
-- [ ] `user_progress` store next to `finds-store.ts` (same lazy-DDL +
+- [x] `user_progress` store next to `finds-store.ts` (same lazy-DDL +
       in-memory-fallback pattern): xp, level, streak count, streak-freeze
       inventory, last-find day.
-- [ ] Move streak computation server-side; update on `recordFind`. Client
+- [x] Move streak computation server-side; update on `recordFind`. Client
       reads it instead of deriving it.
-- [ ] Streak milestones (7/30/100 days) and streak freezes.
-- [ ] Schemas in `packages/core`, `bun run openapi && bun run postman`.
+- [x] Streak milestones (7/30/100 days) and streak freezes.
+- [x] Schemas in `packages/core`, `bun run openapi && bun run postman`.
 
 **Acceptance**: streak survives reinstall (server truth); `bun test` covers
 the store's memory path; the journal header reads from the API.
@@ -76,12 +76,12 @@ A find "evolves" at +10% / +25% / +50% / +100% since `found_price`. This is
 the return loop that needs no new catch — you open the app because something
 you physically discovered got more valuable on its own.
 
-- [ ] `findEvolutionNotifier` beside `moverNotifier`: scan `user_finds`
+- [x] `findEvolutionNotifier` beside `moverNotifier`: scan `user_finds`
       against current quotes, existing dedupe store, one evolution push per
       find per tier ever.
 - [ ] Push copy is personal, spatial, time-anchored: "The Chipotle you spotted
       on Valencia St is up 26% since you found it."
-- [ ] Fix `moverNotifier` copy or retarget it at finds — "it's in your
+- [x] Fix `moverNotifier` copy or retarget it at finds — "it's in your
       universe" must be true.
 - [ ] Journal rows + map badges get tier rings (bronze/silver/gold).
 
@@ -96,7 +96,7 @@ produces none; copy contains brand + place + Δ since found.
 
 The single highest-value retention artifact per unit of effort in this plan.
 
-- [ ] One aggregate number from data we already store: "If you'd put $100
+- [x] One aggregate number from data we already store: "If you'd put $100
       into every find at the moment you found it, your universe would be
       worth $X." Server-computed from `found_price` vs current quotes.
 - [ ] Rendered at the top of `universe.tsx` and on Home. Shareable.
@@ -106,13 +106,13 @@ finds without `found_price` are excluded, not faked (AGENTS §2.4).
 
 ### A4 — The Dex (collection structure + rarity)
 
-- [ ] Sector dexes derived from `brands.json`: "Consumer Staples — 14/89
+- [x] Sector dexes derived from `brands.json`: "Consumer Staples — 14/89
       found," ring per sector (reuse `SectorRing` chrome).
-- [ ] Rarity tiers from data we have: public mega-cap = common; small-cap =
+- [~] Rarity tiers from data we have: public mega-cap = common; small-cap =
       uncommon; private-via-comparable = rare; not-in-`brands.json` but
       resolved by the vision pipeline = legendary — and that catch feeds the
       seed table. Users become the data flywheel.
-- [ ] Regional dex: distinct geohash-6 tiles with ≥1 find.
+- [x] Regional dex: distinct geohash-6 tiles with ≥1 find.
 - [ ] Completion badges write XP to `user_progress`.
 
 **Acceptance**: dex counts reconcile with `user_finds` × `brands.json`;
@@ -160,7 +160,7 @@ the catch-nearby push possible.
 
 ### B1 — Foreground brief refresh (ship first, it's a bug fix)
 
-- [ ] `LocalEconomyBriefCard` compares its brief's coordinates to the current
+- [x] `LocalEconomyBriefCard` compares its brief's coordinates to the current
       fix on app foreground; >2km apart → refetch (the cache is already keyed
       by rounded lat/lng — a new location is a new brief).
 
@@ -171,7 +171,7 @@ without manual action.
 
 The mechanic made visible without any push or permission.
 
-- [ ] On the map, nearby investables **not** in the user's finds render as
+- [x] On the map, nearby investables **not** in the user's finds render as
       grayed silhouette pins beside the jade finds layer.
 
 **Acceptance**: catching a silhouetted brand flips its pin to jade on next
@@ -244,20 +244,20 @@ filing. The layers exist to make that memo possible.
 
 ### C1 — `company_edges` store + extraction pipeline
 
-- [ ] Table `company_edges` (lazy-DDL pattern): `src_ticker, dst_ticker?,
+- [x] Table `company_edges` (lazy-DDL pattern): `src_ticker, dst_ticker?,
       dst_name, edge_type (supplies|buys_from|competes_with|complements),
       weight, reasoning, sources jsonb, as_of, created_at`. Refresh when a
       new 10-K lands, not on a short TTL.
-- [ ] `packages/finance/src/valueChain.ts`: Exa evidence (suppliers /
+- [x] `packages/finance/src/valueChain.ts`: Exa evidence (suppliers /
       customers / partners queries) + SEC citations from the sibling's
       `/api/sec/:ticker` → LLM judge (same cascade + plausible-ticker rules
       as `comparable.ts`) → cited edges. Private counterparties keep
       `dst_name` with no ticker — never invent one.
-- [ ] `GET /v1/graph/:ticker` — cache-first, in-flight dedupe per ticker,
+- [x] `GET /v1/graph/:ticker` — cache-first, in-flight dedupe per ticker,
       every edge carries `sources` (AGENTS §6; 10-K items 1/1A are the
       primary evidence: supplier concentration and >10% customers are
       disclosed there).
-- [ ] Schemas in `packages/core`; regen openapi/postman.
+- [x] Schemas in `packages/core`; regen openapi/postman.
 
 **Decision recorded**: keep proxying `underlying-terminal` for filings text.
 Design `sources` to be provider-agnostic so a first-party EDGAR client can

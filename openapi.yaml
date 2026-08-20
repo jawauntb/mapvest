@@ -3465,6 +3465,344 @@ components:
           maxLength: 16384
       required:
         - signedTransaction
+    UserProgress:
+      type: object
+      properties:
+        xp:
+          type: number
+        level:
+          type: number
+        streakDays:
+          type: number
+        streakFreezes:
+          type: number
+        lastFindDay:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - xp
+        - level
+        - streakDays
+        - streakFreezes
+        - updatedAt
+    ProgressResponse:
+      type: object
+      properties:
+        progress:
+          type: object
+          properties:
+            xp:
+              type: number
+            level:
+              type: number
+            streakDays:
+              type: number
+            streakFreezes:
+              type: number
+            lastFindDay:
+              type: string
+            updatedAt:
+              type: string
+          required:
+            - xp
+            - level
+            - streakDays
+            - streakFreezes
+            - updatedAt
+      required:
+        - progress
+    UniverseSummary:
+      type: object
+      properties:
+        findCount:
+          type: number
+        valuedFinds:
+          type: number
+        hypotheticalBasis:
+          type: number
+        hypotheticalValue:
+          type: number
+        changePct:
+          type: number
+        generatedAt:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - findCount
+        - valuedFinds
+        - hypotheticalBasis
+        - hypotheticalValue
+        - changePct
+        - generatedAt
+        - sources
+    DexRarity:
+      type: string
+      enum:
+        - common
+        - uncommon
+        - rare
+        - legendary
+    DexSector:
+      type: object
+      properties:
+        sector:
+          type: string
+        found:
+          type: number
+        total:
+          type: number
+      required:
+        - sector
+        - found
+        - total
+    DexResponse:
+      type: object
+      properties:
+        sectors:
+          type: array
+          items:
+            type: object
+            properties:
+              sector:
+                type: string
+              found:
+                type: number
+              total:
+                type: number
+            required:
+              - sector
+              - found
+              - total
+        tilesVisited:
+          type: number
+        totalFinds:
+          type: number
+      required:
+        - sectors
+        - tilesVisited
+        - totalFinds
+    CompanyEdgeType:
+      type: string
+      enum:
+        - supplies
+        - buys_from
+        - competes_with
+        - complements
+    CompanyEdge:
+      type: object
+      properties:
+        id:
+          type: string
+        srcTicker:
+          type: string
+        dstTicker:
+          type: string
+        dstName:
+          type: string
+        edgeType:
+          type: string
+          enum:
+            - supplies
+            - buys_from
+            - competes_with
+            - complements
+        weight:
+          type: number
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+        asOf:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - srcTicker
+        - dstName
+        - edgeType
+        - weight
+        - reasoning
+        - sources
+        - createdAt
+    CompanyGraphResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              srcTicker:
+                type: string
+              dstTicker:
+                type: string
+              dstName:
+                type: string
+              edgeType:
+                type: string
+                enum:
+                  - supplies
+                  - buys_from
+                  - competes_with
+                  - complements
+              weight:
+                type: number
+                minimum: 0
+                maximum: 1
+              reasoning:
+                type: string
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      enum:
+                        - exa
+                        - openrouter
+                        - gemini
+                        - massive
+                        - yahoo
+                        - polygon
+                        - sec
+                        - manual
+                    url:
+                      type: string
+                      format: uri
+                    fetchedAt:
+                      type: string
+                    confidence:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                  required:
+                    - provider
+                    - fetchedAt
+                    - confidence
+              asOf:
+                type: string
+              createdAt:
+                type: string
+            required:
+              - id
+              - srcTicker
+              - dstName
+              - edgeType
+              - weight
+              - reasoning
+              - sources
+              - createdAt
+        count:
+          type: number
+        generatedAt:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+      required:
+        - ticker
+        - edges
+        - count
+        - generatedAt
+        - sources
     ErrorResponse:
       type: object
       properties:
@@ -3595,6 +3933,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FindsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/progress:
+    get:
+      summary: Progression (XP, level, streak) for the signed-in user
+      description: Server-side truth for XP, level, streak length, and streak-freeze inventory. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`).
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Progression state returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgressResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/universe/summary:
+    get:
+      summary: Counterfactual universe portfolio
+      description: "The `$100 per find at found price` aggregate: what the caller's universe would be worth if $100 had gone into every find at the moment it was found. Computed from each find's `foundPrice` against the current quote. Finds without a `foundPrice` are excluded from the valued totals, never estimated (AGENTS.md §2.4). Hypothetical only — not a holdings statement. `sources` cites each quote provider that actually declared itself, with confidence derived from the quote's own freshness declaration (AGENTS.md §6 — a quote reporting no provider adds no citation rather than a fabricated one)."
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Universe summary computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UniverseSummary"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/dex:
+    get:
+      summary: Collection progress (sector dexes + regional tiles)
+      description: "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find). Rarity tiers are enumerated by the `DexRarity` component."
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dex progress returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DexResponse"
         "400":
           description: Bad request — validation failed against the zod schema.
           content:
@@ -5004,6 +5477,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/graph/{ticker}:
+    get:
+      summary: Company value-chain graph
+      description: "Cache-first: served from the `company_edges` store, extracted on miss with in-flight dedupe per ticker and refreshed when a new 10-K lands rather than on a short TTL. Cache hits are free and identity-less; a cache MISS spends provider money, so generation requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent; concurrent callers sharing one in-flight extraction are charged once). Edges are cited from 10-K items 1/1A evidence (supplier concentration and >10% customers are disclosed there) plus Exa open-web results; every edge carries `sources` (AGENTS.md §6) and an edge that cannot be cited is not emitted. Private counterparties keep `dstName` with no `dstTicker` — never an invented one. Empty and failing extractions are negatively cached for an hour. Returns 502 when extraction fails."
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+            example: NVDA
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Graph edges returned (cache hit or fresh extraction).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyGraphResponse"
+        "400":
+          description: Bad request — malformed ticker, or a cache-miss generation attempted with neither a bearer session nor an `X-Device-Id` header.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "502":
+          description: Graph extraction failed (filings or Exa evidence unavailable).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
   /v1/cockpit:
     post:
       summary: Watchlist cockpit (Underlying Analyzer)

@@ -43,7 +43,7 @@ async function pushMover(
   await sendPush({
     tokens: userTokens.map((t) => t.expoToken),
     title: `$${ticker.toUpperCase()} ${sign}${changePct.toFixed(1)}%`,
-    body: `$${ticker.toUpperCase()} is ${direction} ${Math.abs(changePct).toFixed(1)}% today — it's in your universe.`,
+    body: `$${ticker.toUpperCase()} is ${direction} ${Math.abs(changePct).toFixed(1)}% today — it's on your watchlist.`,
     data: {
       kind: "watchlist_mover",
       ticker: ticker.toUpperCase(),

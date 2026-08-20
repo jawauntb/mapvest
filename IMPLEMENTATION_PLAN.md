@@ -246,10 +246,10 @@ Full slice detail, rules, and acceptance gates: `docs/UNIVERSE_ROADMAP.md` §1.
 The loop: discover → understand → payoff. XP is the only currency; levels
 gate cosmetics, never features.
 
-- [ ] A1 `user_progress` store; streak moves server-side
-- [ ] A2 evolution notifier (+ fix `moverNotifier` "universe" copy — it scans the watchlist)
-- [ ] A3 counterfactual universe portfolio ("$100 per find at found price → worth $X today")
-- [ ] A4 sector dex + rarity tiers from `brands.json`
+- [x] A1 `user_progress` store; streak moves server-side
+- [~] A2 evolution notifier (+ fix `moverNotifier` "universe" copy — it scans the watchlist)
+- [~] A3 counterfactual universe portfolio ("$100 per find at found price → worth $X today")
+- [~] A4 sector dex + rarity tiers from `brands.json`
 - [ ] A5 daily quests (server-verified from the find stream)
 - [ ] A6 territory (geohash pioneer + neighborhood completion)
 - [ ] A7 scheduler-driven events
@@ -265,8 +265,8 @@ Detail: `docs/UNIVERSE_ROADMAP.md` §2. Two problems, two costs: in-app brief
 staleness is a foreground bug fix; background awareness powers the arrival
 push. Notification budget is product law (max 1/arrival, 2/day, threshold-gated).
 
-- [ ] B1 foreground Local Economy Brief refresh (>2km → refetch)
-- [ ] B2 uncaught silhouette pins on the map
+- [x] B1 foreground Local Economy Brief refresh (>2km → refetch)
+- [x] B2 uncaught silhouette pins on the map
 - [ ] B3 widget location heartbeat (`NSWidgetWantsLocation`, no new permission)
 - [ ] B4 arrival push: scored uncaught-nearby ("JPM is 200m away, not in your universe")
 - [ ] B5 Always-permission visit monitoring (ask only after B4 proves value)
@@ -283,7 +283,7 @@ sector/macro/policy/culture as fields. The graph is both the analysis moat and
 the game board (constellations). Filings stay proxied via `underlying-terminal`;
 `sources` designed provider-agnostic so first-party EDGAR can slot in later.
 
-- [ ] C1 `company_edges` store + `valueChain.ts` extraction + `GET /v1/graph/:ticker`
+- [x] C1 `company_edges` store + `valueChain.ts` extraction + `GET /v1/graph/:ticker`
 - [ ] C2 Orbit view + universe constellations (uncaught nodes grayed)
 - [ ] C3 demand pulse (wire Massive fundamentals; aggregate buyer capex/revenue)
 - [ ] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief)

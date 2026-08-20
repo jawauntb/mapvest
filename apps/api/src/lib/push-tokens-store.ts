@@ -37,6 +37,7 @@ export const PUSH_EVENT_KEYS = [
   "agent_response",
   "identify_done",
   "watchlist_mover",
+  "find_evolution",
 ] as const;
 
 export type PushEventKey = (typeof PUSH_EVENT_KEYS)[number];
@@ -121,17 +122,19 @@ function rowToToken(row: Row): PushToken {
     typeof row.last_seen_at === "string" ? row.last_seen_at : row.last_seen_at.toISOString();
   const created =
     typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString();
-  const prefs = (typeof row.prefs === "string"
-    ? (() => {
-        try {
-          return JSON.parse(row.prefs);
-        } catch {
-          return {};
-        }
-      })()
-    : row.prefs && typeof row.prefs === "object"
-      ? (row.prefs as PushPrefs)
-      : {}) as PushPrefs;
+  const prefs = (
+    typeof row.prefs === "string"
+      ? (() => {
+          try {
+            return JSON.parse(row.prefs);
+          } catch {
+            return {};
+          }
+        })()
+      : row.prefs && typeof row.prefs === "object"
+        ? (row.prefs as PushPrefs)
+        : {}
+  ) as PushPrefs;
   return {
     id: row.id,
     userId: row.user_id,
@@ -335,9 +338,7 @@ export async function listTokensForUser(userId: string): Promise<PushToken[]> {
  * by `userId` so callers can dedupe per-user work (avoid generating the same
  * daily brief once per registered device).
  */
-export async function listTokensForEvent(
-  eventKey: PushEventKey,
-): Promise<PushToken[]> {
+export async function listTokensForEvent(eventKey: PushEventKey): Promise<PushToken[]> {
   await ensureTable();
   if (dbEnabled()) {
     const sql = getSql();

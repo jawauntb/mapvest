@@ -15,6 +15,7 @@ import type {
   QuoteHistoryResponse,
   ResolveComparableResponse,
   Session,
+  Source,
   User,
 } from "./types";
 
@@ -822,4 +823,62 @@ export function getListSummary(listId: string, opts: FetchOpts): Promise<ListSum
     { method: "GET" },
     opts,
   );
+}
+
+// -------- universe progression (Universe Roadmap A1/A3/A4) --------
+// Shapes mirror UserProgress / UniverseSummary / DexResponse in
+// packages/core/src/schemas/index.ts. All three endpoints are additive: the
+// screens that read them must render unchanged when the server 404s.
+
+/** Server-side XP/level/streak. The streak lives here so it survives reinstall. */
+export type UserProgress = {
+  xp: number;
+  level: number;
+  streakDays: number;
+  streakFreezes: number;
+  /** UTC calendar day, YYYY-MM-DD — not an ISO timestamp. */
+  lastFindDay?: string;
+  updatedAt: string;
+};
+
+export function fetchProgress(opts: FetchOpts = {}): Promise<{ progress: UserProgress }> {
+  return jsonFetch("/v1/progress", { method: "GET" }, opts);
+}
+
+/**
+ * The counterfactual universe portfolio: "$100 into every find at the moment
+ * you found it." Finds without a `foundPrice` are excluded server-side rather
+ * than estimated, so `valuedFinds` can be lower than `findCount` — never
+ * render a value when `valuedFinds` is 0.
+ */
+export type UniverseSummary = {
+  findCount: number;
+  valuedFinds: number;
+  hypotheticalBasis: number;
+  hypotheticalValue: number;
+  changePct: number;
+  generatedAt: string;
+  sources: Source[];
+};
+
+export function fetchUniverseSummary(opts: FetchOpts = {}): Promise<UniverseSummary> {
+  return jsonFetch("/v1/universe/summary", { method: "GET" }, opts);
+}
+
+/** One sector row of the dex: how many of that sector's seed brands are caught. */
+export type DexSector = {
+  sector: string;
+  found: number;
+  total: number;
+};
+
+export type DexResponse = {
+  sectors: DexSector[];
+  /** Regional dex — distinct geohash-6 tiles with at least one find. */
+  tilesVisited: number;
+  totalFinds: number;
+};
+
+export function fetchDex(opts: FetchOpts = {}): Promise<DexResponse> {
+  return jsonFetch("/v1/dex", { method: "GET" }, opts);
 }

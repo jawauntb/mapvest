@@ -16,9 +16,11 @@ import billing from "./routes/billing.js";
 import billingWebhook from "./routes/billingWebhook.js";
 import chart from "./routes/chart.js";
 import cockpit, { alerts as underlyingAlerts } from "./routes/cockpit.js";
+import dex from "./routes/dex.js";
 import entitlements from "./routes/entitlements.js";
 import financials from "./routes/financials.js";
 import finds from "./routes/finds.js";
+import graph from "./routes/graph.js";
 import health from "./routes/health.js";
 import identify from "./routes/identify.js";
 import localBrief from "./routes/localBrief.js";
@@ -28,6 +30,7 @@ import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
 import options from "./routes/options.js";
+import progress from "./routes/progress.js";
 import proxy from "./routes/proxy.js";
 import push from "./routes/push.js";
 import quoteHistory from "./routes/quote-history.js";
@@ -37,6 +40,7 @@ import robinhood from "./routes/robinhood.js";
 import sessionRoutes from "./routes/session.js";
 import settings from "./routes/settings.js";
 import underlying from "./routes/underlying.js";
+import universe from "./routes/universe.js";
 import watchlist from "./routes/watchlist.js";
 import widget from "./routes/widget.js";
 
@@ -109,6 +113,12 @@ app.route("/v1/entitlements", entitlements);
 app.route("/v1/push", push);
 // Native widget backends — nearby list + map snapshot.
 app.route("/v1/widget", widget);
+// Universe progression — XP/levels/streaks, aggregate summary, sector dex.
+app.route("/v1/progress", progress);
+app.route("/v1/universe", universe);
+app.route("/v1/dex", dex);
+// Company value-chain graph (supplier/customer/competitor edges).
+app.route("/v1/graph", graph);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
