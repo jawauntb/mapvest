@@ -100,7 +100,7 @@ bun run ios        # launches simulator
 ## 8. Deploy
 
 - API + landing → **Railway** (`infra/railway`).
-- iOS → **TestFlight** via **EAS** (`apps/ios/eas.json`).
+- iOS → **TestFlight** via **EAS** (`apps/ios/eas.json`). Green `ci` on `main` runs `ios-eas-production` (build + auto-submit).
 - Never deploy from a dirty tree. Never deploy `main` without CI green.
 
 ## 9. Agent workflow rules

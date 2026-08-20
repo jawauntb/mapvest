@@ -51,6 +51,9 @@ reports the device is back online. The camera screen shows the queued count.
 
 ## Build (EAS)
 
+Production TestFlight is automatic: green `ci` on `main` runs
+`ios-eas-production` (see `DEPLOY_TESTFLIGHT.md`). Manual:
+
 ```
 bun run build:dev     # dev client, simulator
 bun run build:preview # internal distribution, staging API

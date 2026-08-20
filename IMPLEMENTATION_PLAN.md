@@ -93,11 +93,12 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 
 ## Phase 6 — TestFlight
 
-- [ ] `apps/ios/eas.json` — internal + external profiles
-- [ ] Bundle id `com.mapvest.app` (or under existing Apple Team)
-- [ ] `eas build --platform ios --profile production`
-- [ ] `eas submit --platform ios`
-- [ ] Internal testers group configured
+- [x] `apps/ios/eas.json` — internal + external profiles
+- [x] Bundle id `com.mapvest.app` (or under existing Apple Team)
+- [x] `eas build --platform ios --profile production`
+- [x] `eas submit --platform ios`
+- [x] Internal testers group configured
+- [x] `ios-eas-production` after green `ci` on `main` (`workflow_run`)
 
 **Acceptance**: Build appears in App Store Connect → TestFlight; internal group can install.
 
