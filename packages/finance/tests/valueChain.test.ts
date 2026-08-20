@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseEdgePicks } from "../src/valueChain.js";
+import { evidenceUrlKey, parseEdgePicks } from "../src/valueChain.js";
 
 /**
  * Pure-parser coverage for the value-chain judge payload (offline, no network).
@@ -62,6 +62,21 @@ Let me know if you need more.`;
     expect(parseEdgePicks("")).toEqual([]);
     expect(parseEdgePicks("{}")).toEqual([]);
     expect(parseEdgePicks('{"edges": "nope"}')).toEqual([]);
+  });
+
+  test("evidenceUrlKey matches the ways judges mangle a URL they cite", () => {
+    const canonical = evidenceUrlKey(
+      "https://www.reuters.com/technology/apple-gemini/?utm_source=x",
+    );
+    // Same document, echoed back without protocol / www / params / slash.
+    expect(evidenceUrlKey("reuters.com/technology/apple-gemini")).toBe(canonical);
+    expect(evidenceUrlKey("http://reuters.com/technology/apple-gemini/")).toBe(canonical);
+    expect(evidenceUrlKey("HTTPS://WWW.Reuters.com/technology/apple-gemini#section")).toBe(
+      canonical,
+    );
+    // Different documents stay different.
+    expect(evidenceUrlKey("https://reuters.com/technology/other-story")).not.toBe(canonical);
+    expect(evidenceUrlKey("https://bloomberg.com/technology/apple-gemini")).not.toBe(canonical);
   });
 
   test("drops entries missing counterparty or relation, clamps weight, caps at 12", () => {

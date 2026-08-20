@@ -29,6 +29,10 @@ import { deviceIdFromRequest } from "../middleware/requireGenerationQuota.js";
 
 /** Stored edges are considered fresh for 30 days (refresh on new filings). */
 const FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+/** A graph below this edge count is "thin" — re-extractable after a day. */
+const RICH_EDGES = 4;
+/** How long a thin (but non-empty) graph is served before another attempt. */
+const THIN_FRESH_MS = 24 * 60 * 60 * 1000;
 /** How long an empty extraction result suppresses re-generation. */
 const NEGATIVE_TTL_MS = 60 * 60 * 1000;
 /** Max filing citations handed to the extractor as evidence. */
@@ -130,15 +134,21 @@ graph.get("/:ticker", optionalAuth, async (c) => {
 
     const cached = await listEdges(ticker);
     const newest = newestCreatedAt(cached);
-    if (cached.length > 0 && Date.now() - newest < FRESH_MS) {
+    // A rich graph is fresh for 30 days. A *thin* one (an early extraction
+    // that only survived one lane) goes stale after a day so it gets another
+    // pass instead of showing a lone complement for a month. If regeneration
+    // can't run or fails, the thin cache is still served below — thin beats
+    // blank.
+    const richCache = cached.length >= RICH_EDGES;
+    if (cached.length > 0 && Date.now() - newest < (richCache ? FRESH_MS : THIN_FRESH_MS)) {
       span.setAttributes({ cache: "hit", count: cached.length });
       return c.json(respond(ticker, cached));
     }
 
     const suppressedUntil = negativeCache.get(ticker) ?? 0;
     if (Date.now() < suppressedUntil) {
-      span.setAttributes({ cache: "negative", count: 0 });
-      return c.json(respond(ticker, []));
+      span.setAttributes({ cache: "negative", count: cached.length });
+      return c.json(respond(ticker, cached));
     }
     negativeCache.delete(ticker);
 
@@ -148,6 +158,12 @@ graph.get("/:ticker", optionalAuth, async (c) => {
     const user = (c as unknown as { get: (k: string) => User | undefined }).get("user");
     const deviceId = deviceIdFromRequest(c);
     if (!user && !deviceId) {
+      // An anonymous caller can't fund a refresh, but a stale/thin cache is
+      // still the best answer we have — serve it rather than erroring.
+      if (cached.length > 0) {
+        span.setAttributes({ cache: "stale_hit", count: cached.length });
+        return c.json(respond(ticker, cached));
+      }
       span.setAttribute("error.kind", "no_identity");
       return c.json(
         { error: "X-Device-Id header (or a bearer session) required to generate a graph" },
@@ -156,6 +172,12 @@ graph.get("/:ticker", optionalAuth, async (c) => {
     }
     const state = await getEntitlementState({ userId: user?.id, deviceId, email: user?.email });
     if (!state.canGenerate) {
+      // Same fail-soft: a spent meter blocks *regeneration*, not the data we
+      // already extracted and stored for this ticker.
+      if (cached.length > 0) {
+        span.setAttributes({ cache: "stale_hit", count: cached.length });
+        return c.json(respond(ticker, cached));
+      }
       span.setAttribute("error.kind", "quota_exceeded");
       return c.json(
         {
@@ -182,8 +204,19 @@ graph.get("/:ticker", optionalAuth, async (c) => {
     try {
       edges = await pending;
     } catch (err) {
+      if (cached.length > 0) {
+        span.setAttributes({ cache: "stale_hit_after_error", count: cached.length });
+        return c.json(respond(ticker, cached));
+      }
       span.setAttribute("error.kind", "extraction_failed");
       return c.json({ error: err instanceof Error ? err.message : "graph extraction failed" }, 502);
+    }
+
+    // A refresh that came back empty must not erase a graph we already had —
+    // `generate` leaves the store untouched on empty, so serve the stored set.
+    if (edges.length === 0 && cached.length > 0) {
+      span.setAttributes({ cache: "stale_hit_after_empty", count: cached.length });
+      edges = cached;
     }
 
     // Charge only the caller that initiated the extraction; concurrent callers

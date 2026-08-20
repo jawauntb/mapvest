@@ -93,7 +93,6 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>Options · Massive</Text>
       <Text style={styles.sub}>Snapshot chain for research, not an order ticket.</Text>
 
       {contractsLoading ? (
@@ -219,7 +218,6 @@ function average(values: Array<number | undefined>): number | undefined {
 
 const styles = StyleSheet.create({
   root: { gap: 10 },
-  title: { color: colors.fg, ...type.h3, fontSize: 17 },
   sub: { color: colors.fgMuted, fontSize: 12 },
   muted: { color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28 },

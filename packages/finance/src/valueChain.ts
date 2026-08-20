@@ -22,7 +22,25 @@ const FALLBACK_MODELS = ["anthropic/claude-opus-4.8", "x-ai/grok-4.6"] as const;
 /** Max edges we accept from one extraction pass. */
 const MAX_EDGES = 12;
 /** Max Exa hits handed to the judge as evidence. */
-const MAX_WEB_EVIDENCE = 10;
+const MAX_WEB_EVIDENCE = 12;
+
+/**
+ * Loose URL key for matching the judge's cited `sourceUrl` back to evidence.
+ * Models routinely echo a URL without its tracking params, trailing slash,
+ * `www.`, or protocol — none of which changes which document the edge cites,
+ * but an exact-string lookup dropped every such edge and left graphs with a
+ * single lane. Only ever used for matching; the emitted source keeps the
+ * evidence's canonical URL.
+ */
+export function evidenceUrlKey(raw: string): string {
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "");
+  const noFragment = s.split("#")[0] ?? s;
+  const noQuery = noFragment.split("?")[0] ?? noFragment;
+  return noQuery.replace(/^www\./, "").replace(/\/+$/, "");
+}
 
 /** A `CompanyEdge` before the store assigns identity / provenance columns. */
 export type CompanyEdgeInput = Omit<CompanyEdge, "id" | "createdAt" | "srcTicker">;
@@ -99,9 +117,10 @@ export function parseEdgePicks(raw: string): EdgePick[] {
 /**
  * Extract a ticker's value chain as cited edges.
  *
- * Pipeline: three Exa queries (suppliers / customers / partners), deduped by
- * URL, plus `opts.filings` appended as evidence → OpenRouter judge cascade →
- * enum + plausible-ticker validation → `CompanyEdgeInput[]`.
+ * Pipeline: four Exa queries (one per lane: suppliers / customers /
+ * competitors / complements), deduped by URL, plus `opts.filings` appended as
+ * evidence → OpenRouter judge cascade → enum + plausible-ticker validation →
+ * `CompanyEdgeInput[]`.
  */
 export async function extractValueChain(
   ticker: string,
@@ -111,10 +130,13 @@ export async function extractValueChain(
   if (!symbol) return [];
 
   const filings = (opts?.filings ?? []).filter((f) => f?.url);
+  // One query per lane — competitors and complements used to share a query,
+  // which is why graphs came back with whole lanes missing.
   const queries = [
     `${symbol} key suppliers single source components 10-K`,
     `${symbol} largest customers revenue concentration 10-K`,
-    `${symbol} competitors complementary products partners`,
+    `${symbol} main competitors rivalry market share`,
+    `${symbol} ecosystem partners complementary products integrations`,
   ];
 
   const settled = await Promise.all(
@@ -138,6 +160,10 @@ export async function extractValueChain(
   if (hits.length === 0 && filings.length === 0) return [];
 
   const filingUrls = new Set(filings.map((f) => f.url));
+  const webByKey = new Map<string, SearchResult>();
+  for (const h of byUrl.values()) webByKey.set(evidenceUrlKey(h.url), h);
+  const filingByKey = new Map<string, string>();
+  for (const f of filings) filingByKey.set(evidenceUrlKey(f.url), f.url);
   const evidence: EvidenceItem[] = [
     ...hits.map((h, i) => ({
       i,
@@ -185,19 +211,26 @@ export async function extractValueChain(
 
     // Contract (core schema + AGENTS.md §6): an edge that cannot be tied to a
     // real evidence URL is not emitted — never synthesize a judge-only source.
-    const hit = p.sourceUrl ? byUrl.get(p.sourceUrl) : undefined;
+    // Matching is loose (see evidenceUrlKey); the emitted source is canonical.
+    const hit = p.sourceUrl
+      ? (byUrl.get(p.sourceUrl) ?? webByKey.get(evidenceUrlKey(p.sourceUrl)))
+      : undefined;
     let source: Source;
     if (hit) {
       source = toSource(hit);
-    } else if (p.sourceUrl && filingUrls.has(p.sourceUrl)) {
+    } else {
+      const filingUrl = p.sourceUrl
+        ? filingUrls.has(p.sourceUrl)
+          ? p.sourceUrl
+          : filingByKey.get(evidenceUrlKey(p.sourceUrl))
+        : undefined;
+      if (!filingUrl) continue;
       source = {
         provider: "sec",
-        url: p.sourceUrl,
+        url: filingUrl,
         fetchedAt: now,
         confidence: "high",
       };
-    } else {
-      continue;
     }
 
     out.push({
@@ -225,6 +258,7 @@ Rules:
 - "ticker" only for real exchange-listed companies (1-5 uppercase letters). Omit "ticker" entirely for private, state-owned, or unlisted counterparties. NEVER invent, guess, or abbreviate a ticker.
 - "weight" is how material the relationship is to ${symbol} (0.9 = single-source supplier or >10% customer, 0.3 = minor).
 - Max ${MAX_EDGES} edges. Only edges defensible from the provided evidence — return an empty array if the evidence supports none.
+- Cover EVERY relation type the evidence supports: if the evidence names suppliers, customers, competitors, and complements, return edges for all four — do not stop after one category.
 - Every edge MUST set "sourceUrl" to one of the provided evidence URLs. An edge you cannot tie to a specific evidence URL must be omitted, not guessed.`;
 
 async function callValueChainJudge(
