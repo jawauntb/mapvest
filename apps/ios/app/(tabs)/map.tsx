@@ -480,6 +480,16 @@ function NearbySheet({
 
   return (
     <View style={styles.sheet}>
+      <Pressable
+        onPress={() => {
+          hapticSelect();
+          setOpen((v) => !v);
+        }}
+        hitSlop={8}
+        accessible={false}
+      >
+        <View style={styles.sheetHandle} />
+      </Pressable>
       <View style={styles.sheetHead}>
         <Pressable
           onPress={() => {
@@ -490,8 +500,7 @@ function NearbySheet({
           accessibilityRole="button"
           accessibilityLabel={open ? "Collapse nearby list" : "Expand nearby list"}
         >
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>
+          <Text style={styles.sheetTitle} numberOfLines={1}>
             {loading ? "Finding nearby…" : items.length ? `Nearby · ${items.length}` : "Nearby"}
           </Text>
           <Ionicons name={open ? "chevron-down" : "chevron-up"} size={16} color={colors.fgMuted} />
@@ -519,7 +528,10 @@ function NearbySheet({
                   size={14}
                   color={findsVisible ? colors.accent : colors.fgMuted}
                 />
-                <Text style={[styles.sheetSeeAll, !findsVisible && { color: colors.fgMuted }]}>
+                <Text
+                  style={[styles.sheetSeeAll, !findsVisible && { color: colors.fgMuted }]}
+                  numberOfLines={1}
+                >
                   Finds
                 </Text>
               </Pressable>
@@ -543,7 +555,10 @@ function NearbySheet({
                   size={14}
                   color={uncaughtVisible ? colors.accent : colors.fgMuted}
                 />
-                <Text style={[styles.sheetSeeAll, !uncaughtVisible && { color: colors.fgMuted }]}>
+                <Text
+                  style={[styles.sheetSeeAll, !uncaughtVisible && { color: colors.fgMuted }]}
+                  numberOfLines={1}
+                >
                   Uncaught
                 </Text>
               </Pressable>
@@ -559,7 +574,9 @@ function NearbySheet({
               accessibilityLabel="View as list"
             >
               <Ionicons name="list-outline" size={14} color={colors.accent} />
-              <Text style={styles.sheetSeeAll}>View as List</Text>
+              <Text style={styles.sheetSeeAll} numberOfLines={1}>
+                View as List
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -900,20 +917,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    flexWrap: "wrap",
+    columnGap: 8,
+    rowGap: 6,
     paddingBottom: 6,
   },
-  sheetToggle: { flex: 1, gap: 6 },
+  /** Shrinks before the title wraps; the action chips wrap to their own row instead. */
+  sheetToggle: { flexDirection: "row", alignItems: "center", flexShrink: 1, gap: 6 },
   sheetHandle: {
     alignSelf: "center",
     width: 36,
     height: 4,
+    marginBottom: 6,
     borderRadius: 2,
     backgroundColor: colors.borderStrong,
   },
-  sheetTitle: { color: colors.fg, fontSize: 14, fontWeight: "700" },
-  sheetActions: { flexDirection: "row", alignItems: "center", gap: 10 },
-  viewAsListBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  sheetTitle: { color: colors.fg, fontSize: 14, fontWeight: "700", flexShrink: 1 },
+  /** Grows so the chips stay right-aligned whether or not they wrapped below the title. */
+  sheetActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    flexGrow: 1,
+    flexShrink: 1,
+    columnGap: 10,
+    rowGap: 6,
+  },
+  viewAsListBtn: { flexDirection: "row", alignItems: "center", flexShrink: 0, gap: 4 },
   sheetSeeAll: { color: colors.accent, fontSize: 13, fontWeight: "700" },
   sheetEmpty: {
     color: colors.fgMuted,
