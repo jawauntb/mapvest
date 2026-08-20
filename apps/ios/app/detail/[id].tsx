@@ -328,11 +328,16 @@ export default function DetailSheet() {
             ) : null}
 
             {stage >= 2 && ticker ? (
-              <OptionsChainSection
-                ticker={ticker}
-                token={session?.token}
-                underlyingPrice={quote?.price}
-              />
+              /* Collapsed by default like the ratio panels — and because
+                 CollapsibleSection unmounts its children, the two options
+                 fetches don't fire until someone actually opens it. */
+              <CollapsibleSection title="Options · Massive">
+                <OptionsChainSection
+                  ticker={ticker}
+                  token={session?.token}
+                  underlyingPrice={quote?.price}
+                />
+              </CollapsibleSection>
             ) : null}
 
             {isListed && data.comparables.length > 0 ? (
