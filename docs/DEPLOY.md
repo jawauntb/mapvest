@@ -81,7 +81,7 @@ Also:
 - **Manual:** Actions → `ios-eas-production` → Run workflow (on `main`)
 - **Tag:** `git tag v0.1.0 && git push origin v0.1.0`
 
-Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. Do not set `EAS_NO_VCS=1`.
+Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. Do not set `EAS_NO_VCS=1`. `eas.json` uses `cli.appVersionSource: remote` so every merge gets a unique `buildNumber` without a sync commit.
 
 The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload. Production submits are serialized (`concurrency: ios-eas-production-store`).
 
