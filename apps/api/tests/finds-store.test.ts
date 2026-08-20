@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Find } from "@mapvest/core";
-import { listFinds, recordFind } from "../src/lib/finds-store.js";
+import { listFinds, recordFind, uniqueFindsNewestFirst } from "../src/lib/finds-store.js";
 
 /**
  * In-memory path only (POSTGRES_URL unset in test env). Covers the record →
@@ -66,5 +66,57 @@ describe("finds-store (in-memory)", () => {
     expect(finds[0]?.brand).toBe("Brand 504");
     expect(finds.at(-1)?.brand).toBe("Brand 5");
     Find.parse(finds[0]);
+  });
+
+  test("recordFind keeps one row per ticker; recatch returns the original", async () => {
+    const uid = userId();
+    const first = await recordFind(uid, {
+      brand: "Apple",
+      ticker: "AAPL",
+      isPublic: true,
+      confidence: "high",
+      foundPrice: 180,
+    });
+    const second = await recordFind(uid, {
+      brand: "Apple",
+      ticker: "aapl",
+      isPublic: true,
+      confidence: "medium",
+      foundPrice: 181,
+    });
+    expect(second.id).toBe(first.id);
+    const finds = await listFinds(uid);
+    expect(finds.map((f) => f.ticker)).toEqual(["AAPL"]);
+    expect(finds[0]?.foundPrice).toBe(180);
+  });
+
+  test("uniqueFindsNewestFirst keeps the newest row per ticker", () => {
+    const collapsed = uniqueFindsNewestFirst([
+      {
+        id: "newer-aapl",
+        brand: "Apple",
+        ticker: "AAPL",
+        isPublic: true,
+        confidence: "low",
+        createdAt: "2026-08-19T20:00:00.000Z",
+      },
+      {
+        id: "older-aapl",
+        brand: "Apple Store",
+        ticker: "AAPL",
+        isPublic: true,
+        confidence: "high",
+        createdAt: "2026-08-18T20:00:00.000Z",
+      },
+      {
+        id: "sbux",
+        brand: "Starbucks",
+        ticker: "SBUX",
+        isPublic: true,
+        confidence: "high",
+        createdAt: "2026-08-19T19:00:00.000Z",
+      },
+    ]);
+    expect(collapsed.map((f) => f.id)).toEqual(["newer-aapl", "sbux"]);
   });
 });

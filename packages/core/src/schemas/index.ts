@@ -116,8 +116,8 @@ export type IdentifyResponse = z.infer<typeof IdentifyResponse>;
 /**
  * One entry in a signed-in user's "finds journal". Recorded server-side after
  * every successful /v1/identify (top investable only); read back newest-first
- * via GET /v1/finds. `ticker` is set for public brands, `comparable` for
- * private brands (closest public comparable's ticker).
+ * via GET /v1/finds, unique by effective ticker. `ticker` is set for public
+ * brands, `comparable` for private brands (closest public comparable's ticker).
  */
 export const Find = z.object({
   id: z.string(),

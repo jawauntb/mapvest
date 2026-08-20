@@ -21,6 +21,7 @@ What exists today, precisely:
   records a `Find` — brand, ticker (or private→comparable), confidence,
   optional lat/lng, and `found_price` captured at the moment of capture
   (`apps/api/src/routes/identify.ts`, `apps/api/src/lib/finds-store.ts`).
+  The journal is unique by effective ticker (recatch still bumps streak/XP).
 - **The journal and map layer exist.** `apps/ios/app/universe.tsx` shows
   Δ% since found per find; `apps/ios/app/(tabs)/map.tsx` renders geo-tagged
   finds as jade camera badges.
