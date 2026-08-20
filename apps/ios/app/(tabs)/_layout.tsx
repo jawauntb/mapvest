@@ -153,7 +153,6 @@ function TabsInner() {
         name="research"
         options={{ href: null, title: "Research", headerShown: false }}
       />
-      <Tabs.Screen name="saved" options={{ href: null, title: "Watchlist" }} />
       <Tabs.Screen
         name="settings"
         options={{ href: null, title: "Settings" }}

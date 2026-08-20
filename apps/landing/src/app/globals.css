@@ -1390,9 +1390,6 @@ blockquote {
 .app-btn-primary:hover {
   background: var(--mv-accent-hover);
 }
-.app-btn-primary:hover {
-  background: #e6e6e6;
-}
 .app-btn-robinhood {
   background: #0d2818;
   color: #c8f5c8;
@@ -1411,7 +1408,7 @@ blockquote {
   border-color: var(--accent);
 }
 .app-btn-active:hover {
-  background: #33d178;
+  background: var(--mv-accent-hover);
 }
 .app-link {
   background: transparent;
@@ -2039,15 +2036,10 @@ blockquote {
   font-size: 0.9rem;
 }
 .app-status {
-  color: var(--accent, #3ee68a);
+  color: var(--accent, #14c4a6);
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0.35rem 0 0;
-}
-.app-btn-active {
-  background: #fff !important;
-  color: #000 !important;
-  border-color: #fff !important;
 }
 /* ---- Research chat tab (web) ---- */
 .app-chat {
@@ -2279,7 +2271,7 @@ blockquote {
 .paywall-card {
   width: 100%;
   max-width: 400px;
-  background: var(--mv-bg-elevated, #161a1f);
+  background: var(--mv-bg-elev, #161a1f);
   border: 1px solid var(--mv-border, #242a32);
   border-radius: 16px;
   padding: 22px;

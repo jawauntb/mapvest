@@ -1,7 +1,6 @@
 import { TESTFLIGHT_URL } from "@/lib/site";
 import { type ApiState, probeApiSafe } from "@/lib/status";
 import type { Metadata } from "next";
-import { CopyableCurl } from "./CopyableCurl";
 import { HeroBackdrop } from "./HeroBackdrop";
 import { HowItWorksDiagram } from "./HowItWorksDiagram";
 import { Reveal } from "./Reveal";
@@ -9,8 +8,6 @@ import { Reveal } from "./Reveal";
 export const metadata: Metadata = {
   title: "See a brand. Get the ticker.",
 };
-
-const API_BASE_URL = "https://api-production-4b27.up.railway.app";
 
 // Force this page to be statically rendered at build time. The API probe
 // runs once during `next build` — never at request time — which matches
@@ -145,14 +142,6 @@ const screenshots = [
   },
 ] as const;
 
-// Map an API state to a badge label. Landing is always "up" from the
-// perspective of anyone who can read this page.
-function stateLabel(state: ApiState, upWord = "live"): string {
-  if (state === "up") return upWord;
-  if (state === "down") return "down";
-  return "unknown";
-}
-
 export default async function HomePage() {
   // Build-time probe. probeApiSafe never throws — the worst case is
   // { api: "down" } or { api: "unknown" } and we render accordingly.
@@ -160,12 +149,6 @@ export default async function HomePage() {
   const apiState: ApiState = status.api;
   const apiBadgeLabel =
     apiState === "up" ? "API: live" : apiState === "down" ? "API: down" : "API: unknown";
-
-  const curlHealth = `curl -sS ${API_BASE_URL}/v1/health`;
-  const curlNearby = `curl -sS "${API_BASE_URL}/v1/nearby?lat=37.7749&lng=-122.4194&radius_m=500"`;
-  const curlResolve = `curl -sS -X POST "${API_BASE_URL}/v1/resolve-comparable" \\
-  -H 'content-type: application/json' \\
-  -d '{"brand":"Lindt","country":"CH"}'`;
 
   return (
     <>
@@ -295,68 +278,6 @@ export default async function HomePage() {
             Read the docs →
           </a>
         </div>
-      </section>
-
-      {/* Hidden for now — visitors don't need curl samples on the marketing page. */}
-      <section
-        hidden
-        className="section container"
-        aria-labelledby="api-playground-title"
-        aria-hidden="true"
-      >
-        <Reveal>
-          <div className="section__eyebrow">API playground</div>
-          <h2 id="api-playground-title" className="section__title">
-            Copy. Paste. Get sourced answers.
-          </h2>
-          <p className="section__lead">
-            The API is live at <code>{API_BASE_URL}</code>. Three requests are enough to feel the
-            product — health, nearby brands, and a comparable resolver.
-          </p>
-
-          <div className="curl-stack">
-            <CopyableCurl label="health" path="/v1/health" command={curlHealth} />
-            <CopyableCurl label="nearby" path="/v1/nearby" command={curlNearby} />
-            <CopyableCurl label="resolve" path="/v1/resolve-comparable" command={curlResolve} />
-          </div>
-        </Reveal>
-      </section>
-
-      {/* Hidden for now — visitors don't need infra status on the marketing page. */}
-      <section
-        hidden
-        className="section container"
-        aria-labelledby="status-title"
-        aria-hidden="true"
-      >
-        <Reveal>
-          <div className="section__eyebrow">System status</div>
-          <h2 id="status-title" className="section__title">
-            What’s up right now.
-          </h2>
-          <p className="section__lead">
-            Probed at build time from this static page. For live status hit <code>/api/status</code>
-            .
-          </p>
-
-          <ul className="status-list">
-            <li className={`status-row status-row--${apiState}`}>
-              <span className={`status-dot status-dot--${apiState}`} aria-hidden="true" />
-              <span className="status-row__name">api</span>
-              <code className="status-row__host">{API_BASE_URL.replace(/^https?:\/\//, "")}</code>
-              <span className="status-row__state">{stateLabel(apiState)}</span>
-            </li>
-            <li className="status-row status-row--up">
-              <span className="status-dot status-dot--up" aria-hidden="true" />
-              <span className="status-row__name">landing</span>
-              <code className="status-row__host">mapvest.app</code>
-              <span className="status-row__state">live</span>
-            </li>
-          </ul>
-          <p className="status-note">
-            Last checked <time dateTime={status.checkedAt}>{status.checkedAt}</time>.
-          </p>
-        </Reveal>
       </section>
     </>
   );

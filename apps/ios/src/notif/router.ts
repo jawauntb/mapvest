@@ -34,7 +34,7 @@ export function pathFromNotificationData(data: NotifData | null | undefined): st
         ? `/(tabs)/research?intent=thread&id=${encodeURIComponent(data.threadId)}`
         : "/(tabs)/research";
     case "memo_finished":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/saved";
+      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/watchlists";
     case "identify_done":
       return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/camera";
     case "watchlist_mover":

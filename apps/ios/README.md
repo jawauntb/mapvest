@@ -32,7 +32,7 @@ in `eas.json`.
   taps through to the detail sheet.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
 - `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
-- `/(tabs)/saved` — watchlist + cockpit/alerts; ★ Save / memos from detail.
+- `/watchlists` — watchlist + cockpit/alerts; ★ Save / memos from detail.
 - `/(tabs)/admin` — hidden unless the signed-in user has `admin` scope.
 - `/detail/[id]` — Investable is a stack **card** (not a page-sheet modal).
   One Charts section at the top: a single chip row switches between Price
