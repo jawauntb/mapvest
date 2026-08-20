@@ -1,6 +1,8 @@
 /**
  * Per-user "finds journal" — every successful /v1/identify by a signed-in
- * user records its top investable here.
+ * user records its top investable here. The universe is companies, not snaps:
+ * one row per effective ticker (public ticker, else comparable, else brand).
+ * Recatching the same ticker still bumps streak/XP but does not insert again.
  *
  * Postgres when POSTGRES_URL is set (Railway); in-memory fallback for local
  * tests. Follows the pattern of `saved-locations-store.ts` — table is created
@@ -79,6 +81,29 @@ async function ensureTable(): Promise<void> {
   tableEnsured = true;
 }
 
+/** Dex / universe identity: ticker, else comparable, else brand. */
+export function findIdentityKey(find: {
+  brand: string;
+  ticker?: string | null;
+  comparable?: string | null;
+}): string {
+  const symbol = (find.ticker ?? find.comparable ?? "").trim().toUpperCase();
+  return symbol || find.brand.trim().toUpperCase();
+}
+
+/** Newest-first list with at most one find per identity key. */
+export function uniqueFindsNewestFirst(finds: Find[]): Find[] {
+  const seen = new Set<string>();
+  const out: Find[] = [];
+  for (const find of finds) {
+    const key = findIdentityKey(find);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(find);
+  }
+  return out;
+}
+
 function rowToFind(row: {
   id: string;
   brand: string;
@@ -107,8 +132,37 @@ function rowToFind(row: {
   };
 }
 
+async function existingFindForKey(userId: string, key: string): Promise<Find | undefined> {
+  const fromMem = memBucket(userId).find((row) => findIdentityKey(row) === key);
+  if (fromMem) return fromMem;
+  if (!dbEnabled()) return undefined;
+  const sql = getSql();
+  if (!sql) return undefined;
+  const rows = await sql`
+    SELECT id, brand, ticker, is_public, comparable, confidence,
+           lat, lng, found_price, created_at
+    FROM user_finds
+    WHERE user_id = ${userId}
+      AND COALESCE(
+        NULLIF(UPPER(TRIM(ticker)), ''),
+        NULLIF(UPPER(TRIM(comparable)), ''),
+        UPPER(TRIM(brand))
+      ) = ${key}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  const row = (rows as Array<Parameters<typeof rowToFind>[0]>)[0];
+  return row ? rowToFind(row) : undefined;
+}
+
 export async function recordFind(userId: string, find: FindInput): Promise<Find> {
   await ensureTable();
+  const now = new Date().toISOString();
+  const existing = await existingFindForKey(userId, findIdentityKey(find));
+  // Recatch still counts for streak/XP; the journal stays one card per company.
+  bumpProgressOnFind(userId, now).catch(() => {});
+  if (existing) return existing;
+
   const entry: Find = {
     id: crypto.randomUUID(),
     brand: find.brand,
@@ -119,11 +173,8 @@ export async function recordFind(userId: string, find: FindInput): Promise<Find>
     lat: find.lat,
     lng: find.lng,
     foundPrice: find.foundPrice,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
-  // Progression (XP / streak) is server truth — fire-and-forget so a
-  // progression write can never fail an identify. See lib/progress-store.ts.
-  bumpProgressOnFind(userId, entry.createdAt).catch(() => {});
   const bucket = memBucket(userId);
   bucket.unshift(entry);
   if (bucket.length > MEMORY_CAP) bucket.length = MEMORY_CAP;
@@ -161,13 +212,31 @@ export async function listFinds(userId: string, limit = 100): Promise<Find[]> {
       const rows = await sql`
         SELECT id, brand, ticker, is_public, comparable, confidence,
                lat, lng, found_price, created_at
-        FROM user_finds
-        WHERE user_id = ${userId}
+        FROM (
+          SELECT DISTINCT ON (
+            COALESCE(
+              NULLIF(UPPER(TRIM(ticker)), ''),
+              NULLIF(UPPER(TRIM(comparable)), ''),
+              UPPER(TRIM(brand))
+            )
+          )
+            id, brand, ticker, is_public, comparable, confidence,
+            lat, lng, found_price, created_at
+          FROM user_finds
+          WHERE user_id = ${userId}
+          ORDER BY
+            COALESCE(
+              NULLIF(UPPER(TRIM(ticker)), ''),
+              NULLIF(UPPER(TRIM(comparable)), ''),
+              UPPER(TRIM(brand))
+            ),
+            created_at DESC
+        ) uniq
         ORDER BY created_at DESC
         LIMIT ${limit}
       `;
       return (rows as Array<Parameters<typeof rowToFind>[0]>).map(rowToFind);
     }
   }
-  return memBucket(userId).slice(0, limit);
+  return uniqueFindsNewestFirst(memBucket(userId)).slice(0, limit);
 }

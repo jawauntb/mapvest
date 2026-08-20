@@ -21,15 +21,36 @@ export type Find = {
   createdAt: string;
 };
 
-export function listFinds(
+/** Ticker, else comparable, else brand — same key the server journal uses. */
+export function findIdentityKey(find: Pick<Find, "brand" | "ticker" | "comparable">): string {
+  const symbol = (find.ticker ?? find.comparable ?? "").trim().toUpperCase();
+  return symbol || find.brand.trim().toUpperCase();
+}
+
+/** Newest-first, one card per company. Hides duplicates from older builds. */
+export function uniqueFindsNewestFirst(finds: Find[]): Find[] {
+  const seen = new Set<string>();
+  const out: Find[] = [];
+  for (const find of finds) {
+    const key = findIdentityKey(find);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(find);
+  }
+  return out;
+}
+
+export async function listFinds(
   opts: FetchOpts = {},
   limit = 100,
 ): Promise<{ finds: Find[]; count: number }> {
-  return apiFetch<{ finds: Find[]; count: number }>(
+  const res = await apiFetch<{ finds: Find[]; count: number }>(
     `/v1/finds?limit=${limit}`,
     { method: "GET" },
     opts,
   );
+  const finds = uniqueFindsNewestFirst(res.finds);
+  return { finds, count: finds.length };
 }
 
 /**
