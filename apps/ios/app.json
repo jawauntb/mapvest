@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
-      "buildNumber": "98",
+      "buildNumber": "99",
       "appleTeamId": "58877MPK38",
       "infoPlist": {
         "NSCameraUsageDescription": "Mapvest uses your camera to identify brands you see in the wild and map them to public tickers.",

@@ -7,8 +7,9 @@ Everything is pre-configured. The three commands below run against the current
 ## CI (required for TestFlight)
 
 Repo secret `EXPO_TOKEN` (Expo access token; never commit it). `eas.json`
-`production.autoIncrement` bumps `buildNumber` past the last EAS/App Store
-Connect version.
+uses `cli.appVersionSource: remote` plus `production.autoIncrement`, so EAS
+owns `buildNumber` and every merge gets a unique value. Do not bump
+`app.json` by hand for TestFlight.
 
 Merges to `main` that pass `ci` cut a production TestFlight automatically
 (`.github/workflows/ios-eas-production.yml`, `workflow_run` after `ci`).
