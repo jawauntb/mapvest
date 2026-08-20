@@ -28,7 +28,7 @@
 	<key>NSWidgetWantsLocation</key>
 	<true/>
 	<key>CFBundleVersion</key>
-	<string>95</string>
+	<string>96</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 </dict>
