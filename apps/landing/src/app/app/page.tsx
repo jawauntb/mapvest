@@ -374,7 +374,6 @@ function SignedInHomeSettings({
       <div>
         <div className="app-muted">Signed in</div>
         <div>{user.email}</div>
-        <div className="app-muted">{user.id}</div>
       </div>
       <PlanPanel initial={ent} />
       <div style={{ display: "grid", gap: 8 }}>

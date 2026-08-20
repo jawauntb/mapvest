@@ -147,6 +147,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div>&copy; {new Date().getFullYear()} Mapvest. Not investment advice.</div>
             <div style={{ display: "flex", gap: 16 }}>
               <a href="/docs">Docs</a>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
               <a
                 href="https://github.com/jawauntb/mapvest"
                 target="_blank"

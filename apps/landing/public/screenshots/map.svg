@@ -30,19 +30,19 @@
         fill="#1f3a2a" stroke="#2a5540" stroke-width="1"/>
 
   <!-- roads -->
-  <path d="M 0 200 Q 100 186 180 214 T 320 224" fill="none" stroke="#3ee68a" stroke-width="1" stroke-opacity="0.42"/>
-  <path d="M 90 44 Q 100 158 160 254 T 200 424" fill="none" stroke="#3ee68a" stroke-width="1" stroke-opacity="0.28"/>
-  <path d="M 0 340 Q 160 320 320 340" fill="none" stroke="#3ee68a" stroke-width="1" stroke-opacity="0.28"/>
+  <path d="M 0 200 Q 100 186 180 214 T 320 224" fill="none" stroke="#14c4a6" stroke-width="1" stroke-opacity="0.42"/>
+  <path d="M 90 44 Q 100 158 160 254 T 200 424" fill="none" stroke="#14c4a6" stroke-width="1" stroke-opacity="0.28"/>
+  <path d="M 0 340 Q 160 320 320 340" fill="none" stroke="#14c4a6" stroke-width="1" stroke-opacity="0.28"/>
 
   <!-- Green pin 1 (public) -->
   <g transform="translate(58,152)">
-    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#3ee68a" stroke="#0a0a0a" stroke-width="1.5"/>
+    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#14c4a6" stroke="#0a0a0a" stroke-width="1.5"/>
     <circle cx="0" cy="-3" r="4" fill="#0a0a0a"/>
   </g>
 
   <!-- Green pin 2 (public) -->
   <g transform="translate(238,124)">
-    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#3ee68a" stroke="#0a0a0a" stroke-width="1.5"/>
+    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#14c4a6" stroke="#0a0a0a" stroke-width="1.5"/>
     <circle cx="0" cy="-3" r="4" fill="#0a0a0a"/>
   </g>
 
@@ -54,9 +54,9 @@
 
   <!-- Green pin 3 (public) — SELECTED with pulse -->
   <g transform="translate(180,268)">
-    <circle r="24" fill="none" stroke="#3ee68a" stroke-opacity="0.18" stroke-width="2"/>
-    <circle r="14" fill="none" stroke="#3ee68a" stroke-opacity="0.35" stroke-width="2"/>
-    <path d="M 0 -18 C -9 -18 -15 -12 -15 -4 C -15 5 -5 12 0 24 C 5 12 15 5 15 -4 C 15 -12 9 -18 0 -18 Z" fill="#3ee68a" stroke="#0a0a0a" stroke-width="1.5"/>
+    <circle r="24" fill="none" stroke="#14c4a6" stroke-opacity="0.18" stroke-width="2"/>
+    <circle r="14" fill="none" stroke="#14c4a6" stroke-opacity="0.35" stroke-width="2"/>
+    <path d="M 0 -18 C -9 -18 -15 -12 -15 -4 C -15 5 -5 12 0 24 C 5 12 15 5 15 -4 C 15 -12 9 -18 0 -18 Z" fill="#14c4a6" stroke="#0a0a0a" stroke-width="1.5"/>
     <circle cx="0" cy="-4" r="5" fill="#0a0a0a"/>
   </g>
 
@@ -68,13 +68,13 @@
 
   <!-- Green pin 4 (public) -->
   <g transform="translate(258,340)">
-    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#3ee68a" stroke="#0a0a0a" stroke-width="1.5"/>
+    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#14c4a6" stroke="#0a0a0a" stroke-width="1.5"/>
     <circle cx="0" cy="-3" r="4" fill="#0a0a0a"/>
   </g>
 
   <!-- Green pin 5 (public) -->
   <g transform="translate(220,180)">
-    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#3ee68a" stroke="#0a0a0a" stroke-width="1.5"/>
+    <path d="M 0 -16 C -8 -16 -13 -10 -13 -3 C -13 5 -4 11 0 21 C 4 11 13 5 13 -3 C 13 -10 8 -16 0 -16 Z" fill="#14c4a6" stroke="#0a0a0a" stroke-width="1.5"/>
     <circle cx="0" cy="-3" r="4" fill="#0a0a0a"/>
   </g>
 
@@ -90,15 +90,15 @@
 
   <!-- ticker chip for selected pin -->
   <g transform="translate(200,238)">
-    <rect x="0" y="0" width="96" height="26" rx="5" fill="#0a0a0a" stroke="#3ee68a" stroke-width="1"/>
-    <text x="10" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#3ee68a">$HSY</text>
+    <rect x="0" y="0" width="96" height="26" rx="5" fill="#0a0a0a" stroke="#14c4a6" stroke-width="1"/>
+    <text x="10" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#14c4a6">$HSY</text>
     <text x="52" y="17" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#a1a1a1">+0.77%</text>
   </g>
 
   <!-- legend chip -->
   <g transform="translate(16,388)">
     <rect x="0" y="0" width="130" height="26" rx="6" fill="#0a0a0a" stroke="#1f1f1f" stroke-width="1" fill-opacity="0.8"/>
-    <circle cx="12" cy="13" r="4" fill="#3ee68a"/>
+    <circle cx="12" cy="13" r="4" fill="#14c4a6"/>
     <text x="22" y="17" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Public · 5</text>
     <circle cx="72" cy="13" r="4" fill="#ff9f45"/>
     <text x="82" y="17" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" fill="#a1a1a1">Private · 2</text>
@@ -108,7 +108,7 @@
   <g transform="translate(0,424)">
     <rect x="0" y="0" width="320" height="82" rx="16" fill="#131313" stroke="#1f1f1f" stroke-width="1"/>
     <rect x="146" y="8" width="28" height="4" rx="2" fill="#2a2a2a"/>
-    <text x="20" y="34" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#3ee68a" letter-spacing="1.5">SELECTED · PUBLIC</text>
+    <text x="20" y="34" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#14c4a6" letter-spacing="1.5">SELECTED · PUBLIC</text>
     <text x="20" y="56" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Hershey&#8217;s Chocolate World</text>
     <text x="20" y="72" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="11" fill="#a1a1a1">$HSY · NYSE · Consumer Staples</text>
   </g>

@@ -19,18 +19,31 @@ import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { NativePriceChart } from "@/components/NativePriceChart";
 import { RichText } from "@/components/RichText";
 import { Skeleton } from "@/components/Skeleton";
-import { colors, elevation, radii, type } from "@/theme/tokens";
+import { colors, elevation, motion, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 /**
- * The one charts surface on the detail sheet. Price (the default view) and
- * all nine Underlying Terminal chart types share a single chip row at the top
- * of the page — one place to look, one block of screen real estate. Only the
- * selected chart's block mounts, so exactly one query runs at a time and
- * react-query keeps previously viewed charts warm.
+ * The one charts surface on the detail sheet. Price is the default and the
+ * only thing a first-time reader sees: chart, its interval chips, and a quiet
+ * "Advanced analytics" row underneath. The other nine Underlying Terminal
+ * chart types live behind that row — tapping it reveals the full chip set
+ * (Price included, current selection highlighted). Collapsing hides the chip
+ * row, never the selection, so a reader who picked Torque keeps Torque.
+ * Expansion is local state on purpose — nothing to persist, nothing to sync.
+ *
+ * Only the selected chart's block mounts, so exactly one query runs at a time
+ * and react-query keeps previously viewed charts warm.
  */
 
 const CHART_CHIPS = [
@@ -99,35 +112,38 @@ export function ChartsSection({ ticker, token }: { ticker: string; token?: strin
   const [interval, setInterval] = useState<QuoteHistoryInterval>("1d");
   const [periods, setPeriods] = useState<Partial<Record<ChartId, string>>>({});
   const [ridgeWindow, setRidgeWindow] = useState<(typeof RIDGE_WINDOWS)[number]>("1y");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Chevron points right when closed, down when open — the springy quarter
+  // turn is the only flourish here (motion tokens, same spring as ScalePressable).
+  const chevronTurn = useSharedValue(0);
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevronTurn.value * 90}deg` }],
+  }));
 
   const label = CHART_CHIPS.find((c) => c.id === chartId)?.label ?? chartId;
   const period = periods[chartId] ?? DEFAULT_PERIOD[chartId];
   const periodChips = PERIOD_CHIPS[chartId];
 
+  function toggleAdvanced() {
+    hapticSelect();
+    const next = !advancedOpen;
+    chevronTurn.value = withSpring(next ? 1 : 0, motion.springSnappy);
+    setAdvancedOpen(next);
+  }
+
+  // Collapsed with a terminal chart still selected: name it on the row so the
+  // way back to the chooser is obvious.
+  const advancedLabel = advancedOpen
+    ? "Hide advanced"
+    : chartId === "price"
+      ? "Advanced analytics"
+      : `Advanced analytics · ${label}`;
+
   return (
     <View style={{ gap: 8 }}>
       <Text style={styles.h2}>{`Charts · ${label}`}</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {CHART_CHIPS.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => {
-                hapticSelect();
-                setChartId(c.id);
-              }}
-              style={[styles.chip, chartId === c.id && styles.chipActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: chartId === c.id }}
-            >
-              <Text style={[styles.chipText, chartId === c.id && styles.chipTextActive]}>
-                {c.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
       <Text style={styles.explainer}>{CHART_EXPLAINERS[chartId]}</Text>
 
       {INTERVAL_CHARTS.has(chartId) ? (
@@ -205,6 +221,48 @@ export function ChartsSection({ ticker, token }: { ticker: string; token?: strin
           ridgeWindow={ridgeWindow}
         />
       </ChartErrorBoundary>
+
+      <Pressable
+        onPress={toggleAdvanced}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={advancedOpen ? "Hide advanced analytics" : "Advanced analytics"}
+        accessibilityHint={
+          advancedOpen ? "Hides the chart chooser" : "Shows the other nine chart types"
+        }
+        accessibilityState={{ expanded: advancedOpen }}
+        style={({ pressed }) => [styles.advancedBtn, pressed && styles.advancedBtnPressed]}
+      >
+        <Text style={styles.advancedBtnText}>{advancedLabel}</Text>
+        <Animated.View style={chevronStyle}>
+          <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+        </Animated.View>
+      </Pressable>
+
+      {advancedOpen ? (
+        <Animated.View entering={FadeInDown.duration(180)} exiting={FadeOutUp.duration(140)}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {CHART_CHIPS.map((c) => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => {
+                    hapticSelect();
+                    setChartId(c.id);
+                  }}
+                  style={[styles.chip, chartId === c.id && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: chartId === c.id }}
+                >
+                  <Text style={[styles.chipText, chartId === c.id && styles.chipTextActive]}>
+                    {c.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -491,6 +549,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  // Same pill as the sheet's other secondary rows (detail/[id].tsx `miniBtn`).
+  advancedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minHeight: 32,
+  },
+  advancedBtnPressed: { opacity: 0.7 },
+  advancedBtnText: { color: colors.accent, fontSize: 12, fontWeight: "600" },
   chipText: { color: colors.fg, fontSize: 12, fontWeight: "600" },
   chipTextActive: { color: colors.accentInk },
   periodBtn: {

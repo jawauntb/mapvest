@@ -4,7 +4,7 @@ import { LineSparkline } from "@/chartkit/LineSparkline";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const INTERVALS: { key: QuoteHistoryInterval; label: string }[] = [

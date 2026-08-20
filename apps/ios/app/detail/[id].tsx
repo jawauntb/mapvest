@@ -26,6 +26,7 @@ import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
+import { formatCompact, formatDecimal, formatMoney, formatPct } from "@/util/format";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -252,6 +253,18 @@ export default function DetailSheet() {
               </ChartErrorBoundary>
             ) : null}
 
+            {/* The brief and the news feed are the reason people open this
+                sheet, so they sit right under the chart. The brief stays
+                opt-in — it spends metered quota — and both keep their stage-2
+                mount so the sheet still paints before they exist. */}
+            {stage >= 2 && ticker ? (
+              <AgentOverviewBlock ticker={ticker} token={session?.token} />
+            ) : null}
+
+            {stage >= 2 && ticker ? (
+              <TickerNewsSection ticker={ticker} token={session?.token} />
+            ) : null}
+
             {stage >= 2 && ticker ? (
               <View style={{ gap: 10 }}>
                 <WatchlistActions
@@ -298,24 +311,6 @@ export default function DetailSheet() {
               </View>
             ) : null}
 
-            {isListed && data.comparables.length > 0 ? (
-              <Section title="Comparables">
-                {data.comparables.map((c, i) => (
-                  <ComparableRow key={`${c.ticker}-${i}`} c={c} />
-                ))}
-              </Section>
-            ) : null}
-
-            {!isListed || data.etfs.length > 0 ? (
-              <Section title="ETF exposure">
-                {data.etfs.length === 0 ? (
-                  <Text style={styles.muted}>No ETFs matched.</Text>
-                ) : (
-                  data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
-                )}
-              </Section>
-            ) : null}
-
             {ticker ? (
               <FinancialRatiosSection
                 data={analysisQ.data}
@@ -338,6 +333,24 @@ export default function DetailSheet() {
                 token={session?.token}
                 underlyingPrice={quote?.price}
               />
+            ) : null}
+
+            {isListed && data.comparables.length > 0 ? (
+              <Section title="Comparables">
+                {data.comparables.map((c, i) => (
+                  <ComparableRow key={`${c.ticker}-${i}`} c={c} />
+                ))}
+              </Section>
+            ) : null}
+
+            {!isListed || data.etfs.length > 0 ? (
+              <Section title="ETF exposure">
+                {data.etfs.length === 0 ? (
+                  <Text style={styles.muted}>No ETFs matched.</Text>
+                ) : (
+                  data.etfs.map((e, i) => <EtfRow key={`${e.ticker}-${i}`} e={e} />)
+                )}
+              </Section>
             ) : null}
 
             {stage >= 2 && ticker ? (
@@ -370,14 +383,6 @@ export default function DetailSheet() {
               </CollapsibleSection>
             ) : null}
 
-            {stage >= 2 && ticker ? (
-              <TickerNewsSection ticker={ticker} token={session?.token} />
-            ) : null}
-
-            {stage >= 2 && ticker ? (
-              <AgentOverviewBlock ticker={ticker} token={session?.token} />
-            ) : null}
-
             {dedupedSources.length > 0 ? (
               <CollapsibleSection title={`Sources · ${dedupedSources.length}`}>
                 <SourceList sources={dedupedSources} />
@@ -392,12 +397,22 @@ export default function DetailSheet() {
 
 function HomeBackButton() {
   const router = useRouter();
+  // Only flatten to Home when there is nothing to go back to (deep link, share
+  // extension, cold start). With history, going back keeps the trail the user
+  // built — detail → comparable → detail no longer collapses to the tab root.
+  const onPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)/home");
+  };
   return (
     <Pressable
-      onPress={() => router.replace("/(tabs)/home")}
+      onPress={onPress}
       hitSlop={10}
       accessibilityRole="button"
-      accessibilityLabel="Back to home"
+      accessibilityLabel="Back"
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -815,13 +830,10 @@ function FinancialRatiosSection({
   if (!data) return null;
 
   const rows: [string, string][] = [
-    ["P/E", data.trailingPe != null ? String(data.trailingPe) : "—"],
-    ["Mkt cap", data.marketCap != null ? String(data.marketCap) : "—"],
-    ["Price", data.price != null ? `$${data.price.toFixed(2)}` : "—"],
-    [
-      "Ann. vol",
-      data.annualVolatility != null ? `${(data.annualVolatility * 100).toFixed(1)}%` : "—",
-    ],
+    ["P/E", fmtLoose(data.trailingPe, (n) => formatDecimal(n))],
+    ["Mkt cap", fmtLoose(data.marketCap, formatCompact)],
+    ["Price", formatMoney(data.price)],
+    ["Ann. vol", formatPct(data.annualVolatility)],
     ["52w low", fmtLvl(data.fiftyTwoWeekLow)],
     ["52w high", fmtLvl(data.fiftyTwoWeekHigh)],
   ];
@@ -871,13 +883,13 @@ function MassiveRatiosSection({
       {ratio ? (
         <View style={styles.ratioGrid}>
           {[
-            ["P/E", formatRatio(ratio.priceToEarnings)],
-            ["P/B", formatRatio(ratio.priceToBook)],
-            ["P/S", formatRatio(ratio.priceToSales)],
-            ["Div. yield", formatPercent(ratio.dividendYield)],
-            ["ROE", formatPercent(ratio.returnOnEquity)],
-            ["ROA", formatPercent(ratio.returnOnAssets)],
-            ["D/E", formatRatio(ratio.debtToEquity)],
+            ["P/E", formatDecimal(ratio.priceToEarnings)],
+            ["P/B", formatDecimal(ratio.priceToBook)],
+            ["P/S", formatDecimal(ratio.priceToSales)],
+            ["Div. yield", formatPct(ratio.dividendYield)],
+            ["ROE", formatPct(ratio.returnOnEquity)],
+            ["ROA", formatPct(ratio.returnOnAssets)],
+            ["D/E", formatDecimal(ratio.debtToEquity)],
             ["As of", ratio.date ?? "—"],
           ].map(([label, value]) => (
             <View key={label} style={styles.ratioCard}>
@@ -891,16 +903,27 @@ function MassiveRatiosSection({
   );
 }
 
-function formatRatio(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+/**
+ * `/v1/analysis` forwards provider fields as-is, so `marketCap` / `trailingPe`
+ * arrive as a number *or* a numeric string ("3410000000000"). Numeric strings
+ * are formatted like numbers; a provider's own display string ("3.41T", "N/A")
+ * passes through untouched rather than becoming "NaN".
+ */
+function fmtLoose(value: string | number | undefined, format: (n: number) => string): string {
+  if (typeof value === "number") return Number.isFinite(value) ? format(value) : "—";
+  const raw = value?.trim();
+  if (!raw) return "—";
+  const parsed = Number(raw.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? format(parsed) : raw;
 }
 
-function formatPercent(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
-}
-
+/**
+ * Bare 2dp level — no currency symbol, because these call sites supply their own
+ * ("$" in the quote header, a trailing "%" for `changePct`, which arrives as a
+ * percentage number rather than a fraction). Rounding lives in `@/util/format`.
+ */
 function fmtLvl(n?: number): string {
-  return typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—";
+  return formatDecimal(n);
 }
 
 function ComparableRow({ c }: { c: Comparable }) {
@@ -916,8 +939,10 @@ function ComparableRow({ c }: { c: Comparable }) {
         </Text>
         <Text style={styles.rowSub}>{c.reasoning}</Text>
       </View>
+      {/* A missing score reads as 0% here rather than "—": the row is a match
+          confidence, and a blank would look like a broken cell. */}
       <Text style={styles.score}>
-        {Math.round((Number.isFinite(c.score) ? c.score : 0) * 100)}%
+        {formatPct(Number.isFinite(c.score) ? c.score : 0, { dp: 0 })}
       </Text>
     </Pressable>
   );
@@ -931,11 +956,7 @@ function EtfRow({ e }: { e: EtfExposure }) {
           {e.ticker} · {e.name}
         </Text>
       </View>
-      <Text style={styles.score}>
-        {typeof e.weight === "number" && Number.isFinite(e.weight)
-          ? `${(e.weight * 100).toFixed(2)}%`
-          : "—"}
-      </Text>
+      <Text style={styles.score}>{formatPct(e.weight, { dp: 2 })}</Text>
     </View>
   );
 }

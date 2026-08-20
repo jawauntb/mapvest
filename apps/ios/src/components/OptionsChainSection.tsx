@@ -1,6 +1,7 @@
 import { fetchOptionContracts, fetchOptionsChain } from "@/api/client";
 import type { OptionSnapshot } from "@/api/types";
 import { colors, radii, type } from "@/theme/tokens";
+import { formatDecimal, formatMoney, formatPct } from "@/util/format";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -129,12 +130,12 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
           <View style={styles.summaryGrid}>
             <Summary label="Spot" value={formatMoney(underlyingPrice)} />
             <Summary label="Contracts" value={String(contracts.length)} />
-            <Summary label="Avg IV" value={formatPercent(averageIv)} />
+            <Summary label="Avg IV" value={formatPct(averageIv)} />
             <Summary
               label="Max OI"
               value={
                 highestOpenInterest
-                  ? `${formatNumber(highestOpenInterest.openInterest)} · ${formatMoney(highestOpenInterest.strikePrice)}`
+                  ? `${formatDecimal(highestOpenInterest.openInterest, 0)} · ${formatMoney(highestOpenInterest.strikePrice)}`
                   : "—"
               }
             />
@@ -184,10 +185,10 @@ export function OptionsChainSection({ ticker, token, underlyingPrice }: Props) {
                     {formatMoney(contract.quote?.bid)} / {formatMoney(contract.quote?.ask)}
                   </Text>
                   <Text style={styles.cell}>
-                    {formatPercent(contract.impliedVolatility)} ·{" "}
+                    {formatPct(contract.impliedVolatility)} ·{" "}
                     {formatDecimal(contract.greeks?.delta)}
                   </Text>
-                  <Text style={styles.cell}>{formatNumber(contract.openInterest)}</Text>
+                  <Text style={styles.cell}>{formatDecimal(contract.openInterest, 0)}</Text>
                 </View>
               ))}
             </View>
@@ -214,22 +215,6 @@ function average(values: Array<number | undefined>): number | undefined {
     (value): value is number => typeof value === "number" && Number.isFinite(value),
   );
   return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : undefined;
-}
-
-function formatMoney(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? `$${value.toFixed(2)}` : "—";
-}
-
-function formatPercent(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
-}
-
-function formatDecimal(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
-}
-
-function formatNumber(value?: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "—";
 }
 
 const styles = StyleSheet.create({
