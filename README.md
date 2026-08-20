@@ -68,7 +68,7 @@ doppler run --project shared --config dev_personal -- bun run dev
 
 - **Landing**: https://mapvest.app (`www` on Railway; apex `301`s to `www`)
 - **API**: https://api-production-4b27.up.railway.app (see `docs/DEPLOY.md`)
-- **iOS**: TestFlight via EAS (see `apps/ios/README.md`)
+- **iOS**: TestFlight via EAS on every green `ci` on `main` (see `apps/ios/DEPLOY_TESTFLIGHT.md`)
 
 ## Docs
 

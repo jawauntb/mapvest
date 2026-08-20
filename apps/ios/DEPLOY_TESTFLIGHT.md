@@ -6,11 +6,17 @@ Everything is pre-configured. The three commands below run against the current
 
 ## CI (required for TestFlight)
 
-Repo secret `EXPO_TOKEN` (Expo access token; never commit it). Then, after the
-`buildNumber` in `app.json` is past the last App Store Connect version:
+Repo secret `EXPO_TOKEN` (Expo access token; never commit it). `eas.json`
+`production.autoIncrement` bumps `buildNumber` past the last EAS/App Store
+Connect version.
+
+Merges to `main` that pass `ci` cut a production TestFlight automatically
+(`.github/workflows/ios-eas-production.yml`, `workflow_run` after `ci`).
+Retry or cut from a tag without waiting for a merge:
 
 ```
 gh workflow run ios-eas-production.yml --ref main
+git tag v0.1.0 && git push origin v0.1.0
 ```
 
 Do not set `EAS_NO_VCS=1`. The EAS worker keeps the git root as
@@ -18,7 +24,7 @@ Do not set `EAS_NO_VCS=1`. The EAS worker keeps the git root as
 VCS-less archive from `apps/ios` (or a worktree pack that drops that nested
 path) fails in `PRE_INSTALL_HOOK` before native compilation.
 
-The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then `eas build --auto-submit --no-wait`. Watch the EAS build past `PRE_INSTALL_HOOK` — Actions only queues it.
+The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then waits on `eas build --auto-submit`. A failed hook or compile fails the Actions check.
 
 ## 0. One-time prerequisites
 

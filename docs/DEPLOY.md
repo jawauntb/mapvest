@@ -72,16 +72,18 @@ cd apps/ios
 eas build --platform ios --profile production --auto-submit --non-interactive
 ```
 
-### CI (preferred)
+### CI (automatic)
 
-GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`):
+GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`) cuts a production TestFlight after **green `ci` on `main`**, the same `workflow_run` gate as Railway `deploy.yml`. It checks out that merge SHA, waits for EAS (so a `PRE_INSTALL_HOOK` or compile miss is a red check), then `--auto-submit`s to App Store Connect.
+
+Also:
 
 - **Manual:** Actions → `ios-eas-production` → Run workflow (on `main`)
 - **Tag:** `git tag v0.1.0 && git push origin v0.1.0`
 
-Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. The job uses `--no-wait` so CI returns once EAS accepts the build.
+Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. Do not set `EAS_NO_VCS=1`.
 
-The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload.
+The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload. Production submits are serialized (`concurrency: ios-eas-production-store`).
 
 Public join URL (landing CTA): https://testflight.apple.com/join/yvYrrxbM
 
