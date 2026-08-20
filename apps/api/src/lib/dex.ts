@@ -20,7 +20,7 @@
  * effective tickers; `total` counts distinct seed tickers. Same unit, so the
  * fraction reconciles and completion is attainable.
  */
-import type { DexRarity, DexSector, Find } from "@mapvest/core";
+import type { DexRarity, DexRarityCounts, DexSector, Find } from "@mapvest/core";
 import { canonicalSector } from "@mapvest/finance";
 import { encodeGeohash } from "./geohash.js";
 
@@ -125,6 +125,42 @@ export function rarityForFind(find: Find, inSeed: boolean): DexRarity {
 }
 
 /**
+ * Collection identity of a find: its effective ticker, else the normalized
+ * brand. Mirrors `findIdentityKey` in finds-store — the journal is already
+ * unique on this key, so classifying by it keeps the rarity histogram in the
+ * same counting unit as the rest of the dex (one entry per company caught,
+ * not one per snapshot).
+ */
+function identityKey(find: Find): string {
+  return effectiveTicker(find) ?? find.brand.trim().toUpperCase();
+}
+
+/**
+ * Per-catch rarity histogram. One classification per distinct identity — over
+ * the journal `GET /v1/dex` reads (already unique per identity) the four
+ * counts sum exactly to `totalFinds`, which is the invariant the
+ * `DexRarityCounts` schema documents.
+ *
+ * `uncommon` is always 0 today: `rarityForFind` reserves it for the later
+ * market-cap split, and inventing a market cap to fill it would be fabricated
+ * data (AGENTS.md §2.4).
+ */
+export function rarityCounts(finds: Find[], seed: DexSeed): DexRarityCounts {
+  const tickerSectors = seedTickerSectors(seed);
+  const counts: DexRarityCounts = { common: 0, uncommon: 0, rare: 0, legendary: 0 };
+  const seen = new Set<string>();
+  for (const find of finds) {
+    const key = identityKey(find);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const ticker = effectiveTicker(find);
+    const inSeed = ticker !== null && tickerSectors.has(ticker);
+    counts[rarityForFind(find, inSeed)] += 1;
+  }
+  return counts;
+}
+
+/**
  * Build the full dex from a user's finds and the brand seed.
  *
  * - `sectors`: every sector present in the seed, sorted by name, with `found`
@@ -133,11 +169,17 @@ export function rarityForFind(find: Find, inSeed: boolean): DexRarity {
  *   ring is the whole point of a dex.
  * - `tilesVisited`: distinct geohash-6 cells across finds that carry coords.
  * - `totalFinds`: every find, including ones that match no seed entry.
+ * - `rarityCounts`: the per-catch rarity histogram (see `rarityCounts`).
  */
 export function computeDex(
   finds: Find[],
   seed: DexSeed,
-): { sectors: DexSector[]; tilesVisited: number; totalFinds: number } {
+): {
+  sectors: DexSector[];
+  tilesVisited: number;
+  totalFinds: number;
+  rarityCounts: DexRarityCounts;
+} {
   const tickerSectors = seedTickerSectors(seed);
   const totals = sectorTotals(seed);
 
@@ -169,5 +211,6 @@ export function computeDex(
     sectors,
     tilesVisited: tilesVisited(finds).size,
     totalFinds: finds.length,
+    rarityCounts: rarityCounts(finds, seed),
   };
 }

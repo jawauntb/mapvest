@@ -18,6 +18,8 @@ import chart from "./routes/chart.js";
 import cockpit, { alerts as underlyingAlerts } from "./routes/cockpit.js";
 import dex from "./routes/dex.js";
 import entitlements from "./routes/entitlements.js";
+import environment from "./routes/environment.js";
+import events from "./routes/events.js";
 import financials from "./routes/financials.js";
 import finds from "./routes/finds.js";
 import graph from "./routes/graph.js";
@@ -32,13 +34,17 @@ import news from "./routes/news.js";
 import options from "./routes/options.js";
 import progress from "./routes/progress.js";
 import proxy from "./routes/proxy.js";
+import pulse from "./routes/pulse.js";
 import push from "./routes/push.js";
+import quests from "./routes/quests.js";
 import quoteHistory from "./routes/quote-history.js";
 import quote from "./routes/quote.js";
 import resolve from "./routes/resolve.js";
+import rivalries from "./routes/rivalries.js";
 import robinhood from "./routes/robinhood.js";
 import sessionRoutes from "./routes/session.js";
 import settings from "./routes/settings.js";
+import territory from "./routes/territory.js";
 import underlying from "./routes/underlying.js";
 import universe from "./routes/universe.js";
 import watchlist from "./routes/watchlist.js";
@@ -117,8 +123,17 @@ app.route("/v1/widget", widget);
 app.route("/v1/progress", progress);
 app.route("/v1/universe", universe);
 app.route("/v1/dex", dex);
+app.route("/v1/quests", quests);
+// Geohash-tile territory (completion + pioneer) and the global event window.
+app.route("/v1/territory", territory);
+app.route("/v1/events", events);
+// Weekly head-to-head rivalries.
+app.route("/v1/rivalries", rivalries);
 // Company value-chain graph (supplier/customer/competitor edges).
 app.route("/v1/graph", graph);
+// Demand-side pulse (who buys from this company) + macro sector environment.
+app.route("/v1/pulse", pulse);
+app.route("/v1/environment", environment);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {

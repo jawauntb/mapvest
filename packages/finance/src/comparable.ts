@@ -1,5 +1,5 @@
 import type { Comparable, Source } from "@mapvest/core";
-import { enrichTicker, searchBrand, toSource, type SearchResult } from "@mapvest/search";
+import { type SearchResult, enrichTicker, searchBrand, toSource } from "@mapvest/search";
 import { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 
 const PRIMARY_MODEL = "openai/gpt-5.6-terra";

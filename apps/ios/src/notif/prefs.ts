@@ -14,7 +14,9 @@ export type PushEventKey =
   | "memo_finished"
   | "agent_response"
   | "identify_done"
-  | "watchlist_mover";
+  | "watchlist_mover"
+  | "find_evolution"
+  | "uncaught_nearby";
 
 export type PushPrefs = Partial<Record<PushEventKey, boolean>> & {
   last_lat?: number;
@@ -30,6 +32,8 @@ export const PUSH_EVENT_LABELS: Record<PushEventKey, string> = {
   agent_response: "Agent response ready",
   identify_done: "Image processing done",
   watchlist_mover: "Watchlist movers (over 5% intraday)",
+  find_evolution: "Find evolutions (something you found is up since you found it)",
+  uncaught_nearby: "Uncaught nearby (a brand you haven't caught is close by)",
 };
 
 export const PUSH_EVENT_ORDER: PushEventKey[] = [
@@ -40,6 +44,8 @@ export const PUSH_EVENT_ORDER: PushEventKey[] = [
   "agent_response",
   "identify_done",
   "watchlist_mover",
+  "find_evolution",
+  "uncaught_nearby",
 ];
 
 /** GET /v1/push/prefs → { prefs, tokenId } */

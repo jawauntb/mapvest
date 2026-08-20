@@ -1,14 +1,10 @@
+import type { Session, User } from "@mapvest/core";
 import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { z } from "zod";
-import type { Session, User } from "@mapvest/core";
 import { isDev, sessionSigningKey } from "../lib/env.js";
-import {
-  consumePendingLink,
-  findOrCreateUserByEmail,
-  storePendingLink,
-} from "../lib/store.js";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import { consumePendingLink, findOrCreateUserByEmail, storePendingLink } from "../lib/store.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const auth = new Hono<AuthEnv>();
 
@@ -54,9 +50,7 @@ auth.post("/request-magic-link", async (c) => {
 
   if (isDev()) {
     const baseUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 3001}`;
-    console.log(
-      `[auth] magic link for ${email}: ${baseUrl}/v1/auth/verify?token=${token}`,
-    );
+    console.log(`[auth] magic link for ${email}: ${baseUrl}/v1/auth/verify?token=${token}`);
   }
 
   return c.json({ sent: true });

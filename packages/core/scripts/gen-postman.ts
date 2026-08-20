@@ -154,10 +154,7 @@ const tagDescriptions = new Map<string, string>(
 
 const methods = ["get", "post", "put", "delete", "patch"] as const;
 
-for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [
-  string,
-  Doc,
-][]) {
+for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [string, Doc][]) {
   for (const method of methods) {
     const op = pathItem[method];
     if (!op) continue;
@@ -189,9 +186,7 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [
 
     const url = {
       raw: `{{baseUrl}}${rawPath}${
-        query.length > 0
-          ? `?${query.map((q) => `${q.key}=${q.value}`).join("&")}`
-          : ""
+        query.length > 0 ? `?${query.map((q) => `${q.key}=${q.value}`).join("&")}` : ""
       }`,
       host: ["{{baseUrl}}"],
       path: segments,
@@ -204,11 +199,7 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [
     if (content?.["application/json"]?.schema) {
       body = {
         mode: "raw",
-        raw: JSON.stringify(
-          example(content["application/json"].schema),
-          null,
-          2,
-        ),
+        raw: JSON.stringify(example(content["application/json"].schema), null, 2),
         options: { raw: { language: "json" } },
       };
     } else if (content?.["multipart/form-data"]?.schema) {
@@ -217,7 +208,8 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [
       body = {
         mode: "formdata",
         formdata: Object.entries(props).map(([k, v]: [string, Doc]) => {
-          const isBinary = v?.format === "binary" || v?.type === "string" && v?.format === "binary";
+          const isBinary =
+            v?.format === "binary" || (v?.type === "string" && v?.format === "binary");
           if (isBinary) {
             return { key: k, type: "file" as const };
           }
@@ -245,9 +237,7 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [
           ? {
               auth: {
                 type: "bearer" as const,
-                bearer: [
-                  { key: "token", value: "{{sessionToken}}", type: "string" as const },
-                ],
+                bearer: [{ key: "token", value: "{{sessionToken}}", type: "string" as const }],
               },
             }
           : {}),
@@ -268,8 +258,7 @@ const collection = {
     description: `${
       doc.info?.description ?? ""
     }\n\nGenerated from openapi.yaml. Regenerate: \`bun run openapi && bun run postman\`.`,
-    schema:
-      "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
   },
   item: Array.from(folders.values()),
   variable: [

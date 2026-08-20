@@ -80,11 +80,11 @@ you physically discovered got more valuable on its own.
 - [x] `findEvolutionNotifier` beside `moverNotifier`: scan `user_finds`
       against current quotes, existing dedupe store, one evolution push per
       find per tier ever.
-- [ ] Push copy is personal, spatial, time-anchored: "The Chipotle you spotted
+- [x] Push copy is personal, spatial, time-anchored: "The Chipotle you spotted
       on Valencia St is up 26% since you found it."
 - [x] Fix `moverNotifier` copy or retarget it at finds — "it's in your
       universe" must be true.
-- [ ] Journal rows + map badges get tier rings (bronze/silver/gold).
+- [x] Journal rows + map badges get tier rings (bronze/silver/gold).
 
 Framing rule: an evolution is a **collection event, not a buy signal**. Copy
 never says buy/sell/should. This keeps the game clean and keeps us out of
@@ -100,7 +100,7 @@ The single highest-value retention artifact per unit of effort in this plan.
 - [x] One aggregate number from data we already store: "If you'd put $100
       into every find at the moment you found it, your universe would be
       worth $X." Server-computed from `found_price` vs current quotes.
-- [ ] Rendered at the top of `universe.tsx` and on Home. Shareable.
+- [x] Rendered at the top of `universe.tsx` and on Home. Shareable.
 
 **Acceptance**: number matches hand-computed value for a seeded user;
 finds without `found_price` are excluded, not faked (AGENTS §2.4).
@@ -114,35 +114,42 @@ finds without `found_price` are excluded, not faked (AGENTS §2.4).
       resolved by the vision pipeline = legendary — and that catch feeds the
       seed table. Users become the data flywheel.
 - [x] Regional dex: distinct geohash-6 tiles with ≥1 find.
-- [ ] Completion badges write XP to `user_progress`.
+- [x] Completion badges write XP to `user_progress`.
 
 **Acceptance**: dex counts reconcile with `user_finds` × `brands.json`;
 catching a new-to-seed brand surfaces a "legendary" state.
 
 ### A5 — Daily quests
 
-- [ ] Quest generator over verifiable actions only: identify a private brand,
+- [x] Quest generator over verifiable actions only: identify a private brand,
       find in a never-visited tile, fill an empty sector.
-- [ ] Quest completion grants XP; optionally grants identify credits to free
+- [x] Quest completion grants XP; optionally grants identify credits to free
       users (engagement mechanic and monetization funnel in one).
+      (XP only — idempotent per quest id via `awardXp`. The optional
+      identify-credit grant was deliberately not built.)
 
 **Acceptance**: quests verify server-side from the find stream; no
 self-reported completion.
 
 ### A6 — Territory
 
-- [ ] "Pioneer" bonus: first find in a geohash tile.
-- [ ] Neighborhood completion: "6 of 11 investable brands found in this tile"
+- [x] "Pioneer" bonus: first find in a geohash tile.
+- [x] Neighborhood completion: "6 of 11 investable brands found in this tile"
       via the nearby cascade.
-- [ ] Add a geohash column (or index) to `user_finds` for tile queries.
+- [x] Add a geohash column (or index) to `user_finds` for tile queries.
 
 **Acceptance**: tile completion count matches `/v1/nearby` investables for
 that tile.
 
 ### A7 — Events
 
-- [ ] Scheduler-driven quest modifiers: Sector Saturday (2× XP for a sector),
+- [~] Scheduler-driven quest modifiers: Sector Saturday (2× XP for a sector),
       earnings-week events from corporate-events data.
+      (Sector Saturday ships and its multiplier is applied in
+      `progress-store.ts`, but the window is derived from the clock on
+      read — there is no scheduler row. Earnings-week events are not
+      built: they need the Massive corporate-events feed, which is off
+      by default via `MASSIVE_CORPORATE_EVENTS_ENABLED=0`.)
 
 **Acceptance**: event window opens/closes on schedule; XP multiplier applies
 only inside it.
@@ -182,12 +189,15 @@ map load.
 
 Roughly-hourly background location with **no new permission ask**.
 
-- [ ] Widget requests location under the existing When-In-Use grant
+- [~] Widget requests location under the existing When-In-Use grant
       (`NSWidgetWantsLocation`); each timeline refresh POSTs the fix to the
       existing heartbeat (`push_tokens.prefs.last_lat/last_lng`).
 
-**Acceptance**: with the app closed and widget installed, server sees fixes
-move during a normal day.
+**Acceptance** (DEFERRED — needs `expo prebuild` + a device build): with the
+app closed and widget installed, server sees fixes move during a normal day.
+The Swift heartbeat, the `NSWidgetWantsLocation` plist and the app-side
+relay (`syncWidgetFixIfFresh`, wired into `PushBridge` in `app/_layout.tsx`)
+are all in the tree and inert until that build.
 
 ### B4 — Arrival push: uncaught-nearby with scoring
 
@@ -195,28 +205,40 @@ The strongest engagement surface in this plan. Not hourly summaries —
 arrival-triggered collection gaps: "JPM is 200m away and it's not in your
 universe."
 
-- [ ] Notifier on the existing >2km move trigger: heartbeat location → nearby
+- [x] Notifier on the existing >2km move trigger: heartbeat location → nearby
       cascade → investables minus `user_finds` minus watchlist = uncaught set.
-- [ ] Score candidates before pushing: personal affinity (sectors the user
+- [x] Score candidates before pushing: personal affinity (sectors the user
       catches/watchlists, `usage_events`), dex value (fills an empty sector,
       first-in-tile, rarity), timeliness (moved today, earnings this week),
       novelty (never pushed — dedupe store).
-- [ ] **Budget discipline is a hard rule**: max one push per arrival, max two
+- [x] **Budget discipline is a hard rule**: max one push per arrival, max two
       per day, threshold-gated, silent otherwise. A mediocre daily ping
       trains users to swipe away the great ones.
-- [ ] Push opens the map with the uncaught pin highlighted.
+- [~] Push opens the map with the uncaught pin highlighted.
+      (The push carries `ticker`/`lat`/`lng` and a tap now routes through
+      `notif/router.ts` to that company's detail page. The map screen takes
+      no deep-link params yet, so nothing is highlighted on it.)
 
 **Acceptance**: seeded user in a new tile with a high-scoring uncaught ticker
 gets exactly one push; same tile next hour gets none.
 
 ### B5 — Always-permission visit monitoring (power users)
 
-- [ ] `CLVisit` / significant-location-change via expo-location + TaskManager
+- [~] `CLVisit` / significant-location-change via expo-location + TaskManager
       for home→work-grade arrival detection at near-zero battery.
-- [ ] Ask for Always **only after** the user has felt B4's value from the
+- [~] Ask for Always **only after** the user has felt B4's value from the
       widget path — never at onboarding.
+      (`src/location/visits.ts` implements enable/disable/status against
+      expo-location + TaskManager, but nothing calls it yet — the ask has
+      no UI entry point, by design, until B4 has proven itself on device.
+      The `app.json` background-location declarations — `UIBackgroundModes:
+      ["location"]`, the Always usage strings, `isIosBackgroundLocationEnabled`
+      — were deliberately REMOVED until the UI entry point ships: declaring a
+      background-location mode with no reachable feature is a routine App
+      Review rejection. Re-add them in the same change that wires the toggle.)
 
-**Acceptance**: arrival at a recurring location fires the B4 pipeline with
+**Acceptance** (DEFERRED — needs `expo prebuild`, a device build, and an
+Always grant): arrival at a recurring location fires the B4 pipeline with
 the app killed.
 
 ---
@@ -270,7 +292,7 @@ real tickers and sources; second call is a cache hit; junk tickers rejected.
 
 ### C2 — Orbit view + constellations
 
-- [ ] Detail page Orbit view: company centered, suppliers below, buyers
+- [x] Detail page Orbit view: company centered, suppliers below, buyers
       above, comps beside; each edge taps through to its citation.
 - [ ] Universe constellation view: caught nodes lit, graph-adjacent uncaught
       nodes grayed (same silhouette language as B2).
@@ -281,9 +303,9 @@ the graph.
 
 ### C3 — Demand pulse
 
-- [ ] Wire Massive income-statement / cash-flow endpoints
+- [x] Wire Massive income-statement / cash-flow endpoints
       (`packages/finance/src/marketData/`).
-- [ ] For a ticker's `buys_from` edges, aggregate buyer revenue/capex
+- [x] For a ticker's `buys_from` edges, aggregate buyer revenue/capex
       trajectories into one signal: is the money upstream of this company
       growing or shrinking.
 
@@ -292,9 +314,12 @@ move; pulse cites per-buyer sources.
 
 ### C4 — Environment layer
 
-- [ ] FRED provider (free API) in `marketData/` style: rates, CPI,
+- [~] FRED provider (free API) in `marketData/` style: rates, CPI,
       sector-mapped series. Region resolved per company listing/HQ.
-- [ ] Environment brief per sector: the local-brief generator shape (gather →
+      (Ships dark: `FRED_API_KEY` is not in Doppler yet, so `fredConfigured()`
+      is false and briefs omit `series[]` entirely. Series are sector-mapped;
+      per-company region resolution is NOT built — every series is US national.)
+- [x] Environment brief per sector: the local-brief generator shape (gather →
       Opus → Tailwinds/Headwinds → cache) at sector scale; policy/culture via
       Exa with recency filters, treated as qualitative color, never as data.
 
@@ -303,7 +328,7 @@ move; pulse cites per-buyer sources.
 
 ### C5 — Synthesis memo
 
-- [ ] Extend `POST /v1/memo`: prompt receives the three layer briefs
+- [x] Extend `POST /v1/memo`: prompt receives the three layer briefs
       (upstream / demand / environment) + ratios, and is asked exactly:
       what is the binding constraint on this business, how durable is the
       demand above it, where in the chain does pricing power sit.
@@ -318,9 +343,9 @@ The solo "battle" that fits. PvP is rejected: needs a social graph, and
 drifts toward prediction-market energy that muddies "learn how the economy
 works."
 
-- [ ] Pit a find against a comparable (NVDA vs AMD) as a tracked weekly
+- [x] Pit a find against a comparable (NVDA vs AMD) as a tracked weekly
       matchup; push when the round closes with the running record.
-- [ ] Optional pre-registered pick for XP — a conviction game that trains
+- [x] Optional pre-registered pick for XP — a conviction game that trains
       exactly long/short pair intuition, with no positions.
 
 **Acceptance**: weekly close computes winner from provider quotes; one push
@@ -373,3 +398,22 @@ Order of ship, with the dependency that forces it:
 
 Slices 1–8 need zero new permissions, zero new external providers, and no
 background machinery — each moves retention on its own.
+
+## 6. Wave-2 follow-ups (known, deliberate deferrals)
+
+- [ ] Quest/territory baselines read `listFinds(·, 200)` — a user with >200
+      finds gets a truncated "before today" baseline, so `new_tile` /
+      `new_sector` can re-complete for tiles/sectors visited long ago. Fix:
+      dedicated `SELECT DISTINCT geohash6` / distinct-effective-ticker store
+      queries feeding `completionFor` and the territory numerator.
+- [ ] Pre-`geohash6`-migration finds never claimed a `pioneer:` grant, so the
+      first post-migration find in an already-visited tile still collects the
+      bonus once. One-time backfill of `geohash6` (and optionally the grant
+      ledger) closes it.
+- [ ] iOS lockstep: `src/api/graph.ts` declares CompanyEdge/DemandPulse as
+      plain TS types; move them (and the unconsumed Territory/Events/Rivalry/
+      Environment/Synthesis shapes when the UI consumes them) into
+      `src/api/types.ts` as zod mirrors per that file's convention.
+- [ ] Layering: `demand-pulse.ts` / `environment-brief-generator.ts` pure math
+      could move into `packages/finance` (docstrings currently state the real
+      location; `local-brief-generator.ts` is the in-apps/api precedent).

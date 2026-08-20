@@ -50,7 +50,9 @@ suite("identify pipeline — real API", () => {
 
   // Lazy import so the top-level module load doesn't require the
   // @mapvest/vision package to resolve when we're not running.
+  // biome-ignore format: `(typeof import(...))["x"]` must stay single-line — the formatter mangles the multi-line form into a parse error.
   let identifyFromImage: (typeof import("@mapvest/vision"))["identifyFromImage"];
+  // biome-ignore format: same single-line constraint as above.
   let generateStubImages: (typeof import("../../scripts/generate-stub-images.js"))["generateStubImages"];
 
   beforeAll(async () => {
@@ -85,29 +87,25 @@ suite("identify pipeline — real API", () => {
   }
 
   for (const fixture of manifest.fixtures) {
-    test(
-      `${fixture.id} → ${fixture.expected.brand} (${fixture.expected.ticker})`,
-      async () => {
-        const bytes = await loadImage(fixture);
-        expect(bytes.length).toBeGreaterThan(0);
+    test(`${fixture.id} → ${fixture.expected.brand} (${fixture.expected.ticker})`, async () => {
+      const bytes = await loadImage(fixture);
+      expect(bytes.length).toBeGreaterThan(0);
 
-        const identification = await identifyFromImage(bytes);
-        expect(identification).toBeDefined();
-        expect(Array.isArray(identification.detected)).toBe(true);
-        expect(typeof identification.modelUsed).toBe("string");
+      const identification = await identifyFromImage(bytes);
+      expect(identification).toBeDefined();
+      expect(Array.isArray(identification.detected)).toBe(true);
+      expect(typeof identification.modelUsed).toBe("string");
 
-        if (MOCK_FIXTURES) {
-          // With stub images the model has nothing meaningful to see;
-          // we only assert the pipeline round-trip works.
-          return;
-        }
+      if (MOCK_FIXTURES) {
+        // With stub images the model has nothing meaningful to see;
+        // we only assert the pipeline round-trip works.
+        return;
+      }
 
-        const brands = identification.detected
-          .map((d) => (d.brand ?? "").toLowerCase())
-          .filter(Boolean);
-        expect(brands.some((b) => b.includes(fixture.expected.brand.toLowerCase()))).toBe(true);
-      },
-      60_000,
-    );
+      const brands = identification.detected
+        .map((d) => (d.brand ?? "").toLowerCase())
+        .filter(Boolean);
+      expect(brands.some((b) => b.includes(fixture.expected.brand.toLowerCase()))).toBe(true);
+    }, 60_000);
   }
 });

@@ -247,12 +247,12 @@ The loop: discover → understand → payoff. XP is the only currency; levels
 gate cosmetics, never features.
 
 - [x] A1 `user_progress` store; streak moves server-side
-- [~] A2 evolution notifier (+ fix `moverNotifier` "universe" copy — it scans the watchlist)
-- [~] A3 counterfactual universe portfolio ("$100 per find at found price → worth $X today")
+- [x] A2 evolution notifier (+ fix `moverNotifier` "universe" copy — it scans the watchlist)
+- [x] A3 counterfactual universe portfolio ("$100 per find at found price → worth $X today")
 - [~] A4 sector dex + rarity tiers from `brands.json`
-- [ ] A5 daily quests (server-verified from the find stream)
-- [ ] A6 territory (geohash pioneer + neighborhood completion)
-- [ ] A7 scheduler-driven events
+- [x] A5 daily quests (server-verified from the find stream)
+- [x] A6 territory (geohash pioneer + neighborhood completion)
+- [~] A7 scheduler-driven events (Sector Saturday only, derived on read; earnings-week events need the Massive corporate-events feed)
 
 **Acceptance**: streak survives reinstall; one evolution push per find per
 tier; dex counts reconcile with `user_finds` × `brands.json`.
@@ -267,9 +267,9 @@ push. Notification budget is product law (max 1/arrival, 2/day, threshold-gated)
 
 - [x] B1 foreground Local Economy Brief refresh (>2km → refetch)
 - [x] B2 uncaught silhouette pins on the map
-- [ ] B3 widget location heartbeat (`NSWidgetWantsLocation`, no new permission)
-- [ ] B4 arrival push: scored uncaught-nearby ("JPM is 200m away, not in your universe")
-- [ ] B5 Always-permission visit monitoring (ask only after B4 proves value)
+- [~] B3 widget location heartbeat (`NSWidgetWantsLocation`, no new permission) — code in tree, acceptance deferred to the next `expo prebuild` + device build
+- [x] B4 arrival push: scored uncaught-nearby ("JPM is 200m away, not in your universe")
+- [~] B5 Always-permission visit monitoring (ask only after B4 proves value) — `src/location/visits.ts` in tree with no caller and no UI ask; acceptance deferred to the next prebuild + device build
 
 **Acceptance**: Astoria→Flatiron refreshes the brief on foreground; new-tile
 arrival with a high-scoring uncaught ticker → exactly one push.
@@ -284,11 +284,11 @@ the game board (constellations). Filings stay proxied via `underlying-terminal`;
 `sources` designed provider-agnostic so first-party EDGAR can slot in later.
 
 - [x] C1 `company_edges` store + `valueChain.ts` extraction + `GET /v1/graph/:ticker`
-- [ ] C2 Orbit view + universe constellations (uncaught nodes grayed)
-- [ ] C3 demand pulse (wire Massive fundamentals; aggregate buyer capex/revenue)
-- [ ] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief)
-- [ ] C5 synthesis memo (binding constraint · demand durability · pricing power)
-- [ ] C6 rivalries (find vs comparable, weekly; PvP rejected)
+- [~] C2 Orbit view + universe constellations (uncaught nodes grayed) — Orbit view ships on detail + `/orbit/:ticker`; the universe constellation view and edge-based quests are not built
+- [x] C3 demand pulse (wire Massive fundamentals; aggregate buyer capex/revenue)
+- [~] C4 environment layer (FRED provider + sector-scale Tailwinds/Headwinds brief) — brief ships; FRED half is dark until `FRED_API_KEY` lands in Doppler
+- [x] C5 synthesis memo (binding constraint · demand durability · pricing power)
+- [x] C6 rivalries (find vs comparable, weekly; PvP rejected)
 
 **Acceptance**: `GET /v1/graph/NVDA` returns cited supplier + buyer edges,
 cache-hit on second call; synthesis memo cites ≥1 upstream and ≥1 downstream

@@ -1,6 +1,6 @@
+import type { Session, User } from "@mapvest/core";
 import type { MiddlewareHandler } from "hono";
 import { verify } from "hono/jwt";
-import type { Session, User } from "@mapvest/core";
 import { sessionSigningKey } from "../lib/env.js";
 import { ensureUser, getUserById } from "../lib/store.js";
 
@@ -34,8 +34,7 @@ export const bearerAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   if (!userId) return c.json({ error: "invalid token subject" }, 401);
   const email = typeof payload.email === "string" ? payload.email : undefined;
   // Rehydrate from Postgres (or memory) when JWT still carries email after restarts.
-  const user =
-    (await getUserById(userId)) ?? (email ? await ensureUser(userId, email) : undefined);
+  const user = (await getUserById(userId)) ?? (email ? await ensureUser(userId, email) : undefined);
   if (!user) return c.json({ error: "unknown user" }, 401);
 
   const expSec = typeof payload.exp === "number" ? payload.exp : 0;

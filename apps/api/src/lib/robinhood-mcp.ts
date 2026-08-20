@@ -1,6 +1,6 @@
+import { createHash } from "node:crypto";
 import { encryptSecret } from "./crypto-secret.js";
 import { dbEnabled, getSql, initDb } from "./db.js";
-import { createHash } from "node:crypto";
 
 /**
  * Per-user Robinhood MCP credentials.

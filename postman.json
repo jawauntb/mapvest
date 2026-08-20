@@ -125,7 +125,7 @@
                 "progress"
               ]
             },
-            "description": "Server-side truth for XP, level, streak length, and streak-freeze inventory. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`).",
+            "description": "Server-side truth for XP, level, streak length, streak-freeze inventory, and earned `badges`. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`). `badges` holds opaque earned badge keys (e.g. `sector:Consumer Staples`) awarded server-side — clients never post a badge and must render an unknown key generically.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -182,7 +182,236 @@
                 "dex"
               ]
             },
-            "description": "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find). Rarity tiers are enumerated by the `DexRarity` component.",
+            "description": "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find) and `rarityCounts`, the per-find histogram over the four `DexRarity` tiers. Every find is classified into exactly one tier, so the four counts sum to `totalFinds`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Daily quests for the signed-in user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/quests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "quests"
+              ]
+            },
+            "description": "The caller's quest set for the current UTC day. Quests cover verifiable actions only (`catch_any`, `catch_private`, `new_tile`, `new_sector`) and are evaluated server-side from the find stream — completion is never self-reported, so there is no endpoint to claim one. `id` is deterministic per day and kind (`{YYYY-MM-DD}:{kind}`), which is what makes XP grantable at most once per quest. `xpGrantedToday` reports XP already written to `user_progress` for `day`; the client displays it and never adds to it.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tile completion for a location",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/territory?lat=40.7128&lng=-74.006",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "territory"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "40.7128"
+                },
+                {
+                  "key": "lng",
+                  "value": "-74.006"
+                }
+              ]
+            },
+            "description": "Completion state for the geohash-6 tile containing `lat`/`lng`. `investablesTotal` is how many investable brands the same nearby cascade behind `/v1/nearby` resolves inside the tile, and `found` is how many of those the caller has already caught, so the two reconcile with `/v1/nearby` for that tile. `pioneer` is true when the caller has not yet recorded a find in this tile — the write-time pioneer XP bonus is still available here. The counts come from a live places + brand join, so the response carries `sources` (AGENTS.md §6) — an uncitable lookup returns fewer sources, never an invented one.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Currently open XP event, if any",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/events/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "events",
+                "current"
+              ]
+            },
+            "description": "The scheduler-driven quest modifier that is open right now — e.g. Sector Saturday doubling XP for one sector, or an earnings-week window. The schedule is global rather than per-user, so no auth is required. `active` is explicitly `null` when no window is open, letting the client distinguish 'no event' from a failed fetch. The `multiplier` applies to find XP only (quest XP is awarded at face value), only inside `[startsAt, endsAt)`, and an event with no `sector` applies to every sector."
+          }
+        },
+        {
+          "name": "Weekly matchups for the signed-in user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rivalries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rivalries"
+              ]
+            },
+            "description": "The caller's tracked solo matchups (e.g. NVDA vs AMD) with the running win/loss/draw record. Collection and comprehension mechanic only: a rivalry is not a position and the copy never instructs a trade. `weekStart` is the Monday of the current round as a UTC calendar day, so the round boundary does not move with the device timezone.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start a weekly matchup against a comparable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rivalries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rivalries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\",\n  \"rivalTicker\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Creates a solo weekly matchup for one of the caller's finds. Omit `rivalTicker` and the server picks the opponent from the existing comparables pipeline in `packages/finance` — the client must not invent a rival, and a ticker with no resolvable comparable returns 422 rather than a fabricated opponent. The optional pre-registered `currentPick` on the returned rivalry is a conviction game scored for XP; it is not an order and creates no position.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pre-register (or clear) the conviction pick for the open round",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rivalries/{id}/pick",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rivalries",
+                "{id}",
+                "pick"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pick\": \"ticker\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Body is `{ pick: \"ticker\" | \"rival\" | null }` — `null` clears the pick. A correct pick earns XP at the weekly close, which then clears it so a pick never carries into a round it was not registered for. Not an order; creates no position.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete a rivalry",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rivalries/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rivalries",
+                "{id}"
+              ]
+            },
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -820,6 +1049,78 @@
               ]
             },
             "description": "Cache-first: served from the `company_edges` store, extracted on miss with in-flight dedupe per ticker and refreshed when a new 10-K lands rather than on a short TTL. Cache hits are free and identity-less; a cache MISS spends provider money, so generation requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent; concurrent callers sharing one in-flight extraction are charged once). Edges are cited from 10-K items 1/1A evidence (supplier concentration and >10% customers are disclosed there) plus Exa open-web results; every edge carries `sources` (AGENTS.md §6) and an edge that cannot be cited is not emitted. Private counterparties keep `dstName` with no `dstTicker` — never an invented one. Empty and failing extractions are negatively cached for an hour. Returns 502 when extraction fails."
+          }
+        },
+        {
+          "name": "Demand pulse (is the money upstream growing or shrinking)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/pulse/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "pulse",
+                "{ticker}"
+              ]
+            },
+            "description": "Aggregates the buyer side of a ticker's value chain into one signal: the `buys_from` counterparties from `/v1/graph/{ticker}` joined to provider income-statement / cash-flow series, weighted by edge weight. Metered exactly like `/v1/graph` — cache hits are free and identity-less; a cache MISS spends provider money, so generation requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). `pulse` is `null` (and `interpretation` is `unknown`) when no buyer fundamentals resolved — never zero-filled — and a buyer whose series is missing keeps `revenueYoY`/`capexYoY` omitted (AGENTS.md §2.4). Every fetched series is cited in `sources` (AGENTS.md §6)."
+          }
+        },
+        {
+          "name": "Macro environment brief for a sector",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/environment/{sector}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "environment",
+                "{sector}"
+              ]
+            },
+            "description": "The gather → LLM → tailwinds/headwinds brief at sector scale, cached 24h. `series` holds the quantitative FRED observations behind the brief; policy and culture color gathered via Exa with recency filters is qualitative and is cited in `sources` alongside them, never promoted into `series`. Metered exactly like `/v1/graph` — cache hits are free, a cache MISS requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). Degrades honestly: with `FRED_API_KEY` unset the brief ships with `series: []` and Exa color only; 503 only when neither FRED nor Exa (nor the LLM) is configured. Macro numbers are never synthesized."
+          }
+        },
+        {
+          "name": "Layered synthesis memo (billable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/memo/synthesis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "memo",
+                "synthesis"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"NVDA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The layered memo. The prompt receives the three layer briefs — upstream (`/v1/graph/{ticker}`), demand (`/v1/pulse/{ticker}`), and environment (`/v1/environment/{sector}`) — plus ratios, and is asked exactly three questions: what is the binding constraint on this business, how durable is the demand above it, and where in the chain does pricing power sit. Those answers come back as `bindingConstraint` / `demandDurability` / `pricingPower`, each grounded in the cited layer briefs. They are optional because the memo degrades gracefully: with an empty graph, no pulse, and no environment brief it returns a plain `memo` and omits the layer answers rather than guessing them. Metered exactly like `/v1/graph` — cache hits are free, a cache MISS requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). Every layer fact carried into an answer is cited in `sources` (AGENTS.md §6)."
           }
         },
         {

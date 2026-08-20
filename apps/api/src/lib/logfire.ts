@@ -22,8 +22,7 @@
 const SERVICE_NAME = process.env.LOGFIRE_SERVICE_NAME ?? "mapvest-api";
 const LOGFIRE_TOKEN = process.env.LOGFIRE_TOKEN;
 const LOGFIRE_ENDPOINT =
-  process.env.LOGFIRE_ENDPOINT ??
-  "https://logfire-api.pydantic.dev/v1/traces";
+  process.env.LOGFIRE_ENDPOINT ?? "https://logfire-api.pydantic.dev/v1/traces";
 
 export type SpanAttrs = Record<string, unknown>;
 
@@ -44,8 +43,7 @@ export interface Span {
 function nowNs(): bigint {
   // High-precision epoch nanoseconds. performance.timeOrigin is ms since epoch.
   return (
-    BigInt(Math.floor(performance.timeOrigin * 1e6)) +
-    BigInt(Math.floor(performance.now() * 1e6))
+    BigInt(Math.floor(performance.timeOrigin * 1e6)) + BigInt(Math.floor(performance.now() * 1e6))
   );
 }
 
@@ -165,11 +163,7 @@ export function startSpan(name: string, attrs?: SpanAttrs): Span {
   return new SpanImpl(name, attrs);
 }
 
-export function recordCounter(
-  name: string,
-  value: number,
-  attrs?: SpanAttrs,
-): void {
+export function recordCounter(name: string, value: number, attrs?: SpanAttrs): void {
   emit({
     kind: "metric",
     metric_type: "counter",

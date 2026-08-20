@@ -19,6 +19,13 @@
  * find×tier), re-crossing a lower tier after a drawdown fires nothing, and a
  * process restart changes nothing. At most 4 pushes per find, ever.
  *
+ * Copy (roadmap A2): personal, spatial, time-anchored — "The Chipotle you
+ * spotted near Valencia St is up 26% since you found it". The place clause is
+ * best-effort: finds carrying lat/lng get one reverse-geocode lookup (bounded
+ * at `MAX_GEOCODES_PER_USER_PER_TICK` uncached requests per user per tick,
+ * cache hits free) and anything that fails degrades to the non-spatial line.
+ * A place is never invented.
+ *
  * Framing (roadmap, non-negotiable): an evolution is a **collection event, not
  * a buy signal**. No copy in this file ever says buy / sell / should / hold.
  */
@@ -27,6 +34,7 @@ import { getQuote } from "@mapvest/finance";
 import { listFinds } from "../finds-store.js";
 import { sendPush } from "../push-dispatcher.js";
 import { type PushEventKey, type PushToken, listTokensForEvent } from "../push-tokens-store.js";
+import { cachedPlaceLabel, reverseGeocodePlaceLabel } from "../reverse-geocode.js";
 import { commitSend, shouldSend } from "./dedupe.js";
 
 /** Opt-in pref key for this notifier (member of `PUSH_EVENT_KEYS`). */
@@ -49,6 +57,10 @@ const MAX_PUSHES_PER_USER_PER_TICK = 3;
  * "once ever" guarantee; this just keeps the process-local ring alive long
  * enough that it never expires during a normal uptime window. */
 const DEDUPE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+/** Most *uncached* reverse-geocode requests we make per user per tick. The
+ * label is a nicety on top of the push, so it gets a hard, small budget —
+ * the 24h cache in `reverse-geocode.ts` serves everything else for free. */
+const MAX_GEOCODES_PER_USER_PER_TICK = 3;
 
 /**
  * Highest evolution tier crossed by a percentage change since found price.
@@ -103,9 +115,20 @@ export function effectiveTicker(find: Pick<Find, "ticker" | "comparable">): stri
 /**
  * Push body. Collection framing only — never buy/sell/should language.
  * Pure so the copy is assertable in tests.
+ *
+ * With a resolved `place` the copy is personal, spatial and time-anchored —
+ * "The Chipotle you spotted near Valencia St is up 26% since you found it".
+ * Without one (no coordinates on the find, or the geocode failed) it falls
+ * back to the non-spatial line. We never invent a place to make the sentence
+ * read better.
  */
-export function evolutionBody(brand: string, pct: number): string {
-  return `${brand} evolved — up ${Math.round(pct)}% since you found it`;
+export function evolutionBody(brand: string, pct: number, place?: string | null): string {
+  const rounded = Math.round(pct);
+  const where = typeof place === "string" ? place.trim() : "";
+  if (where.length > 0) {
+    return `The ${brand} you spotted near ${where} is up ${rounded}% since you found it`;
+  }
+  return `${brand} evolved — up ${rounded}% since you found it`;
 }
 
 /**
@@ -126,6 +149,30 @@ export function eligibleFinds(
     out.push({ find, ticker, foundPrice });
   }
   return out;
+}
+
+/**
+ * Best-effort place label for a find, under a per-user network budget.
+ *
+ * Cache hits are free — only an uncached cell spends budget, and once the
+ * budget is gone the remaining finds simply push without a place clause.
+ * Returns the (possibly decremented) budget alongside the label so the caller
+ * keeps a single source of truth for it.
+ */
+async function placeForFind(
+  find: Pick<Find, "lat" | "lng">,
+  budget: number,
+): Promise<{ place: string | null; budget: number }> {
+  const { lat, lng } = find;
+  if (typeof lat !== "number" || typeof lng !== "number") return { place: null, budget };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { place: null, budget };
+
+  const cached = cachedPlaceLabel(lat, lng);
+  if (cached !== undefined) return { place: cached, budget };
+  if (budget <= 0) return { place: null, budget };
+
+  const place = await reverseGeocodePlaceLabel(lat, lng);
+  return { place, budget: budget - 1 };
 }
 
 /**
@@ -169,6 +216,7 @@ export async function runFindEvolutionScan(): Promise<{
       );
 
       let pushedForUser = 0;
+      let geocodeBudget = MAX_GEOCODES_PER_USER_PER_TICK;
       for (const { find, ticker, foundPrice } of candidates) {
         if (pushedForUser >= MAX_PUSHES_PER_USER_PER_TICK) break;
         const price = quotes.get(ticker);
@@ -183,11 +231,17 @@ export async function runFindEvolutionScan(): Promise<{
         if (tier <= highestTierRecorded(userTokens, slot)) continue;
         if (!shouldSend(userTokens, slot, String(tier))) continue;
 
+        // Geocode only for a find that is actually about to push, so the
+        // budget is never burned on finds blocked by dedupe or by tier.
+        // eslint-disable-next-line no-await-in-loop
+        const geo = await placeForFind(find, geocodeBudget);
+        geocodeBudget = geo.budget;
+
         // eslint-disable-next-line no-await-in-loop
         await sendPush({
           tokens: userTokens.map((t) => t.expoToken),
           title: `${find.brand} evolved`,
-          body: evolutionBody(find.brand, pct),
+          body: evolutionBody(find.brand, pct, geo.place),
           data: {
             kind: "find_evolution",
             findId: find.id,
@@ -195,6 +249,7 @@ export async function runFindEvolutionScan(): Promise<{
             ticker,
             tier,
             changePct: pct,
+            ...(geo.place ? { place: geo.place } : {}),
           },
         });
         // eslint-disable-next-line no-await-in-loop

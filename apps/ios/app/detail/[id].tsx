@@ -19,6 +19,7 @@ import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { ChartsSection } from "@/components/ChartsSection";
 import { OptionsChainSection } from "@/components/OptionsChainSection";
+import { OrbitView } from "@/components/OrbitView";
 import { RichText } from "@/components/RichText";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
@@ -339,6 +340,10 @@ export default function DetailSheet() {
               />
             ) : null}
 
+            {stage >= 2 && ticker ? (
+              <ValueChainSection ticker={ticker} name={companyName} token={session?.token} />
+            ) : null}
+
             {ticker ? (
               <CollapsibleSection title="SEC filings">
                 {secQ.isLoading ? (
@@ -646,6 +651,47 @@ function CollapsibleSection({
       </Pressable>
       {open ? <View style={styles.card}>{children}</View> : null}
     </View>
+  );
+}
+
+/**
+ * Value chain (Universe Roadmap §3 C2) — the company's suppliers, buyers,
+ * competitors and complements as a compact orbit, with a link to the
+ * full-screen version at app/orbit/[ticker].tsx.
+ *
+ * Collapsed by default on purpose: `CollapsibleSection` unmounts its children,
+ * so `/v1/graph` (a metered endpoint — a cache miss spends provider money) is
+ * only ever called once the user opens the section. Loading / 404 / empty all
+ * degrade to a one-line muted state inside `OrbitView`, so this section can
+ * never block the rest of the sheet.
+ */
+function ValueChainSection({
+  ticker,
+  name,
+  token,
+}: {
+  ticker: string;
+  name?: string;
+  token?: string;
+}) {
+  const router = useRouter();
+  return (
+    <CollapsibleSection title="Value chain">
+      <OrbitView ticker={ticker} name={name} token={token} variant="compact" />
+      <Pressable
+        onPress={() => {
+          hapticSelect();
+          const q = name ? `?name=${encodeURIComponent(name)}` : "";
+          router.push(`/orbit/${encodeURIComponent(ticker)}${q}`);
+        }}
+        style={({ pressed }) => [styles.miniBtn, pressed && styles.badgePressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Open the full orbit for ${ticker}`}
+      >
+        <Text style={styles.miniBtnText}>Open orbit</Text>
+        <Ionicons name="arrow-forward" size={13} color={colors.accent} />
+      </Pressable>
+    </CollapsibleSection>
   );
 }
 

@@ -47,6 +47,7 @@ Every shared provider secret this repo touches is in Doppler project `shared`, c
 |---|---|
 | Multimodal LLM (image + text) | `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` |
 | Open‑web search | `EXA_API_KEY` |
+| Macro series (optional) | `FRED_API_KEY` |
 | Gemini direct (fallback vision) | `GEMINI_API_KEY` |
 | Google Maps / Places (server side) | `GOOGLE_APPLICATION_CREDENTIALS_JSON` and/or a scoped `GOOGLE_MAPS_API_KEY` (add if missing) |
 | Anthropic (agent operations only, not user path) | `ANTHROPIC_API_KEY` |
@@ -59,7 +60,7 @@ Every finance answer must attach a `sources: Source[]` array. The canonical shap
 
 ```ts
 type Source = {
-  provider: "exa" | "openrouter" | "gemini" | "massive" | "yahoo" | "polygon" | "sec" | "manual";
+  provider: "exa" | "openrouter" | "gemini" | "massive" | "yahoo" | "polygon" | "sec" | "fred" | "manual";
   url?: string;
   fetchedAt: string; // ISO
   confidence: "high" | "medium" | "low";

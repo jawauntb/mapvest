@@ -1,8 +1,15 @@
+import type { SynthesisMemoResponse, User } from "@mapvest/core";
 import { Hono } from "hono";
+import { MONTHLY_PRICE_USD, getEntitlementState, recordGeneration } from "../lib/entitlements.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onMemoFinished } from "../lib/notifiers/memoNotifier.js";
+import { buildSynthesisMemo } from "../lib/synthesis-memo.js";
+import { isTicker } from "../lib/underlying.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
-import { requireGenerationQuota } from "../middleware/requireGenerationQuota.js";
+import {
+  deviceIdFromRequest,
+  requireGenerationQuota,
+} from "../middleware/requireGenerationQuota.js";
 
 /**
  * Investment-memo + SEC endpoints — thin proxies over the sibling
@@ -125,6 +132,114 @@ memo.post("/", optionalAuth, requireGenerationQuota("memo"), async (c) => {
       sourceUrl: `${UNDERLYING_URL}/`,
       raw: j,
     });
+  });
+});
+
+/**
+ * POST /v1/memo/synthesis  { ticker } → SynthesisMemoResponse
+ *
+ * The layered memo (Universe Roadmap §3 C5): the value-chain graph, the demand
+ * pulse above it, the sector environment brief, and the ratios are gathered
+ * best-effort and handed to ONE model call that answers the three questions —
+ * binding constraint, demand durability, pricing power.
+ *
+ * Metering posture is `GET /v1/graph/:ticker`'s: a cached memo is free and
+ * identity-less; a miss spends provider money (up to three layer gathers plus
+ * an OpenRouter cascade) and is metered as `kind: "synthesis"`, recorded only
+ * once generation actually succeeded. Concurrent callers sharing the in-flight
+ * generation are not double-charged. Reading the graph never generates one.
+ */
+const SYNTHESIS_TTL_MS = 24 * 60 * 60 * 1000;
+const synthesisCache = new Map<string, { expiresAt: number; memo: SynthesisMemoResponse }>();
+const synthesisInFlight = new Map<string, Promise<SynthesisMemoResponse>>();
+
+function readSynthesisCache(ticker: string): SynthesisMemoResponse | null {
+  const hit = synthesisCache.get(ticker);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    synthesisCache.delete(ticker);
+    return null;
+  }
+  return hit.memo;
+}
+
+/** Test-only. Public callers should not reach in. */
+export function _clearSynthesisMemoCache(): void {
+  synthesisCache.clear();
+  synthesisInFlight.clear();
+}
+
+memo.post("/synthesis", optionalAuth, async (c) => {
+  return safeExecuteWithSpan("http.memo_synthesis", async (span) => {
+    const body = await c.req.json().catch(() => null);
+    const ticker = (body?.ticker ?? "").toString().trim().toUpperCase();
+    if (!isTicker(ticker)) {
+      span.setAttribute("error.kind", "invalid_ticker");
+      return c.json({ error: "invalid ticker" }, 400);
+    }
+    span.setAttribute("ticker", ticker);
+
+    const cached = readSynthesisCache(ticker);
+    if (cached) {
+      span.setAttributes({ cache: "hit", sources: cached.sources.length });
+      return c.json(cached);
+    }
+
+    // Past this point generation spends provider money — meter it exactly like
+    // /v1/graph. Cache hits above stay free and are never re-recorded.
+    const user = (c as unknown as { get: (k: string) => User | undefined }).get("user");
+    const deviceId = deviceIdFromRequest(c);
+    if (!user && !deviceId) {
+      span.setAttribute("error.kind", "no_identity");
+      return c.json(
+        { error: "X-Device-Id header (or a bearer session) required to generate a memo" },
+        400,
+      );
+    }
+    const state = await getEntitlementState({ userId: user?.id, deviceId, email: user?.email });
+    if (!state.canGenerate) {
+      span.setAttribute("error.kind", "quota_exceeded");
+      return c.json(
+        {
+          error: "generation quota exceeded",
+          code: "quota_exceeded" as const,
+          remaining: state.remaining,
+          limit: state.limit,
+          priceUsd: MONTHLY_PRICE_USD,
+          interval: "month" as const,
+        },
+        402,
+      );
+    }
+
+    let pending = synthesisInFlight.get(ticker);
+    const shared = Boolean(pending);
+    if (!pending) {
+      pending = buildSynthesisMemo(ticker).finally(() => synthesisInFlight.delete(ticker));
+      synthesisInFlight.set(ticker, pending);
+    }
+    span.setAttributes({ cache: "miss", in_flight_shared: shared });
+
+    let synthesis: SynthesisMemoResponse;
+    try {
+      synthesis = await pending;
+    } catch (err) {
+      span.setAttribute("error.kind", "generation_failed");
+      return c.json(
+        { error: err instanceof Error ? err.message : "synthesis memo generation failed" },
+        502,
+      );
+    }
+
+    synthesisCache.set(ticker, { memo: synthesis, expiresAt: Date.now() + SYNTHESIS_TTL_MS });
+    // Charge only the caller that initiated the generation; concurrent callers
+    // that shared the in-flight promise consumed no additional provider calls.
+    if (!shared) {
+      await recordGeneration({ userId: user?.id, deviceId, kind: "synthesis" }).catch(() => {});
+    }
+
+    span.setAttribute("sources", synthesis.sources.length);
+    return c.json(synthesis);
   });
 });
 

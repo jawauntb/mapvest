@@ -356,3 +356,119 @@ export const BillingAppleRequest = z.object({
   signedTransaction: z.string().min(32).max(16_384),
 });
 export type BillingAppleRequest = z.infer<typeof BillingAppleRequest>;
+
+// -------- universe progression (Universe Roadmap A1/A3/A4) --------
+// Every endpoint behind these shapes is additive: the screens that read them
+// must render unchanged when the server 404s, and a server that predates a
+// field (e.g. `rarityCounts`) must not crash a render — read defensively.
+
+/**
+ * Server-side XP/level/streak from `GET /v1/progress`. The streak lives here so
+ * it survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`),
+ * not an ISO timestamp — the day boundary must not move with the device
+ * timezone. `badges` keys are opaque strings; unknown keys render generically.
+ */
+export const UserProgress = z.object({
+  xp: z.number(),
+  level: z.number(),
+  streakDays: z.number(),
+  streakFreezes: z.number(),
+  lastFindDay: z.string().optional(), // YYYY-MM-DD (UTC)
+  badges: z.array(z.string()).default([]),
+  updatedAt: z.string(), // ISO
+});
+export type UserProgress = z.infer<typeof UserProgress>;
+
+export const ProgressResponse = z.object({
+  progress: UserProgress,
+});
+export type ProgressResponse = z.infer<typeof ProgressResponse>;
+
+/**
+ * The counterfactual universe portfolio from `GET /v1/universe/summary`: "$100
+ * into every find at the moment you found it." Finds without a `foundPrice`
+ * are excluded server-side rather than estimated, so `valuedFinds` can be lower
+ * than `findCount` — never render a value when `valuedFinds` is 0.
+ */
+export const UniverseSummary = z.object({
+  findCount: z.number(),
+  valuedFinds: z.number(),
+  hypotheticalBasis: z.number(),
+  hypotheticalValue: z.number(),
+  changePct: z.number(),
+  generatedAt: z.string(), // ISO
+  sources: z.array(Source),
+});
+export type UniverseSummary = z.infer<typeof UniverseSummary>;
+
+/**
+ * Rarity tier of a caught brand: public mega-cap = `common`, small-cap =
+ * `uncommon`, private-resolved-via-comparable = `rare`, resolved by the vision
+ * pipeline but absent from the `brands.json` seed = `legendary`.
+ */
+export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
+export type DexRarity = z.infer<typeof DexRarity>;
+
+/** One sector row of the dex: how many of that sector's seed brands are caught. */
+export const DexSector = z.object({
+  sector: z.string(),
+  found: z.number(),
+  total: z.number(),
+});
+export type DexSector = z.infer<typeof DexSector>;
+
+/** Per-find rarity histogram — the four counts sum to `totalFinds`. */
+export const DexRarityCounts = z.object({
+  common: z.number(),
+  uncommon: z.number(),
+  rare: z.number(),
+  legendary: z.number(),
+});
+export type DexRarityCounts = z.infer<typeof DexRarityCounts>;
+
+/**
+ * Collection progress from `GET /v1/dex`, derived on read. `tilesVisited` is
+ * the regional dex: distinct geohash-6 tiles with at least one find.
+ */
+export const DexResponse = z.object({
+  sectors: z.array(DexSector),
+  tilesVisited: z.number(),
+  totalFinds: z.number(),
+  rarityCounts: DexRarityCounts,
+});
+export type DexResponse = z.infer<typeof DexResponse>;
+
+// -------- daily quests (Universe Roadmap A5) --------
+
+/** Verifiable quest actions — every kind is decidable from the find stream alone. */
+export const QuestKind = z.enum(["catch_any", "catch_private", "new_tile", "new_sector"]);
+export type QuestKind = z.infer<typeof QuestKind>;
+
+/**
+ * One daily quest. Completion is never self-reported: the client renders
+ * `progress`/`target` and `completed` exactly as returned. `id` is
+ * deterministic per day and kind (`"{YYYY-MM-DD}:{kind}"`).
+ */
+export const Quest = z.object({
+  id: z.string(), // "{YYYY-MM-DD}:{kind}"
+  kind: QuestKind,
+  title: z.string(),
+  xp: z.number(),
+  completed: z.boolean(),
+  progress: z.number(),
+  target: z.number(),
+});
+export type Quest = z.infer<typeof Quest>;
+
+/**
+ * `GET /v1/quests` payload. `day` is the UTC calendar day the set belongs to,
+ * matching `UserProgress.lastFindDay`. `xpGrantedToday` is XP already written
+ * server-side for quests completed on `day` — the client displays it, never
+ * adds to it.
+ */
+export const QuestsResponse = z.object({
+  quests: z.array(Quest),
+  day: z.string(), // YYYY-MM-DD (UTC)
+  xpGrantedToday: z.number(),
+});
+export type QuestsResponse = z.infer<typeof QuestsResponse>;

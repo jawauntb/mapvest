@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  canonicalSector,
-  fallbackEtfsForSector,
-  sectorEtfMap,
-} from "../src/etf-map.js";
+import { canonicalSector, fallbackEtfsForSector, sectorEtfMap } from "../src/etf-map.js";
 
 describe("etf-map", () => {
   test("has an entry per GICS sector with exactly 3 ETFs", () => {

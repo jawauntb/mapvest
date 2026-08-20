@@ -12,16 +12,9 @@
  * for the same-process case.
  */
 import { getQuote } from "@mapvest/finance";
-import {
-  isAlertTriggered,
-  listActiveAlerts,
-  markTriggered,
-} from "../alerts-store.js";
+import { isAlertTriggered, listActiveAlerts, markTriggered } from "../alerts-store.js";
 import { sendPush } from "../push-dispatcher.js";
-import {
-  listTokensForEvent,
-  type PushToken,
-} from "../push-tokens-store.js";
+import { type PushToken, listTokensForEvent } from "../push-tokens-store.js";
 import { commitSend, shouldSend, ymd } from "./dedupe.js";
 
 const DEDUPE_SLOT = "price_alerts";

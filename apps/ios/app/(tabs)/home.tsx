@@ -5,6 +5,7 @@ import {
   fetchProgress,
   fetchQuote,
   fetchQuotesMap,
+  fetchUniverseSummary,
   fetchWatchlistBrief,
   listWatchlist,
   listWatchlists,
@@ -79,6 +80,15 @@ const POPULAR_TICKERS: { symbol: string; name: string }[] = [
 
 function isTickerShape(raw: string): boolean {
   return /^[A-Z][A-Z0-9.]{0,5}$/.test(raw.trim().toUpperCase().replace(/^\$/, ""));
+}
+
+/** Whole dollars past $1,000 — matches the counterfactual line on universe.tsx. */
+function universeMoney(n: number): string {
+  const decimals = Math.abs(n) < 1000 ? 2 : 0;
+  return `$${n.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
 }
 
 /**
@@ -173,6 +183,17 @@ export default function HomeScreen() {
     retry: false,
   });
   const findStreak = resolveStreakDays(progressQ.data?.progress.streakDays, finds);
+  // Counterfactual universe portfolio (roadmap A3), same fail-soft contract as
+  // the journal: `retry: false`, read `.data` only, so a 404 leaves the
+  // universe section exactly as it was before this endpoint existed.
+  const universeSummaryQ = useQuery({
+    queryKey: ["universe-summary", session?.token],
+    queryFn: () => fetchUniverseSummary({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const universeSummary = universeSummaryQ.data;
   const findSyms = [
     ...new Set(
       recentFinds
@@ -394,6 +415,29 @@ export default function HomeScreen() {
                       <Ionicons name="chevron-forward" size={14} color={colors.fgDim} />
                     </View>
                   </Pressable>
+                  {/* Counterfactual line (roadmap A3). Hypothetical, never a
+                      holdings statement, and only drawn from finds the server
+                      could actually price when found. */}
+                  {universeSummary && universeSummary.valuedFinds > 0 ? (
+                    <Text style={styles.universeCf}>
+                      <Text style={styles.universeCfLabel}>$100 per find → </Text>
+                      <Text style={styles.universeCfValue}>
+                        {universeMoney(universeSummary.hypotheticalValue)}
+                      </Text>
+                      <Text
+                        style={{
+                          color: universeSummary.changePct >= 0 ? colors.accent : colors.danger,
+                        }}
+                      >
+                        {"  "}
+                        {universeSummary.changePct >= 0 ? "+" : ""}
+                        {universeSummary.changePct.toFixed(1)}%
+                      </Text>
+                      <Text style={styles.universeCfLabel}>
+                        {"  ·  "}hypothetical, {universeSummary.valuedFinds} priced when found
+                      </Text>
+                    </Text>
+                  ) : null}
                   <FlatList
                     data={recentFinds}
                     keyExtractor={(f) => f.id}
@@ -1085,6 +1129,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
   },
   mapLinkText: { flex: 1, color: colors.fg, fontSize: 14, fontWeight: "600" },
+  universeCf: { paddingHorizontal: 16, paddingBottom: 8, color: colors.fg },
+  universeCfLabel: { color: colors.fgMuted, fontSize: 12 },
+  universeCfValue: { color: colors.fg, fontSize: 15, fontWeight: "800" },
   findRow: {
     paddingHorizontal: 16,
     gap: 8,

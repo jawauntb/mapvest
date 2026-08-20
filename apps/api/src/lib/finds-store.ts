@@ -16,12 +16,29 @@
  *     confidence text,
  *     lat double precision, lng double precision,
  *     found_price double precision,
+ *     geohash6 text,                    -- territory tile (A6), server-internal
  *     created_at timestamptz default now()
  *   )
+ *
+ * `geohash6` is the territory tile (Universe Roadmap §1 A6): the same
+ * precision-6 cell the nearby cache and the regional dex key on, computed from
+ * the find's coordinates at write time so tile queries are an indexed equality
+ * instead of a full-table scan through a JS geohash. It stays SERVER-INTERNAL —
+ * the core `Find` schema is untouched and the wire shape does not change; only
+ * `StoredFind` (this module's internal type) exposes it. Rows written before
+ * the column existed carry NULL and are computed on read from lat/lng.
  */
 import type { Confidence, Find } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
-import { bumpProgressOnFind } from "./progress-store.js";
+import { awardXp, bumpProgressOnFind } from "./progress-store.js";
+import { PIONEER_XP, tileFor } from "./territory.js";
+
+/**
+ * A journal row as this module holds it: the wire `Find` plus the internal
+ * territory tile. Never widened into `@mapvest/core` — routes serialize the
+ * `Find` fields and use `geohash6` only for tile queries.
+ */
+export type StoredFind = Find & { geohash6?: string };
 
 export type FindInput = {
   brand: string;
@@ -38,15 +55,25 @@ export type FindInput = {
 const MEMORY_CAP = 500;
 
 // userId -> finds, newest first.
-const memory = new Map<string, Find[]>();
+const memory = new Map<string, StoredFind[]>();
 
-function memBucket(userId: string): Find[] {
+function memBucket(userId: string): StoredFind[] {
   let arr = memory.get(userId);
   if (!arr) {
     arr = [];
     memory.set(userId, arr);
   }
   return arr;
+}
+
+/** Territory tile for a find's coordinates, or undefined when it has none. */
+export function geohashForCoords(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): string | undefined {
+  if (typeof lat !== "number" || !Number.isFinite(lat)) return undefined;
+  if (typeof lng !== "number" || !Number.isFinite(lng)) return undefined;
+  return tileFor(lat, lng);
 }
 
 let tableEnsured = false;
@@ -74,9 +101,17 @@ async function ensureTable(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // A1 shipped this table without `geohash6`; add it in place rather than
+  // through a migrations runner (same posture as progress-store's `badges`).
+  // Existing rows stay NULL — `rowToFind` recomputes them from lat/lng.
+  await sql`ALTER TABLE user_finds ADD COLUMN IF NOT EXISTS geohash6 TEXT`;
   await sql`
     CREATE INDEX IF NOT EXISTS user_finds_user_idx
       ON user_finds (user_id, created_at DESC)
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS user_finds_tile_idx
+      ON user_finds (user_id, geohash6)
   `;
   tableEnsured = true;
 }
@@ -92,9 +127,9 @@ export function findIdentityKey(find: {
 }
 
 /** Newest-first list with at most one find per identity key. */
-export function uniqueFindsNewestFirst(finds: Find[]): Find[] {
+export function uniqueFindsNewestFirst<T extends Find>(finds: T[]): T[] {
   const seen = new Set<string>();
-  const out: Find[] = [];
+  const out: T[] = [];
   for (const find of finds) {
     const key = findIdentityKey(find);
     if (!key || seen.has(key)) continue;
@@ -114,11 +149,15 @@ function rowToFind(row: {
   lat: number | null;
   lng: number | null;
   found_price: number | null;
+  geohash6?: string | null;
   created_at: Date | string;
-}): Find {
+}): StoredFind {
   const createdAt =
     typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString();
+  // Compute-on-read fallback for rows written before the column existed.
+  const geohash6 = row.geohash6 ?? geohashForCoords(row.lat, row.lng);
   return {
+    ...(geohash6 ? { geohash6 } : {}),
     id: row.id,
     brand: row.brand,
     ticker: row.ticker ?? undefined,
@@ -132,7 +171,7 @@ function rowToFind(row: {
   };
 }
 
-async function existingFindForKey(userId: string, key: string): Promise<Find | undefined> {
+async function existingFindForKey(userId: string, key: string): Promise<StoredFind | undefined> {
   const fromMem = memBucket(userId).find((row) => findIdentityKey(row) === key);
   if (fromMem) return fromMem;
   if (!dbEnabled()) return undefined;
@@ -140,7 +179,7 @@ async function existingFindForKey(userId: string, key: string): Promise<Find | u
   if (!sql) return undefined;
   const rows = await sql`
     SELECT id, brand, ticker, is_public, comparable, confidence,
-           lat, lng, found_price, created_at
+           lat, lng, found_price, geohash6, created_at
     FROM user_finds
     WHERE user_id = ${userId}
       AND COALESCE(
@@ -155,15 +194,31 @@ async function existingFindForKey(userId: string, key: string): Promise<Find | u
   return row ? rowToFind(row) : undefined;
 }
 
-export async function recordFind(userId: string, find: FindInput): Promise<Find> {
+export async function recordFind(userId: string, find: FindInput): Promise<StoredFind> {
   await ensureTable();
   const now = new Date().toISOString();
   const existing = await existingFindForKey(userId, findIdentityKey(find));
+  const geohash6 = geohashForCoords(find.lat, find.lng);
   // Recatch still counts for streak/XP; the journal stays one card per company.
-  bumpProgressOnFind(userId, now).catch(() => {});
+  // The brand/ticker context lets the event system apply a Sector Saturday
+  // multiplier to the find's XP (Universe Roadmap §1 A7).
+  //
+  // The pioneer grant is SEQUENCED after the streak bump, not raced beside it:
+  // both paths end in a full-row upsert of user_progress, so two concurrent
+  // read-modify-writes in one request could clobber each other (the pioneer
+  // write reverting the just-advanced streak). Still fire-and-forget as a
+  // whole — a progression write must never fail an identify. A recatch in a
+  // brand-new tile claims the pioneer grant too (`awardXp` is idempotent on
+  // the grant key, so re-claims are free).
+  bumpProgressOnFind(userId, now, {
+    brand: find.brand,
+    ticker: find.ticker,
+    comparable: find.comparable,
+  })
+    .then(() => (geohash6 ? awardXp(userId, PIONEER_XP, `pioneer:${geohash6}`) : false))
+    .catch(() => {});
   if (existing) return existing;
-
-  const entry: Find = {
+  const entry: StoredFind = {
     id: crypto.randomUUID(),
     brand: find.brand,
     ticker: find.ticker,
@@ -173,6 +228,7 @@ export async function recordFind(userId: string, find: FindInput): Promise<Find>
     lat: find.lat,
     lng: find.lng,
     foundPrice: find.foundPrice,
+    ...(geohash6 ? { geohash6 } : {}),
     createdAt: now,
   };
   const bucket = memBucket(userId);
@@ -184,7 +240,7 @@ export async function recordFind(userId: string, find: FindInput): Promise<Find>
       await sql`
         INSERT INTO user_finds (
           id, user_id, brand, ticker, is_public, comparable, confidence,
-          lat, lng, found_price, created_at
+          lat, lng, found_price, geohash6, created_at
         ) VALUES (
           ${entry.id},
           ${userId},
@@ -196,22 +252,62 @@ export async function recordFind(userId: string, find: FindInput): Promise<Find>
           ${entry.lat ?? null},
           ${entry.lng ?? null},
           ${entry.foundPrice ?? null},
+          ${entry.geohash6 ?? null},
           ${new Date(entry.createdAt)}
         )
       `;
     }
   }
+
+  // Pioneer bonus (Universe Roadmap §1 A6) is granted in the sequenced
+  // progression chain above, after the streak bump — see the comment there.
   return entry;
 }
 
-export async function listFinds(userId: string, limit = 100): Promise<Find[]> {
+/**
+ * Every find the user recorded inside a geohash-6 tile (Universe Roadmap §1
+ * A6). Backs the `pioneer` flag on `GET /v1/territory`: an empty result means
+ * the next find here is their first in this neighborhood.
+ *
+ * Rows written before the `geohash6` column existed carry NULL, so the query
+ * also pulls coordinate-bearing NULL rows and filters them in JS against the
+ * recomputed tile — the same compute-on-read fallback `rowToFind` applies.
+ */
+export async function findsInTile(userId: string, tile: string): Promise<StoredFind[]> {
+  await ensureTable();
+  const target = tile.trim().toLowerCase();
+  if (!target) return [];
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = await sql`
+        SELECT id, brand, ticker, is_public, comparable, confidence,
+               lat, lng, found_price, geohash6, created_at
+        FROM user_finds
+        WHERE user_id = ${userId}
+          AND (
+            geohash6 = ${target}
+            OR (geohash6 IS NULL AND lat IS NOT NULL AND lng IS NOT NULL)
+          )
+        ORDER BY created_at DESC
+        LIMIT 500
+      `;
+      return (rows as Array<Parameters<typeof rowToFind>[0]>)
+        .map(rowToFind)
+        .filter((f) => f.geohash6 === target);
+    }
+  }
+  return memBucket(userId).filter((f) => (f.geohash6 ?? geohashForCoords(f.lat, f.lng)) === target);
+}
+
+export async function listFinds(userId: string, limit = 100): Promise<StoredFind[]> {
   await ensureTable();
   if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
       const rows = await sql`
         SELECT id, brand, ticker, is_public, comparable, confidence,
-               lat, lng, found_price, created_at
+               lat, lng, found_price, geohash6, created_at
         FROM (
           SELECT DISTINCT ON (
             COALESCE(
@@ -221,7 +317,7 @@ export async function listFinds(userId: string, limit = 100): Promise<Find[]> {
             )
           )
             id, brand, ticker, is_public, comparable, confidence,
-            lat, lng, found_price, created_at
+            lat, lng, found_price, geohash6, created_at
           FROM user_finds
           WHERE user_id = ${userId}
           ORDER BY
