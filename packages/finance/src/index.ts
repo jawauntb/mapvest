@@ -6,8 +6,17 @@ export type { CompanyEdgeInput, EdgePick, FilingRef } from "./valueChain.js";
 export { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 export { getQuote, parseYahooChart, QUOTE_DISCLAIMER, _clearQuoteCache } from "./quote.js";
 export type { Quote } from "./quote.js";
-export { getHistoricalCloses, getHistoricalClosesWithProvider, VALID_PERIODS } from "./history.js";
-export type { HistoryPoint, Period } from "./history.js";
+export {
+  DEFAULT_PERIOD_FOR_INTERVAL,
+  VALID_HISTORY_PERIODS,
+  VALID_INTERVALS,
+  VALID_PERIODS,
+  clampPeriodForInterval,
+  getHistoricalCloses,
+  getHistoricalClosesWithProvider,
+  normalizeHistoryInterval,
+} from "./history.js";
+export type { HistoryInterval, HistoryPeriod, HistoryPoint, Period } from "./history.js";
 export {
   getAggregates,
   getAggregatesPage,

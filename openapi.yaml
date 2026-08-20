@@ -1658,10 +1658,19 @@ components:
         period:
           type: string
           enum:
+            - 5d
             - 1mo
             - 3mo
             - 6mo
             - 1y
+            - 2y
+        interval:
+          type: string
+          enum:
+            - 15m
+            - 1d
+            - 1w
+          default: 1d
         points:
           type: array
           items:

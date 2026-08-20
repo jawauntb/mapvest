@@ -331,7 +331,56 @@ describe("market-data additive API contracts", () => {
 
     const result = await quoteHistory.fetch(new Request("http://test/?symbol=AAPL&period=1mo"));
     expect(result.status).toBe(200);
-    expect(await result.json()).toMatchObject({ sources: [{ provider: "yahoo" }] });
+    expect(await result.json()).toMatchObject({ interval: "1d", sources: [{ provider: "yahoo" }] });
+  });
+
+  test("rejects an unsupported quote-history interval", async () => {
+    const result = await quoteHistory.fetch(new Request("http://test/?symbol=AAPL&interval=4h"));
+    expect(result.status).toBe(400);
+    expect(await result.json()).toEqual({ error: "interval must be 15m, 1d, or 1w" });
+  });
+
+  test("clamps 15m quote-history to 5d and patches the live last bar", async () => {
+    massiveEnv();
+    const now = Date.now();
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/range/15/minute/")) {
+        expect(url).toMatch(/\/range\/15\/minute\//);
+        return Promise.resolve(
+          response({
+            results: [
+              { t: now - 900_000, c: 180 },
+              { t: now, c: 181 },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/snapshot/")) {
+        return Promise.resolve(
+          response({
+            ticker: {
+              day: { c: 188, t: now },
+              prevDay: { c: 181 },
+              lastTrade: { p: 188.5, t: now },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(response({ error: "unexpected" }, 500));
+    }) as typeof fetch;
+
+    const result = await quoteHistory.fetch(
+      new Request("http://test/?symbol=AAPL&period=1y&interval=15m"),
+    );
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      ticker: "AAPL",
+      period: "5d",
+      interval: "15m",
+      points: [{ close: 180 }, { close: 188.5 }],
+      sources: [{ provider: "massive" }],
+    });
   });
 
   test("keeps the explicit Yahoo news fallback when Massive is unconfigured", async () => {

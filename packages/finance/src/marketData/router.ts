@@ -1,3 +1,4 @@
+import type { HistoryInterval, HistoryPeriod } from "./historyIntervals.js";
 import { massiveClient } from "./massive.js";
 import type {
   AggregateBar,
@@ -112,12 +113,19 @@ export function getMarketDataCapabilities(): MarketDataCapabilities {
 
 export const getQuote = (symbol: string) =>
   withNullableFallback((provider) => provider.getQuote(symbol));
-export const getHistoricalCloses = (symbol: string, period: "1mo" | "3mo" | "6mo" | "1y") =>
-  withNullableFallback((provider) => provider.getHistoricalCloses(symbol, period));
+export const getHistoricalCloses = (
+  symbol: string,
+  period: HistoryPeriod,
+  interval: HistoryInterval = "1d",
+) => withNullableFallback((provider) => provider.getHistoricalCloses(symbol, period, interval));
 export const getHistoricalClosesWithProvider = (
   symbol: string,
-  period: "1mo" | "3mo" | "6mo" | "1y",
-) => withNullableFallbackProvider((provider) => provider.getHistoricalCloses(symbol, period));
+  period: HistoryPeriod,
+  interval: HistoryInterval = "1d",
+) =>
+  withNullableFallbackProvider((provider) =>
+    provider.getHistoricalCloses(symbol, period, interval),
+  );
 export const getAggregates = (query: AggregateQuery) =>
   withFallback((provider) => provider.getAggregates(query));
 export const getAggregatesPage = (query: AggregateQuery) =>

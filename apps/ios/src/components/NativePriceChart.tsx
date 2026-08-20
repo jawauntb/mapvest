@@ -1,17 +1,16 @@
-import { type QuoteHistoryPeriod, fetchQuoteHistory } from "@/api/client";
+import { type QuoteHistoryInterval, fetchQuoteHistory } from "@/api/client";
 import type { QuoteHistoryPoint } from "@/api/types";
 import { LineSparkline } from "@/chartkit/LineSparkline";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-const PERIODS: { key: QuoteHistoryPeriod; label: string }[] = [
-  { key: "1mo", label: "1M" },
-  { key: "3mo", label: "3M" },
-  { key: "6mo", label: "6M" },
-  { key: "1y", label: "1Y" },
+const INTERVALS: { key: QuoteHistoryInterval; label: string }[] = [
+  { key: "15m", label: "15m" },
+  { key: "1d", label: "1D" },
+  { key: "1w", label: "1W" },
 ];
 
 const CHART_HEIGHT = 148;
@@ -20,46 +19,52 @@ const LINE_POINTS = 80;
 type Props = {
   ticker: string;
   token?: string;
-  period?: QuoteHistoryPeriod;
-  onPeriod?: (period: QuoteHistoryPeriod) => void;
+  interval?: QuoteHistoryInterval;
+  onInterval?: (interval: QuoteHistoryInterval) => void;
+  hideIntervalChips?: boolean;
 };
 
-export function NativePriceChart({ ticker, token, period = "1mo", onPeriod }: Props) {
-  const [activePeriod, setActivePeriod] = useState<QuoteHistoryPeriod>(period);
-
+export function NativePriceChart({
+  ticker,
+  token,
+  interval = "1d",
+  onInterval,
+  hideIntervalChips = false,
+}: Props) {
   const q = useQuery({
-    queryKey: ["quote-history", ticker, activePeriod],
-    queryFn: () => fetchQuoteHistory(ticker, activePeriod, { token }),
+    queryKey: ["quote-history", ticker, interval],
+    queryFn: () => fetchQuoteHistory(ticker, { interval }, { token }),
     enabled: !!ticker,
-    staleTime: 60_000,
+    staleTime: interval === "15m" ? 15_000 : 60_000,
     retry: 1,
   });
 
-  const selectPeriod = (next: QuoteHistoryPeriod) => {
+  const selectInterval = (next: QuoteHistoryInterval) => {
     hapticSelect();
-    setActivePeriod(next);
-    onPeriod?.(next);
+    onInterval?.(next);
   };
 
   return (
     <View style={styles.root}>
-      <View style={styles.chips}>
-        {PERIODS.map((p) => {
-          const on = p.key === activePeriod;
-          return (
-            <Pressable
-              key={p.key}
-              onPress={() => selectPeriod(p.key)}
-              style={[styles.chip, on && styles.chipOn]}
-              accessibilityRole="button"
-              accessibilityLabel={`Price window ${p.label}`}
-              accessibilityState={{ selected: on }}
-            >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>{p.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {hideIntervalChips ? null : (
+        <View style={styles.chips}>
+          {INTERVALS.map((p) => {
+            const on = p.key === interval;
+            return (
+              <Pressable
+                key={p.key}
+                onPress={() => selectInterval(p.key)}
+                style={[styles.chip, on && styles.chipOn]}
+                accessibilityRole="button"
+                accessibilityLabel={`Price interval ${p.label}`}
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{p.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {q.isLoading || q.isPending ? (
         <ChartSkeleton />

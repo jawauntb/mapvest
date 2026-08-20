@@ -241,7 +241,8 @@ export type QuoteHistoryPoint = z.infer<typeof QuoteHistoryPoint>;
 
 export const QuoteHistoryResponse = z.object({
   ticker: z.string(),
-  period: z.enum(["1mo", "3mo", "6mo", "1y"]),
+  period: z.enum(["5d", "1mo", "3mo", "6mo", "1y", "2y"]),
+  interval: z.enum(["15m", "1d", "1w"]).default("1d"),
   points: z.array(QuoteHistoryPoint),
   sources: z.array(Source),
 });

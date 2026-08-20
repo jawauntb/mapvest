@@ -42,12 +42,13 @@ const CHART_CHIPS = [
   { id: "torque", label: "Torque" },
 ] as const;
 
-const PERIODS = ["1mo", "3mo", "1y", "2y"] as const;
+const PERIODS = ["5d", "1mo", "3mo", "1y", "2y"] as const;
+const INTERVALS = ["15m", "1d", "1w"] as const;
 
 type ChartCache = Record<string, ChartImage>;
 
-function cacheKey(type: string, ticker: string, period: string) {
-  return `${ticker}|${type}|${period}`;
+function cacheKey(type: string, ticker: string, period: string, interval: string) {
+  return `${ticker}|${type}|${period}|${interval}`;
 }
 
 function looksLikeTicker(s: string): string | null {
@@ -96,6 +97,7 @@ export default function TickerDetail() {
   );
   const [chartType, setChartType] = useState<(typeof CHART_CHIPS)[number]["id"]>("auction");
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1mo");
+  const [interval, setInterval] = useState<(typeof INTERVALS)[number]>("1d");
   const [chart, setChart] = useState<ChartImage | null>(null);
   const [chartErr, setChartErr] = useState<string | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
@@ -130,8 +132,8 @@ export default function TickerDetail() {
 
   const authed = !!getToken();
 
-  const loadChart = useCallback(async (ticker: string, type: string, per: string) => {
-    const key = cacheKey(type, ticker, per);
+  const loadChart = useCallback(async (ticker: string, type: string, per: string, bar: string) => {
+    const key = cacheKey(type, ticker, per, bar);
     const hit = cacheRef.current[key];
     if (hit && hit.ticker === ticker) {
       setChart(hit);
@@ -143,7 +145,7 @@ export default function TickerDetail() {
     setChartLoading(true);
     setChartErr(null);
     try {
-      const r = await getChart(type, ticker, { period: per });
+      const r = await getChart(type, ticker, { period: per, interval: bar });
       if (reqId !== chartReqRef.current) return;
       if (r.ticker && r.ticker !== ticker) {
         setChart(null);
@@ -169,6 +171,7 @@ export default function TickerDetail() {
     setChartErr(null);
     setChartType("auction");
     setPeriod("1mo");
+    setInterval("1d");
     setAnalysis(null);
     setAnalysisLoading(false);
     setAnalysisErr(null);
@@ -251,13 +254,13 @@ export default function TickerDetail() {
 
   useEffect(() => {
     if (!chartTicker) return;
-    // Overview always pins auction 1mo; Advanced follows chip/period.
+    // Overview always pins auction 1mo daily; Advanced follows chip/period/interval.
     if (tab === "overview") {
-      void loadChart(chartTicker, "auction", "1mo");
+      void loadChart(chartTicker, "auction", "1mo", "1d");
       return;
     }
-    void loadChart(chartTicker, chartType, period);
-  }, [chartTicker, chartType, period, tab, loadChart]);
+    void loadChart(chartTicker, chartType, period, interval);
+  }, [chartTicker, chartType, period, interval, tab, loadChart]);
 
   useEffect(() => {
     if (!chartTicker) return;
@@ -849,7 +852,7 @@ export default function TickerDetail() {
         <>
           <section className="app-panel app-chart">
             <h2 className="app-chart-title">
-              {chipLabel} · ${chartTicker ?? "…"} · {period}
+              {chipLabel} · ${chartTicker ?? "…"} · {interval} · {period}
             </h2>
             <div className="app-chart-chips" role="tablist" aria-label="Chart type">
               {CHART_CHIPS.map((c) => (
@@ -860,6 +863,21 @@ export default function TickerDetail() {
                   onClick={() => setChartType(c.id)}
                 >
                   {c.label}
+                </button>
+              ))}
+            </div>
+            <div className="app-chart-chips" role="tablist" aria-label="Interval">
+              {INTERVALS.map((bar) => (
+                <button
+                  key={bar}
+                  type="button"
+                  className={`app-chip ${interval === bar ? "app-chip-active" : ""}`}
+                  onClick={() => {
+                    setInterval(bar);
+                    if (bar === "15m" && period !== "5d" && period !== "1mo") setPeriod("5d");
+                  }}
+                >
+                  {bar}
                 </button>
               ))}
             </div>
@@ -879,8 +897,8 @@ export default function TickerDetail() {
               <ChartRenderBoundary>
                 <ChartFigure
                   src={`data:${chart.image.mime};base64,${chart.image.data}`}
-                  alt={`${chart.ticker} ${chipLabel} ${period} chart`}
-                  filename={chart.image.filename ?? `${chart.ticker}-${chartType}-${period}.png`}
+                  alt={`${chart.ticker} ${chipLabel} ${interval} ${period} chart`}
+                  filename={chart.image.filename ?? `${chart.ticker}-${chartType}-${interval}-${period}.png`}
                   caption={
                     chartType === "auction" && chart.levels
                       ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`
