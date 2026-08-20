@@ -19,9 +19,6 @@ export function decryptSecret(payload: string): string {
   const key = createHash("sha256").update(sessionSigningKey()).digest();
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64url"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64url"));
-  const dec = Buffer.concat([
-    decipher.update(Buffer.from(dataB64, "base64url")),
-    decipher.final(),
-  ]);
+  const dec = Buffer.concat([decipher.update(Buffer.from(dataB64, "base64url")), decipher.final()]);
   return dec.toString("utf8");
 }

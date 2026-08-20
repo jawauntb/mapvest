@@ -29,8 +29,7 @@ const ring: CostRecord[] = [];
 let cursor = 0;
 
 /** Totals kept incrementally so aggregate reads are O(1). */
-const modelTokens: Map<string, { prompt: number; completion: number; calls: number }> =
-  new Map();
+const modelTokens: Map<string, { prompt: number; completion: number; calls: number }> = new Map();
 let totalExaHits = 0;
 let totalExaCalls = 0;
 
@@ -100,10 +99,7 @@ export function costSummary() {
       models,
       totalCalls: Object.values(models).reduce((a, b) => a + b.calls, 0),
       totalPromptTokens: Object.values(models).reduce((a, b) => a + b.promptTokens, 0),
-      totalCompletionTokens: Object.values(models).reduce(
-        (a, b) => a + b.completionTokens,
-        0,
-      ),
+      totalCompletionTokens: Object.values(models).reduce((a, b) => a + b.completionTokens, 0),
     },
     exa: {
       totalCalls: totalExaCalls,

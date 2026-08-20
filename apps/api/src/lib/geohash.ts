@@ -47,7 +47,11 @@ export function encodeGeohash(lat: number, lng: number, precision = 6): string {
   return hash;
 }
 
-export function nearbyCacheKey(lat: number, lng: number, radius: number): {
+export function nearbyCacheKey(
+  lat: number,
+  lng: number,
+  radius: number,
+): {
   cacheKey: string;
   geohash: string;
   radiusBucket: number;

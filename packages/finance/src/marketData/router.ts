@@ -1,5 +1,12 @@
 import type { HistoryInterval, HistoryPeriod } from "./historyIntervals.js";
+import type {
+  CashFlowStatement,
+  FinancialStatementPage,
+  FinancialStatementQuery,
+  IncomeStatement,
+} from "./massive.js";
 import { massiveClient } from "./massive.js";
+import { MarketDataProviderError } from "./types.js";
 import type {
   AggregateBar,
   AggregatePage,
@@ -141,6 +148,49 @@ export const getFinancialRatios = (query: FinancialRatiosQuery = {}) =>
     }
     return provider.getFinancialRatios(query);
   });
+/**
+ * Providers that expose the financial-statement families. Declared structurally
+ * (rather than on `MarketDataProvider`) because the statement endpoints are a
+ * Massive-only dataset: Yahoo has no equivalent and must surface the same
+ * `501 unsupported` this router raises for option snapshots/aggregates.
+ */
+type StatementProvider = MarketDataProvider & {
+  getIncomeStatements?: (
+    symbol: string,
+    query: FinancialStatementQuery,
+  ) => Promise<FinancialStatementPage<IncomeStatement>>;
+  getCashFlowStatements?: (
+    symbol: string,
+    query: FinancialStatementQuery,
+  ) => Promise<FinancialStatementPage<CashFlowStatement>>;
+};
+
+export const getIncomeStatements = (symbol: string, query: FinancialStatementQuery = {}) =>
+  withFallback((provider) => {
+    const capable = provider as StatementProvider;
+    if (typeof capable.getIncomeStatements !== "function") {
+      throw new MarketDataProviderError("Provider does not support income statements", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return capable.getIncomeStatements(symbol, query);
+  });
+
+export const getCashFlowStatements = (symbol: string, query: FinancialStatementQuery = {}) =>
+  withFallback((provider) => {
+    const capable = provider as StatementProvider;
+    if (typeof capable.getCashFlowStatements !== "function") {
+      throw new MarketDataProviderError("Provider does not support cash-flow statements", {
+        provider: provider.name,
+        status: 501,
+        code: "unsupported",
+      });
+    }
+    return capable.getCashFlowStatements(symbol, query);
+  });
+
 export const getOptionsChain = (query: OptionsChainQuery) =>
   withFallback((provider) => provider.getOptionsChain(query));
 export const getOptionContracts = (query: OptionContractQuery) =>
@@ -213,3 +263,9 @@ export type {
   ProviderPage,
 } from "./types.js";
 export { MarketDataProviderError } from "./types.js";
+export type {
+  CashFlowStatement,
+  FinancialStatementPage,
+  FinancialStatementQuery,
+  IncomeStatement,
+} from "./massive.js";

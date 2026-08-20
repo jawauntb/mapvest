@@ -1,3 +1,4 @@
+import type { Source } from "@mapvest/core";
 import type { Quote } from "../quote.js";
 import { historyDateRange, massiveIntervalSpec, type HistoryInterval, type HistoryPeriod } from "./historyIntervals.js";
 import {
@@ -146,6 +147,75 @@ type MassiveFinancialRatios = {
   free_cash_flow?: number;
 };
 
+/**
+ * Raw financial-statement row. Massive exposes the statement families as flat
+ * snake_case rows; field names differ slightly between the income-statement and
+ * cash-flow endpoints and have picked up aliases across API revisions, so every
+ * numeric is resolved through `pickNumber` over a list of accepted names rather
+ * than a single hard-coded key. A field that is absent stays `undefined` — it is
+ * never zero-filled (AGENTS.md §2.4: never fake financial data).
+ */
+type MassiveStatementRow = Record<string, unknown>;
+
+/** Query options for the financial-statement endpoints. */
+export type FinancialStatementQuery = {
+  /** Max statements to return, newest first. Massive caps this server-side. */
+  limit?: number;
+  /** Fiscal period filter, when the caller wants only annual or only quarterly rows. */
+  period?: "annual" | "quarterly";
+  /** Opaque pagination cursor from a previous page. */
+  cursor?: string;
+};
+
+/** Normalized income statement (one fiscal period). */
+export type IncomeStatement = {
+  ticker: string;
+  /** Fiscal period label as reported, e.g. `"FY"`, `"Q3"`, or `"FY2024"`. */
+  period: string;
+  /** Period end date, `YYYY-MM-DD`. */
+  fiscalDate: string;
+  fiscalYear?: string;
+  filingDate?: string;
+  revenue?: number;
+  costOfRevenue?: number;
+  grossProfit?: number;
+  operatingExpenses?: number;
+  operatingIncome?: number;
+  netIncome?: number;
+  dilutedEps?: number;
+  currency?: string;
+};
+
+/** Normalized cash-flow statement (one fiscal period). */
+export type CashFlowStatement = {
+  ticker: string;
+  period: string;
+  fiscalDate: string;
+  fiscalYear?: string;
+  filingDate?: string;
+  operatingCashFlow?: number;
+  investingCashFlow?: number;
+  financingCashFlow?: number;
+  /** Capital expenditure as a positive magnitude (providers report it signed). */
+  capex?: number;
+  /** Operating cash flow less capex; omitted unless both inputs were reported. */
+  freeCashFlow?: number;
+  netChangeInCash?: number;
+  currency?: string;
+};
+
+/**
+ * A page of normalized statements plus the provenance of the call that produced
+ * it. `sources` is empty only when `results` is — an uncitable statement is not
+ * emitted (AGENTS.md §6).
+ */
+export type FinancialStatementPage<T> = {
+  results: T[];
+  sources: Source[];
+  nextCursor?: string;
+  requestId?: string;
+};
+
 function envNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
@@ -185,6 +255,135 @@ function unixSeconds(value: unknown): number | undefined {
 
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** First finite number found under any of `names`; `undefined` when none. */
+function pickNumber(row: MassiveStatementRow, names: readonly string[]): number | undefined {
+  for (const name of names) {
+    const direct = numberOrUndefined(row[name]);
+    if (direct !== undefined) return direct;
+    // Some statement revisions wrap each line item as `{ value, unit, label }`.
+    const wrapped = row[name];
+    if (wrapped && typeof wrapped === "object" && !Array.isArray(wrapped)) {
+      const value = numberOrUndefined((wrapped as { value?: unknown }).value);
+      if (value !== undefined) return value;
+    }
+  }
+  return undefined;
+}
+
+/** First non-empty string found under any of `names`; `undefined` when none. */
+function pickString(row: MassiveStatementRow, names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = row[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+const FISCAL_DATE_KEYS = [
+  "period_end_date",
+  "end_date",
+  "fiscal_date",
+  "period_of_report_date",
+  "date",
+] as const;
+const FISCAL_PERIOD_KEYS = ["fiscal_period", "period", "timeframe"] as const;
+const FISCAL_YEAR_KEYS = ["fiscal_year", "year"] as const;
+const FILING_DATE_KEYS = ["filing_date", "acceptance_datetime"] as const;
+
+/** Shared period identity for both statement families; `null` when undatable. */
+function statementPeriod(
+  row: MassiveStatementRow,
+  fallbackTicker: string,
+): {
+  ticker: string;
+  period: string;
+  fiscalDate: string;
+  fiscalYear?: string;
+  filingDate?: string;
+} | null {
+  const fiscalDate = pickString(row, FISCAL_DATE_KEYS);
+  if (!fiscalDate) return null;
+  const fiscalYear = pickString(row, FISCAL_YEAR_KEYS);
+  const rawPeriod = pickString(row, FISCAL_PERIOD_KEYS);
+  const period = rawPeriod
+    ? fiscalYear && !rawPeriod.includes(fiscalYear)
+      ? `${rawPeriod}${fiscalYear}`
+      : rawPeriod
+    : fiscalDate;
+  return {
+    ticker: pickString(row, ["ticker", "symbol"]) ?? fallbackTicker,
+    period,
+    fiscalDate: fiscalDate.slice(0, 10),
+    fiscalYear,
+    filingDate: pickString(row, FILING_DATE_KEYS),
+  };
+}
+
+function mapIncomeStatement(
+  row: MassiveStatementRow,
+  fallbackTicker: string,
+): IncomeStatement | null {
+  const base = statementPeriod(row, fallbackTicker);
+  if (!base) return null;
+  return {
+    ...base,
+    revenue: pickNumber(row, ["revenues", "revenue", "total_revenue", "total_revenues"]),
+    costOfRevenue: pickNumber(row, ["cost_of_revenue", "costs_and_expenses", "cost_of_goods_sold"]),
+    grossProfit: pickNumber(row, ["gross_profit"]),
+    operatingExpenses: pickNumber(row, ["operating_expenses", "total_operating_expenses"]),
+    operatingIncome: pickNumber(row, ["operating_income_loss", "operating_income"]),
+    netIncome: pickNumber(row, [
+      "net_income_loss",
+      "net_income",
+      "net_income_loss_attributable_to_parent",
+    ]),
+    dilutedEps: pickNumber(row, ["diluted_earnings_per_share", "eps_diluted"]),
+    currency: pickString(row, ["currency", "currency_code", "reporting_currency"]),
+  };
+}
+
+function mapCashFlowStatement(
+  row: MassiveStatementRow,
+  fallbackTicker: string,
+): CashFlowStatement | null {
+  const base = statementPeriod(row, fallbackTicker);
+  if (!base) return null;
+  const operatingCashFlow = pickNumber(row, [
+    "net_cash_flow_from_operating_activities",
+    "operating_cash_flow",
+    "net_cash_provided_by_operating_activities",
+  ]);
+  const rawCapex = pickNumber(row, [
+    "capital_expenditures",
+    "capital_expenditure",
+    "capex",
+    "purchase_of_property_plant_and_equipment",
+    "payments_to_acquire_property_plant_and_equipment",
+  ]);
+  // Providers report capex either signed (an investing outflow) or as a
+  // magnitude. Normalize to a positive magnitude so growth math is comparable.
+  const capex = rawCapex === undefined ? undefined : Math.abs(rawCapex);
+  return {
+    ...base,
+    operatingCashFlow,
+    investingCashFlow: pickNumber(row, [
+      "net_cash_flow_from_investing_activities",
+      "investing_cash_flow",
+    ]),
+    financingCashFlow: pickNumber(row, [
+      "net_cash_flow_from_financing_activities",
+      "financing_cash_flow",
+    ]),
+    capex,
+    freeCashFlow:
+      operatingCashFlow !== undefined && capex !== undefined
+        ? operatingCashFlow - capex
+        : pickNumber(row, ["free_cash_flow"]),
+    netChangeInCash: pickNumber(row, ["net_cash_flow", "net_change_in_cash"]),
+    currency: pickString(row, ["currency", "currency_code", "reporting_currency"]),
+  };
 }
 
 function dateRange(period: HistoryPeriod): { from: string; to: string } {
@@ -348,6 +547,26 @@ export class MassiveClient {
     return massiveBaseUrl();
   }
 
+  /**
+   * Absolute request URL for a path + query. Extracted from `request` so the
+   * statement endpoints can cite the exact URL they fetched without rebuilding
+   * the query independently (the API key travels in the Authorization header,
+   * never in the URL, so the cited URL carries no secret).
+   */
+  private buildUrl(
+    pathOrUrl: string,
+    query: Record<string, string | number | boolean | undefined> = {},
+  ): string {
+    const target = pathOrUrl.startsWith("http")
+      ? new URL(pathOrUrl)
+      : new URL(`${this.baseUrl}${pathOrUrl}`);
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && !target.searchParams.has(key))
+        target.searchParams.set(key, String(value));
+    }
+    return target.toString();
+  }
+
   private async request<T>(
     pathOrUrl: string,
     query: Record<string, string | number | boolean | undefined> = {},
@@ -357,14 +576,7 @@ export class MassiveClient {
       250,
       Math.floor(envNumber("MASSIVE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS)),
     );
-    const target = pathOrUrl.startsWith("http")
-      ? new URL(pathOrUrl)
-      : new URL(`${this.baseUrl}${pathOrUrl}`);
-    for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined && !target.searchParams.has(key))
-        target.searchParams.set(key, String(value));
-    }
-    const url = target.toString();
+    const url = this.buildUrl(pathOrUrl, query);
     let lastStatus = 502;
     let lastRequestId: string | undefined;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -614,6 +826,68 @@ export class MassiveClient {
       nextCursor: cursorFromNextUrl(body.next_url),
       requestId: body.request_id,
     };
+  }
+
+  /** Shared plumbing for the two financial-statement families. */
+  private async getStatements<T>(
+    path: string,
+    symbol: string,
+    query: FinancialStatementQuery,
+    map: (row: MassiveStatementRow, ticker: string) => T | null,
+  ): Promise<FinancialStatementPage<T>> {
+    const ticker = symbol.trim().toUpperCase();
+    if (!ticker) return { results: [], sources: [] };
+    const params = {
+      ticker,
+      timeframe: query.period,
+      limit: Math.min(Math.max(query.limit ?? 8, 1), 100),
+      sort: "period_end_date.desc",
+      cursor: query.cursor,
+    };
+    const url = this.buildUrl(path, params);
+    const body = await this.request<MassiveStatementRow>(path, params);
+    const rows = Array.isArray(body.results) ? body.results : body.results ? [body.results] : [];
+    const results = rows.flatMap((row) => {
+      const mapped = map(row, ticker);
+      return mapped ? [mapped] : [];
+    });
+    return {
+      results,
+      // Provenance for a real call that really returned rows — never a citation
+      // manufactured around an empty response (AGENTS.md §6).
+      sources:
+        results.length > 0
+          ? [{ provider: "massive", url, fetchedAt: new Date().toISOString(), confidence: "high" }]
+          : [],
+      nextCursor: cursorFromNextUrl(body.next_url),
+      requestId: body.request_id,
+    };
+  }
+
+  /** Income statements for `symbol`, newest fiscal period first. */
+  async getIncomeStatements(
+    symbol: string,
+    query: FinancialStatementQuery = {},
+  ): Promise<FinancialStatementPage<IncomeStatement>> {
+    return this.getStatements(
+      "/stocks/financials/v1/income-statements",
+      symbol,
+      query,
+      mapIncomeStatement,
+    );
+  }
+
+  /** Cash-flow statements for `symbol`, newest fiscal period first. */
+  async getCashFlowStatements(
+    symbol: string,
+    query: FinancialStatementQuery = {},
+  ): Promise<FinancialStatementPage<CashFlowStatement>> {
+    return this.getStatements(
+      "/stocks/financials/v1/cash-flow-statements",
+      symbol,
+      query,
+      mapCashFlowStatement,
+    );
   }
 
   async getOptionsChain(query: OptionsChainQuery): Promise<ProviderPage<OptionSnapshot>> {

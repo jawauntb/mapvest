@@ -266,8 +266,9 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
 
   const massiveKey = process.env.MASSIVE_API_KEY?.trim();
   const finnhubKey = process.env.FINNHUB_API_KEY?.trim();
-  const primary =
-    (process.env.MARKET_DATA_PRIMARY?.trim() || process.env.MARKET_DATA_PROVIDER?.trim())?.toLowerCase();
+  const primary = (
+    process.env.MARKET_DATA_PRIMARY?.trim() || process.env.MARKET_DATA_PROVIDER?.trim()
+  )?.toLowerCase();
   let items: NewsItem[] = [];
   let provider = "massive";
 
@@ -287,10 +288,7 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsFe
           throw new Error("massive news unavailable");
         }
       }
-    } else if (
-      primary === "yahoo" ||
-      process.env.MARKET_DATA_FALLBACK_PROVIDER === "yahoo"
-    ) {
+    } else if (primary === "yahoo" || process.env.MARKET_DATA_FALLBACK_PROVIDER === "yahoo") {
       items = await fetchYahoo(norm);
       provider = "yahoo-rss";
     } else if (finnhubKey && process.env.MARKET_DATA_FALLBACK_PROVIDER === "finnhub") {

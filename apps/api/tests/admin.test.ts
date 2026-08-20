@@ -6,8 +6,8 @@ process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 process.env.ADMIN_EMAILS = "admin@mapvest.dev";
 
 import { app } from "../src/index.js";
-import { __resetStore } from "../src/lib/store.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
+import { __resetStore } from "../src/lib/store.js";
 import { __resetRateLimit } from "../src/middleware/rateLimit.js";
 
 function url(path: string) {
@@ -86,7 +86,9 @@ describe("admin routes", () => {
       new Request(url("/admin/users"), { headers: { Authorization: `Bearer ${token}` } }),
     );
     expect(usersRes.status).toBe(200);
-    const usersBody = (await usersRes.json()) as { users: Array<{ email: string; scopes: string[] }> };
+    const usersBody = (await usersRes.json()) as {
+      users: Array<{ email: string; scopes: string[] }>;
+    };
     const admin = usersBody.users.find((u) => u.email === "admin@mapvest.dev");
     expect(admin?.scopes).toContain("admin");
 

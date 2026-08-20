@@ -9,10 +9,7 @@
  * Both layers are consulted in `shouldSend()`. Callers `commitSend()` after
  * a successful push to update the durable side.
  */
-import {
-  type PushToken,
-  updatePrefs,
-} from "../push-tokens-store.js";
+import { type PushToken, updatePrefs } from "../push-tokens-store.js";
 
 const memoryDedupe = new Map<string, number>(); // key → expiresAt (ms epoch)
 

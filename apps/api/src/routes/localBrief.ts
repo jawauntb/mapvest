@@ -17,11 +17,7 @@
  */
 
 import { Hono } from "hono";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
-import {
-  generateLocalBrief,
-  OUTAGE_LOCAL_BRIEF,
-} from "../lib/local-brief-generator.js";
+import { OUTAGE_LOCAL_BRIEF, generateLocalBrief } from "../lib/local-brief-generator.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onLocalBriefGenerated } from "../lib/notifiers/localBriefNotifier.js";
 import {
@@ -29,6 +25,7 @@ import {
   listSavedLocalBriefs,
   saveLocalBrief as persistSaveLocalBrief,
 } from "../lib/saved-locations-store.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const localBrief = new Hono<AuthEnv>();
 localBrief.use("*", bearerAuth);

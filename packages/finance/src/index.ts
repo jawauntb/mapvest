@@ -20,7 +20,9 @@ export type { HistoryInterval, HistoryPeriod, HistoryPoint, Period } from "./his
 export {
   getAggregates,
   getAggregatesPage,
+  getCashFlowStatements,
   getFinancialRatios,
+  getIncomeStatements,
   getMarketDataCapabilities,
   getOptionContract,
   getOptionContracts,
@@ -35,11 +37,22 @@ export {
   MarketDataProviderError,
 } from "./marketData/router.js";
 export { massiveBaseUrl } from "./marketData/massive.js";
+export {
+  fredConfigured,
+  fredSeriesUrl,
+  getSeries,
+  sectorSeries,
+} from "./marketData/fred.js";
+export type { FredObservation, FredSeriesQuery, FredSeriesRef } from "./marketData/fred.js";
 export type {
   AggregateBar,
   AggregatePage,
   AggregateQuery,
+  CashFlowStatement,
   CorporateEvent,
+  FinancialStatementPage,
+  FinancialStatementQuery,
+  IncomeStatement,
   FinancialRatio,
   FinancialRatios,
   FinancialRatiosQuery,

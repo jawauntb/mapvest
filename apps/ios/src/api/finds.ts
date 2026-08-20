@@ -40,6 +40,70 @@ export function uniqueFindsNewestFirst(finds: Find[]): Find[] {
   return out;
 }
 
+/**
+ * Evolution tiers (Universe Roadmap A2). A find "evolves" as it appreciates
+ * since the price it was found at: +10% bronze, +25% silver, +50% gold, +100%
+ * gold+. Same thresholds the server notifier uses
+ * (`apps/api/src/lib/notifiers/findEvolutionNotifier.ts` — `EVOLUTION_TIERS`),
+ * kept as a pure client function so the journal and the map can tint a find
+ * without waiting for a push.
+ *
+ * Framing rule (roadmap, non-negotiable): an evolution is a **collection
+ * event, not a buy signal** — tier chrome never implies an action.
+ */
+export type EvolutionTier = "bronze" | "silver" | "gold" | "gold-plus";
+
+/** Ordered high → low so the first match is the highest tier reached. */
+const EVOLUTION_TIER_STEPS: { tier: EvolutionTier; min: number }[] = [
+  { tier: "gold-plus", min: 100 },
+  { tier: "gold", min: 50 },
+  { tier: "silver", min: 25 },
+  { tier: "bronze", min: 10 },
+];
+
+/**
+ * Metal ink for a tier ring. These are deliberately not Atlas Signal tokens —
+ * Atlas has no metal ramp, and a bronze/silver/gold ladder has to read as a
+ * ladder. Used only as a hairline ring/border, never as a fill.
+ */
+export const EVOLUTION_TIER_COLORS: Record<EvolutionTier, string> = {
+  bronze: "#B87333",
+  silver: "#C3CAD2",
+  gold: "#E8B94A",
+  "gold-plus": "#FFD873",
+};
+
+export const EVOLUTION_TIER_LABELS: Record<EvolutionTier, string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+  "gold-plus": "Gold+",
+};
+
+/** Highest tier reached by a percentage change since found price; null below +10%. */
+export function evolutionTierForChange(pct: number | undefined): EvolutionTier | null {
+  if (typeof pct !== "number" || !Number.isFinite(pct)) return null;
+  for (const step of EVOLUTION_TIER_STEPS) {
+    if (pct >= step.min) return step.tier;
+  }
+  return null;
+}
+
+/**
+ * Percent change since the find was recorded, or undefined when either side is
+ * missing. Finds without a `foundPrice` are never estimated (AGENTS.md §2.4) —
+ * they simply have no delta and therefore no tier.
+ */
+export function changeSinceFoundPct(
+  find: Pick<Find, "foundPrice">,
+  currentPrice: number | undefined,
+): number | undefined {
+  const basis = find.foundPrice;
+  if (!basis || basis <= 0) return undefined;
+  if (typeof currentPrice !== "number" || !Number.isFinite(currentPrice)) return undefined;
+  return ((currentPrice - basis) / basis) * 100;
+}
+
 export async function listFinds(
   opts: FetchOpts = {},
   limit = 100,

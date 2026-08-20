@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
-import { hasRobinhoodMcp, robinhoodStockUrl } from "../lib/robinhood-mcp.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { hasRobinhoodMcp, robinhoodStockUrl } from "../lib/robinhood-mcp.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /**
  * GET /v1/robinhood?ticker=JPM

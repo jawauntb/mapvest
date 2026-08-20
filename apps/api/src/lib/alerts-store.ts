@@ -130,9 +130,7 @@ export async function listAlerts(userId: string): Promise<Alert[]> {
       return items;
     }
   }
-  return [...memBucket(userId).values()].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
+  return [...memBucket(userId).values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function listActiveAlerts(userId: string): Promise<Alert[]> {

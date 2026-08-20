@@ -23,10 +23,17 @@ import { Platform } from "react-native";
 const ASYNC_STORAGE_KEY = "mapvest.widget.lastLocation.v1";
 const IOS_APP_GROUP = "group.com.mapvest.app.widget";
 const IOS_LOCATION_KEY = "lastLocation";
+/**
+ * Written by the *widget* (not the app) when a timeline refresh captures a
+ * Core Location fix — roadmap §2 B3. Must match `widgetFixKey` in
+ * targets/widget/WidgetLocationHeartbeat.swift.
+ */
+const IOS_WIDGET_FIX_KEY = "widgetLocationFix";
 
 /** Minimal shape of `@bacons/apple-targets`' `ExtensionStorage` we use. */
 interface IosExtensionStorage {
   set(key: string, value: Record<string, string | number>): void;
+  get(key: string): string | null;
 }
 type ExtensionStorageModule = {
   ExtensionStorage: new (appGroup: string) => IosExtensionStorage;
@@ -69,6 +76,50 @@ export async function saveLastLocationForWidgets(loc: LatLng): Promise<void> {
     (require("@bacons/apple-targets") as ExtensionStorageModule).ExtensionStorage.reloadWidget();
   } catch {
     /* extension module not linked yet — no-op until next native build */
+  }
+}
+
+/** A location fix the *widget extension* captured, with its capture time. */
+export type WidgetCapturedFix = LatLng & {
+  /** Epoch ms, directly comparable to `Date.now()`. */
+  capturedAt: number;
+};
+
+/**
+ * Reads the last fix the WidgetKit extension captured on a timeline refresh
+ * (roadmap §2 B3). The widget can't POST it itself — no session token, tiny
+ * execution budget — so the app relays it on foreground via
+ * `syncWidgetFixIfFresh()` in src/location/heartbeat.ts.
+ *
+ * Returns null on Android, in Expo Go, in a simulator, and on any build made
+ * before `expo prebuild` links the extension — i.e. everywhere the widget
+ * hasn't actually run. Never throws.
+ */
+export async function readWidgetCapturedFix(): Promise<WidgetCapturedFix | null> {
+  if (Platform.OS !== "ios") return null;
+  try {
+    const storage = getIosStorage();
+    if (!storage) return null;
+    // `ExtensionStorage.get` re-serializes the App Group's stored JSON Data
+    // back into a string — see the native module's `get` in
+    // @bacons/apple-targets/ios/ExtensionStorageModule.swift.
+    const raw = storage.get(IOS_WIDGET_FIX_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<WidgetCapturedFix>;
+    if (
+      typeof parsed?.lat !== "number" ||
+      typeof parsed?.lng !== "number" ||
+      typeof parsed?.capturedAt !== "number" ||
+      !Number.isFinite(parsed.lat) ||
+      !Number.isFinite(parsed.lng) ||
+      !Number.isFinite(parsed.capturedAt)
+    ) {
+      return null;
+    }
+    return { lat: parsed.lat, lng: parsed.lng, capturedAt: parsed.capturedAt };
+  } catch {
+    /* extension module not linked yet, or malformed payload */
+    return null;
   }
 }
 

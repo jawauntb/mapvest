@@ -1,5 +1,5 @@
-import type { MiddlewareHandler } from "hono";
 import type { User } from "@mapvest/core";
+import type { MiddlewareHandler } from "hono";
 import { record } from "../lib/metrics.js";
 
 function clientIp(c: {

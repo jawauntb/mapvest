@@ -14,7 +14,12 @@ function safeHttpUrl(raw: string): string | null {
     const u = new URL(raw);
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;
     const host = u.hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host.endsWith(".local")) {
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".local")
+    ) {
       return null;
     }
     return u.toString();

@@ -13,9 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#0C0E10"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
@@ -30,9 +28,7 @@
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
       },
       "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.com.mapvest.app.widget"
-        ]
+        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
       }
     },
     "android": {
@@ -64,7 +60,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Mapvest to use your location to show nearby investable brands."
+          "locationWhenInUsePermission": "Mapvest uses your location to show investable brands near you on the map."
         }
       ],
       "expo-asset",
@@ -84,10 +80,7 @@
             "NSExtensionActivationSupportsText": true
           },
           "iosShareExtensionName": "Share to Mapvest",
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ]
+          "androidIntentFilters": ["text/*", "image/*"]
         }
       ],
       "@bacons/apple-targets",

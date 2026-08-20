@@ -104,11 +104,26 @@ const S = {
   ProgressResponse: component("ProgressResponse", raw.ProgressResponse),
   UniverseSummary: component("UniverseSummary", raw.UniverseSummary),
   DexRarity: component("DexRarity", raw.DexRarity),
+  DexRarityCounts: component("DexRarityCounts", raw.DexRarityCounts),
   DexSector: component("DexSector", raw.DexSector),
   DexResponse: component("DexResponse", raw.DexResponse),
   CompanyEdgeType: component("CompanyEdgeType", raw.CompanyEdgeType),
   CompanyEdge: component("CompanyEdge", raw.CompanyEdge),
   CompanyGraphResponse: component("CompanyGraphResponse", raw.CompanyGraphResponse),
+  QuestKind: component("QuestKind", raw.QuestKind),
+  Quest: component("Quest", raw.Quest),
+  QuestsResponse: component("QuestsResponse", raw.QuestsResponse),
+  TerritoryResponse: component("TerritoryResponse", raw.TerritoryResponse),
+  ActiveEvent: component("ActiveEvent", raw.ActiveEvent),
+  EventsResponse: component("EventsResponse", raw.EventsResponse),
+  Rivalry: component("Rivalry", raw.Rivalry),
+  RivalriesResponse: component("RivalriesResponse", raw.RivalriesResponse),
+  CreateRivalryRequest: component("CreateRivalryRequest", raw.CreateRivalryRequest),
+  DemandPulseBuyer: component("DemandPulseBuyer", raw.DemandPulseBuyer),
+  DemandPulse: component("DemandPulse", raw.DemandPulse),
+  EnvironmentSeries: component("EnvironmentSeries", raw.EnvironmentSeries),
+  EnvironmentBrief: component("EnvironmentBrief", raw.EnvironmentBrief),
+  SynthesisMemoResponse: component("SynthesisMemoResponse", raw.SynthesisMemoResponse),
 };
 
 // -------- shared error envelope --------
@@ -247,7 +262,7 @@ registry.registerPath({
   path: "/v1/progress",
   summary: "Progression (XP, level, streak) for the signed-in user",
   description:
-    "Server-side truth for XP, level, streak length, and streak-freeze inventory. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`).",
+    "Server-side truth for XP, level, streak length, streak-freeze inventory, and earned `badges`. Written by `recordFind` on every successful `/v1/identify`; the client renders this rather than deriving a streak locally, so the streak survives reinstall. `lastFindDay` is a UTC calendar day (`YYYY-MM-DD`). `badges` holds opaque earned badge keys (e.g. `sector:Consumer Staples`) awarded server-side — clients never post a badge and must render an unknown key generically.",
   tags: ["identify"],
   security: [{ bearerAuth: [] }],
   responses: {
@@ -281,7 +296,7 @@ registry.registerPath({
   path: "/v1/dex",
   summary: "Collection progress (sector dexes + regional tiles)",
   description:
-    "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find). Rarity tiers are enumerated by the `DexRarity` component.",
+    "Derived on read by reconciling the caller's finds against the `brands.json` seed in `packages/finance`: per-sector found/total counts, plus `tilesVisited` (distinct geohash-6 tiles with at least one find) and `rarityCounts`, the per-find histogram over the four `DexRarity` tiers. Every find is classified into exactly one tier, so the four counts sum to `totalFinds`.",
   tags: ["identify"],
   security: [{ bearerAuth: [] }],
   responses: {
@@ -289,6 +304,157 @@ registry.registerPath({
       description: "Dex progress returned.",
       content: { "application/json": { schema: S.DexResponse } },
     },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/quests",
+  summary: "Daily quests for the signed-in user",
+  description:
+    "The caller's quest set for the current UTC day. Quests cover verifiable actions only (`catch_any`, `catch_private`, `new_tile`, `new_sector`) and are evaluated server-side from the find stream — completion is never self-reported, so there is no endpoint to claim one. `id` is deterministic per day and kind (`{YYYY-MM-DD}:{kind}`), which is what makes XP grantable at most once per quest. `xpGrantedToday` reports XP already written to `user_progress` for `day`; the client displays it and never adds to it.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: "Quest set for the current UTC day.",
+      content: { "application/json": { schema: S.QuestsResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/territory",
+  summary: "Tile completion for a location",
+  description:
+    "Completion state for the geohash-6 tile containing `lat`/`lng`. `investablesTotal` is how many investable brands the same nearby cascade behind `/v1/nearby` resolves inside the tile, and `found` is how many of those the caller has already caught, so the two reconcile with `/v1/nearby` for that tile. `pioneer` is true when the caller has not yet recorded a find in this tile — the write-time pioneer XP bonus is still available here. The counts come from a live places + brand join, so the response carries `sources` (AGENTS.md §6) — an uncitable lookup returns fewer sources, never an invented one.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      lat: z.coerce.number().min(-90).max(90).openapi({ example: 40.7128 }),
+      lng: z.coerce.number().min(-180).max(180).openapi({ example: -74.006 }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Tile completion resolved.",
+      content: { "application/json": { schema: S.TerritoryResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/events/current",
+  summary: "Currently open XP event, if any",
+  description:
+    "The scheduler-driven quest modifier that is open right now — e.g. Sector Saturday doubling XP for one sector, or an earnings-week window. The schedule is global rather than per-user, so no auth is required. `active` is explicitly `null` when no window is open, letting the client distinguish 'no event' from a failed fetch. The `multiplier` applies to find XP only (quest XP is awarded at face value), only inside `[startsAt, endsAt)`, and an event with no `sector` applies to every sector.",
+  tags: ["identify"],
+  responses: {
+    200: {
+      description: "Active event, or `null` when no window is open.",
+      content: { "application/json": { schema: S.EventsResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/rivalries",
+  summary: "Weekly matchups for the signed-in user",
+  description:
+    "The caller's tracked solo matchups (e.g. NVDA vs AMD) with the running win/loss/draw record. Collection and comprehension mechanic only: a rivalry is not a position and the copy never instructs a trade. `weekStart` is the Monday of the current round as a UTC calendar day, so the round boundary does not move with the device timezone.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: "Rivalries returned newest-first.",
+      content: { "application/json": { schema: S.RivalriesResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/rivalries",
+  summary: "Start a weekly matchup against a comparable",
+  description:
+    "Creates a solo weekly matchup for one of the caller's finds. Omit `rivalTicker` and the server picks the opponent from the existing comparables pipeline in `packages/finance` — the client must not invent a rival, and a ticker with no resolvable comparable returns 422 rather than a fabricated opponent. The optional pre-registered `currentPick` on the returned rivalry is a conviction game scored for XP; it is not an order and creates no position.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: S.CreateRivalryRequest },
+      },
+    },
+  },
+  responses: {
+    201: {
+      description: "Rivalry created; the full updated list is returned.",
+      content: { "application/json": { schema: S.RivalriesResponse } },
+    },
+    409: flatErrorResponse("A rivalry for this exact pairing already exists."),
+    422: flatErrorResponse(
+      "No comparable could be resolved for `ticker` — pass an explicit `rivalTicker` instead.",
+    ),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/rivalries/{id}/pick",
+  summary: "Pre-register (or clear) the conviction pick for the open round",
+  description:
+    'Body is `{ pick: "ticker" | "rival" | null }` — `null` clears the pick. A correct pick earns XP at the weekly close, which then clears it so a pick never carries into a round it was not registered for. Not an order; creates no position.',
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      id: z.string().openapi({ param: { name: "id", in: "path" } }),
+    }),
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({ pick: z.enum(["ticker", "rival"]).nullable() }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Pick recorded; the full updated list is returned.",
+      content: { "application/json": { schema: S.RivalriesResponse } },
+    },
+    404: flatErrorResponse("Rivalry not found (or not the caller's)."),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/v1/rivalries/{id}",
+  summary: "Delete a rivalry",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      id: z.string().openapi({ param: { name: "id", in: "path" } }),
+    }),
+  },
+  responses: {
+    204: { description: "Rivalry deleted." },
+    404: flatErrorResponse("Rivalry not found (or not the caller's)."),
     ...errorResponses,
   },
 });
@@ -732,6 +898,99 @@ registry.registerPath({
     402: quotaExceededResponse,
     429: flatErrorResponse("Rate limit exceeded."),
     502: flatErrorResponse("Graph extraction failed (filings or Exa evidence unavailable)."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/pulse/{ticker}",
+  summary: "Demand pulse (is the money upstream growing or shrinking)",
+  description:
+    "Aggregates the buyer side of a ticker's value chain into one signal: the `buys_from` counterparties from `/v1/graph/{ticker}` joined to provider income-statement / cash-flow series, weighted by edge weight. Metered exactly like `/v1/graph` — cache hits are free and identity-less; a cache MISS spends provider money, so generation requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). `pulse` is `null` (and `interpretation` is `unknown`) when no buyer fundamentals resolved — never zero-filled — and a buyer whose series is missing keeps `revenueYoY`/`capexYoY` omitted (AGENTS.md §2.4). Every fetched series is cited in `sources` (AGENTS.md §6).",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      ticker: z.string().openapi({
+        param: { name: "ticker", in: "path" },
+        example: "NVDA",
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Demand pulse returned (cache hit or fresh computation).",
+      content: { "application/json": { schema: S.DemandPulse } },
+    },
+    400: flatErrorResponse(
+      "Bad request — malformed ticker, or a cache-miss generation attempted with neither a bearer session nor an `X-Device-Id` header.",
+    ),
+    402: quotaExceededResponse,
+    429: flatErrorResponse("Rate limit exceeded."),
+    502: flatErrorResponse("Demand pulse unavailable (graph edges or fundamentals unreachable)."),
+    503: flatErrorResponse("Market-data provider is not configured."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/environment/{sector}",
+  summary: "Macro environment brief for a sector",
+  description:
+    "The gather → LLM → tailwinds/headwinds brief at sector scale, cached 24h. `series` holds the quantitative FRED observations behind the brief; policy and culture color gathered via Exa with recency filters is qualitative and is cited in `sources` alongside them, never promoted into `series`. Metered exactly like `/v1/graph` — cache hits are free, a cache MISS requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). Degrades honestly: with `FRED_API_KEY` unset the brief ships with `series: []` and Exa color only; 503 only when neither FRED nor Exa (nor the LLM) is configured. Macro numbers are never synthesized.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      sector: z.string().openapi({
+        param: { name: "sector", in: "path" },
+        example: "Consumer Staples",
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Environment brief returned (cache hit or fresh generation).",
+      content: { "application/json": { schema: S.EnvironmentBrief } },
+    },
+    400: flatErrorResponse(
+      "Bad request — unknown sector, or a cache-miss generation attempted with neither a bearer session nor an `X-Device-Id` header.",
+    ),
+    402: quotaExceededResponse,
+    429: flatErrorResponse("Rate limit exceeded."),
+    502: flatErrorResponse("Environment brief generation failed."),
+    503: flatErrorResponse(
+      "Environment layer not configured (neither FRED_API_KEY nor EXA_API_KEY, or no LLM key).",
+    ),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/memo/synthesis",
+  summary: "Layered synthesis memo (billable)",
+  description:
+    "The layered memo. The prompt receives the three layer briefs — upstream (`/v1/graph/{ticker}`), demand (`/v1/pulse/{ticker}`), and environment (`/v1/environment/{sector}`) — plus ratios, and is asked exactly three questions: what is the binding constraint on this business, how durable is the demand above it, and where in the chain does pricing power sit. Those answers come back as `bindingConstraint` / `demandDurability` / `pricingPower`, each grounded in the cited layer briefs. They are optional because the memo degrades gracefully: with an empty graph, no pulse, and no environment brief it returns a plain `memo` and omits the layer answers rather than guessing them. Metered exactly like `/v1/graph` — cache hits are free, a cache MISS requires a bearer session or `X-Device-Id` and counts against the free-tier generation quota (402 when spent). Every layer fact carried into an answer is cited in `sources` (AGENTS.md §6).",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({ ticker: z.string().openapi({ example: "NVDA" }) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Synthesis memo generated (cache hit or fresh generation).",
+      content: { "application/json": { schema: S.SynthesisMemoResponse } },
+    },
+    400: flatErrorResponse(
+      "Bad request — malformed ticker, or a cache-miss generation attempted with neither a bearer session nor an `X-Device-Id` header.",
+    ),
+    402: quotaExceededResponse,
+    429: flatErrorResponse("Rate limit exceeded."),
+    502: flatErrorResponse("Memo generation failed."),
   },
 });
 

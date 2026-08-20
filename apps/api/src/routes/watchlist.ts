@@ -1,12 +1,9 @@
-import { Hono } from "hono";
 import { getQuote, resolveComparable } from "@mapvest/finance";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { OUTAGE_BRIEF, generateWatchlistBrief } from "../lib/watchlist-brief.js";
 import {
-  generateWatchlistBrief,
-  OUTAGE_BRIEF,
-} from "../lib/watchlist-brief.js";
-import {
+  type WatchEntry,
   attachWatchMemo,
   createWatchList,
   deleteWatchList,
@@ -17,8 +14,8 @@ import {
   removeWatchEntry,
   renameWatchList,
   upsertWatchEntry,
-  type WatchEntry,
 } from "../lib/watchlist-store.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /**
  * Per-user watchlist. Persisted in Postgres when POSTGRES_URL is set
@@ -279,7 +276,7 @@ watchlist.post("/add", async (c) => {
     // resolveComparable is heavier) — we race a short timeout so a slow
     // resolve doesn't hold the request.
     let resolvedName = body.name;
-    let resolvedSector = body.sector;
+    const resolvedSector = body.sector;
     let unresolved = true;
     try {
       const quote = await Promise.race([

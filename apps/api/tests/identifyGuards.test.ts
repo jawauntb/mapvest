@@ -5,17 +5,17 @@ process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
 process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 
 import { Hono } from "hono";
-import {
-  IDENTIFY_LIMITS,
-  __resetIdentifyGuards,
-  identifyGuards,
-} from "../src/middleware/identifyGuards.js";
 import { __resetMetrics, tail } from "../src/lib/metrics.js";
 import {
   MAX_OCR_STRING_LENGTH,
   sanitizeOcrString,
   stripControlChars,
 } from "../src/lib/sanitize.js";
+import {
+  IDENTIFY_LIMITS,
+  __resetIdentifyGuards,
+  identifyGuards,
+} from "../src/middleware/identifyGuards.js";
 
 /** Build a minimal Hono app with just the identifyGuards middleware attached. */
 function makeApp() {
@@ -92,15 +92,11 @@ describe("identifyGuards middleware", () => {
     const app = makeApp();
     const res = await hit(app, "5.5.5.5");
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Identify-RateLimit-Minute")).toBe(
-      String(IDENTIFY_LIMITS.perMinute),
-    );
+    expect(res.headers.get("X-Identify-RateLimit-Minute")).toBe(String(IDENTIFY_LIMITS.perMinute));
     expect(res.headers.get("X-Identify-RateLimit-Minute-Remaining")).toBe(
       String(IDENTIFY_LIMITS.perMinute - 1),
     );
-    expect(res.headers.get("X-Identify-RateLimit-Hour")).toBe(
-      String(IDENTIFY_LIMITS.perHour),
-    );
+    expect(res.headers.get("X-Identify-RateLimit-Hour")).toBe(String(IDENTIFY_LIMITS.perHour));
     expect(res.headers.get("X-Identify-RateLimit-Hour-Remaining")).toBe(
       String(IDENTIFY_LIMITS.perHour - 1),
     );

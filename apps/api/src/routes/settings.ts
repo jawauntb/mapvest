@@ -1,11 +1,7 @@
 import { Hono } from "hono";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
-import {
-  clearRobinhoodMcp,
-  getRobinhoodMcp,
-  setRobinhoodMcp,
-} from "../lib/robinhood-mcp.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { clearRobinhoodMcp, getRobinhoodMcp, setRobinhoodMcp } from "../lib/robinhood-mcp.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /**
  * Per-user settings. Robinhood MCP credentials are stored encrypted in Postgres
@@ -32,8 +28,7 @@ settings.get("/", async (c) => {
             updatedAt: rh.updatedAt,
           }
         : { configured: false as const },
-      note:
-        "Paste your Robinhood agent MCP bearer under Home to unlock Open in Robinhood on ticker pages. Mapvest opens Robinhood for you to place orders there — we never submit broker orders. Key is encrypted in Postgres and survives redeploys.",
+      note: "Paste your Robinhood agent MCP bearer under Home to unlock Open in Robinhood on ticker pages. Mapvest opens Robinhood for you to place orders there — we never submit broker orders. Key is encrypted in Postgres and survives redeploys.",
     });
   });
 });

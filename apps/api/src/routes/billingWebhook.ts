@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import type Stripe from "stripe";
-import { clearSubscription, findUserIdByStripeCustomerId, markSubscribed } from "../lib/entitlements.js";
+import {
+  clearSubscription,
+  findUserIdByStripeCustomerId,
+  markSubscribed,
+} from "../lib/entitlements.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { stripeConfigured, verifyWebhookSignature } from "../lib/stripe.js";
 
@@ -49,13 +53,19 @@ billingWebhook.post("/", async (c) => {
         const customerId =
           typeof session.customer === "string" ? session.customer : session.customer?.id;
         const subscriptionId =
-          typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
         const userId = await resolveUserId(
           session.metadata?.userId,
           session.client_reference_id,
           customerId,
         );
-        span.setAttributes({ user_id: userId, customer_id: customerId, subscription_id: subscriptionId });
+        span.setAttributes({
+          user_id: userId,
+          customer_id: customerId,
+          subscription_id: subscriptionId,
+        });
         if (userId && customerId && subscriptionId) {
           await markSubscribed(userId, {
             stripeCustomerId: customerId,
@@ -96,7 +106,11 @@ billingWebhook.post("/", async (c) => {
             ? subscription.customer
             : subscription.customer?.id;
         const userId = await resolveUserId(subscription.metadata?.userId, null, customerId);
-        span.setAttributes({ user_id: userId, customer_id: customerId, subscription_id: subscription.id });
+        span.setAttributes({
+          user_id: userId,
+          customer_id: customerId,
+          subscription_id: subscription.id,
+        });
         if (userId) await clearSubscription(userId);
         break;
       }

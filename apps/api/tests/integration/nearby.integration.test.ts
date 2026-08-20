@@ -13,8 +13,8 @@ delete process.env.MOCK_PLACES;
 
 import type { NearbyResponse } from "@mapvest/core";
 import { app } from "../../src/index.js";
-import { __resetRateLimit } from "../../src/middleware/rateLimit.js";
 import { __resetMetrics } from "../../src/lib/metrics.js";
+import { __resetRateLimit } from "../../src/middleware/rateLimit.js";
 
 const INTEGRATION = process.env.INTEGRATION === "1";
 const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;

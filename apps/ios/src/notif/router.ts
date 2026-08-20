@@ -14,6 +14,10 @@ export type NotifData = {
   brand?: string;
   tickers?: string[];
   changePct?: number;
+  findId?: string;
+  rivalryId?: string;
+  tier?: string;
+  place?: string;
 };
 
 export function pathFromNotificationData(data: NotifData | null | undefined): string | null {
@@ -35,6 +39,16 @@ export function pathFromNotificationData(data: NotifData | null | undefined): st
       return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/camera";
     case "watchlist_mover":
       return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/home";
+    // Universe pushes (roadmap A2 / B4 / C6). Each carries the ticker the
+    // notification is about, so they land on that company. B4's "open the map
+    // with the pin highlighted" is not built yet — the map takes no params —
+    // so an uncaught ticker falls back to the map tab.
+    case "find_evolution":
+      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/universe";
+    case "uncaught_nearby":
+      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/map";
+    case "rivalry_weekly_close":
+      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/universe";
     default:
       return null;
   }

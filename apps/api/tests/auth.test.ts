@@ -7,8 +7,8 @@ process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 process.env.ADMIN_EMAILS = "admin@mapvest.dev";
 
 import { app } from "../src/index.js";
-import { __resetStore } from "../src/lib/store.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
+import { __resetStore } from "../src/lib/store.js";
 import { __resetRateLimit } from "../src/middleware/rateLimit.js";
 
 function url(path: string) {
@@ -77,7 +77,9 @@ describe("auth flow", () => {
       }),
     );
     expect(r2.status).toBe(200);
-    const body = (await r2.json()) as { session: { token: string; userId: string; expiresAt: string } };
+    const body = (await r2.json()) as {
+      session: { token: string; userId: string; expiresAt: string };
+    };
     expect(body.session.token).toEqual(expect.any(String));
     expect(body.session.userId).toMatch(/^usr_/);
 

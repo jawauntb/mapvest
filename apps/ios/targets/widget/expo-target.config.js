@@ -12,7 +12,12 @@ module.exports = {
   type: "widget",
   name: "MapvestWidgets",
   displayName: "Mapvest",
-  frameworks: ["SwiftUI", "WidgetKit"],
+  // CoreLocation is for the B3 heartbeat (WidgetLocationHeartbeat.swift): the
+  // widget takes a coarse fix under the app's existing When-In-Use grant.
+  // `NSWidgetWantsLocation` — the key that permits it — lives in the
+  // committed Info.plist here, since this config has no `infoPlist` field and
+  // the plugin only generates that file when it's missing.
+  frameworks: ["SwiftUI", "WidgetKit", "CoreLocation"],
   deploymentTarget: "16.0",
   entitlements: {
     // Must match `ios.entitlements` in app.json and IOS_APP_GROUP in

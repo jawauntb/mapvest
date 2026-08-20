@@ -20,6 +20,8 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `OPENROUTER_API_KEY` | OpenRouter | `packages/vision`, `apps/api` |
 | `OPENROUTER_BASE_URL` | OpenRouter | `packages/vision` |
 | `EXA_API_KEY` | Exa | `packages/search`, `apps/api` |
+| `FRED_API_KEY` | FRED (St. Louis Fed) | `packages/finance` macro series; optional — environment briefs omit series when unset |
+| `FRED_BASE_URL` | FRED | non-secret override; defaults to `https://api.stlouisfed.org/fred` |
 | `GEMINI_API_KEY` | Google | `packages/vision` (fallback) |
 | `GOOGLE_MAPS_API_KEY` | Google Places | `apps/api` server-side only |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Google | server-side Places if using ADC |

@@ -4,29 +4,44 @@
  * whole record. Shares the ["finds", token] cache with Home.
  */
 import {
+  type DexRarity,
+  type DexRarityCounts,
   type DexSector,
+  type Quest,
   type Quote,
   type UniverseSummary,
+  type UserProgress,
   fetchDex,
   fetchProgress,
+  fetchQuests,
   fetchQuotesMap,
   fetchUniverseSummary,
 } from "@/api/client";
-import { type Find, listFinds, resolveStreakDays } from "@/api/finds";
+import {
+  EVOLUTION_TIER_COLORS,
+  EVOLUTION_TIER_LABELS,
+  type Find,
+  changeSinceFoundPct,
+  evolutionTierForChange,
+  listFinds,
+  resolveStreakDays,
+} from "@/api/finds";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
 import { EmptyState } from "@/components/EmptyState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
+import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
+import { MAPVEST_URL } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import { useMemo } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Row =
@@ -57,6 +72,45 @@ function money(n: number): string {
   })}`;
 }
 
+/**
+ * The shareable form of the counterfactual. It says "hypothetical" by saying
+ * "per $100/find" — this is a collection artifact, never a holdings statement
+ * and never advice (roadmap A3 framing rule).
+ */
+function shareTextFor(summary: UniverseSummary): string {
+  const sign = summary.changePct >= 0 ? "+" : "";
+  return [
+    `My Mapvest universe: ${money(summary.hypotheticalValue)} per $100/find`,
+    ` (${sign}${summary.changePct.toFixed(1)}%) across ${summary.valuedFinds} find`,
+    summary.valuedFinds === 1 ? "" : "s",
+    `\nHypothetical — $100 into each brand the moment I found it. ${MAPVEST_URL}`,
+  ].join("");
+}
+
+/** "Lv 3 · 240 XP" — compact, and only when the progression store answered. */
+function levelLine(progress: UserProgress | undefined): string | null {
+  if (!progress) return null;
+  const xp = progress.xp >= 10_000 ? `${(progress.xp / 1000).toFixed(1)}k` : `${progress.xp}`;
+  return `Lv ${progress.level} · ${xp} XP`;
+}
+
+const RARITY_ORDER: DexRarity[] = ["common", "uncommon", "rare", "legendary"];
+
+const RARITY_LABELS: Record<DexRarity, string> = {
+  common: "Common",
+  uncommon: "Uncommon",
+  rare: "Rare",
+  legendary: "Legendary",
+};
+
+/** Rarity ink climbs toward the accent — legendary is the loudest thing here. */
+const RARITY_COLORS: Record<DexRarity, string> = {
+  common: colors.fgDim,
+  uncommon: colors.fgMuted,
+  rare: colors.accent2,
+  legendary: colors.warn,
+};
+
 export default function UniverseScreen() {
   const router = useRouter();
   const { session } = useSession();
@@ -81,6 +135,7 @@ export default function UniverseScreen() {
     retry: false,
   });
   const streak = resolveStreakDays(progressQ.data?.progress.streakDays, finds);
+  const levelText = levelLine(progressQ.data?.progress);
 
   const summaryQ = useQuery({
     queryKey: ["universe-summary", session?.token],
@@ -102,6 +157,18 @@ export default function UniverseScreen() {
     () => (dexQ.data?.sectors ?? []).filter((s) => s.found > 0 && s.total > 0),
     [dexQ.data],
   );
+  // `rarityCounts` shipped after the first /v1/dex slice, so a server that
+  // predates it answers 200 without the field — read every count defensively.
+  const rarityCounts = dexQ.data?.rarityCounts;
+
+  const questsQ = useQuery({
+    queryKey: ["quests", session?.token],
+    queryFn: () => fetchQuests({ token: session?.token }),
+    enabled: !!session?.token,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const quests = questsQ.data?.quests ?? [];
 
   const syms = useMemo(
     () =>
@@ -194,37 +261,60 @@ export default function UniverseScreen() {
             contentContainerStyle={{ paddingBottom: 32 }}
             ListHeaderComponent={
               <View>
-                <Text style={styles.summary}>
-                  {count} find{count === 1 ? "" : "s"}
-                  {streak >= 2 ? ` · ${streak} day streak` : ""}
-                </Text>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summary}>
+                    {count} find{count === 1 ? "" : "s"}
+                    {streak >= 2 ? ` · ${streak} day streak` : ""}
+                  </Text>
+                  {/* Progression is cosmetic chrome — it appears only once the
+                      store answers, and its absence changes nothing else. */}
+                  {levelText ? (
+                    <Text style={styles.levelPill} accessibilityLabel={levelText}>
+                      {levelText}
+                    </Text>
+                  ) : null}
+                </View>
                 {/* Counterfactual portfolio — hypothetical, and only ever drawn
                     from finds the server could actually value. */}
                 {summary && summary.valuedFinds > 0 ? (
                   <View style={styles.counterfactual}>
-                    <Text style={styles.cfLine}>
-                      <Text style={styles.cfLabel}>$100 per find → worth </Text>
-                      <Text style={styles.cfValue}>{money(summary.hypotheticalValue)}</Text>
-                      <Text
-                        style={[
-                          styles.cfDelta,
-                          {
-                            color: summary.changePct >= 0 ? colors.accent : colors.danger,
-                          },
-                        ]}
-                      >
-                        {"  "}
-                        {summary.changePct >= 0 ? "+" : ""}
-                        {summary.changePct.toFixed(1)}%
-                      </Text>
-                    </Text>
-                    <Text style={styles.cfFoot}>
-                      Hypothetical · {summary.valuedFinds} of {summary.findCount} find
-                      {summary.findCount === 1 ? "" : "s"} priced when found
-                    </Text>
+                    <View style={styles.cfHead}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cfLine}>
+                          <Text style={styles.cfLabel}>$100 per find → worth </Text>
+                          <Text style={styles.cfValue}>{money(summary.hypotheticalValue)}</Text>
+                          <Text
+                            style={[
+                              styles.cfDelta,
+                              {
+                                color: summary.changePct >= 0 ? colors.accent : colors.danger,
+                              },
+                            ]}
+                          >
+                            {"  "}
+                            {summary.changePct >= 0 ? "+" : ""}
+                            {summary.changePct.toFixed(1)}%
+                          </Text>
+                        </Text>
+                        <Text style={styles.cfFoot}>
+                          Hypothetical · {summary.valuedFinds} of {summary.findCount} find
+                          {summary.findCount === 1 ? "" : "s"} priced when found
+                        </Text>
+                      </View>
+                      <ShareButton
+                        accessibilityLabel="Share your universe"
+                        onPress={() => {
+                          // RN's Share sheet resolves quietly on dismiss and
+                          // rejects on odd OS failures — neither is worth an alert.
+                          void Share.share({ message: shareTextFor(summary) }).catch(() => {});
+                        }}
+                      />
+                    </View>
                   </View>
                 ) : null}
                 <DexStrip sectors={dexSectors} />
+                <RarityRow counts={rarityCounts} />
+                <QuestsCard quests={quests} xpGrantedToday={questsQ.data?.xpGrantedToday ?? 0} />
               </View>
             }
             renderItem={({ item }) =>
@@ -296,6 +386,98 @@ function DexStrip({ sectors }: { sectors: DexSector[] }) {
   );
 }
 
+/**
+ * Rarity histogram (roadmap A4) — how the caught set breaks down across
+ * common/uncommon/rare/legendary. Sits with the dex strip because it answers
+ * the other half of "what have I collected". Renders nothing until /v1/dex
+ * answers with the field (older servers omit it) and at least one find is
+ * classified.
+ */
+function RarityRow({ counts }: { counts?: DexRarityCounts }) {
+  const total = RARITY_ORDER.reduce((n, key) => n + (counts?.[key] ?? 0), 0);
+  if (total === 0) return null;
+  return (
+    <View style={styles.rarityRow}>
+      {RARITY_ORDER.map((key) => {
+        const n = counts?.[key] ?? 0;
+        return (
+          <View
+            key={key}
+            style={styles.rarityChip}
+            accessibilityRole="text"
+            accessibilityLabel={`${n} ${RARITY_LABELS[key]}`}
+          >
+            <View style={[styles.rarityDot, { backgroundColor: RARITY_COLORS[key] }]} />
+            <Text style={styles.rarityCount}>{n}</Text>
+            <Text style={styles.rarityLabel} numberOfLines={1}>
+              {RARITY_LABELS[key]}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Today's quests (roadmap A5). Completion is decided server-side from the find
+ * stream — this card only renders `progress`/`target`/`completed` as returned,
+ * and it disappears entirely when /v1/quests 404s.
+ */
+function QuestsCard({ quests, xpGrantedToday }: { quests: Quest[]; xpGrantedToday: number }) {
+  if (quests.length === 0) return null;
+  return (
+    <View style={styles.questCard}>
+      <View style={styles.questHead}>
+        <Ionicons name="flag-outline" size={13} color={colors.accent} />
+        <Text style={styles.questTitle}>Today's quests</Text>
+        {xpGrantedToday > 0 ? (
+          <Text style={styles.questXpToday}>+{xpGrantedToday} XP today</Text>
+        ) : null}
+      </View>
+      {quests.map((quest) => {
+        const target = quest.target > 0 ? quest.target : 1;
+        const pct = Math.max(0, Math.min(1, quest.progress / target));
+        return (
+          <View
+            key={quest.id}
+            style={styles.questRow}
+            accessibilityRole="text"
+            accessibilityLabel={`${quest.title}. ${
+              quest.completed
+                ? `Complete, ${quest.xp} XP`
+                : `${quest.progress} of ${quest.target}, ${quest.xp} XP`
+            }`}
+          >
+            <Ionicons
+              name={quest.completed ? "checkmark-circle" : "ellipse-outline"}
+              size={15}
+              color={quest.completed ? colors.accent : colors.fgDim}
+            />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[styles.questLabel, quest.completed && styles.questLabelDone]}
+                numberOfLines={1}
+              >
+                {quest.title}
+              </Text>
+              {!quest.completed && quest.target > 1 ? (
+                <View style={styles.questTrack}>
+                  <View style={[styles.questFill, { flex: Math.max(0.02, pct) }]} />
+                  <View style={{ flex: Math.max(0.02, 1 - pct) }} />
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.questXp, quest.completed && { color: colors.accent }]}>
+              {quest.completed ? `+${quest.xp}` : `${quest.progress}/${quest.target}`}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function FindRow({
   find,
   quote,
@@ -305,19 +487,24 @@ function FindRow({
   quote?: Quote;
   onPress: () => void;
 }) {
-  const delta =
-    find.foundPrice && quote
-      ? ((quote.price - find.foundPrice) / find.foundPrice) * 100
-      : undefined;
+  const delta = changeSinceFoundPct(find, quote?.price);
+  // Evolution tier (roadmap A2) — a hairline ring on the find's badge. A
+  // collection event, not a buy signal: no copy changes with the tier.
+  const tier = evolutionTierForChange(delta);
   const headline = find.ticker ?? (find.comparable ? `≈${find.comparable}` : find.brand);
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${find.brand}`}
+      accessibilityLabel={`Open ${find.brand}${tier ? ` — ${EVOLUTION_TIER_LABELS[tier]} evolution` : ""}`}
     >
-      <View style={styles.rowBadge}>
+      <View
+        style={[
+          styles.rowBadge,
+          tier ? { borderColor: EVOLUTION_TIER_COLORS[tier], borderWidth: 2 } : null,
+        ]}
+      >
         <Ionicons name="camera" size={14} color={colors.accent} />
       </View>
       <View style={{ flex: 1 }}>
@@ -350,17 +537,37 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.bgElevated,
   },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   summary: {
     color: colors.fgMuted,
     fontSize: 13,
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
+  levelPill: {
+    color: colors.accent,
+    ...type.caption,
+    marginRight: 16,
+    marginBottom: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    overflow: "hidden",
+  },
   counterfactual: {
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 2,
   },
+  cfHead: { flexDirection: "row", alignItems: "center", gap: 10 },
   cfLine: { color: colors.fg },
   cfLabel: { color: colors.fgMuted, fontSize: 14 },
   cfValue: { color: colors.fg, fontSize: 18, fontWeight: "800" },
@@ -394,6 +601,53 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   dexFill: { height: 3 },
+  rarityRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  rarityChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  rarityDot: { width: 6, height: 6, borderRadius: 3 },
+  rarityCount: { color: colors.fg, fontSize: 12, fontWeight: "800" },
+  rarityLabel: { color: colors.fgDim, fontSize: 9, flexShrink: 1 },
+  questCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    gap: 6,
+  },
+  questHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  questTitle: { color: colors.fgMuted, ...type.caption, flex: 1 },
+  questXpToday: { color: colors.accent, ...type.caption },
+  questRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  questLabel: { color: colors.fg, fontSize: 13 },
+  questLabelDone: { color: colors.fgMuted },
+  questTrack: {
+    flexDirection: "row",
+    height: 3,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    backgroundColor: colors.bgSunken,
+    marginTop: 4,
+  },
+  questFill: { height: 3, backgroundColor: colors.accent },
+  questXp: { color: colors.fgDim, fontSize: 11, fontWeight: "700" },
   dayHeader: {
     color: colors.fgMuted,
     ...type.label,

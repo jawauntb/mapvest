@@ -5,24 +5,18 @@
  */
 
 export const DERIVATION_URL = (
-  process.env.DERIVATION_URL ??
-  "https://derivation-research-console-production.up.railway.app"
+  process.env.DERIVATION_URL ?? "https://derivation-research-console-production.up.railway.app"
 ).replace(/\/$/, "");
 
 export const DERIVATION_FORWARDED_HOST =
-  process.env.RESEARCH_CONSOLE_FORWARDED_HOST ??
-  "derivation-research-jawaun.jtbx.workers.dev";
+  process.env.RESEARCH_CONSOLE_FORWARDED_HOST ?? "derivation-research-jawaun.jtbx.workers.dev";
 
 function readToken(): string | undefined {
   return process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_READ?.trim() || undefined;
 }
 
 function mutateToken(): string | undefined {
-  return (
-    process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE?.trim() ||
-    readToken() ||
-    undefined
-  );
+  return process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE?.trim() || readToken() || undefined;
 }
 
 /** Headers for GET /api/idea-chats (read scope). */

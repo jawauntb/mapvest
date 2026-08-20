@@ -1,5 +1,5 @@
-import type { MiddlewareHandler } from "hono";
 import type { User } from "@mapvest/core";
+import type { MiddlewareHandler } from "hono";
 import { record } from "../lib/metrics.js";
 
 /**
@@ -87,9 +87,7 @@ function bumpSliding(
  * bucket and the abuse heuristic described in the module doc.
  */
 export const identifyGuards: MiddlewareHandler = async (c, next) => {
-  const user = (c as unknown as { get: (k: string) => User | undefined }).get(
-    "user",
-  );
+  const user = (c as unknown as { get: (k: string) => User | undefined }).get("user");
   const ip = clientIp(c);
   const key = user ? `u:${user.id}` : `ip:${ip}`;
   const now = Date.now();
@@ -99,12 +97,7 @@ export const identifyGuards: MiddlewareHandler = async (c, next) => {
   const userAttempts = user
     ? bumpSliding(recentByUser, user.id, now, IDENTIFY_LIMITS.abuseWindowMs)
     : 0;
-  const ipAttempts = bumpSliding(
-    recentByIp,
-    ip,
-    now,
-    IDENTIFY_LIMITS.abuseWindowMs,
-  );
+  const ipAttempts = bumpSliding(recentByIp, ip, now, IDENTIFY_LIMITS.abuseWindowMs);
 
   // 2. Abuse heuristic. Log an admin entry so this shows up in
   //    /v1/admin/log for triage.
@@ -127,26 +120,11 @@ export const identifyGuards: MiddlewareHandler = async (c, next) => {
 
   // 3. Token bucket. Emit dedicated identify headers so callers can
   //    distinguish these limits from the global limiter's headers.
-  const minute = bumpBucket(
-    minuteBuckets,
-    key,
-    IDENTIFY_LIMITS.perMinute,
-    60_000,
-    now,
-  );
-  const hour = bumpBucket(
-    hourBuckets,
-    key,
-    IDENTIFY_LIMITS.perHour,
-    3_600_000,
-    now,
-  );
+  const minute = bumpBucket(minuteBuckets, key, IDENTIFY_LIMITS.perMinute, 60_000, now);
+  const hour = bumpBucket(hourBuckets, key, IDENTIFY_LIMITS.perHour, 3_600_000, now);
 
   c.header("X-Identify-RateLimit-Minute", String(IDENTIFY_LIMITS.perMinute));
-  c.header(
-    "X-Identify-RateLimit-Minute-Remaining",
-    String(minute.remaining),
-  );
+  c.header("X-Identify-RateLimit-Minute-Remaining", String(minute.remaining));
   c.header("X-Identify-RateLimit-Minute-Reset", String(minute.resetSec));
   c.header("X-Identify-RateLimit-Hour", String(IDENTIFY_LIMITS.perHour));
   c.header("X-Identify-RateLimit-Hour-Remaining", String(hour.remaining));

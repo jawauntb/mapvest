@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { mapsSigningKey } from "../lib/env.js";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const session = new Hono<AuthEnv>();
 

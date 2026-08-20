@@ -15,15 +15,15 @@
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import {
-  listTokensForUser,
   PUSH_EVENT_KEYS,
   type PushEventKey,
   type PushPrefs,
+  listTokensForUser,
   registerPushToken,
   unregisterPushToken,
   updatePrefs,
 } from "../lib/push-tokens-store.js";
-import { bearerAuth, type AuthEnv } from "../middleware/bearerAuth.js";
+import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const push = new Hono<AuthEnv>();
 push.use("*", bearerAuth);
@@ -48,8 +48,7 @@ push.post("/register", async (c) => {
     if (!token || !EXPO_TOKEN_RE.test(token)) {
       return c.json({ error: "valid ExponentPushToken required" }, 400);
     }
-    const platform =
-      body.platform === "android" ? "android" : ("ios" as "ios" | "android");
+    const platform = body.platform === "android" ? "android" : ("ios" as "ios" | "android");
     const deviceId =
       typeof body.deviceId === "string" && body.deviceId.trim().length > 0
         ? body.deviceId.trim().slice(0, 128)
