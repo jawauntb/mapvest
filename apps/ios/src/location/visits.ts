@@ -23,15 +23,10 @@
  *   fix to the existing heartbeat; scoring, dedupe, and the notification
  *   budget all live server-side (B4).
  *
- * DEFERRED ACCEPTANCE: background location needs `UIBackgroundModes: location`
- * and the Always usage string from app.json, which only take effect after the
- * user's next `expo prebuild` + device build — the same gate as the Phase 9
- * widget work. `expo-task-manager` also isn't a declared dependency yet; until
- * `bunx expo install expo-task-manager` runs, `loadTaskManager()` returns null
- * and every function here is a no-op (Metro treats a `require` inside a
- * try/catch as an optional dependency — `allowOptionalDependencies` is on in
- * Expo's default config — so the bundle still builds). Nothing in Expo Go or
- * the simulator can crash on this path.
+ * Background location needs `UIBackgroundModes: location` and the Always
+ * usage strings from app.json, which take effect after `expo prebuild` + a
+ * device build. `expo-task-manager` is a declared dependency; `loadTaskManager`
+ * still fails soft if the native module is missing so Expo Go cannot crash.
  */
 import * as Location from "expo-location";
 import { Platform } from "react-native";

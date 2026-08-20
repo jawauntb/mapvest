@@ -30,7 +30,7 @@
  */
 import type { Confidence, Find } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
-import { awardXp, bumpProgressOnFind } from "./progress-store.js";
+import { awardXp, bumpProgressOnFind, utcDay } from "./progress-store.js";
 import { PIONEER_XP, tileFor } from "./territory.js";
 
 /**
@@ -114,6 +114,9 @@ async function ensureTable(): Promise<void> {
       ON user_finds (user_id, geohash6)
   `;
   tableEnsured = true;
+  // One-time stamp of pre-column rows + claim pioneer grants so a later
+  // catch in an already-visited tile does not collect a false bonus.
+  await backfillGeohash6().catch(() => {});
 }
 
 /** Dex / universe identity: ticker, else comparable, else brand. */
@@ -335,4 +338,202 @@ export async function listFinds(userId: string, limit = 100): Promise<StoredFind
     }
   }
   return uniqueFindsNewestFirst(memBucket(userId)).slice(0, limit);
+}
+
+function beforeCutoff(createdAt: string, beforeIso?: string): boolean {
+  if (!beforeIso) return true;
+  return Date.parse(createdAt) < Date.parse(beforeIso);
+}
+
+/** Effective ticker for territory/quest baselines: public ticker, else comparable. */
+function effectiveSymbol(find: {
+  ticker?: string | null;
+  comparable?: string | null;
+}): string | undefined {
+  const symbol = (find.ticker ?? find.comparable ?? "").trim().toUpperCase();
+  return symbol || undefined;
+}
+
+/**
+ * Distinct geohash-6 tiles the user has visited. Optional `beforeIso` keeps
+ * only finds strictly older than that instant so quest `new_tile` baselines
+ * do not include today's catches. Uncapped — a 200-row journal page is not
+ * the source of truth for "have I been here before".
+ */
+export async function listDistinctGeohash6(userId: string, beforeIso?: string): Promise<string[]> {
+  await ensureTable();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = beforeIso
+        ? await sql`
+            SELECT geohash6, lat, lng, created_at
+            FROM user_finds
+            WHERE user_id = ${userId}
+              AND created_at < ${new Date(beforeIso)}
+              AND (geohash6 IS NOT NULL OR (lat IS NOT NULL AND lng IS NOT NULL))
+          `
+        : await sql`
+            SELECT geohash6, lat, lng, created_at
+            FROM user_finds
+            WHERE user_id = ${userId}
+              AND (geohash6 IS NOT NULL OR (lat IS NOT NULL AND lng IS NOT NULL))
+          `;
+      const tiles = new Set<string>();
+      for (const row of rows as Array<{
+        geohash6: string | null;
+        lat: number | null;
+        lng: number | null;
+      }>) {
+        const tile = row.geohash6 ?? geohashForCoords(row.lat, row.lng);
+        if (tile) tiles.add(tile);
+      }
+      return [...tiles];
+    }
+  }
+  const tiles = new Set<string>();
+  for (const find of memBucket(userId)) {
+    if (!beforeCutoff(find.createdAt, beforeIso)) continue;
+    const tile = find.geohash6 ?? geohashForCoords(find.lat, find.lng);
+    if (tile) tiles.add(tile);
+  }
+  return [...tiles];
+}
+
+/**
+ * Distinct effective tickers (public symbol or comparable) in the journal.
+ * Optional `beforeIso` is the same cutoff as `listDistinctGeohash6`. Uncapped
+ * so territory numerators and `new_sector` quests stay honest past 200 finds.
+ */
+export async function listDistinctEffectiveTickers(
+  userId: string,
+  beforeIso?: string,
+): Promise<string[]> {
+  await ensureTable();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = beforeIso
+        ? await sql`
+            SELECT DISTINCT COALESCE(
+              NULLIF(UPPER(TRIM(ticker)), ''),
+              NULLIF(UPPER(TRIM(comparable)), '')
+            ) AS symbol
+            FROM user_finds
+            WHERE user_id = ${userId}
+              AND created_at < ${new Date(beforeIso)}
+              AND COALESCE(
+                NULLIF(UPPER(TRIM(ticker)), ''),
+                NULLIF(UPPER(TRIM(comparable)), '')
+              ) IS NOT NULL
+          `
+        : await sql`
+            SELECT DISTINCT COALESCE(
+              NULLIF(UPPER(TRIM(ticker)), ''),
+              NULLIF(UPPER(TRIM(comparable)), '')
+            ) AS symbol
+            FROM user_finds
+            WHERE user_id = ${userId}
+              AND COALESCE(
+                NULLIF(UPPER(TRIM(ticker)), ''),
+                NULLIF(UPPER(TRIM(comparable)), '')
+              ) IS NOT NULL
+          `;
+      return (rows as Array<{ symbol: string | null }>)
+        .map((row) => row.symbol)
+        .filter((symbol): symbol is string => Boolean(symbol));
+    }
+  }
+  const symbols = new Set<string>();
+  for (const find of memBucket(userId)) {
+    if (!beforeCutoff(find.createdAt, beforeIso)) continue;
+    const symbol = effectiveSymbol(find);
+    if (symbol) symbols.add(symbol);
+  }
+  return [...symbols];
+}
+
+/** Unique-per-company finds recorded on a UTC calendar day. Uncapped. */
+export async function listFindsOnDay(userId: string, dayUtc: string): Promise<StoredFind[]> {
+  await ensureTable();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const start = new Date(`${dayUtc}T00:00:00.000Z`);
+      const end = new Date(`${dayUtc}T23:59:59.999Z`);
+      const rows = await sql`
+        SELECT id, brand, ticker, is_public, comparable, confidence,
+               lat, lng, found_price, geohash6, created_at
+        FROM user_finds
+        WHERE user_id = ${userId}
+          AND created_at >= ${start}
+          AND created_at <= ${end}
+        ORDER BY created_at DESC
+      `;
+      return uniqueFindsNewestFirst(
+        (rows as Array<Parameters<typeof rowToFind>[0]>).map(rowToFind),
+      );
+    }
+  }
+  return uniqueFindsNewestFirst(
+    memBucket(userId).filter((find) => utcDay(find.createdAt) === dayUtc),
+  );
+}
+
+/**
+ * Stamp `geohash6` on pre-column rows and claim `pioneer:{tile}` so the next
+ * catch in an already-visited neighborhood does not collect a false bonus
+ * (Universe Roadmap §6). Idempotent: `awardXp` no-ops on a claimed key.
+ */
+export async function backfillGeohash6(): Promise<{ stamped: number; pioneerGrants: number }> {
+  let stamped = 0;
+  let pioneerGrants = 0;
+
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const legacy = (await sql`
+        SELECT id, user_id, lat, lng
+        FROM user_finds
+        WHERE geohash6 IS NULL AND lat IS NOT NULL AND lng IS NOT NULL
+      `) as Array<{ id: string; user_id: string; lat: number; lng: number }>;
+      for (const row of legacy) {
+        const tile = geohashForCoords(row.lat, row.lng);
+        if (!tile) continue;
+        await sql`UPDATE user_finds SET geohash6 = ${tile} WHERE id = ${row.id}`;
+        stamped += 1;
+      }
+      const tiles = (await sql`
+        SELECT DISTINCT user_id, geohash6
+        FROM user_finds
+        WHERE geohash6 IS NOT NULL
+      `) as Array<{ user_id: string; geohash6: string }>;
+      for (const row of tiles) {
+        if (await awardXp(row.user_id, PIONEER_XP, `pioneer:${row.geohash6}`).catch(() => false)) {
+          pioneerGrants += 1;
+        }
+      }
+      return { stamped, pioneerGrants };
+    }
+  }
+
+  for (const [userId, finds] of memory) {
+    const tiles = new Set<string>();
+    for (const find of finds) {
+      if (!find.geohash6) {
+        const tile = geohashForCoords(find.lat, find.lng);
+        if (tile) {
+          find.geohash6 = tile;
+          stamped += 1;
+        }
+      }
+      if (find.geohash6) tiles.add(find.geohash6);
+    }
+    for (const tile of tiles) {
+      if (await awardXp(userId, PIONEER_XP, `pioneer:${tile}`).catch(() => false)) {
+        pioneerGrants += 1;
+      }
+    }
+  }
+  return { stamped, pioneerGrants };
 }

@@ -17,14 +17,15 @@
 import type { QuestsResponse } from "@mapvest/core";
 import { seedBrands } from "@mapvest/finance";
 import { Hono } from "hono";
-import { listFinds } from "../lib/finds-store.js";
+import {
+  listDistinctEffectiveTickers,
+  listDistinctGeohash6,
+  listFindsOnDay,
+} from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { awardXp, utcDay } from "../lib/progress-store.js";
-import { completionFor, dayQuests, splitFindsByDay } from "../lib/quests.js";
+import { completionForBaselines, dayQuests, sectorsOfTickers } from "../lib/quests.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
-
-/** Quests read the caller's whole journal, capped at the finds-store max. */
-const FINDS_LIMIT = 200;
 
 const quests = new Hono<AuthEnv>();
 quests.use("*", bearerAuth);
@@ -33,9 +34,19 @@ quests.get("/", async (c) => {
   return safeExecuteWithSpan("http.quests.get", async (span) => {
     const user = c.get("user");
     const day = utcDay(new Date().toISOString());
-    const finds = await listFinds(user.id, FINDS_LIMIT);
-    const { today, prior } = splitFindsByDay(finds, day);
-    const evaluated = completionFor(dayQuests(user.id, day), today, prior, seedBrands);
+    const dayStart = `${day}T00:00:00.000Z`;
+    const [today, priorTiles, priorTickers] = await Promise.all([
+      listFindsOnDay(user.id, day),
+      listDistinctGeohash6(user.id, dayStart),
+      listDistinctEffectiveTickers(user.id, dayStart),
+    ]);
+    const evaluated = completionForBaselines(
+      dayQuests(user.id, day),
+      today,
+      new Set(priorTiles),
+      sectorsOfTickers(priorTickers, seedBrands),
+      seedBrands,
+    );
 
     let xpGrantedToday = 0;
     for (const quest of evaluated) {

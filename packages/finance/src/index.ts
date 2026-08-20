@@ -74,3 +74,17 @@ export {
   fallbackEtfsForSector,
 } from "./etf-map.js";
 export type { EtfMapEntry } from "./etf-map.js";
+export {
+  buyerEdges,
+  capexPoints,
+  computeDemandPulse,
+  revenuePoints,
+  yoyPercent,
+} from "./demandPulse.js";
+export type {
+  BuyerFundamentals,
+  ComputedDemandPulse,
+  FundamentalsByTicker,
+  PeriodPoint,
+} from "./demandPulse.js";
+export { environmentExaQueries, resolveSector } from "./environmentBrief.js";

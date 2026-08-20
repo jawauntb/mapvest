@@ -224,18 +224,13 @@ gets exactly one push; same tile next hour gets none.
 
 ### B5 — Always-permission visit monitoring (power users)
 
-- [~] `CLVisit` / significant-location-change via expo-location + TaskManager
+- [x] `CLVisit` / significant-location-change via expo-location + TaskManager
       for home→work-grade arrival detection at near-zero battery.
-- [~] Ask for Always **only after** the user has felt B4's value from the
+- [x] Ask for Always **only after** the user has felt B4's value from the
       widget path — never at onboarding.
-      (`src/location/visits.ts` implements enable/disable/status against
-      expo-location + TaskManager, but nothing calls it yet — the ask has
-      no UI entry point, by design, until B4 has proven itself on device.
-      The `app.json` background-location declarations — `UIBackgroundModes:
-      ["location"]`, the Always usage strings, `isIosBackgroundLocationEnabled`
-      — were deliberately REMOVED until the UI entry point ships: declaring a
-      background-location mode with no reachable feature is a routine App
-      Review rejection. Re-add them in the same change that wires the toggle.)
+      Settings shows the Always toggle only after `uncaught_nearby` is on.
+      `app.json` ships `UIBackgroundModes: ["location"]`, the Always usage
+      strings, and `isIosBackgroundLocationEnabled` in the same change.
 
 **Acceptance** (DEFERRED — needs `expo prebuild`, a device build, and an
 Always grant): arrival at a recurring location fires the B4 pipeline with
@@ -401,19 +396,19 @@ background machinery — each moves retention on its own.
 
 ## 6. Wave-2 follow-ups (known, deliberate deferrals)
 
-- [ ] Quest/territory baselines read `listFinds(·, 200)` — a user with >200
+- [x] Quest/territory baselines read `listFinds(·, 200)` — a user with >200
       finds gets a truncated "before today" baseline, so `new_tile` /
       `new_sector` can re-complete for tiles/sectors visited long ago. Fix:
       dedicated `SELECT DISTINCT geohash6` / distinct-effective-ticker store
       queries feeding `completionFor` and the territory numerator.
-- [ ] Pre-`geohash6`-migration finds never claimed a `pioneer:` grant, so the
+- [x] Pre-`geohash6`-migration finds never claimed a `pioneer:` grant, so the
       first post-migration find in an already-visited tile still collects the
       bonus once. One-time backfill of `geohash6` (and optionally the grant
       ledger) closes it.
-- [ ] iOS lockstep: `src/api/graph.ts` declares CompanyEdge/DemandPulse as
+- [x] iOS lockstep: `src/api/graph.ts` declares CompanyEdge/DemandPulse as
       plain TS types; move them (and the unconsumed Territory/Events/Rivalry/
       Environment/Synthesis shapes when the UI consumes them) into
       `src/api/types.ts` as zod mirrors per that file's convention.
-- [ ] Layering: `demand-pulse.ts` / `environment-brief-generator.ts` pure math
+- [x] Layering: `demand-pulse.ts` / `environment-brief-generator.ts` pure math
       could move into `packages/finance` (docstrings currently state the real
       location; `local-brief-generator.ts` is the in-apps/api precedent).

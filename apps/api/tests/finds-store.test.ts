@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Find } from "@mapvest/core";
-import { listFinds, recordFind, uniqueFindsNewestFirst } from "../src/lib/finds-store.js";
+import {
+  backfillGeohash6,
+  listDistinctEffectiveTickers,
+  listDistinctGeohash6,
+  listFinds,
+  listFindsOnDay,
+  recordFind,
+  uniqueFindsNewestFirst,
+} from "../src/lib/finds-store.js";
 
 /**
  * In-memory path only (POSTGRES_URL unset in test env). Covers the record →
@@ -118,5 +126,57 @@ describe("finds-store (in-memory)", () => {
       },
     ]);
     expect(collapsed.map((f) => f.id)).toEqual(["newer-aapl", "sbux"]);
+  });
+
+  test("distinct ticker/tile queries are not capped at 200", async () => {
+    const uid = userId();
+    for (let i = 0; i < 201; i++) {
+      await recordFind(uid, {
+        brand: `Brand ${i}`,
+        ticker: `T${i}`,
+        isPublic: true,
+        confidence: "low",
+        lat: 37.7 + i * 0.02,
+        lng: -122.4,
+      });
+    }
+    const page = await listFinds(uid, 200);
+    expect(page).toHaveLength(200);
+    const tickers = await listDistinctEffectiveTickers(uid);
+    const tiles = await listDistinctGeohash6(uid);
+    expect(tickers.length).toBe(201);
+    expect(tiles.length).toBeGreaterThan(1);
+  });
+
+  test("listFindsOnDay and beforeIso cutoffs keep today out of the prior baseline", async () => {
+    const uid = userId();
+    await recordFind(uid, {
+      brand: "Old",
+      ticker: "OLD",
+      isPublic: true,
+      confidence: "low",
+      lat: 37.77,
+      lng: -122.42,
+    });
+    const priorTickers = await listDistinctEffectiveTickers(uid, "2099-01-01T00:00:00.000Z");
+    expect(priorTickers).toContain("OLD");
+    const today = await listFindsOnDay(uid, "1970-01-01");
+    expect(today).toHaveLength(0);
+  });
+
+  test("backfillGeohash6 is idempotent on already-stamped rows", async () => {
+    const uid = userId();
+    await recordFind(uid, {
+      brand: "Blue Bottle",
+      comparable: "SBUX",
+      isPublic: false,
+      confidence: "medium",
+      lat: 37.77,
+      lng: -122.42,
+    });
+    const first = await backfillGeohash6();
+    const second = await backfillGeohash6();
+    expect(second.stamped).toBe(0);
+    expect(first.pioneerGrants + second.pioneerGrants).toBeGreaterThanOrEqual(0);
   });
 });

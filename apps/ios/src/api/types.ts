@@ -12,7 +12,17 @@ export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
 export const Source = z.object({
-  provider: z.enum(["exa", "openrouter", "gemini", "massive", "yahoo", "polygon", "sec", "manual"]),
+  provider: z.enum([
+    "exa",
+    "openrouter",
+    "gemini",
+    "massive",
+    "yahoo",
+    "polygon",
+    "sec",
+    "fred",
+    "manual",
+  ]),
   url: z.string().url().optional(),
   fetchedAt: z.string(),
   confidence: Confidence,
@@ -473,3 +483,134 @@ export const QuestsResponse = z.object({
   xpGrantedToday: z.number(),
 });
 export type QuestsResponse = z.infer<typeof QuestsResponse>;
+
+// -------- company graph + orbit (Universe Roadmap C1–C3) --------
+
+export const CompanyEdgeType = z.enum(["supplies", "buys_from", "competes_with", "complements"]);
+export type CompanyEdgeType = z.infer<typeof CompanyEdgeType>;
+
+export const CompanyEdge = z.object({
+  id: z.string(),
+  srcTicker: z.string(),
+  dstTicker: z.string().optional(),
+  dstName: z.string(),
+  edgeType: CompanyEdgeType,
+  weight: z.number().min(0).max(1),
+  reasoning: z.string(),
+  sources: z.array(Source),
+  asOf: z.string().optional(),
+  createdAt: z.string(),
+});
+export type CompanyEdge = z.infer<typeof CompanyEdge>;
+
+export const CompanyGraphResponse = z.object({
+  ticker: z.string(),
+  edges: z.array(CompanyEdge),
+  count: z.number(),
+  generatedAt: z.string(),
+  sources: z.array(Source),
+});
+export type CompanyGraphResponse = z.infer<typeof CompanyGraphResponse>;
+
+export const DemandPulseBuyer = z.object({
+  ticker: z.string(),
+  name: z.string().optional(),
+  revenueYoY: z.number().optional(),
+  capexYoY: z.number().optional(),
+  weight: z.number().min(0).max(1),
+});
+export type DemandPulseBuyer = z.infer<typeof DemandPulseBuyer>;
+
+export const DemandPulse = z.object({
+  ticker: z.string(),
+  buyers: z.array(DemandPulseBuyer),
+  pulse: z.number().nullable(),
+  interpretation: z.enum(["expanding", "contracting", "mixed", "unknown"]),
+  generatedAt: z.string(),
+  sources: z.array(Source),
+});
+export type DemandPulse = z.infer<typeof DemandPulse>;
+export type DemandPulseInterpretation = DemandPulse["interpretation"];
+
+// -------- territory / events / rivalries / environment / synthesis --------
+
+export const TerritoryResponse = z.object({
+  tile: z.string(),
+  investablesTotal: z.number(),
+  found: z.number(),
+  pioneer: z.boolean(),
+  sources: z.array(Source),
+});
+export type TerritoryResponse = z.infer<typeof TerritoryResponse>;
+
+export const ActiveEvent = z.object({
+  key: z.string(),
+  title: z.string(),
+  sector: z.string().optional(),
+  multiplier: z.number(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+});
+export type ActiveEvent = z.infer<typeof ActiveEvent>;
+
+export const EventsResponse = z.object({
+  active: ActiveEvent.nullable(),
+});
+export type EventsResponse = z.infer<typeof EventsResponse>;
+
+export const Rivalry = z.object({
+  id: z.string(),
+  ticker: z.string(),
+  rivalTicker: z.string(),
+  wins: z.number(),
+  losses: z.number(),
+  draws: z.number(),
+  currentPick: z.enum(["ticker", "rival"]).optional(),
+  weekStart: z.string(),
+  createdAt: z.string(),
+});
+export type Rivalry = z.infer<typeof Rivalry>;
+
+export const RivalriesResponse = z.object({
+  rivalries: z.array(Rivalry),
+  count: z.number(),
+});
+export type RivalriesResponse = z.infer<typeof RivalriesResponse>;
+
+export const CreateRivalryRequest = z.object({
+  ticker: z.string(),
+  rivalTicker: z.string().optional(),
+});
+export type CreateRivalryRequest = z.infer<typeof CreateRivalryRequest>;
+
+export const EnvironmentSeries = z.object({
+  id: z.string(),
+  label: z.string(),
+  latest: z.number(),
+  unit: z.string().optional(),
+  asOf: z.string(),
+});
+export type EnvironmentSeries = z.infer<typeof EnvironmentSeries>;
+
+export const EnvironmentBrief = z.object({
+  sector: z.string(),
+  headline: z.string(),
+  body: z.string(),
+  tailwinds: z.array(z.string()),
+  headwinds: z.array(z.string()),
+  series: z.array(EnvironmentSeries),
+  generatedAt: z.string(),
+  sources: z.array(Source),
+});
+export type EnvironmentBrief = z.infer<typeof EnvironmentBrief>;
+
+export const SynthesisMemoResponse = z.object({
+  ticker: z.string(),
+  memo: z.string(),
+  bindingConstraint: z.string().optional(),
+  demandDurability: z.string().optional(),
+  pricingPower: z.string().optional(),
+  generatedAt: z.string(),
+  sources: z.array(Source),
+});
+export type SynthesisMemoResponse = z.infer<typeof SynthesisMemoResponse>;

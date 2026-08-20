@@ -131,11 +131,23 @@ function sectorsOf(finds: Find[], seed: DexSeed): Set<string> {
   return sectors;
 }
 
-/** How many of today's finds satisfy a quest kind, given the prior journal. */
+/** Sectors already represented by a set of effective tickers. */
+export function sectorsOfTickers(tickers: Iterable<string>, seed: DexSeed): Set<string> {
+  const tickerSectors = seedTickerSectors(seed);
+  const sectors = new Set<string>();
+  for (const ticker of tickers) {
+    const sector = tickerSectors.get(ticker.trim().toUpperCase());
+    if (sector) sectors.add(sector);
+  }
+  return sectors;
+}
+
+/** How many of today's finds satisfy a quest kind, given prior baselines. */
 function progressForKind(
   kind: QuestKind,
   todaysFinds: Find[],
-  priorFinds: Find[],
+  priorTiles: Set<string>,
+  priorSectors: Set<string>,
   seed: DexSeed,
 ): number {
   switch (kind) {
@@ -144,7 +156,6 @@ function progressForKind(
     case "catch_private":
       return todaysFinds.filter(isPrivateFind).length;
     case "new_tile": {
-      const priorTiles = tilesVisited(priorFinds);
       // Distinct new tiles, so two catches on the same new block count once.
       const fresh = new Set<string>();
       for (const tile of tilesVisited(todaysFinds)) {
@@ -153,7 +164,6 @@ function progressForKind(
       return fresh.size;
     }
     case "new_sector": {
-      const priorSectors = sectorsOf(priorFinds, seed);
       const fresh = new Set<string>();
       for (const sector of sectorsOf(todaysFinds, seed)) {
         if (!priorSectors.has(sector)) fresh.add(sector);
@@ -171,20 +181,41 @@ function progressForKind(
  * `progress` is clamped to `target` so the client can render `progress/target`
  * directly; `completed` is the uncapped comparison.
  */
-export function completionFor(
+/**
+ * Evaluate a day's quests against today's finds plus uncapped prior
+ * tile/sector baselines (so a journal longer than the old 200-row page
+ * cannot re-complete `new_tile` / `new_sector`).
+ */
+export function completionForBaselines(
   quests: Quest[],
   todaysFinds: Find[],
-  priorFinds: Find[],
+  priorTiles: Set<string>,
+  priorSectors: Set<string>,
   seed: DexSeed,
 ): Quest[] {
   return quests.map((quest) => {
-    const raw = progressForKind(quest.kind, todaysFinds, priorFinds, seed);
+    const raw = progressForKind(quest.kind, todaysFinds, priorTiles, priorSectors, seed);
     return {
       ...quest,
       progress: Math.min(raw, quest.target),
       completed: raw >= quest.target,
     };
   });
+}
+
+export function completionFor(
+  quests: Quest[],
+  todaysFinds: Find[],
+  priorFinds: Find[],
+  seed: DexSeed,
+): Quest[] {
+  return completionForBaselines(
+    quests,
+    todaysFinds,
+    tilesVisited(priorFinds),
+    sectorsOf(priorFinds, seed),
+    seed,
+  );
 }
 
 /**

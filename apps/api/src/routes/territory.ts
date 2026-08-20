@@ -25,8 +25,7 @@
  */
 import type { Source, TerritoryResponse } from "@mapvest/core";
 import { Hono } from "hono";
-import { effectiveTicker } from "../lib/dex.js";
-import { findsInTile, listFinds } from "../lib/finds-store.js";
+import { findsInTile, listDistinctEffectiveTickers } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { resolveNearbyItems } from "../lib/nearby-resolve.js";
 import { TILE_RADIUS_M, completion, isPioneer, tileCenter, tileFor } from "../lib/territory.js";
@@ -34,9 +33,6 @@ import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /** How many places the tile lookup asks the cascade for. */
 const TILE_PLACES_LIMIT = 50;
-
-/** The whole journal, capped at the finds-store maximum (same as quests). */
-const FINDS_LIMIT = 200;
 
 /** Keep the citation list readable — the join repeats the same few providers. */
 const MAX_SOURCES = 8;
@@ -101,12 +97,12 @@ territory.get("/", async (c) => {
       sources.push(...investable.sources);
     }
 
-    const [journal, tileFinds] = await Promise.all([
-      listFinds(user.id, FINDS_LIMIT),
+    const [journalTickers, tileFinds] = await Promise.all([
+      listDistinctEffectiveTickers(user.id),
       findsInTile(user.id, tile),
     ]);
 
-    const { investablesTotal, found } = completion(investableTickers, journal.map(effectiveTicker));
+    const { investablesTotal, found } = completion(investableTickers, journalTickers);
     const pioneer = isPioneer(tile, tileFinds);
 
     span.setAttributes({

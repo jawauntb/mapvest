@@ -4,6 +4,11 @@ import { usePaywall } from "@/billing/Paywall";
 import { useEntitlements } from "@/billing/useEntitlements";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import {
+  disableVisitMonitoring,
+  enableVisitMonitoring,
+  isVisitMonitoringEnabled,
+} from "@/location/visits";
+import {
   PUSH_EVENT_LABELS,
   PUSH_EVENT_ORDER,
   type PushEventKey,
@@ -111,6 +116,7 @@ export default function SettingsScreen() {
         <PlanCard />
 
         <NotificationsSection sessionToken={session.token} />
+        <VisitMonitoringSection sessionToken={session.token} />
 
         <View style={styles.card}>
           <View style={styles.cardHead}>
@@ -365,6 +371,83 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
           Nothing is enabled yet — flip any switch above to start receiving that event type.
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * B5 Always-permission visit monitoring. Offered only after the user has
+ * opted into B4 uncaught-nearby arrivals — never at onboarding. The toggle
+ * asks Once and stays silent on denial (see visits.ts).
+ */
+function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
+  const [feltB4, setFeltB4] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await getPushPrefs({ token: sessionToken });
+        const monitoring = await isVisitMonitoringEnabled();
+        if (cancelled) return;
+        setFeltB4(remote.prefs.uncaught_nearby === true);
+        setEnabled(monitoring);
+      } catch {
+        /* keep the gated-off copy */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken]);
+
+  const onToggle = async (next: boolean) => {
+    setBusy(true);
+    try {
+      if (next) {
+        const ok = await enableVisitMonitoring();
+        setEnabled(ok);
+      } else {
+        await disableVisitMonitoring();
+        setEnabled(false);
+      }
+      hapticSelect();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <Ionicons name="navigate-outline" size={15} color={colors.accent} />
+        <Text style={styles.label}>Arrival monitoring</Text>
+      </View>
+      {feltB4 ? (
+        <>
+          <Text style={styles.muted}>
+            Let Mapvest notice when you arrive somewhere with the app closed, so nearby brands you
+            have not caught can still surface. Uses the same When-In-Use grant first, then asks
+            Always once. Never tracks a path.
+          </Text>
+          <View style={styles.notifRow}>
+            <Text style={styles.notifLabel}>Monitor arrivals in the background</Text>
+            <Switch
+              value={enabled}
+              disabled={busy}
+              onValueChange={onToggle}
+              accessibilityLabel="Monitor arrivals in the background"
+            />
+          </View>
+        </>
+      ) : (
+        <Text style={styles.muted}>
+          Turn on uncaught-nearby notifications first. After you have felt those arrival pings, you
+          can let Mapvest notice visits with the app closed.
+        </Text>
+      )}
     </View>
   );
 }

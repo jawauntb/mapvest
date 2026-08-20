@@ -1053,8 +1053,8 @@ export type DemandPulseBuyer = z.infer<typeof DemandPulseBuyer>;
 
 /**
  * `GET /v1/pulse/{ticker}`: is the money upstream of this company growing or
- * shrinking. Computed by `apps/api/src/lib/demand-pulse.ts` (same placement
- * precedent as the local-brief generator) from the ticker's `buys_from` edges
+ * shrinking. Computed by `packages/finance/src/demandPulse.ts` (pure math)
+ * and assembled in `apps/api/src/lib/demand-pulse.ts` from the ticker's `buys_from` edges
  * (see `CompanyEdge`) joined to provider income-statement / cash-flow data
  * fetched via `packages/finance`.
  *

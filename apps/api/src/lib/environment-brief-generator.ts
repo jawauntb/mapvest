@@ -25,7 +25,7 @@
  */
 import type { EnvironmentBrief, EnvironmentSeries, Source } from "@mapvest/core";
 import {
-  canonicalSector,
+  environmentExaQueries,
   fredConfigured,
   fredSeriesUrl,
   getSeries,
@@ -71,10 +71,7 @@ export function environmentBriefAvailability(): EnvironmentBriefAvailability {
   return { ok: true };
 }
 
-/** Canonical GICS sector for a free-form label, or null when unrecognized. */
-export function resolveSector(input: string): string | null {
-  return canonicalSector(input);
-}
+export { resolveSector } from "@mapvest/finance";
 
 // ---------------- Cache ----------------
 
@@ -163,18 +160,7 @@ type ExaHit = { snippet: ExaSnippet; source: Source };
  * text — so the Exa wrapper stays a thin shared client.
  */
 function exaQueriesFor(sector: string, now: Date): { bucket: string; query: string }[] {
-  const year = now.getUTCFullYear();
-  const window = `${year - 1} ${year}`;
-  return [
-    {
-      bucket: "policy",
-      query: `${sector} sector policy regulation tariffs legislation outlook ${window}`,
-    },
-    {
-      bucket: "demand",
-      query: `${sector} sector demand spending capex order backlog trend ${window}`,
-    },
-  ];
+  return environmentExaQueries(sector, now);
 }
 
 async function fetchExaHits(sector: string, now: Date): Promise<ExaHit[]> {

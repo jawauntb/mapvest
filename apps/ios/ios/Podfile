@@ -97,7 +97,6 @@ target 'Mapvest' do
       end
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
       config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-      # ALSO inject via OTHER_CPLUSPLUSFLAGS — some ObjC++ compiles only pick these up.
       flags = config.build_settings['OTHER_CPLUSPLUSFLAGS']
       flags = ['$(inherited)'] if flags.nil?
       flags = [flags] unless flags.is_a?(Array)
@@ -135,11 +134,8 @@ end
 Dir.glob(File.join(__dir__, '..', 'targets', '**', 'pods.rb')).each do |target_file|
   target_name = File.basename(File.dirname(target_file))
   target target_name do
-    # Create a new binding with access to necessary methods and variables
     target_binding = binding
     target_binding.local_variable_set(:podfile_properties, podfile_properties)
-
-    # Evaluate the target file content in the new binding
     eval(File.read(target_file), target_binding, target_file)
   end
 end
