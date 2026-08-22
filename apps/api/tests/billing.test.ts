@@ -4,11 +4,16 @@ process.env.NODE_ENV = "test";
 process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
 process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 process.env.ADMIN_EMAILS = "admin@mapvest.dev";
-process.env.POSTGRES_URL = undefined;
-process.env.STRIPE_SECRET_KEY = undefined;
-process.env.STRIPE_PRICE_ID_MONTHLY = undefined;
-process.env.APPLE_IAP_PRODUCT_ID = undefined;
-process.env.GOOGLE_PLAY_PRODUCT_ID = undefined;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.POSTGRES_URL;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.STRIPE_SECRET_KEY;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.STRIPE_PRICE_ID_MONTHLY;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.APPLE_IAP_PRODUCT_ID;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.GOOGLE_PLAY_PRODUCT_ID;
 
 import { app } from "../src/index.js";
 import { __setAppleJwsVerifier } from "../src/lib/apple-jws.js";

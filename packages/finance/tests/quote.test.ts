@@ -101,14 +101,17 @@ describe("getQuote (mocked fetch)", () => {
   beforeEach(() => {
     _clearQuoteCache();
     process.env.MARKET_DATA_PROVIDER = "yahoo";
-    process.env.MARKET_DATA_FALLBACK_PROVIDER = undefined;
+    // biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+    delete process.env.MARKET_DATA_FALLBACK_PROVIDER;
   });
   afterEach(() => {
     globalThis.fetch = realFetch;
     _clearQuoteCache();
-    if (originalEnv.provider === undefined) process.env.MARKET_DATA_PROVIDER = undefined;
+    // biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+    if (originalEnv.provider === undefined) delete process.env.MARKET_DATA_PROVIDER;
     else process.env.MARKET_DATA_PROVIDER = originalEnv.provider;
-    if (originalEnv.fallback === undefined) process.env.MARKET_DATA_FALLBACK_PROVIDER = undefined;
+    // biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+    if (originalEnv.fallback === undefined) delete process.env.MARKET_DATA_FALLBACK_PROVIDER;
     else process.env.MARKET_DATA_FALLBACK_PROVIDER = originalEnv.fallback;
   });
 
