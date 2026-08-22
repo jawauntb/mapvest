@@ -369,7 +369,7 @@ export default function HomeScreen() {
                   style={styles.heroGrad}
                 >
                   <View style={styles.heroIcon}>
-                    <Ionicons name="camera" size={22} color={colors.accentInk} />
+                    <Ionicons name="camera" size={18} color={colors.accentInk} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.heroTitle}>Snap a brand</Text>
@@ -571,6 +571,20 @@ export default function HomeScreen() {
                 <LocalEconomyBriefCard token={session?.token} />
               </View>
 
+              {/* Insight stack — backtest sits under the Local Economy button,
+                  then the daily brief and movers lead into the watchlist. */}
+              {session?.token && rawItems.length > 0 ? (
+                <>
+                  <BacktestCard tickers={rawItems.map((i) => i.ticker)} token={session.token} />
+                  <DailyBriefCard token={session.token} tickers={rawItems.map((i) => i.ticker)} />
+                  <TopMoversCard
+                    items={rawItems}
+                    quotes={quotes}
+                    onOpen={(t) => router.push({ pathname: "/detail/[id]", params: { id: t } })}
+                  />
+                </>
+              ) : null}
+
               {session?.token && lists.length >= 2 ? (
                 <FlatList
                   data={[
@@ -723,19 +737,6 @@ export default function HomeScreen() {
               onDelete={() => removeMut.mutate(item.ticker)}
             />
           )}
-          ListFooterComponent={
-            session?.token && items.length > 0 ? (
-              <View style={{ marginTop: 20 }}>
-                <DailyBriefCard token={session.token} tickers={rawItems.map((i) => i.ticker)} />
-                <TopMoversCard
-                  items={rawItems}
-                  quotes={quotes}
-                  onOpen={(t) => router.push({ pathname: "/detail/[id]", params: { id: t } })}
-                />
-                <BacktestCard tickers={rawItems.map((i) => i.ticker)} token={session.token} />
-              </View>
-            ) : null
-          }
         />
       </ScreenFade>
     </SafeAreaView>
@@ -1096,23 +1097,24 @@ const styles = StyleSheet.create({
   heroGrad: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    padding: 18,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
   heroIcon: {
-    width: 44,
-    height: 44,
+    width: 34,
+    height: 34,
     borderRadius: radii.md,
     backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
-  heroTitle: { color: colors.accentInk, ...type.h3, fontSize: 17 },
+  heroTitle: { color: colors.accentInk, ...type.h3, fontSize: 16 },
   heroSub: {
     color: colors.accentInk,
     opacity: 0.85,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
     fontWeight: "600",
   },
   mapLink: {

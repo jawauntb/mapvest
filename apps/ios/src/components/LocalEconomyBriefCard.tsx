@@ -3,6 +3,10 @@
  * economic character in three FT-style paragraphs.
  *
  * Lifecycle (matches product requirement):
+ *   0. Collapsed launcher row — nothing is fetched until the user taps in.
+ *      Briefs generate on demand only, so the user can ask for one whenever
+ *      they land in a new locale throughout the day (and save the ones they
+ *      want to keep).
  *   1. "Getting your location…"        (permission + coords)
  *   2. "Researching your area…"        (POST /v1/local-brief in-flight)
  *   3. "Almost there…"                 (still pending after 3s)
@@ -11,7 +15,7 @@
  * Presentation:
  *   • Drop-cap on ¶1's first letter
  *   • Serif body (Georgia), generous line-height
- *   • Collapsible chevron header (mirrors home.tsx `wlCollapsed` pattern)
+ *   • Chevron header closes the card back down to the launcher row
  *   • Save button → modal for label → confirmation toast (Alert.alert)
  *   • Small footer: "Read from N nearby businesses · sources cited · research, not advice · <ts>"
  */
@@ -117,7 +121,9 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     enabled: false,
     staleTime: Number.POSITIVE_INFINITY,
   }).data;
-  const [collapsed, setCollapsed] = useState(false);
+  // On-demand: the card starts as a launcher row and generates nothing until
+  // the user taps into it.
+  const [expanded, setExpanded] = useState(false);
   const [loc, setLoc] = useState<LocState>({ kind: "idle" });
   const [settingsHint, setSettingsHint] = useState(false);
   const [slowLabel, setSlowLabel] = useState(false);
@@ -127,11 +133,13 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
    *  the visible brief describes. Wins over the map tab's cached region. */
   const [movedFix, setMovedFix] = useState<Coords | null>(null);
 
-  // Resolve current coordinates on mount. Other screens (map/list/camera)
-  // already request permission; we only *read* the current grant here so we
-  // don't double-prompt. The empty state offers an explicit Enable button
-  // that calls requestForegroundPermissionsAsync.
+  // Resolve current coordinates once the user taps in — nothing runs while the
+  // launcher is closed. Other screens (map/list/camera) already request
+  // permission; we only *read* the current grant here so we don't
+  // double-prompt. The empty state offers an explicit Enable button that
+  // calls requestForegroundPermissionsAsync.
   useEffect(() => {
+    if (!expanded) return;
     let cancelled = false;
     (async () => {
       setLoc({ kind: "checking" });
@@ -145,7 +153,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [expanded]);
 
   async function enableLocation() {
     hapticSelect();
@@ -183,7 +191,8 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     heartbeatLocation(lat, lng, token).catch(() => {});
   }, [token, lat, lng]);
 
-  const enabled = !!token && !!coords;
+  // Generate on demand only — the query never runs until the user taps in.
+  const enabled = expanded && !!token && !!coords;
 
   const briefQ = useQuery<LocalBriefResponse>({
     queryKey: coords
@@ -223,7 +232,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
    *  within the debounce window, or if there's no brief to compare against. */
   const checkForMove = useCallback(async () => {
     const anchor = briefCoords.current;
-    if (!token || !anchor || checkInFlight.current) return;
+    if (!expanded || !token || !anchor || checkInFlight.current) return;
     const now = Date.now();
     if (now - lastCheckAt.current < MOVE_CHECK_MIN_INTERVAL_MS) return;
     checkInFlight.current = true;
@@ -244,7 +253,7 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
     } finally {
       checkInFlight.current = false;
     }
-  }, [token, mapLat, mapLng]);
+  }, [expanded, token, mapLat, mapLng]);
 
   // Cold "active" transitions only — iOS fires change events for control
   // center pulls and permission sheets that never left the foreground.
@@ -328,6 +337,35 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
       .join(", ");
     setLabelDraft(defaultLabel || "My spot");
     setSaveOpen(true);
+  }
+
+  // Closed launcher — the whole module is one tappable row until the user
+  // asks for a brief. Tapping in kicks off location + generation.
+  if (!expanded) {
+    return (
+      <Pressable
+        onPress={() => {
+          hapticSelect();
+          setExpanded(true);
+        }}
+        style={styles.launcher}
+        accessibilityRole="button"
+        accessibilityLabel="Open Local Economy Brief — researches the economy where you are"
+      >
+        <View style={{ flex: 1, gap: 3 }}>
+          <View style={styles.eyebrowCluster}>
+            <Text style={styles.eyebrow}>Local Economy Brief</Text>
+            <View style={styles.exclusiveChip}>
+              <Text style={styles.exclusiveChipText}>Only on Mapvest</Text>
+            </View>
+          </View>
+          <Text style={styles.launcherHint}>
+            Tap for a live read on the economy wherever you are.
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+      </Pressable>
+    );
   }
 
   // Locked out when either signed-out or permission-denied — featured chrome
@@ -422,24 +460,20 @@ export function LocalEconomyBriefCard({ token }: { token: string | undefined }) 
           <Pressable
             onPress={() => {
               hapticSelect();
-              setCollapsed((v) => !v);
+              setExpanded(false);
             }}
             hitSlop={10}
             style={styles.chevronBtn}
             accessibilityRole="button"
-            accessibilityLabel={collapsed ? "Expand local brief" : "Collapse local brief"}
-            accessibilityState={{ expanded: !collapsed }}
+            accessibilityLabel="Close local brief"
+            accessibilityState={{ expanded: true }}
           >
-            <Ionicons
-              name={collapsed ? "chevron-down" : "chevron-up"}
-              size={16}
-              color={colors.fgMuted}
-            />
+            <Ionicons name="chevron-up" size={16} color={colors.fgMuted} />
           </Pressable>
         </>
       }
     >
-      {collapsed ? null : busy ? (
+      {busy ? (
         <View style={styles.busyBlock}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.busyLabel}>{statusLabel}</Text>
@@ -650,6 +684,21 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
+  /** Closed on-demand state — one tappable row, no fetching behind it. */
+  launcher: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.accentMuted,
+    backgroundColor: colors.bgElevated,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  launcherHint: { color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
   eyebrowCluster: {
     flexDirection: "row",
     alignItems: "center",
