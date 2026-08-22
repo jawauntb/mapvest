@@ -55,7 +55,8 @@ beforeEach(() => {
   process.env.MASSIVE_MARKET_DATA_FRESHNESS = "real-time";
   process.env.NODE_ENV = "test";
   process.env.MASSIVE_ALLOW_TEST_BASE_URL = "1";
-  process.env.MASSIVE_CORPORATE_EVENTS_ENABLED = undefined;
+  // biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+  delete process.env.MASSIVE_CORPORATE_EVENTS_ENABLED;
 });
 
 afterEach(() => {

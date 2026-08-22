@@ -6,7 +6,8 @@ process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 process.env.ADMIN_EMAILS = "admin@mapvest.dev";
 // No POSTGRES_URL — every assertion below exercises the in-memory fallback
 // path (dbEnabled() === false), matching local dev / CI without Postgres.
-process.env.POSTGRES_URL = undefined;
+// biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+delete process.env.POSTGRES_URL;
 
 import type { User } from "@mapvest/core";
 import { app } from "../src/index.js";

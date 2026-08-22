@@ -65,7 +65,8 @@ describe("GET /v1/widget/map-snapshot", () => {
 
   test("501s when GOOGLE_MAPS_API_KEY is not configured", async () => {
     const prevKey = process.env.GOOGLE_MAPS_API_KEY;
-    process.env.GOOGLE_MAPS_API_KEY = undefined;
+    // biome-ignore lint/performance/noDelete: `= undefined` stores the string "undefined" on Bun >= 1.4 — delete is the only way to unset
+    delete process.env.GOOGLE_MAPS_API_KEY;
     try {
       const qs = new URLSearchParams({ lat: "37.7749", lng: "-122.4194" });
       const res = await app.fetch(new Request(url(`/v1/widget/map-snapshot?${qs.toString()}`)));
