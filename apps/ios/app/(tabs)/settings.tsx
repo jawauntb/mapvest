@@ -409,7 +409,10 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
     });
   };
 
-  const masterOn = prefs.notifications_enabled === true;
+  // Legacy tokens predate the master field. The API deliberately treats
+  // those tokens as enabled so existing event opt-ins keep working; mirror
+  // that migration rule here so the switch never claims delivery is off.
+  const masterOn = tokenId !== null && prefs.notifications_enabled !== false;
   const anyEventOn = PUSH_EVENT_ORDER.some((k) => prefs[k] === true);
   const busy = busyKey !== null;
 

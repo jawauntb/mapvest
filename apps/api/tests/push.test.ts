@@ -10,6 +10,7 @@ import {
   _resetPushTokenMemory,
   listTokensForEvent,
   listTokensForUserAndEvent,
+  pushNotificationsEnabled,
   registerPushToken,
   updatePrefs,
 } from "../src/lib/push-tokens-store.js";
@@ -41,6 +42,10 @@ async function sessionFor(id: string, email: string): Promise<string> {
 }
 
 describe("push product-level mute", () => {
+  test("legacy tokens without the master field remain enabled", () => {
+    expect(pushNotificationsEnabled({ prefs: { daily_brief: true } })).toBe(true);
+  });
+
   test("new tokens start muted and event delivery requires the master switch", async () => {
     const uid = userId();
     const token = await registerPushToken(uid, expoToken(), "ios", "phone");
