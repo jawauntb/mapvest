@@ -14,11 +14,47 @@ let appGroupId = "group.com.mapvest.app.widget"
 let apiBaseURL = "https://api-production-4b27.up.railway.app"
 
 private let refreshIntervalMinutes = 30
-private let defaultOrigin = WidgetLocation(lat: 37.7749, lng: -122.4194) // San Francisco — same fallback as the Map tab.
+/// Must match `WIDGET_LOCATION_MAX_AGE_MS` in `src/widgets/widgetFreshness.ts`.
+let widgetLocationFreshness: TimeInterval = 6 * 60 * 60
+
+enum WidgetLocationSource: String, Codable {
+    case device
+    case map
+}
 
 struct WidgetLocation: Codable {
     let lat: Double
     let lng: Double
+    /// Epoch milliseconds. Optional only to decode pre-truthfulness records;
+    /// those records are rendered as stale/setup, never as nearby.
+    let capturedAt: Double?
+    let source: WidgetLocationSource?
+
+    init(lat: Double, lng: Double, capturedAt: Double? = nil, source: WidgetLocationSource? = nil) {
+        self.lat = lat
+        self.lng = lng
+        self.capturedAt = capturedAt
+        self.source = source
+    }
+}
+
+enum WidgetLocationState {
+    case setup
+    case stale(capturedAt: Double?, source: WidgetLocationSource?)
+    case fresh(WidgetLocation)
+
+    var location: WidgetLocation? {
+        if case let .fresh(value) = self { return value }
+        return nil
+    }
+
+    var capturedAt: Double? {
+        switch self {
+        case .setup: return nil
+        case let .stale(capturedAt, _): return capturedAt
+        case let .fresh(location): return location.capturedAt
+        }
+    }
 }
 
 struct NearbyItemDTO: Codable, Identifiable {
@@ -32,7 +68,7 @@ struct NearbyItemDTO: Codable, Identifiable {
     let changePct: Double?
 
     var label: String {
-        guard let ticker else { return name }
+        guard let ticker else { return "No public ticker" }
         return (isPublic == true ? "$" : "≈$") + ticker
     }
 }
@@ -48,35 +84,81 @@ struct NearbyEntry: TimelineEntry {
     let items: [NearbyItemDTO]
     let mapImage: PlatformImage?
     let errorMessage: String?
+    let locationState: WidgetLocationState
 
     static let placeholder = NearbyEntry(
         date: Date(),
-        items: [
-            NearbyItemDTO(
-                name: "Starbucks", ticker: "SBUX", isPublic: true,
-                sector: "Consumer Discretionary", distanceM: 120, price: 94.12, changePct: 0.8
-            ),
-            NearbyItemDTO(
-                name: "McDonald's", ticker: "MCD", isPublic: true,
-                sector: "Consumer Discretionary", distanceM: 340, price: 296.40, changePct: -0.3
-            ),
-        ],
+        items: [],
         mapImage: nil,
-        errorMessage: nil
+        errorMessage: nil,
+        locationState: .setup
     )
 }
 
-/// Reads the last lat/lng the main app saved (Map/List tabs →
-/// `saveLastLocationForWidgets`). Falls back to San Francisco, same as the
-/// Map tab's own `FALLBACK_REGION`, so a freshly-added widget still shows
-/// something before the app has ever been opened.
-func widgetOrigin() -> WidgetLocation {
+/// Reads the last origin the main app or widget saved. There is deliberately
+/// no city fallback: a fresh widget must explain setup rather than label an
+/// arbitrary coordinate as "nearby".
+func widgetOriginState(now: Date = Date()) -> WidgetLocationState {
     guard let data = UserDefaults(suiteName: appGroupId)?.data(forKey: "lastLocation"),
           let loc = try? JSONDecoder().decode(WidgetLocation.self, from: data)
     else {
-        return defaultOrigin
+        return .setup
     }
-    return loc
+    guard isValidWidgetLocation(loc) else {
+        return .setup
+    }
+    guard let capturedAt = loc.capturedAt, let source = loc.source else {
+        return .stale(capturedAt: loc.capturedAt, source: loc.source)
+    }
+    let age = now.timeIntervalSince1970 * 1000 - capturedAt
+    guard age >= 0, age <= widgetLocationFreshness * 1000 else {
+        return .stale(capturedAt: capturedAt, source: source)
+    }
+    return .fresh(loc)
+}
+
+private func isValidWidgetLocation(_ location: WidgetLocation) -> Bool {
+    location.lat.isFinite && location.lng.isFinite &&
+        abs(location.lat) <= 90 && abs(location.lng) <= 180 &&
+        !(location.lat == 0 && location.lng == 0)
+}
+
+func widgetHeader(for state: WidgetLocationState) -> String {
+    switch state {
+    case .fresh(let location) where location.source == .map:
+        return "MAPVEST · MAP AREA"
+    case .fresh:
+        return "MAPVEST · NEARBY"
+    case .setup, .stale:
+        return "MAPVEST · LOCATION"
+    }
+}
+
+func widgetDistanceText(_ distanceM: Double?) -> String {
+    guard let distanceM, distanceM.isFinite, distanceM >= 0 else {
+        return "distance unavailable"
+    }
+    if distanceM < 1000 {
+        return "\(max(10, Int((distanceM / 10).rounded()) * 10))m"
+    }
+    return String(format: "%.1fkm", distanceM / 1000)
+}
+
+func widgetDetailURL(for ticker: String) -> URL {
+    let encoded = ticker.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ticker
+    return URL(string: "mapvest:///detail/\(encoded)")!
+}
+
+func widgetMapURL(for state: WidgetLocationState) -> URL {
+    guard let location = state.location else {
+        return URL(string: "mapvest:///map")!
+    }
+    var components = URLComponents(string: "mapvest:///map")!
+    components.queryItems = [
+        URLQueryItem(name: "lat", value: String(location.lat)),
+        URLQueryItem(name: "lng", value: String(location.lng)),
+    ]
+    return components.url ?? URL(string: "mapvest:///map")!
 }
 
 func nextRefreshDate() -> Date {
@@ -85,8 +167,7 @@ func nextRefreshDate() -> Date {
 }
 
 /// `GET /v1/widget/nearby` — see apps/api/src/routes/widget.ts.
-func fetchNearby(limit: Int, completion: @escaping (NearbyResponseDTO?) -> Void) {
-    let origin = widgetOrigin()
+func fetchNearby(origin: WidgetLocation, limit: Int, completion: @escaping (NearbyResponseDTO?) -> Void) {
     var comps = URLComponents(string: "\(apiBaseURL)/v1/widget/nearby")
     comps?.queryItems = [
         URLQueryItem(name: "lat", value: String(origin.lat)),

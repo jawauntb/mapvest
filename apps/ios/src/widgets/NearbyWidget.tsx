@@ -1,5 +1,6 @@
 import { FlexWidget, TextWidget } from "react-native-android-widget";
 import type { WidgetData, WidgetNearbyItem } from "./widgetData";
+import type { WidgetLocationState } from "./widgetFreshness";
 
 // Widget RemoteViews can't consume RN's dynamic color objects — hex only.
 // Mirrors apps/ios/src/theme/tokens.ts (Atlas Signal palette).
@@ -13,8 +14,6 @@ const C = {
   border: "#242A32",
 } as const;
 
-const MAX_ROWS = 6;
-
 /**
  * Android home-screen widget: a compact list of investable brands near the
  * last location Mapvest saw (see `widgetLocation.ts`). Rendered by
@@ -24,7 +23,14 @@ const MAX_ROWS = 6;
  * geo-sorted nearby list the iOS Map widget falls back to when it can't
  * fetch a static map snapshot.
  */
-export function NearbyWidget({ items, error }: WidgetData) {
+export function NearbyWidget({
+  items,
+  error,
+  locationState,
+  maxRows = 3,
+}: WidgetData & { maxRows?: number }) {
+  const fresh = locationState.kind === "fresh";
+  const mapUri = widgetMapUri(locationState);
   return (
     <FlexWidget
       style={{
@@ -35,13 +41,29 @@ export function NearbyWidget({ items, error }: WidgetData) {
         padding: 12,
         flexDirection: "column",
       }}
-      clickAction="OPEN_APP"
+      clickAction="OPEN_URI"
+      clickActionData={{ uri: mapUri }}
+      accessibilityLabel="Open Mapvest map"
     >
       <TextWidget
-        text="MAPVEST · NEARBY"
+        text={
+          !fresh
+            ? "MAPVEST · LOCATION"
+            : locationState.location.source === "map"
+              ? "MAPVEST · MAP AREA"
+              : "MAPVEST · NEARBY"
+        }
         style={{ color: C.accent, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}
       />
-      {error ? (
+      {fresh && typeof locationState.location.capturedAt === "number" ? (
+        <TextWidget
+          text={`Updated ${relativeTime(locationState.location.capturedAt)}`}
+          style={{ color: C.fgMuted, fontSize: 9 }}
+        />
+      ) : null}
+      {locationState.kind !== "fresh" ? (
+        <LocationState state={locationState} />
+      ) : error ? (
         <FlexWidget style={{ flex: 1, justifyContent: "center" }}>
           <TextWidget
             text="Couldn't load nearby brands"
@@ -54,7 +76,7 @@ export function NearbyWidget({ items, error }: WidgetData) {
         </FlexWidget>
       ) : (
         <FlexWidget style={{ flexDirection: "column", marginTop: 6 }}>
-          {items.slice(0, MAX_ROWS).map((item) => (
+          {items.slice(0, maxRows).map((item) => (
             <Row key={`${item.name}-${item.ticker ?? ""}`} item={item} />
           ))}
         </FlexWidget>
@@ -65,7 +87,11 @@ export function NearbyWidget({ items, error }: WidgetData) {
 
 function Row({ item }: { item: WidgetNearbyItem }) {
   const up = (item.changePct ?? 0) >= 0;
-  const label = item.ticker ? (item.isPublic ? `$${item.ticker}` : `≈$${item.ticker}`) : item.name;
+  const label = item.ticker
+    ? item.isPublic
+      ? `$${item.ticker}`
+      : `≈$${item.ticker}`
+    : "No public ticker";
   return (
     <FlexWidget
       style={{
@@ -75,14 +101,30 @@ function Row({ item }: { item: WidgetNearbyItem }) {
         borderBottomWidth: 1,
         borderBottomColor: C.border,
       }}
-      clickAction="OPEN_APP"
+      clickAction="OPEN_URI"
+      clickActionData={{
+        uri: item.ticker
+          ? `mapvest:///detail/${encodeURIComponent(item.ticker)}`
+          : "mapvest:///map",
+      }}
+      accessibilityLabel={
+        item.ticker ? `Open ${item.name} details` : `Open ${item.name} on Mapvest`
+      }
     >
-      <TextWidget
-        text={label}
-        style={{ color: C.fg, fontSize: 12, fontWeight: "600" }}
-        maxLines={1}
-        truncate="END"
-      />
+      <FlexWidget style={{ flexDirection: "column", flex: 1, marginRight: 6 }}>
+        <TextWidget
+          text={item.name}
+          style={{ color: C.fg, fontSize: 12, fontWeight: "600" }}
+          maxLines={1}
+          truncate="END"
+        />
+        <TextWidget
+          text={`${label} · ${distanceText(item.distanceM)}`}
+          style={{ color: C.fgMuted, fontSize: 10 }}
+          maxLines={1}
+          truncate="END"
+        />
+      </FlexWidget>
       {typeof item.price === "number" ? (
         <TextWidget
           text={`$${item.price.toFixed(2)}${
@@ -95,4 +137,47 @@ function Row({ item }: { item: WidgetNearbyItem }) {
       ) : null}
     </FlexWidget>
   );
+}
+
+function widgetMapUri(state: WidgetLocationState): string {
+  if (state.kind !== "fresh") return "mapvest:///map";
+  const { lat, lng } = state.location;
+  return `mapvest:///map?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
+}
+
+function LocationState({ state }: { state: WidgetLocationState }) {
+  const stale = state.kind === "stale";
+  return (
+    <FlexWidget style={{ flex: 1, justifyContent: "center" }}>
+      <TextWidget
+        text={stale ? "Location is stale" : "Set up your nearby location"}
+        style={{ color: stale ? C.danger : C.fg, fontSize: 12, fontWeight: "600" }}
+      />
+      <TextWidget
+        text={
+          stale
+            ? state.capturedAt
+              ? `Last updated ${relativeTime(state.capturedAt)}`
+              : "Open Mapvest to refresh it"
+            : "Open Mapvest and visit Map to begin"
+        }
+        style={{ color: C.fgMuted, fontSize: 10, marginTop: 4 }}
+        maxLines={2}
+        truncate="END"
+      />
+    </FlexWidget>
+  );
+}
+
+function distanceText(distanceM?: number): string {
+  if (typeof distanceM !== "number" || !Number.isFinite(distanceM)) return "distance unavailable";
+  if (distanceM < 1000) return `${Math.max(10, Math.round(distanceM / 10) * 10)}m`;
+  return `${(distanceM / 1000).toFixed(1)}km`;
+}
+
+function relativeTime(capturedAt: number): string {
+  const minutes = Math.max(0, Math.round((Date.now() - capturedAt) / 60_000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
 }

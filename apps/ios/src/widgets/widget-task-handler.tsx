@@ -18,7 +18,8 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     case "WIDGET_UPDATE":
     case "WIDGET_RESIZED": {
       const data = await fetchWidgetNearby();
-      props.renderWidget(<NearbyWidget {...data} />);
+      const maxRows = props.widgetInfo.height >= 250 ? 6 : props.widgetInfo.height >= 190 ? 4 : 3;
+      props.renderWidget(<NearbyWidget {...data} maxRows={maxRows} />);
       break;
     }
     default:

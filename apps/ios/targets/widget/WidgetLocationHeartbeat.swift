@@ -29,9 +29,9 @@ import Foundation
 /// apps/ios/src/widgets/widgetLocation.ts.
 let widgetFixKey = "widgetLocationFix"
 
-/// Key holding the most recent lat/lng from *either* side (app or widget).
-/// `widgetOrigin()` in NearbyModels.swift reads this, and the app writes it
-/// via `saveLastLocationForWidgets`. Same `{lat, lng}` JSON either way.
+/// Key holding the most recent origin from either side (app or widget).
+/// `widgetOriginState()` in NearbyModels.swift reads this, and the app writes
+/// it via `saveLastLocationForWidgets`. Both sides include capture time/source.
 let widgetLastLocationKey = "lastLocation"
 
 /// What the widget hands the JS side. `capturedAt` is epoch **milliseconds**
@@ -138,7 +138,9 @@ final class WidgetLocationHeartbeat: NSObject, CLLocationManagerDelegate {
         // Also refresh the shared origin so the *next* widget refresh centers
         // on where the user actually is, even if the app never reopens.
         // Same shape the app writes via `saveLastLocationForWidgets`.
-        if let data = try? encoder.encode(WidgetLocation(lat: fix.lat, lng: fix.lng)) {
+        if let data = try? encoder.encode(
+            WidgetLocation(lat: fix.lat, lng: fix.lng, capturedAt: fix.capturedAt, source: .device)
+        ) {
             defaults.set(data, forKey: widgetLastLocationKey)
         }
     }
@@ -161,7 +163,7 @@ final class WidgetLocationHeartbeat: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // Best-effort by design: the timeline still renders from the last
-        // known origin (or San Francisco), same as before B3.
+        // fresh origin, or shows setup/stale copy when none exists.
         finish(with: nil)
     }
 }
