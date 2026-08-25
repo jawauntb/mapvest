@@ -26,8 +26,10 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -233,11 +235,9 @@ export default function SettingsScreen() {
 
 /**
  * One-per-event toggle list. All prefs default to `false`; the user MUST
- * flip individual switches for each notification kind they want. A master
- * "Enable notifications" switch at top requests the OS permission and, once
- * granted, keeps the individual toggles visible + interactive. When permission
- * is denied we still register the token (spec) but disable interaction on the
- * per-event switches so a user isn't tricked into a no-op change.
+ * flip individual switches for each notification kind they want. The master
+ * switch is a persisted product-level preference, separate from iOS
+ * authorization. It is the only surface that may request OS permission.
  */
 function NotificationsSection({ sessionToken }: { sessionToken: string }) {
   const [permissionStatus, setPermissionStatus] = useState<
@@ -245,17 +245,61 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
   >("unknown");
   const [tokenId, setTokenId] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<PushPrefs>({});
-  const [busy, setBusy] = useState(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPatch = useRef<Partial<PushPrefs>>({});
+  const [prefsLoadState, setPrefsLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const retryRef = useRef<(() => void) | null>(null);
+  const loadGeneration = useRef(0);
 
-  // Initial load — permission + prefs.
+  const loadPrefs = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const isCurrent = () => generation === loadGeneration.current;
+    setPrefsLoadState("loading");
+    setTokenId(null);
+    setError(null);
+    retryRef.current = null;
+    try {
+      const perm = await Notifications.getPermissionsAsync();
+      setPermissionStatus(
+        perm.status === "granted"
+          ? "granted"
+          : perm.status === "denied"
+            ? "denied"
+            : "undetermined",
+      );
+      const stored = await getStoredTokenId();
+      let remote = await getPushPrefs({ token: sessionToken }, stored);
+      // A token can be rotated or removed after an app reinstall. If the
+      // stored id is stale, use the server's newest token so the master switch
+      // reflects the account's active device instead of false-off defaults.
+      if (stored && remote.tokenId === null) {
+        remote = await getPushPrefs({ token: sessionToken });
+      }
+      if (!isCurrent()) return;
+      setTokenId(remote.tokenId);
+      setPrefs(remote.prefs);
+      setPrefsLoadState("ready");
+    } catch (e) {
+      if (!isCurrent()) return;
+      const detail = e instanceof Error ? e.message : "The server did not return your settings.";
+      setPrefsLoadState("error");
+      setError(`Notification settings unavailable. ${detail} Check your connection and retry.`);
+      retryRef.current = () => void loadPrefs();
+    }
+  }, [sessionToken]);
+
+  // Initial load — permission + prefs. Failed reads stay visibly unavailable;
+  // they never become a false-off master switch.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const perm = await Notifications.getPermissionsAsync();
-        if (cancelled) return;
+    void loadPrefs();
+  }, [loadPrefs]);
+
+  // Refresh after returning from iOS Settings so the UI does not keep a stale
+  // denial state after the user grants permission there.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      void Notifications.getPermissionsAsync().then((perm) => {
         setPermissionStatus(
           perm.status === "granted"
             ? "granted"
@@ -263,68 +307,130 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
               ? "denied"
               : "undetermined",
         );
-        const stored = await getStoredTokenId();
-        const remote = await getPushPrefs({ token: sessionToken });
-        if (cancelled) return;
-        setTokenId(remote.tokenId ?? stored);
-        setPrefs(remote.prefs);
-      } catch {
-        /* silent — UI shows disabled state */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionToken]);
+      });
+    });
+    return () => sub.remove();
+  }, []);
 
-  const commit = useCallback(() => {
-    if (!tokenId) return;
-    const patch = pendingPatch.current;
-    pendingPatch.current = {};
-    if (Object.keys(patch).length === 0) return;
-    void setPushPref(tokenId, patch, { token: sessionToken });
-  }, [tokenId, sessionToken]);
-
-  const scheduleCommit = useCallback(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(commit, 400);
-  }, [commit]);
-
-  const setEvent = (key: PushEventKey, val: boolean) => {
-    setPrefs((prev) => ({ ...prev, [key]: val }));
-    pendingPatch.current = { ...pendingPatch.current, [key]: val };
-    scheduleCommit();
-    hapticSelect();
+  const persist = async (args: {
+    token: string;
+    patch: Partial<PushPrefs>;
+    previous: PushPrefs;
+    optimistic: PushPrefs;
+    label: string;
+  }) => {
+    setBusyKey(args.label);
+    setError(null);
+    try {
+      const saved = await setPushPref(args.token, args.patch, { token: sessionToken });
+      setPrefs(saved);
+      retryRef.current = null;
+      hapticSuccess();
+    } catch (e) {
+      setPrefs(args.previous);
+      const detail = e instanceof Error ? e.message : "The server did not save this change.";
+      setError(`Couldn't save ${args.label.toLowerCase()}. ${detail}`);
+      retryRef.current = () => {
+        setPrefs(args.optimistic);
+        void persist(args);
+      };
+    } finally {
+      setBusyKey(null);
+    }
   };
 
-  const onToggleMaster = async (next: boolean) => {
-    if (!next) {
-      // "Master off" turns every event pref to false in one write. The OS
-      // permission itself can only be revoked from iOS Settings — we honor
-      // the user's intent by muting everything.
-      const off: PushPrefs = {};
-      for (const k of PUSH_EVENT_ORDER) off[k] = false;
-      setPrefs((prev) => ({ ...prev, ...off }));
-      pendingPatch.current = { ...pendingPatch.current, ...off };
-      scheduleCommit();
-      return;
-    }
-    setBusy(true);
+  const enableMaster = async () => {
+    setBusyKey("master");
+    setError(null);
     try {
       const granted = await ensurePermissions();
       setPermissionStatus(granted ? "granted" : "denied");
-      if (granted) {
-        // Ensure the server has a token for us. registerForPush is idempotent.
-        const res = await registerForPush({ token: sessionToken });
-        if (res?.tokenId) setTokenId(res.tokenId);
+      if (!granted) {
+        setError("iOS is blocking notifications. Open iOS Settings to allow Mapvest, then retry.");
+        retryRef.current = () => void enableMaster();
+        return;
       }
+
+      // Explicit enablement may register a token, but this call never asks
+      // again — permission was just handled by the line above.
+      const registration = await registerForPush(
+        { token: sessionToken },
+        { requestPermission: false },
+      );
+      const id = registration?.tokenId ?? tokenId;
+      if (!id) {
+        setError("Mapvest could not register this device. Check your connection and retry.");
+        retryRef.current = () => void enableMaster();
+        return;
+      }
+      if (id !== tokenId) setTokenId(id);
+
+      const previous = prefs;
+      const optimistic = { ...prefs, notifications_enabled: true };
+      setPrefs(optimistic);
+      await persist({
+        token: id,
+        patch: { notifications_enabled: true },
+        previous,
+        optimistic,
+        label: "notifications",
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not enable notifications. Check your connection and retry.",
+      );
+      retryRef.current = () => void enableMaster();
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   };
 
-  const masterOn = permissionStatus === "granted";
+  const setEvent = (key: PushEventKey, val: boolean) => {
+    if (prefsLoadState !== "ready" || !tokenId) return;
+    const previous = prefs;
+    const optimistic = { ...prefs, [key]: val };
+    setPrefs(optimistic);
+    hapticSelect();
+    void persist({
+      token: tokenId,
+      patch: { [key]: val },
+      previous,
+      optimistic,
+      label: PUSH_EVENT_LABELS[key],
+    });
+  };
+
+  const onToggleMaster = async (next: boolean) => {
+    if (prefsLoadState !== "ready") return;
+    if (next) {
+      await enableMaster();
+      return;
+    }
+    if (!tokenId) {
+      setError("This device has no registered notification token. Enable notifications and retry.");
+      return;
+    }
+    const previous = prefs;
+    const optimistic = { ...prefs, notifications_enabled: false };
+    setPrefs(optimistic);
+    await persist({
+      token: tokenId,
+      patch: { notifications_enabled: false },
+      previous,
+      optimistic,
+      label: "notifications",
+    });
+  };
+
+  // Legacy tokens predate the master field. The API deliberately treats
+  // those tokens as enabled so existing event opt-ins keep working; mirror
+  // that migration rule here so the switch never claims delivery is off.
+  const masterOn =
+    prefsLoadState === "ready" && tokenId !== null && prefs.notifications_enabled !== false;
   const anyEventOn = PUSH_EVENT_ORDER.some((k) => prefs[k] === true);
+  const busy = busyKey !== null;
 
   return (
     <View style={styles.card}>
@@ -334,43 +440,92 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
       </View>
       <Text style={styles.muted}>
         Opt-in push notifications. Each event below is off by default. Turn on the master switch to
-        grant iOS permission, then pick which events you want to hear about.
+        grant iOS permission and enable Mapvest delivery, then pick which events you want to hear
+        about. Turning it off mutes every event on this device, including weekly rivalries.
       </Text>
 
-      <View style={styles.notifRow}>
-        <Text style={styles.notifLabel}>Enable notifications</Text>
-        <Switch
-          value={masterOn}
-          disabled={busy}
-          onValueChange={onToggleMaster}
-          accessibilityLabel="Enable notifications"
-        />
-      </View>
-
-      {permissionStatus === "denied" ? (
-        <Text style={styles.muted}>
-          iOS permission is currently denied. Open Settings → Notifications → Mapvest to allow push,
-          then return here to pick which events you want.
-        </Text>
-      ) : null}
-
-      {PUSH_EVENT_ORDER.map((key) => (
-        <View style={styles.notifRow} key={key}>
-          <Text style={styles.notifLabel}>{PUSH_EVENT_LABELS[key]}</Text>
-          <Switch
-            value={prefs[key] === true}
-            disabled={!masterOn || !tokenId}
-            onValueChange={(v) => setEvent(key, v)}
-            accessibilityLabel={PUSH_EVENT_LABELS[key]}
-          />
+      {prefsLoadState === "loading" ? (
+        <View style={styles.notifActions}>
+          <ActivityIndicator color={colors.fg} />
+          <Text style={styles.muted}>Loading notification settings…</Text>
         </View>
-      ))}
+      ) : prefsLoadState === "error" ? (
+        <View style={styles.notifActions}>
+          <Text style={styles.notifError}>{error ?? "Notification settings are unavailable."}</Text>
+          <Pressable
+            style={styles.btn}
+            onPress={() => retryRef.current?.()}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading notification settings"
+          >
+            <Text style={styles.btnText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <>
+          <View style={styles.notifRow}>
+            <Text style={styles.notifLabel}>Enable notifications</Text>
+            <Switch
+              value={masterOn}
+              disabled={busy}
+              onValueChange={onToggleMaster}
+              accessibilityLabel="Enable notifications"
+            />
+          </View>
 
-      {masterOn && !anyEventOn ? (
-        <Text style={styles.muted}>
-          Nothing is enabled yet — flip any switch above to start receiving that event type.
-        </Text>
-      ) : null}
+          {permissionStatus === "denied" ? (
+            <View style={styles.notifActions}>
+              <Text style={styles.muted}>
+                iOS permission is currently denied. Mapvest can remember your product setting, but
+                iOS will block delivery until you allow notifications.
+              </Text>
+              <Pressable
+                style={styles.btn}
+                onPress={() => Linking.openSettings().catch(() => {})}
+                accessibilityRole="button"
+                accessibilityLabel="Open iOS notification settings"
+              >
+                <Text style={styles.btnText}>Open iOS Settings</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {error ? (
+            <View style={styles.notifActions}>
+              <Text style={styles.notifError}>{error}</Text>
+              {retryRef.current ? (
+                <Pressable
+                  style={styles.btn}
+                  disabled={busy}
+                  onPress={() => retryRef.current?.()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry notification setting change"
+                >
+                  <Text style={styles.btnText}>Retry</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          {PUSH_EVENT_ORDER.map((key) => (
+            <View style={styles.notifRow} key={key}>
+              <Text style={styles.notifLabel}>{PUSH_EVENT_LABELS[key]}</Text>
+              <Switch
+                value={prefs[key] === true}
+                disabled={!masterOn || !tokenId || permissionStatus !== "granted" || busy}
+                onValueChange={(v) => setEvent(key, v)}
+                accessibilityLabel={PUSH_EVENT_LABELS[key]}
+              />
+            </View>
+          ))}
+
+          {masterOn && !anyEventOn ? (
+            <Text style={styles.muted}>
+              Nothing is enabled yet — flip any switch above to start receiving that event type.
+            </Text>
+          ) : null}
+        </>
+      )}
     </View>
   );
 }
@@ -389,7 +544,14 @@ function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const remote = await getPushPrefs({ token: sessionToken });
+        const stored = await getStoredTokenId();
+        let remote = await getPushPrefs({ token: sessionToken }, stored);
+        // A token can be rotated or removed after an app reinstall. If the
+        // stored id is stale, use the server's newest token as a read-only
+        // fallback so the gate does not disappear permanently.
+        if (stored && remote.tokenId === null) {
+          remote = await getPushPrefs({ token: sessionToken });
+        }
         const monitoring = await isVisitMonitoringEnabled();
         if (cancelled) return;
         setFeltB4(remote.prefs.uncaught_nearby === true);
@@ -565,6 +727,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
+  notifActions: { gap: 8 },
+  notifError: { color: "#ff9f9f", fontSize: 13, lineHeight: 18 },
   input: {
     marginTop: 8,
     borderWidth: 1,

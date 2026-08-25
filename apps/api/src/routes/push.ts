@@ -36,6 +36,10 @@ function isValidPref(k: string): k is PushEventKey {
   return (PUSH_EVENT_KEYS as readonly string[]).includes(k);
 }
 
+function isMasterPref(k: string): k is "notifications_enabled" {
+  return k === "notifications_enabled";
+}
+
 /** POST /v1/push/register  { token, platform?, deviceId? } → { id } */
 push.post("/register", async (c) => {
   return safeExecuteWithSpan("http.push.register", async (span) => {
@@ -87,7 +91,9 @@ push.post("/prefs", async (c) => {
     }
     const patch: PushPrefs = {};
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (isValidPref(k) && typeof v === "boolean") patch[k] = v;
+      if ((isValidPref(k) || isMasterPref(k)) && typeof v === "boolean") {
+        patch[k] = v;
+      }
       // Allow scheduler heartbeats (client can post current lat/lng too).
       if (k === "last_lat" && typeof v === "number") patch.last_lat = v;
       if (k === "last_lng" && typeof v === "number") patch.last_lng = v;
@@ -108,7 +114,7 @@ push.post("/prefs", async (c) => {
   });
 });
 
-/** GET /v1/push/prefs → { prefs, tokenId } (most recently seen token) */
+/** GET /v1/push/prefs[?tokenId=…] → { prefs, tokenId } */
 push.get("/prefs", async (c) => {
   return safeExecuteWithSpan("http.push.prefs.read", async (span) => {
     const user = c.get("user");
@@ -117,8 +123,10 @@ push.get("/prefs", async (c) => {
     if (tokens.length === 0) {
       return c.json({ prefs: {}, tokenId: null });
     }
-    const most = tokens[0]!;
-    return c.json({ prefs: most.prefs, tokenId: most.id });
+    const requestedId = c.req.query("tokenId");
+    const selected = requestedId ? tokens.find((token) => token.id === requestedId) : tokens[0];
+    if (!selected) return c.json({ prefs: {}, tokenId: null });
+    return c.json({ prefs: selected.prefs, tokenId: selected.id });
   });
 });
 

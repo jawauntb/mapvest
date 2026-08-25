@@ -1,7 +1,8 @@
 /**
  * Client wrappers around /v1/push/prefs.
  *
- * The Settings screen calls these on every toggle change (debounced). Return
+ * The Settings screen calls these on every toggle change and awaits the
+ * server response. Return
  * types mirror the server contract in apps/api/src/routes/push.ts.
  */
 import { API_URL } from "@/util/env";
@@ -19,6 +20,8 @@ export type PushEventKey =
   | "uncaught_nearby";
 
 export type PushPrefs = Partial<Record<PushEventKey, boolean>> & {
+  /** Persisted product-level switch, separate from iOS authorization. */
+  notifications_enabled?: boolean;
   last_lat?: number;
   last_lng?: number;
   last_location_at?: string;
@@ -49,44 +52,66 @@ export const PUSH_EVENT_ORDER: PushEventKey[] = [
 ];
 
 /** GET /v1/push/prefs → { prefs, tokenId } */
-export async function getPushPrefs(session: { token: string }): Promise<{
+export async function getPushPrefs(
+  session: { token: string },
+  tokenId?: string | null,
+): Promise<{
   prefs: PushPrefs;
   tokenId: string | null;
 }> {
-  const res = await fetch(`${API_URL}/v1/push/prefs`, {
+  const query = tokenId ? `?tokenId=${encodeURIComponent(tokenId)}` : "";
+  const res = await fetch(`${API_URL}/v1/push/prefs${query}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${session.token}`,
     },
   });
-  if (!res.ok) return { prefs: {}, tokenId: null };
+  if (!res.ok) {
+    let message = `Could not load notification settings (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) message = body.error;
+    } catch {
+      // Keep the status-based message when the API did not return JSON.
+    }
+    throw new Error(message);
+  }
   const j = (await res.json()) as { prefs?: PushPrefs; tokenId?: string | null };
   return { prefs: j.prefs ?? {}, tokenId: j.tokenId ?? null };
 }
 
 /**
  * POST /v1/push/prefs — merge patch into the token's stored prefs.
- * Fire-and-forget from callers; returns void on any error so UI can optimistic-update.
+ * Rejects on a non-2xx response so Settings can roll back an optimistic
+ * switch and offer a retry instead of showing a setting that did not persist.
  */
 export async function setPushPref(
   tokenId: string,
   patch: Partial<PushPrefs>,
   session: { token: string },
-): Promise<void> {
-  try {
-    await fetch(`${API_URL}/v1/push/prefs`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.token}`,
-      },
-      body: JSON.stringify({ tokenId, prefs: patch }),
-    });
-  } catch {
-    /* swallow — client keeps optimistic state */
+): Promise<PushPrefs> {
+  const res = await fetch(`${API_URL}/v1/push/prefs`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify({ tokenId, prefs: patch }),
+  });
+  if (!res.ok) {
+    let message = `Could not save notification settings (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) message = body.error;
+    } catch {
+      // Keep the status-based message when the API did not return JSON.
+    }
+    throw new Error(message);
   }
+  const body = (await res.json()) as { prefs?: PushPrefs };
+  return body.prefs ?? patch;
 }
 
 /**

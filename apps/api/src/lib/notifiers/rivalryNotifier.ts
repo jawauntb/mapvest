@@ -21,9 +21,10 @@
  * Opt-in: rivalries do NOT get a new `PUSH_EVENT_KEYS` entry. Creating a
  * rivalry IS the opt-in — the user explicitly signed up for a weekly round —
  * so the gate is "this rivalry exists AND the user has at least one registered
- * push token". A user with no token still gets no push (and, because the
- * durable dedupe lives on the token's `prefs`, no scored round either; see the
- * note on `runRivalryWeeklyClose`).
+ * push token". A product-level mute on a token suppresses delivery without
+ * treating the OS permission state as product consent. A user with no token
+ * still gets no push (and, because the durable dedupe lives on the token's
+ * `prefs`, no scored round either; see the note on `runRivalryWeeklyClose`).
  *
  * Dedupe: slot `rivalry:{id}`, key = `mondayUtc(now)` (`YYYY-MM-DD`) — the
  * Monday that anchors the week being scored. One fire per rivalry per week,
@@ -36,7 +37,11 @@
 import { getHistoricalCloses } from "@mapvest/finance";
 import { awardXp } from "../progress-store.js";
 import { sendPush } from "../push-dispatcher.js";
-import { type PushToken, listTokensForUser } from "../push-tokens-store.js";
+import {
+  type PushToken,
+  listTokensForUser,
+  pushNotificationsEnabled,
+} from "../push-tokens-store.js";
 import {
   type RivalryOutcome,
   type RivalryPick,
@@ -192,6 +197,9 @@ function makeWeeklyChangeLoader(): (symbol: string) => Promise<number | null> {
  * A user with zero push tokens is skipped entirely: the durable dedupe lives
  * on `prefs.last_sent`, so scoring them would risk re-scoring the same week
  * after a restart. Their rounds resume the first week they register a device.
+ * A registered but product-muted device still closes the round and consumes
+ * its dedupe key, but receives no delivery; re-enabling later cannot replay a
+ * week that was muted when it closed.
  */
 export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
   rivalriesScanned: number;
@@ -226,6 +234,7 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
       // Creating a rivalry is the opt-in; a registered device is the delivery
       // channel AND the durable dedupe substrate. No token, no round.
       if (tokens.length === 0) continue;
+      const deliveryTokens = tokens.filter(pushNotificationsEnabled);
 
       for (const rivalry of rivalries) {
         const slot = rivalryDedupeSlot(rivalry.id);
@@ -267,9 +276,10 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
 
         // eslint-disable-next-line no-await-in-loop
         await commitSend(tokens, slot, weekKey, DEDUPE_TTL_MS);
+        if (deliveryTokens.length === 0) continue;
         // eslint-disable-next-line no-await-in-loop
         await sendPush({
-          tokens: tokens.map((t) => t.expoToken),
+          tokens: deliveryTokens.map((t) => t.expoToken),
           title: rivalryPushTitle(updated.ticker, updated.rivalTicker),
           body: rivalryPushBody({
             ticker: updated.ticker,

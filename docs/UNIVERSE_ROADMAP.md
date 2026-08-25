@@ -30,7 +30,11 @@ What exists today, precisely:
 - **Notification infra is real**: `apps/api/src/lib/scheduler.ts` ticks every
   minute; notifiers in `apps/api/src/lib/notifiers/` with per-user dedupe;
   `push_tokens.prefs` JSONB carries opt-ins plus `last_lat`/`last_lng` and
-  fires a local brief when the user moves >2km.
+  fires a local brief when the user moves >2km. Notification consent is
+  explicit: a signed-in launch never prompts iOS, and Settings is the only
+  permission request surface. Each device persists a product-level
+  `notifications_enabled` mute independent of OS authorization; every
+  notifier, including weekly rivalries, honors it.
 - **Collection structure is latent in the data**: `packages/finance/data/brands.json`
   (1,101 brands with sector/exchange/isPublic), geohash-6 tiling in
   `apps/api/src/lib/geohash.ts` + `nearby_cache`.

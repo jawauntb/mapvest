@@ -104,7 +104,10 @@ function PushBridge() {
 
   useEffect(() => {
     if (!sessionToken) return;
-    void registerForPush({ token: sessionToken });
+    // Launch may register an already-authorized device, but it must never
+    // ask iOS to show the permission prompt. Settings is the only explicit
+    // consent surface and opts into prompting there.
+    void registerForPush({ token: sessionToken }, { requestPermission: false });
   }, [sessionToken]);
 
   // Relay any fix the WidgetKit extension captured while the app was closed
