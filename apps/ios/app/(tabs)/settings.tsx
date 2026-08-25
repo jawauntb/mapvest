@@ -249,7 +249,8 @@ export default function SettingsScreen() {
  * One-per-event toggle list. All prefs default to `false`; the user MUST
  * flip individual switches for each notification kind they want. The master
  * switch is a persisted product-level preference, separate from iOS
- * authorization. It is the only surface that may request OS permission.
+ * authorization. Settings can request OS permission; the Camera may also
+ * do so after its explicit, narrow Find evolution CTA.
  */
 function NotificationsSection({ sessionToken, userId }: { sessionToken: string; userId: string }) {
   const [permissionStatus, setPermissionStatus] = useState<

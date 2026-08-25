@@ -13,10 +13,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  * (userId, expoToken) unique) so a user who signs out of one account and back
  * into another lands their token under the new user.
  *
- * A launch registration never asks iOS for permission. Settings passes
- * `requestPermission: true` only after the user explicitly flips the master
- * switch. If permission is denied there is no token to register until the
- * user grants it in iOS Settings.
+ * A launch registration never asks iOS for permission. Settings and the
+ * Camera's explicit post-value Find evolution CTA may ask only after a
+ * direct user action. If permission is denied there is no token to register
+ * until the user grants it in iOS Settings.
  *
  * On simulator: `Device.isDevice` is false, so we skip the whole thing —
  * simulator Expo tokens don't work anyway.

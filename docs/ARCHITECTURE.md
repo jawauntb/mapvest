@@ -61,6 +61,12 @@ identify, the camera only marks client-observable work complete (photo ready,
 then request started) and names the public-match lookup as the next step — it
 does not fabricate server-side progress. Result-card motion is disabled when
 the system requests Reduce Motion.
+A signed-in public result with an attached positive quote can also show one
+static, per-user/device **Find evolution** offer. Capture never requests iOS
+permission: only its direct CTA may do so, and Mapvest writes only
+`notifications_enabled` plus `find_evolution` after permission, device
+registration, and server persistence have all succeeded. Failed, denied, and
+Settings recovery states never claim that an alert is enabled.
 A signed-out **Save** from Camera or Detail carries the ticker and save source
 through magic-link auth, shows a verified-then-saving state, upserts the
 watchlist entry idempotently, and returns to that ticker’s Detail context. The

@@ -14,6 +14,7 @@ import {
 } from "@/camera/resultPresentation";
 import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
 import { EvidenceSection } from "@/components/EvidenceSection";
+import { FindEvolutionNudge } from "@/components/FindEvolutionNudge";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
@@ -71,7 +72,7 @@ export default function CameraScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string }>();
   const qc = useQueryClient();
-  const { session } = useSession();
+  const { session, user } = useSession();
   const { presentPaywall } = usePaywall();
   const entitlementsQ = useEntitlements();
   const queueScope = useMemo(() => queueScopeForUser(session?.userId), [session?.userId]);
@@ -768,6 +769,17 @@ export default function CameraScreen() {
                 ) : (
                   <Text style={styles.findsNote}>Sign in to keep your finds.</Text>
                 )
+              ) : null}
+              {top && result && session?.token && user?.id ? (
+                <FindEvolutionNudge
+                  session={session}
+                  userId={user.id}
+                  brand={top.brand.name}
+                  ticker={top.brand.ticker?.symbol}
+                  isPublic={top.brand.isPublic}
+                  candidate={result}
+                  quote={quote}
+                />
               ) : null}
               {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
               {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
