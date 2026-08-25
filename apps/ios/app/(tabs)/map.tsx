@@ -10,26 +10,44 @@ import {
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
+import { LocationContextNotice } from "@/location/LocationContextNotice";
+import {
+  LOCATION_CONTEXT_QUERY_KEY,
+  type LocationContextState,
+  type LocationRegion,
+  MAP_REGION_QUERY_KEY,
+  locationContextHeading,
+  locationRegionFromLatLng,
+  locationUnavailableContext,
+  mapAreaContext,
+  permissionDeniedContext,
+  resolveInitialLocationContext,
+  shouldApplyDeviceFix,
+  transitionLocationContext,
+} from "@/location/locationContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, motion, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
-import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
+import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  AppState,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-
-const FALLBACK_REGION: Region = {
-  latitude: 37.7749,
-  longitude: -122.4194,
-  latitudeDelta: 0.03,
-  longitudeDelta: 0.03,
-};
 
 /** Fixed pin canvas — variable-height custom markers mis-anchor on Google Maps. */
 const PIN_W = 104;
@@ -45,18 +63,10 @@ const OVERLAP_METERS = 55;
 function regionFromWidgetParams(
   rawLat: string | string[] | undefined,
   rawLng: string | string[] | undefined,
-): Region | null {
+): LocationRegion | null {
   const lat = Number(Array.isArray(rawLat) ? rawLat[0] : rawLat);
   const lng = Number(Array.isArray(rawLng) ? rawLng[0] : rawLng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    return null;
-  }
-  return {
-    latitude: lat,
-    longitude: lng,
-    latitudeDelta: 0.02,
-    longitudeDelta: 0.02,
-  };
+  return locationRegionFromLatLng({ lat, lng });
 }
 
 export default function MapScreen() {
@@ -65,13 +75,23 @@ export default function MapScreen() {
   const params = useLocalSearchParams<{ lat?: string | string[]; lng?: string | string[] }>();
   const qc = useQueryClient();
   const { session } = useSession();
-  const cachedRegion = qc.getQueryData<Region>(["tab-state", "map-region"]);
+  const cachedContext = qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY);
+  const cachedRegion = qc.getQueryData<Region>(MAP_REGION_QUERY_KEY);
   const linkedRegion = useMemo(
     () => regionFromWidgetParams(params.lat, params.lng),
     [params.lat, params.lng],
   );
-  const [region, setRegion] = useState<Region>(linkedRegion ?? cachedRegion ?? FALLBACK_REGION);
-  const [permErr, setPermErr] = useState<string | null>(null);
+  const initialContext = resolveInitialLocationContext({
+    linkedRegion,
+    cachedContext,
+    cachedRegion,
+  });
+  const [locationContext, setLocationContext] = useState<LocationContextState>(initialContext);
+  const contextRef = useRef(locationContext);
+  const locationRequestGeneration = useRef(0);
+  const [isLocating, setIsLocating] = useState(initialContext.kind === "loading");
+  const isFocused = useIsFocused();
+  const region = locationContext.region as Region;
   /** Tracks until quotes render into the bitmap, then freezes for perf. */
   const [trackMarkers, setTrackMarkers] = useState(true);
   /** First tap on an overlapped cluster elevates this place; second opens detail. */
@@ -81,37 +101,150 @@ export default function MapScreen() {
   /** Silhouette layer — nearby investables the user has not caught yet. */
   const [showUncaught, setShowUncaught] = useState(true);
 
-  useEffect(() => {
-    if (!linkedRegion) return;
-    setRegion(linkedRegion);
-    qc.setQueryData(["tab-state", "map-region"], linkedRegion);
-  }, [linkedRegion, qc]);
+  const publishLocationContext = useCallback(
+    (next: LocationContextState) => {
+      contextRef.current = next;
+      setLocationContext(next);
+      qc.setQueryData(LOCATION_CONTEXT_QUERY_KEY, next);
+      qc.setQueryData(MAP_REGION_QUERY_KEY, next.region);
+    },
+    [qc],
+  );
 
-  useEffect(() => {
-    (async () => {
-      if (cachedRegion || linkedRegion) return;
+  const requestDeviceLocation = useCallback(async () => {
+    const requestGeneration = ++locationRequestGeneration.current;
+    const requestStartedAt = Date.now();
+    const shouldContinue = () =>
+      requestGeneration === locationRequestGeneration.current &&
+      shouldApplyDeviceFix(
+        qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
+        requestStartedAt,
+      );
+    setIsLocating(true);
+    try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (!shouldContinue()) return;
       if (status !== "granted") {
-        setPermErr("Location permission denied. Showing San Francisco.");
+        publishLocationContext(
+          status === "denied"
+            ? permissionDeniedContext(contextRef.current)
+            : locationUnavailableContext(contextRef.current),
+        );
         return;
       }
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const next = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      };
-      setRegion(next);
-      qc.setQueryData(["tab-state", "map-region"], next);
+      if (!shouldContinue()) return;
+      const nextRegion = locationRegionFromLatLng({
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+      });
+      if (!nextRegion) {
+        publishLocationContext(locationUnavailableContext(contextRef.current));
+        return;
+      }
+      const next = transitionLocationContext(contextRef.current, {
+        type: "device-fix",
+        region: nextRegion,
+        capturedAt: loc.timestamp,
+      });
+      publishLocationContext(next);
       void saveLastLocationForWidgets(
-        { lat: next.latitude, lng: next.longitude },
+        { lat: nextRegion.latitude, lng: nextRegion.longitude },
         { capturedAt: loc.timestamp, source: "device" },
       );
+    } catch {
+      if (shouldContinue()) {
+        publishLocationContext(locationUnavailableContext(contextRef.current));
+      }
+    } finally {
+      if (requestGeneration === locationRequestGeneration.current) setIsLocating(false);
+    }
+  }, [publishLocationContext, qc]);
+
+  const handleLocationAction = useCallback(() => {
+    if (locationContext.kind === "permission-denied") {
+      void Linking.openSettings();
+      return;
+    }
+    void requestDeviceLocation();
+  }, [locationContext.kind, requestDeviceLocation]);
+
+  useEffect(() => {
+    if (!linkedRegion) return;
+    locationRequestGeneration.current += 1;
+    setIsLocating(false);
+    publishLocationContext(mapAreaContext(linkedRegion));
+  }, [linkedRegion, publishLocationContext]);
+
+  useEffect(() => {
+    if (linkedRegion || !isFocused) return;
+    let cancelled = false;
+    (async () => {
+      let restored = resolveInitialLocationContext({ cachedContext, cachedRegion });
+      const persisted =
+        restored.kind === "loading" ? await readLastLocationForWidgets() : undefined;
+      if (cancelled) return;
+      if (persisted) {
+        restored = resolveInitialLocationContext({
+          cachedContext,
+          cachedRegion,
+          persistedLocation: persisted,
+        });
+      }
+      if (restored.kind === "device-origin") {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== "granted") {
+          publishLocationContext(
+            status === "denied"
+              ? permissionDeniedContext(restored)
+              : locationUnavailableContext(restored),
+          );
+          setIsLocating(false);
+          return;
+        }
+      }
+      if (restored.kind !== "loading") {
+        publishLocationContext(restored);
+        setIsLocating(false);
+        return;
+      }
+      if (!cancelled) await requestDeviceLocation();
     })();
-  }, [cachedRegion, linkedRegion, qc]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    cachedContext,
+    cachedRegion,
+    isFocused,
+    linkedRegion,
+    publishLocationContext,
+    requestDeviceLocation,
+  ]);
+
+  useEffect(() => {
+    if (!isFocused || linkedRegion) return;
+    const next = resolveInitialLocationContext({
+      cachedContext: qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
+      cachedRegion: qc.getQueryData<Region>(MAP_REGION_QUERY_KEY),
+    });
+    if (next.kind === "loading" || next === contextRef.current) return;
+    contextRef.current = next;
+    setLocationContext(next);
+    setIsLocating(false);
+  }, [isFocused, linkedRegion, qc]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (isFocused && nextState === "active" && contextRef.current.kind === "permission-denied") {
+        void requestDeviceLocation();
+      }
+    });
+    return () => subscription.remove();
+  }, [isFocused, requestDeviceLocation]);
 
   const nearbyQuery = useQuery({
     queryKey: [
@@ -130,6 +263,7 @@ export default function MapScreen() {
         },
         { token: session?.token },
       ),
+    enabled: locationContext.kind !== "loading",
     staleTime: 60_000,
   });
 
@@ -327,8 +461,6 @@ export default function MapScreen() {
           mapPanInProgress.current = true;
         }}
         onRegionChangeComplete={(r, details) => {
-          setRegion(r);
-          qc.setQueryData(["tab-state", "map-region"], r);
           setFocusedPlaceId(null);
           setTrackMarkers(true);
           // A user-panned map is a map-area origin, not a claim about the
@@ -336,9 +468,19 @@ export default function MapScreen() {
           const wasUserPan = details?.isGesture === true || mapPanInProgress.current;
           mapPanInProgress.current = false;
           if (wasUserPan) {
+            locationRequestGeneration.current += 1;
+            setIsLocating(false);
+            const capturedAt = Date.now();
+            publishLocationContext(
+              transitionLocationContext(contextRef.current, {
+                type: "map-pan",
+                region: r,
+                capturedAt,
+              }),
+            );
             void saveLastLocationForWidgets(
               { lat: r.latitude, lng: r.longitude },
-              { source: "map" },
+              { capturedAt, source: "map" },
             );
           }
         }}
@@ -428,15 +570,15 @@ export default function MapScreen() {
           : null}
       </MapView>
 
-      <View pointerEvents="none" style={styles.overlay}>
+      <View pointerEvents="box-none" style={styles.overlay}>
+        <LocationContextNotice
+          state={locationContext}
+          busy={isLocating}
+          onAction={handleLocationAction}
+        />
         {nearbyQuery.isFetching || quotesQuery.isFetching ? (
           <BlurView intensity={40} tint="dark" style={styles.loadingPill}>
             <ActivityIndicator color={colors.fg} size="small" />
-          </BlurView>
-        ) : null}
-        {permErr ? (
-          <BlurView intensity={40} tint="dark" style={styles.warnWrap}>
-            <Text style={styles.warn}>{permErr}</Text>
           </BlurView>
         ) : null}
         {nearbyQuery.isError ? (
@@ -458,7 +600,12 @@ export default function MapScreen() {
         brandTickers={brandTickers}
         quotes={quotes}
         caughtTickers={caughtTickers}
-        loading={nearbyQuery.isFetching && items.length === 0}
+        loading={
+          locationContext.kind === "loading" ||
+          isLocating ||
+          (nearbyQuery.isFetching && items.length === 0)
+        }
+        locationContext={locationContext}
         focusedPlaceId={focusedPlaceId}
         showFindsToggle={geoFinds.length > 0}
         findsVisible={showFinds}
@@ -493,6 +640,7 @@ function NearbySheet({
   quotes,
   caughtTickers,
   loading,
+  locationContext,
   focusedPlaceId,
   showFindsToggle,
   findsVisible,
@@ -509,6 +657,7 @@ function NearbySheet({
   quotes: Record<string, Quote>;
   caughtTickers: Set<string>;
   loading: boolean;
+  locationContext: LocationContextState;
   focusedPlaceId: string | null;
   /** Finds-layer chip — hidden when the user has no geo-tagged finds. */
   showFindsToggle: boolean;
@@ -548,7 +697,7 @@ function NearbySheet({
           accessibilityLabel={open ? "Collapse nearby list" : "Expand nearby list"}
         >
           <Text style={styles.sheetTitle} numberOfLines={1}>
-            {loading ? "Finding nearby…" : items.length ? `Nearby · ${items.length}` : "Nearby"}
+            {locationContextHeading(locationContext, items.length, loading)}
           </Text>
           <Ionicons name={open ? "chevron-down" : "chevron-up"} size={16} color={colors.fgMuted} />
         </Pressable>
@@ -633,8 +782,14 @@ function NearbySheet({
         rows.length === 0 ? (
           <Text style={styles.sheetEmpty}>
             {loading
-              ? "Looking for brands around you."
-              : "Walk around — every pin is a company you can look inside."}
+              ? "Checking your location before showing brands."
+              : locationContext.kind === "fallback" ||
+                  (locationContext.kind === "permission-denied" &&
+                    locationContext.previous === "demo")
+                ? "Explore this demo area, or use your location to see what is around you."
+                : locationContext.kind === "map-area"
+                  ? "No investable brands in this map area yet."
+                  : "Walk around — every pin is a company you can look inside."}
           </Text>
         ) : (
           rows.map((item) => {
