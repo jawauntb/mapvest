@@ -32,7 +32,7 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 3. `packages/vision.identifyFromImage(bytes, {location})` calls OpenRouter with a multimodal model. Prompt asks for `{brand, product, sector, visible_text, confidence}`.
 4. `packages/finance.resolveTicker(brand)` looks up a first-party mapping table. On miss, calls `packages/search.searchBrand()` (Exa) and asks the LLM to extract a ticker with citations.
 5. If the brand is private, `packages/finance.resolveComparable()` finds the closest public co and an ETF with meaningful exposure. Sources attached.
-6. API returns a single `IdentifyResponse` with `investable[]` and `sources[]`.
+6. API returns a single `IdentifyResponse` with `investable[]`; each returned match carries its `Source[]` citations.
 
 ## Request flow — “what’s around me?”
 
@@ -50,7 +50,11 @@ Camera always opens a live shutter (last snap is not the landing state). The
 annotator is optional: snap identifies immediately, **Refine** (circle +
 hint) re-runs it, and roi / hint / location now reach the API. The result
 card leads with a meaning line (“you can own this” / closest public cousin),
-then price, a confidence badge, source chips, and “Added to your finds.”
+then price, a confidence badge, a concise **Evidence** section, and “Added to
+your finds.” Evidence names only the returned providers, explains each source
+confidence, shows its fetch date, and links only valid HTTP(S) citations; it
+never presents a returned source as independent verification. If none are
+returned, Camera and Detail say so and treat the match as low confidence.
 It gives the primary match one explicit detail CTA while listing every
 additional match; zero matches explain how to **Refine** or **Retake**. During
 identify, the camera only marks client-observable work complete (photo ready,
@@ -112,9 +116,11 @@ shows a native provider-routed price series; analyzer PNGs live in an Analytics
 section with auction / ridge / regression chips. A listed ticker page is
 ticker → name → chart → save/research/Robinhood/alert → comps → analytics
 → glance → financials → news → full brief. Detail is progressive
-disclosure: Financials, SEC, and Sources collapse by default; Analytics
-stays open with a plain-language explainer per chart type; empty
-Comparables / ETF / Sources sections are hidden entirely for listed names.
+disclosure: Financials, SEC, and cited Evidence collapse by default; Analytics
+stays open with a plain-language explainer per chart type. Evidence opens when
+no citations were returned so the low-confidence state is visible; it is never
+silently omitted. Empty Comparables / ETF sections are hidden entirely for
+listed names.
 Comparables lead only when the name is actually private. News opens an
 in-app reader (Safari is optional).
 A one-screen first-open sheet
