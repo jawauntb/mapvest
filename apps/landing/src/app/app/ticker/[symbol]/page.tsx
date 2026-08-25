@@ -2,12 +2,16 @@
 
 import {
   type AnalysisSnapshot,
+  ApiError,
   type ChartImage,
   type ResearchArticle,
   addToWatchlist,
   agentChat,
+  createAgentClientMessageId,
   fetchSettings,
   generateMemo,
+  getAgentConversationStatus,
+  getAgentThread,
   getAnalysis,
   getChart,
   getFinancialRatios,
@@ -44,6 +48,9 @@ const CHART_CHIPS = [
 
 const PERIODS = ["5d", "1mo", "3mo", "1y", "2y"] as const;
 const INTERVALS = ["15m", "1d", "1w"] as const;
+const PENDING_OVERVIEW_STATUSES = new Set(["queued", "running"]);
+const OVERVIEW_RECOVERY_INTERVAL_MS = 3_000;
+const OVERVIEW_RECOVERY_MAX_ATTEMPTS = 100;
 
 type ChartCache = Record<string, ChartImage>;
 
@@ -54,6 +61,38 @@ function cacheKey(type: string, ticker: string, period: string, interval: string
 function looksLikeTicker(s: string): string | null {
   const u = s.trim().toUpperCase();
   return /^[A-Z][A-Z0-9.]{0,5}$/.test(u) ? u : null;
+}
+
+function waitForOverviewRecoveryInterval(signal: AbortSignal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, OVERVIEW_RECOVERY_INTERVAL_MS);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForOverviewResearch(conversationId: string, signal: AbortSignal) {
+  for (let attempt = 0; attempt < OVERVIEW_RECOVERY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const summary = await getAgentConversationStatus(conversationId, signal);
+      if (!PENDING_OVERVIEW_STATUSES.has(summary.status)) {
+        return (await getAgentThread(conversationId, signal)).thread;
+      }
+    } catch (error) {
+      if (signal.aborted || (error instanceof ApiError && error.status < 500)) throw error;
+    }
+    if (attempt + 1 < OVERVIEW_RECOVERY_MAX_ATTEMPTS) {
+      await waitForOverviewRecoveryInterval(signal);
+    }
+  }
+  throw new Error("Research is still running. Retry to check this same brief.");
 }
 
 function hostLabel(url?: string): string {
@@ -121,6 +160,13 @@ export default function TickerDetail() {
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [wantBrief, setWantBrief] = useState(false);
+  const overviewAttemptRef = useRef<{
+    ticker: string;
+    clientMessageId: string;
+    conversationId?: string;
+  } | null>(null);
+  const overviewLoadGenerationRef = useRef(0);
+  const overviewAbortRef = useRef<AbortController | null>(null);
   const [rhLink, setRhLink] = useState<string | null>(null);
   const [marketNews, setMarketNews] = useState<Awaited<ReturnType<typeof getTickerNews>> | null>(
     null,
@@ -131,6 +177,12 @@ export default function TickerDetail() {
   const [marketFeedLoading, setMarketFeedLoading] = useState(false);
 
   const authed = !!getToken();
+
+  const cancelOverviewLoad = useCallback(() => {
+    overviewLoadGenerationRef.current += 1;
+    overviewAbortRef.current?.abort();
+    overviewAbortRef.current = null;
+  }, []);
 
   const loadChart = useCallback(async (ticker: string, type: string, per: string, bar: string) => {
     const key = cacheKey(type, ticker, per, bar);
@@ -165,6 +217,8 @@ export default function TickerDetail() {
 
   useEffect(() => {
     if (!symbolOrBrand) return;
+    cancelOverviewLoad();
+    overviewAttemptRef.current = null;
     cacheRef.current = {};
     chartReqRef.current += 1;
     setChart(null);
@@ -186,6 +240,7 @@ export default function TickerDetail() {
     setQuote(null);
     setOverview(null);
     setOverviewErr(null);
+    setOverviewLoading(false);
     setWantBrief(false);
     setRhLink(null);
     setMarketNews(null);
@@ -250,7 +305,8 @@ export default function TickerDetail() {
         })
         .catch(() => {});
     }
-  }, [symbolOrBrand, authed, urlTicker]);
+    return cancelOverviewLoad;
+  }, [symbolOrBrand, authed, urlTicker, cancelOverviewLoad]);
 
   useEffect(() => {
     if (!chartTicker) return;
@@ -281,28 +337,69 @@ export default function TickerDetail() {
   }, [chartTicker]);
 
   const loadOverview = useCallback(
-    (ticker: string) => {
+    async (ticker: string) => {
+      cancelOverviewLoad();
+      const generation = overviewLoadGenerationRef.current;
+      const controller = new AbortController();
+      overviewAbortRef.current = controller;
+      const isCurrent = () =>
+        overviewLoadGenerationRef.current === generation &&
+        overviewAbortRef.current === controller &&
+        !controller.signal.aborted;
+      const attempt =
+        overviewAttemptRef.current?.ticker === ticker
+          ? overviewAttemptRef.current
+          : {
+              ticker,
+              clientMessageId: createAgentClientMessageId(),
+            };
+      overviewAttemptRef.current = attempt;
+
       setWantBrief(true);
       setOverviewLoading(true);
       setOverviewErr(null);
-      agentChat(
-        `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
-        { ticker },
-      )
-        .then((r) => {
-          setOverview(r.article);
-          setOverviewErr(null);
-        })
-        .catch((e) => {
-          if (presentPaywallIfQuota(e, presentPaywall)) {
-            setOverviewErr("Free generations used. Subscribe to keep researching.");
-            return;
+      try {
+        let article: ResearchArticle | undefined;
+        if (!attempt.conversationId) {
+          const response = await agentChat(
+            `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
+            { ticker, clientMessageId: attempt.clientMessageId },
+          );
+          if (!isCurrent()) return;
+          attempt.conversationId = response.conversationId ?? response.threadId;
+          if (!response.pending && response.status !== "queued" && response.status !== "running") {
+            article = response.article;
           }
-          setOverviewErr(e instanceof Error ? e.message : "overview failed");
-        })
-        .finally(() => setOverviewLoading(false));
+        }
+
+        if (!article) {
+          if (!attempt.conversationId) throw new Error("Research conversation was not returned.");
+          const thread = await waitForOverviewResearch(attempt.conversationId, controller.signal);
+          if (!isCurrent()) return;
+          article = [...(thread.messages ?? [])]
+            .reverse()
+            .find((message) => message.role === "assistant");
+        }
+        if (!article) throw new Error("Research finished without a displayable brief.");
+        if (!isCurrent()) return;
+        setOverview(article);
+        setOverviewErr(null);
+        if (overviewAttemptRef.current === attempt) overviewAttemptRef.current = null;
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (presentPaywallIfQuota(error, presentPaywall)) {
+          setOverviewErr("Free generations used. Subscribe to keep researching.");
+          return;
+        }
+        setOverviewErr(error instanceof Error ? error.message : "overview failed");
+      } finally {
+        if (isCurrent()) {
+          overviewAbortRef.current = null;
+          setOverviewLoading(false);
+        }
+      }
     },
-    [presentPaywall],
+    [cancelOverviewLoad, presentPaywall],
   );
 
   if (!resolved && !urlTicker && !err) {
@@ -547,7 +644,16 @@ export default function TickerDetail() {
               ) : overviewLoading ? (
                 <p className="app-muted">Researching a longer brief…</p>
               ) : overviewErr ? (
-                <p className="app-err">{overviewErr}</p>
+                <div>
+                  <p className="app-err">{overviewErr}</p>
+                  <button
+                    type="button"
+                    className="app-btn"
+                    onClick={() => void loadOverview(ticker)}
+                  >
+                    Retry brief
+                  </button>
+                </div>
               ) : overview ? (
                 <FormattedBrief text={overview.content} />
               ) : (
@@ -898,7 +1004,9 @@ export default function TickerDetail() {
                 <ChartFigure
                   src={`data:${chart.image.mime};base64,${chart.image.data}`}
                   alt={`${chart.ticker} ${chipLabel} ${interval} ${period} chart`}
-                  filename={chart.image.filename ?? `${chart.ticker}-${chartType}-${interval}-${period}.png`}
+                  filename={
+                    chart.image.filename ?? `${chart.ticker}-${chartType}-${interval}-${period}.png`
+                  }
                   caption={
                     chartType === "auction" && chart.levels
                       ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`

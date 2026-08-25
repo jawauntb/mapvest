@@ -12,6 +12,7 @@ import {
   resolveComparable,
   saveMemoToWatchlist,
   secFilings,
+  waitForAgentThread,
 } from "@/api/client";
 import { coerceResolve, looksLikeTicker, routeParam } from "@/api/resolveFallback";
 import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
@@ -729,12 +730,16 @@ function AgentOverviewBlock({
   // 30min) we honor the cache and skip the button — feels the same as before.
   const qc = useQueryClient();
   const key = ["agent-overview", ticker, token ?? "anon"];
-  const messageIdentityRef = useRef<{ ticker: string; id: string } | null>(null);
-  const clientMessageId = () => {
+  const messageIdentityRef = useRef<{
+    ticker: string;
+    id: string;
+    conversationId?: string;
+  } | null>(null);
+  const requestIdentity = () => {
     if (messageIdentityRef.current?.ticker !== ticker) {
       messageIdentityRef.current = { ticker, id: createResearchClientMessageId() };
     }
-    return messageIdentityRef.current.id;
+    return messageIdentityRef.current;
   };
   const hasCache = !!qc.getQueryData(key);
   const [wantBrief, setWantBrief] = useState(hasCache);
@@ -743,12 +748,27 @@ function AgentOverviewBlock({
     enabled: !!ticker && wantBrief,
     staleTime: 30 * 60_000,
     retry: 1,
-    queryFn: () =>
-      agentChat(
-        `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
-        { ticker, clientMessageId: clientMessageId() },
-        { token },
-      ),
+    queryFn: async ({ signal }) => {
+      const attempt = requestIdentity();
+      if (!attempt.conversationId) {
+        const response = await agentChat(
+          `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
+          { ticker, clientMessageId: attempt.id },
+          { token, signal },
+        );
+        attempt.conversationId = response.conversationId ?? response.threadId;
+        if (!response.pending && response.status !== "queued" && response.status !== "running") {
+          return response.article;
+        }
+      }
+
+      const recovered = await waitForAgentThread(attempt.conversationId, { token, signal });
+      const article = [...(recovered.thread.messages ?? [])]
+        .reverse()
+        .find((message) => message.role === "assistant");
+      if (!article) throw new Error("Research finished without a displayable brief.");
+      return article;
+    },
   });
 
   useEffect(() => {
@@ -799,10 +819,10 @@ function AgentOverviewBlock({
         // content column. Without it, RN can size a column-flex View to its
         // intrinsic content width and let a single long line spill right.
         <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
-          <RichText text={overviewQ.data?.article?.content ?? ""} />
-          {(overviewQ.data?.article?.interesting?.length ?? 0) > 0 ? (
+          <RichText text={overviewQ.data?.content ?? ""} />
+          {(overviewQ.data?.interesting?.length ?? 0) > 0 ? (
             <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
-              {(overviewQ.data?.article?.interesting ?? []).slice(0, 5).map((line) => (
+              {(overviewQ.data?.interesting ?? []).slice(0, 5).map((line) => (
                 <Text key={line} style={[styles.muted, { flexShrink: 1 }]}>
                   · {line}
                 </Text>

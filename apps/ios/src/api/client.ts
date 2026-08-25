@@ -517,6 +517,25 @@ export function getAgentThread(id: string, opts: FetchOpts = {}) {
   );
 }
 
+export type AgentConversationStatus = {
+  conversationId: string;
+  status: ResearchConversationStatus;
+  phase?: string;
+  active?: boolean;
+  completedIterations?: number;
+  maxIterations?: number;
+  preview?: string;
+  updatedAt?: string;
+};
+
+export function getAgentConversationStatus(id: string, opts: FetchOpts = {}) {
+  return jsonFetch<AgentConversationStatus>(
+    `/v1/agent/threads/${encodeURIComponent(id)}/status`,
+    { method: "GET" },
+    opts,
+  );
+}
+
 const RESEARCH_TERMINAL_STATUSES = new Set<ResearchConversationStatus>([
   "conclusive",
   "exhausted",
@@ -548,17 +567,17 @@ export async function waitForAgentThread(
   polling: {
     maxAttempts?: number;
     intervalMs?: number;
-    onProgress?: (thread: AgentThread) => void;
+    onProgress?: (status: AgentConversationStatus) => void;
   } = {},
 ): Promise<{ thread: AgentThread }> {
-  const maxAttempts = Math.max(1, Math.floor(polling.maxAttempts ?? 30));
-  const intervalMs = Math.max(0, Math.floor(polling.intervalMs ?? 2_000));
+  const maxAttempts = Math.max(1, Math.floor(polling.maxAttempts ?? 100));
+  const intervalMs = Math.max(0, Math.floor(polling.intervalMs ?? 3_000));
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      const result = await getAgentThread(id, opts);
-      polling.onProgress?.(result.thread);
-      if (!result.thread.status || RESEARCH_TERMINAL_STATUSES.has(result.thread.status)) {
-        return result;
+      const status = await getAgentConversationStatus(id, opts);
+      polling.onProgress?.(status);
+      if (RESEARCH_TERMINAL_STATUSES.has(status.status)) {
+        return await getAgentThread(id, opts);
       }
     } catch (error) {
       const retryable = !(error instanceof ApiError) || error.status >= 500;
@@ -746,8 +765,8 @@ export async function agentChatStream(
       finalClientMessageId = d?.clientMessageId ?? finalClientMessageId;
       finalStatus = d?.status;
     } else if (eventName === "error") {
-      const d = data as { message?: string };
-      errored = d?.message || "stream error";
+      const d = data as { error?: string; message?: string };
+      errored = d?.error || d?.message || "stream error";
     }
   };
 

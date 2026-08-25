@@ -44,6 +44,7 @@ import {
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormattedBrief } from "./FormattedBrief";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 export default function AppPage() {
@@ -877,7 +878,7 @@ function ResearchChatArticle({ article }: { article: ResearchArticle }) {
   return (
     <article className="app-article">
       {progress ? <p className="app-article-tools">Progress · {progress}</p> : null}
-      <p className="app-article-lede">{article.content}</p>
+      <FormattedBrief text={article.content} />
 
       {article.interesting.length ? (
         <ul className="app-article-bullets">
@@ -1025,14 +1026,20 @@ function ResearchChatTab({ userId }: { userId?: string }) {
   const [view, setView] = useState<"list" | "chat">("list");
   const retryRef = useRef<{ message: string; clientMessageId: string } | null>(null);
   const researchLoadRef = useRef<AbortController | null>(null);
+  const researchOperationGenerationRef = useRef(0);
 
   const cancelResearchLoad = useCallback(() => {
     researchLoadRef.current?.abort();
     researchLoadRef.current = null;
   }, []);
 
+  const cancelResearchOperation = useCallback(() => {
+    researchOperationGenerationRef.current += 1;
+    cancelResearchLoad();
+  }, [cancelResearchLoad]);
+
   const loadResearchConversation = useCallback(
-    async (conversationId: string) => {
+    async (conversationId: string, knownPending = false) => {
       cancelResearchLoad();
       const controller = new AbortController();
       researchLoadRef.current = controller;
@@ -1040,15 +1047,17 @@ function ResearchChatTab({ userId }: { userId?: string }) {
       setErr(null);
       try {
         let thread: AgentThread | undefined;
-        try {
-          thread = (await getAgentThread(conversationId, controller.signal)).thread;
-          if (!controller.signal.aborted) {
-            setTurns(thread.messages ?? []);
-            setMemoUrl(thread.memoUrl);
+        if (!knownPending) {
+          try {
+            thread = (await getAgentThread(conversationId, controller.signal)).thread;
+            if (!controller.signal.aborted) {
+              setTurns(thread.messages ?? []);
+              setMemoUrl(thread.memoUrl);
+            }
+          } catch (error) {
+            if (controller.signal.aborted || isStaleResearchPointerError(error)) throw error;
+            // Recover through the lightweight status endpoint when display briefly fails.
           }
-        } catch (error) {
-          if (controller.signal.aborted || isStaleResearchPointerError(error)) throw error;
-          // Recover through the lightweight status endpoint when display briefly fails.
         }
 
         if (!thread || PENDING_RESEARCH_STATUSES.has(thread.status)) {
@@ -1093,8 +1102,8 @@ function ResearchChatTab({ userId }: { userId?: string }) {
     } catch {
       // Research remains usable when browser storage is unavailable.
     }
-    return cancelResearchLoad;
-  }, [cancelResearchLoad, loadResearchConversation, storageKey]);
+    return cancelResearchOperation;
+  }, [cancelResearchOperation, loadResearchConversation, storageKey]);
 
   useEffect(() => {
     if (view !== "list") return;
@@ -1104,6 +1113,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
   }, [view]);
 
   async function openThread(id: string, title: string) {
+    cancelResearchOperation();
     setView("chat");
     setThreadId(id);
     retryRef.current = null;
@@ -1115,7 +1125,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
   }
 
   function newChat() {
-    cancelResearchLoad();
+    cancelResearchOperation();
     setView("chat");
     setThreadId(undefined);
     retryRef.current = null;
@@ -1130,6 +1140,9 @@ function ResearchChatTab({ userId }: { userId?: string }) {
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    cancelResearchOperation();
+    const operationGeneration = researchOperationGenerationRef.current;
+    const isCurrent = () => researchOperationGenerationRef.current === operationGeneration;
     const retry = retryRef.current;
     const clientMessageId =
       retry?.message === msg ? retry.clientMessageId : createAgentClientMessageId();
@@ -1160,6 +1173,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
         conversationId: threadId,
         clientMessageId,
       });
+      if (!isCurrent()) return;
       const conversationId = r.conversationId ?? r.threadId;
       if (conversationId) {
         setThreadId(conversationId);
@@ -1171,9 +1185,11 @@ function ResearchChatTab({ userId }: { userId?: string }) {
         turns.some((turn) => turn.id === r.article.id) ? turns : [...turns, r.article],
       );
       if (conversationId && (r.pending || PENDING_RESEARCH_STATUSES.has(r.status))) {
-        await loadResearchConversation(conversationId);
+        await loadResearchConversation(conversationId, true);
+        if (!isCurrent()) return;
       }
     } catch (e) {
+      if (!isCurrent()) return;
       retryRef.current = { message: msg, clientMessageId };
       setInput(msg);
       if (presentPaywallIfQuota(e, presentPaywall)) {
@@ -1182,7 +1198,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
       }
       setErr(e instanceof Error ? e.message : "research failed");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -1258,7 +1274,13 @@ function ResearchChatTab({ userId }: { userId?: string }) {
           type="button"
           className="app-link"
           style={{ padding: 0 }}
-          onClick={() => setView("list")}
+          onClick={() => {
+            cancelResearchOperation();
+            retryRef.current = null;
+            setBusy(false);
+            setErr(null);
+            setView("list");
+          }}
         >
           ← Chats
         </button>

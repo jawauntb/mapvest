@@ -121,6 +121,14 @@ export default function ResearchChatScreen() {
   // re-running because of the router/params identity churn) doesn't clobber
   // a draft the user has since edited.
   const consumedSeedRef = useRef<string | null>(null);
+  const researchOperationGenerationRef = useRef(0);
+  const researchOperationAbortRef = useRef<AbortController | null>(null);
+
+  const cancelResearchOperation = useCallback(() => {
+    researchOperationGenerationRef.current += 1;
+    researchOperationAbortRef.current?.abort();
+    researchOperationAbortRef.current = null;
+  }, []);
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -131,24 +139,64 @@ export default function ResearchChatScreen() {
 
   const openThread = useCallback(
     async (t: AgentThread) => {
+      cancelResearchOperation();
+      const generation = researchOperationGenerationRef.current;
+      const controller = new AbortController();
+      researchOperationAbortRef.current = controller;
+      const isCurrent = () =>
+        researchOperationGenerationRef.current === generation &&
+        researchOperationAbortRef.current === controller &&
+        !controller.signal.aborted;
+
       retryAttemptRef.current = undefined;
       setErr(null);
       setMode("chat");
+      setBusy(true);
+      setStatus(null);
       const conversationId = t.conversationId ?? t.id;
       setThreadId(conversationId);
       setTitle(t.title || "Research");
       setTurns(t.messages ?? []);
       setMemoUrl(t.memoUrl);
       try {
-        const r = await getAgentThread(conversationId, { token: session?.token });
-        const canonicalId = r.thread.conversationId ?? r.thread.id;
+        let thread = (
+          await getAgentThread(conversationId, {
+            token: session?.token,
+            signal: controller.signal,
+          })
+        ).thread;
+        if (!isCurrent()) return;
+        if (thread.status === "queued" || thread.status === "running") {
+          setStatus("Researching… gathering more evidence");
+          thread = (
+            await waitForAgentThread(
+              conversationId,
+              { token: session?.token, signal: controller.signal },
+              {
+                onProgress: (progress) => {
+                  if (!isCurrent()) return;
+                  setStatus(
+                    progress.status === "queued"
+                      ? "Research queued…"
+                      : "Researching… gathering more evidence",
+                  );
+                },
+              },
+            )
+          ).thread;
+        }
+        if (!isCurrent()) return;
+        const canonicalId = thread.conversationId ?? thread.id;
         setThreadId(canonicalId);
         void saveResearchConversationId("chat", canonicalId, user?.id);
-        setTurns(r.thread.messages ?? []);
-        setMemoUrl(r.thread.memoUrl);
+        setTurns(thread.messages ?? []);
+        setMemoUrl(thread.memoUrl);
+        setStatus(thread.status === "blocked" || thread.status === "error" ? null : "Brief ready");
       } catch (error) {
+        if (!isCurrent()) return;
         if (error instanceof ApiError && error.status === 404) {
           const persistedId = await loadResearchConversationId("chat", user?.id);
+          if (!isCurrent()) return;
           if (persistedId === conversationId) {
             void clearResearchConversationId("chat", user?.id);
           }
@@ -159,14 +207,20 @@ export default function ResearchChatScreen() {
         } else {
           setErr("Couldn’t load this research right now. Its saved conversation was preserved.");
         }
+      } finally {
+        if (isCurrent()) {
+          researchOperationAbortRef.current = null;
+          setBusy(false);
+        }
       }
     },
-    [session?.token, user?.id],
+    [cancelResearchOperation, session?.token, user?.id],
   );
 
   const newChat = useCallback(
     (prefill?: string) => {
       hapticTap();
+      cancelResearchOperation();
       retryAttemptRef.current = undefined;
       void clearResearchConversationId("chat", user?.id);
       setMode("chat");
@@ -176,27 +230,36 @@ export default function ResearchChatScreen() {
       setTitle("New research");
       setInput(prefill ?? "");
       setErr(null);
+      setStatus(null);
+      setBusy(false);
       if (prefill) {
         // Auto-focus so the user lands on the composer with the draft ready
         // to edit + send. Small delay lets the chat view mount first.
         setTimeout(() => inputRef.current?.focus(), 120);
       }
     },
-    [user?.id],
+    [cancelResearchOperation, user?.id],
   );
 
   useEffect(() => {
     if (params.intent) return;
     let active = true;
+    const restoreGeneration = researchOperationGenerationRef.current;
     void loadResearchConversationId("chat", user?.id).then((conversationId) => {
-      if (active && conversationId) {
+      if (
+        active &&
+        researchOperationGenerationRef.current === restoreGeneration &&
+        conversationId
+      ) {
         void openThread({ id: conversationId, title: "Research", preview: "" });
       }
     });
     return () => {
       active = false;
+      cancelResearchOperation();
+      retryAttemptRef.current = undefined;
     };
-  }, [params.intent, user?.id, openThread]);
+  }, [params.intent, user?.id, openThread, cancelResearchOperation]);
 
   // Sidebar deep-links: ?intent=new | ?intent=thread&id= | ?seed=<b64>
   useEffect(() => {
@@ -225,6 +288,14 @@ export default function ResearchChatScreen() {
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    cancelResearchOperation();
+    const generation = researchOperationGenerationRef.current;
+    const controller = new AbortController();
+    researchOperationAbortRef.current = controller;
+    const isCurrent = () =>
+      researchOperationGenerationRef.current === generation &&
+      researchOperationAbortRef.current === controller &&
+      !controller.signal.aborted;
     const previousAttempt = retryAttemptRef.current;
     const attempt =
       previousAttempt?.message === msg
@@ -257,8 +328,9 @@ export default function ResearchChatScreen() {
         const r = await agentChat(
           msg,
           { conversationId: threadId, clientMessageId: attempt.clientMessageId },
-          { token: session?.token },
+          { token: session?.token, signal: controller.signal },
         );
+        if (!isCurrent()) return;
         conversationId = r.conversationId ?? r.threadId;
         attempt.acceptedConversationId = conversationId;
         setThreadId(conversationId);
@@ -272,9 +344,10 @@ export default function ResearchChatScreen() {
       if (!article) {
         const recovered = await waitForAgentThread(
           conversationId,
-          { token: session?.token },
+          { token: session?.token, signal: controller.signal },
           {
             onProgress: (thread) => {
+              if (!isCurrent()) return;
               setStatus(
                 thread.status === "queued"
                   ? "Research queued…"
@@ -283,6 +356,7 @@ export default function ResearchChatScreen() {
             },
           },
         );
+        if (!isCurrent()) return;
         const canonicalId = recovered.thread.conversationId ?? recovered.thread.id;
         attempt.acceptedConversationId = canonicalId;
         setThreadId(canonicalId);
@@ -300,6 +374,7 @@ export default function ResearchChatScreen() {
       }
 
       if (!article) throw new Error("Research finished without a displayable brief.");
+      if (!isCurrent()) return;
       retryAttemptRef.current = undefined;
       if (title === "New research") setTitle(deriveThreadTitle(msg));
       if (article.error) {
@@ -312,6 +387,12 @@ export default function ResearchChatScreen() {
         setStatus(`Brief ready${tools}`);
       }
     } catch (e) {
+      if (!isCurrent()) {
+        if (controller.signal.aborted && retryAttemptRef.current === attempt) {
+          retryAttemptRef.current = undefined;
+        }
+        return;
+      }
       setInput(msg);
       if (presentPaywallIfQuota(e, presentPaywall)) {
         setErr("Free generations used. Subscribe to keep researching.");
@@ -329,7 +410,10 @@ export default function ResearchChatScreen() {
       }
       setStatus(null);
     } finally {
-      setBusy(false);
+      if (isCurrent()) {
+        researchOperationAbortRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -417,6 +501,10 @@ export default function ResearchChatScreen() {
             <Pressable
               onPress={() => {
                 hapticSelect();
+                cancelResearchOperation();
+                retryAttemptRef.current = undefined;
+                setBusy(false);
+                setStatus(null);
                 setMode("list");
               }}
               style={styles.back}

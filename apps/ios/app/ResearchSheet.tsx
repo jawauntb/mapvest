@@ -20,7 +20,7 @@ import {
 } from "@/util/researchConversation";
 import { shareBriefText, shareResearchMemo } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -127,10 +127,21 @@ export function ResearchSheet({
       }
     | undefined
   >(undefined);
+  const sendGenerationRef = useRef(0);
+  const sendAbortRef = useRef<AbortController | null>(null);
+
+  const cancelSendOperation = useCallback(() => {
+    sendGenerationRef.current += 1;
+    sendAbortRef.current?.abort();
+    sendAbortRef.current = null;
+  }, []);
 
   useEffect(() => {
+    cancelSendOperation();
+    setBusy(false);
     if (!visible) return;
     let cancelled = false;
+    const controller = new AbortController();
     setRestoring(true);
     setRestoreBlocked(false);
     setErr(null);
@@ -138,6 +149,9 @@ export function ResearchSheet({
     setThreadId(undefined);
     setTurns([]);
     setMemoUrl(undefined);
+    setInput(`What’s the story on $${ticker}?`);
+    setTimeline([]);
+    setDraft("");
     void (async () => {
       const scope = `ticker:${ticker}`;
       const storedId = await loadResearchConversationId(scope, user?.id);
@@ -149,18 +163,38 @@ export function ResearchSheet({
       }
       setThreadId(storedId);
       try {
-        const result = await getAgentThread(storedId, { token: session?.token });
+        const result = await getAgentThread(storedId, {
+          token: session?.token,
+          signal: controller.signal,
+        });
         if (cancelled) return;
-        const canonicalId = result.thread.conversationId ?? result.thread.id;
+        const thread =
+          result.thread.status === "queued" || result.thread.status === "running"
+            ? (
+                await waitForAgentThread(
+                  storedId,
+                  { token: session?.token, signal: controller.signal },
+                  {
+                    onProgress: (progress) => {
+                      if (!cancelled) {
+                        setStatus(
+                          progress.status === "queued"
+                            ? "Saved research is queued…"
+                            : "Saved research is still running…",
+                        );
+                      }
+                    },
+                  },
+                )
+              ).thread
+            : result.thread;
+        if (cancelled) return;
+        const canonicalId = thread.conversationId ?? thread.id;
         setThreadId(canonicalId);
         void saveResearchConversationId(scope, canonicalId, user?.id);
-        setTurns(result.thread.messages ?? []);
-        setMemoUrl(result.thread.memoUrl);
-        setStatus(
-          result.thread.status === "queued" || result.thread.status === "running"
-            ? "Saved research is still running"
-            : "Saved research loaded",
-        );
+        setTurns(thread.messages ?? []);
+        setMemoUrl(thread.memoUrl);
+        setStatus("Saved research loaded");
       } catch (error) {
         if (cancelled) return;
         if (error instanceof ApiError && error.status === 404) {
@@ -182,8 +216,11 @@ export function ResearchSheet({
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      cancelSendOperation();
+      retryAttemptRef.current = undefined;
     };
-  }, [session?.token, ticker, user?.id, visible]);
+  }, [cancelSendOperation, session?.token, ticker, user?.id, visible]);
 
   // Elapsed ticker only — the stage cycler is gone now that we stream real
   // events; the timeline is fed by `agentChatStream`'s onEvent callback.
@@ -198,6 +235,11 @@ export function ResearchSheet({
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy || restoring || restoreBlocked) return;
+    cancelSendOperation();
+    const generation = sendGenerationRef.current;
+    const controller = new AbortController();
+    sendAbortRef.current = controller;
+    const isCurrent = () => sendGenerationRef.current === generation && !controller.signal.aborted;
     const previousAttempt = retryAttemptRef.current;
     const attempt =
       previousAttempt?.ticker === ticker && previousAttempt.message === msg
@@ -231,18 +273,19 @@ export function ResearchSheet({
     setInput("");
 
     const scope = `ticker:${ticker}`;
-    const baseConversationId = threadId ?? (await loadResearchConversationId(scope, user?.id));
-    if (baseConversationId) setThreadId(baseConversationId);
+    let baseConversationId = threadId;
     let acceptedConversationId = attempt.acceptedConversationId;
     let streamAccepted = false;
     let gotArticle = false;
     const saveAcceptedConversation = (conversationId: string) => {
+      if (!isCurrent()) return;
       acceptedConversationId = conversationId;
       attempt.acceptedConversationId = conversationId;
       setThreadId(conversationId);
       void saveResearchConversationId(scope, conversationId, user?.id);
     };
     const showArticle = (article: ResearchArticle) => {
+      if (!isCurrent()) return;
       gotArticle = true;
       setTurns((turns) =>
         turns.some((turn) => turn.id === article.id) ? turns : [...turns, article],
@@ -261,9 +304,10 @@ export function ResearchSheet({
     const recoverAcceptedConversation = async (conversationId: string) => {
       const recovered = await waitForAgentThread(
         conversationId,
-        { token: session?.token },
+        { token: session?.token, signal: controller.signal },
         {
           onProgress: (thread) => {
+            if (!isCurrent()) return;
             setStatus(
               thread.status === "queued"
                 ? "Research queued…"
@@ -272,6 +316,7 @@ export function ResearchSheet({
           },
         },
       );
+      if (!isCurrent()) return;
       const canonicalId = recovered.thread.conversationId ?? recovered.thread.id;
       saveAcceptedConversation(canonicalId);
       setMemoUrl(recovered.thread.memoUrl);
@@ -293,8 +338,12 @@ export function ResearchSheet({
     };
 
     try {
+      baseConversationId ??= await loadResearchConversationId(scope, user?.id);
+      if (!isCurrent()) return;
+      if (baseConversationId) setThreadId(baseConversationId);
       if (acceptedConversationId) {
         await recoverAcceptedConversation(acceptedConversationId);
+        if (!isCurrent()) return;
       } else {
         try {
           const r = await agentChatStream(
@@ -305,6 +354,7 @@ export function ResearchSheet({
               clientMessageId: attempt.clientMessageId,
             },
             (ev) => {
+              if (!isCurrent()) return;
               if (ev.type === "tool") {
                 const d = ev.data as { name: string };
                 setTimeline((timeline) => [...timeline, `Running: ${d.name}`]);
@@ -329,15 +379,18 @@ export function ResearchSheet({
                 }
               }
             },
-            { token: session?.token },
+            { token: session?.token, signal: controller.signal },
           );
+          if (!isCurrent()) return;
           saveAcceptedConversation(r.conversationId ?? r.threadId);
           if (!gotArticle) showArticle(r.article);
         } catch (streamError) {
+          if (!isCurrent()) return;
           if (!gotArticle) {
             if (streamError instanceof ApiError && streamError.isQuotaExceeded) throw streamError;
             if (streamAccepted && acceptedConversationId) {
               await recoverAcceptedConversation(acceptedConversationId);
+              if (!isCurrent()) return;
             } else {
               const r = await agentChat(
                 msg,
@@ -346,13 +399,15 @@ export function ResearchSheet({
                   conversationId: baseConversationId,
                   clientMessageId: attempt.clientMessageId,
                 },
-                { token: session?.token },
+                { token: session?.token, signal: controller.signal },
               );
+              if (!isCurrent()) return;
               const canonicalId = r.conversationId ?? r.threadId;
               saveAcceptedConversation(canonicalId);
               setMemoUrl(r.memoUrl);
               if (r.pending || r.status === "queued" || r.status === "running") {
                 await recoverAcceptedConversation(canonicalId);
+                if (!isCurrent()) return;
               } else {
                 showArticle(r.article);
               }
@@ -361,14 +416,27 @@ export function ResearchSheet({
         }
       }
       if (gotArticle && acceptedConversationId) {
-        void getAgentThread(acceptedConversationId, { token: session?.token })
-          .then((result) => setMemoUrl(result.thread.memoUrl))
-          .catch(() => {
-            /* The finished brief remains usable when the optional PDF lookup fails. */
+        try {
+          const result = await getAgentThread(acceptedConversationId, {
+            token: session?.token,
+            signal: controller.signal,
           });
+          if (!isCurrent()) return;
+          setMemoUrl(result.thread.memoUrl);
+        } catch {
+          if (!isCurrent()) return;
+          // The finished brief remains usable when the optional PDF lookup fails.
+        }
       }
+      if (!isCurrent()) return;
       retryAttemptRef.current = undefined;
     } catch (error) {
+      if (!isCurrent()) {
+        if (controller.signal.aborted && retryAttemptRef.current === attempt) {
+          retryAttemptRef.current = undefined;
+        }
+        return;
+      }
       setInput(msg);
       if (presentPaywallIfQuota(error, presentPaywall)) {
         setErr("Free generations used. Subscribe to keep researching.");
@@ -385,18 +453,27 @@ export function ResearchSheet({
         setStatus(null);
       }
     } finally {
-      setBusy(false);
+      if (isCurrent()) {
+        if (sendAbortRef.current === controller) sendAbortRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
   const latestAssistantId = [...turns].reverse().find((turn) => turn.role === "assistant")?.id;
+  const closeSheet = () => {
+    cancelSendOperation();
+    retryAttemptRef.current = undefined;
+    setBusy(false);
+    onClose();
+  };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={closeSheet}
     >
       <View style={styles.root}>
         <View style={styles.bar}>
@@ -423,7 +500,7 @@ export function ResearchSheet({
           <Pressable
             onPress={() => {
               hapticSelect();
-              onClose();
+              closeSheet();
             }}
             style={styles.close}
             accessibilityRole="button"
