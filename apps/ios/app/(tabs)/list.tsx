@@ -7,17 +7,34 @@ import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SectorRing, buildSegments } from "@/components/SectorRing";
 import { SkeletonList } from "@/components/Skeleton";
+import { LocationContextNotice } from "@/location/LocationContextNotice";
+import {
+  LOCATION_CONTEXT_QUERY_KEY,
+  type LocationContextState,
+  type LocationRegion,
+  MAP_REGION_QUERY_KEY,
+  isRecentDeviceOrigin,
+  locationContextLabel,
+  locationRegionFromLatLng,
+  locationUnavailableContext,
+  permissionDeniedContext,
+  resolveInitialLocationContext,
+  shouldApplyDeviceFix,
+  transitionLocationContext,
+  visibleResultsForLocationContext,
+} from "@/location/locationContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
-import { saveLastLocationForWidgets } from "@/widgets/widgetLocation";
+import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useIsFocused } from "@react-navigation/native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, FlatList, Linking, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type SortKey = "distance" | "sector" | "public";
@@ -30,32 +47,176 @@ const SORTS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap
 
 export default function ListScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
-  const [origin, setOrigin] = useState<{ lat: number; lng: number }>({
-    lat: 37.7749,
-    lng: -122.4194,
+  useQuery<LocationContextState | undefined>({
+    queryKey: LOCATION_CONTEXT_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
   });
+  useQuery<LocationRegion | undefined>({
+    queryKey: MAP_REGION_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  const cachedContext = qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY);
+  const cachedRegion = qc.getQueryData<LocationRegion>(MAP_REGION_QUERY_KEY);
+  const initialContext = resolveInitialLocationContext({ cachedContext, cachedRegion });
+  const [locationContext, setLocationContext] = useState<LocationContextState>(initialContext);
+  const contextRef = useRef(locationContext);
+  const locationRequestGeneration = useRef(0);
+  const [isLocating, setIsLocating] = useState(initialContext.kind === "loading");
   const [sort, setSort] = useState<SortKey>("distance");
+  const isFocused = useIsFocused();
 
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") return;
+  const publishLocationContext = useCallback(
+    (next: LocationContextState) => {
+      contextRef.current = next;
+      setLocationContext(next);
+      qc.setQueryData(LOCATION_CONTEXT_QUERY_KEY, next);
+      qc.setQueryData(MAP_REGION_QUERY_KEY, next.region);
+    },
+    [qc],
+  );
+
+  const requestDeviceLocation = useCallback(async () => {
+    const requestGeneration = ++locationRequestGeneration.current;
+    const requestStartedAt = Date.now();
+    const shouldContinue = () =>
+      requestGeneration === locationRequestGeneration.current &&
+      shouldApplyDeviceFix(
+        qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
+        requestStartedAt,
+      );
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (!shouldContinue()) return;
+      if (status !== "granted") {
+        publishLocationContext(
+          status === "denied"
+            ? permissionDeniedContext(contextRef.current)
+            : locationUnavailableContext(contextRef.current),
+        );
+        return;
+      }
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const next = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-      setOrigin(next);
-      void saveLastLocationForWidgets(next, {
-        capturedAt: loc.timestamp,
-        source: "device",
+      if (!shouldContinue()) return;
+      const nextRegion = locationRegionFromLatLng({
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
       });
+      if (!nextRegion) {
+        publishLocationContext(locationUnavailableContext(contextRef.current));
+        return;
+      }
+      const next = transitionLocationContext(contextRef.current, {
+        type: "device-fix",
+        region: nextRegion,
+        capturedAt: loc.timestamp,
+      });
+      publishLocationContext(next);
+      void saveLastLocationForWidgets(
+        { lat: nextRegion.latitude, lng: nextRegion.longitude },
+        { capturedAt: loc.timestamp, source: "device" },
+      );
+    } catch {
+      if (shouldContinue()) {
+        publishLocationContext(locationUnavailableContext(contextRef.current));
+      }
+    } finally {
+      if (requestGeneration === locationRequestGeneration.current) setIsLocating(false);
+    }
+  }, [publishLocationContext, qc]);
+
+  const handleLocationAction = useCallback(() => {
+    if (locationContext.kind === "permission-denied") {
+      void Linking.openSettings();
+      return;
+    }
+    void requestDeviceLocation();
+  }, [locationContext.kind, requestDeviceLocation]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    let restored = resolveInitialLocationContext({ cachedContext, cachedRegion });
+    let cancelled = false;
+    (async () => {
+      const persisted =
+        restored.kind === "loading" ? await readLastLocationForWidgets() : undefined;
+      if (cancelled) return;
+      if (persisted) {
+        restored = resolveInitialLocationContext({
+          cachedContext,
+          cachedRegion,
+          persistedLocation: persisted,
+        });
+      }
+      if (restored.kind === "device-origin") {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== "granted") {
+          publishLocationContext(
+            status === "denied"
+              ? permissionDeniedContext(restored)
+              : locationUnavailableContext(restored),
+          );
+          setIsLocating(false);
+          return;
+        }
+      }
+      if (restored.kind !== "loading") {
+        publishLocationContext(restored);
+        setIsLocating(false);
+        return;
+      }
+      if (!cancelled) await requestDeviceLocation();
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedContext, cachedRegion, isFocused, publishLocationContext, requestDeviceLocation]);
+
+  useEffect(() => {
+    if (isFocused) return;
+    locationRequestGeneration.current += 1;
+    setIsLocating(false);
+  }, [isFocused]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const next = resolveInitialLocationContext({
+      cachedContext: qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
+      cachedRegion: qc.getQueryData<LocationRegion>(MAP_REGION_QUERY_KEY),
+    });
+    if (next.kind === "loading" || next === contextRef.current) return;
+    contextRef.current = next;
+    setLocationContext(next);
+    setIsLocating(false);
+  }, [isFocused, qc]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (isFocused && nextState === "active" && contextRef.current.kind === "permission-denied") {
+        void requestDeviceLocation();
+      }
+    });
+    return () => subscription.remove();
+  }, [isFocused, requestDeviceLocation]);
+
+  const origin = useMemo(
+    () => ({ lat: locationContext.region.latitude, lng: locationContext.region.longitude }),
+    [locationContext.region],
+  );
 
   const q = useQuery({
     queryKey: ["nearby-list", origin.lat.toFixed(3), origin.lng.toFixed(3)],
     queryFn: () => fetchNearby({ ...origin, radius: 1500, limit: 80 }, { token: session?.token }),
+    enabled: locationContext.kind !== "loading",
     staleTime: 60_000,
   });
 
@@ -83,16 +244,20 @@ export default function ListScreen() {
     });
     return decorated.map((x) => x.i);
   }, [q.data, sort, origin]);
+  const visibleItems = useMemo(
+    () => visibleResultsForLocationContext(locationContext, items),
+    [items, locationContext],
+  );
 
   const tickers = useMemo(() => {
     const out: string[] = [];
-    for (const i of items) {
+    for (const i of visibleItems) {
       const t = i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker;
       if (t && !out.includes(t)) out.push(t);
       if (out.length >= 20) break;
     }
     return out;
-  }, [items]);
+  }, [visibleItems]);
 
   const quotesQ = useQuery({
     queryKey: ["list-quotes", tickers.join(",")],
@@ -110,45 +275,63 @@ export default function ListScreen() {
   //   4. "Unknown" — rolled into "Other" by buildSegments if it's small.
   const sectorSegments = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const i of items) {
+    for (const i of visibleItems) {
       const inv = i.investable;
       const raw = inv?.brand.sector ?? i.place.types[0] ?? "Unknown";
       const key = (raw ?? "Unknown").trim() || "Unknown";
       counts[key] = (counts[key] ?? 0) + 1;
     }
     return buildSegments(counts, 6);
-  }, [items]);
+  }, [visibleItems]);
 
   // Build a `list` seed from the currently visible items — capped at 20 so
   // the resulting message doesn't balloon. Only real ticker + name info; we
   // never leak coordinates through the chat prefill.
   const chatSeedItems = useMemo(
     () =>
-      items.slice(0, 20).map((i) => ({
+      visibleItems.slice(0, 20).map((i) => ({
         ticker: i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker,
         name: i.place.name,
         sector: i.investable?.brand.sector,
       })),
-    [items],
+    [visibleItems],
   );
+  const resolvingLocation = isLocating || locationContext.kind === "loading";
+  const nearbyLoading = q.isFetching && visibleItems.length === 0;
+  const nearbyContext = isRecentDeviceOrigin(locationContext);
+  const lastKnownContext =
+    (locationContext.kind === "device-origin" && !nearbyContext) ||
+    ((locationContext.kind === "permission-denied" || locationContext.kind === "unavailable") &&
+      locationContext.previous === "device");
+  const listScope = nearbyContext ? "nearby" : lastKnownContext ? "last known" : "explore";
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <Text style={styles.lesson}>Nearby places — tap one for the ticker.</Text>
-      {(q.isLoading || sectorSegments.length > 0) && (
+      <Text style={styles.lesson}>
+        {nearbyContext
+          ? "Nearby places — tap one for the ticker."
+          : `${locationContextLabel(locationContext)} — tap a place for its ticker.`}
+      </Text>
+      <LocationContextNotice
+        state={locationContext}
+        busy={isLocating}
+        compact
+        onAction={handleLocationAction}
+      />
+      {(resolvingLocation || nearbyLoading || sectorSegments.length > 0) && (
         <View style={styles.ringWrap}>
-          <SectorRing segments={sectorSegments} loading={q.isLoading} />
+          <SectorRing segments={sectorSegments} loading={resolvingLocation || nearbyLoading} />
         </View>
       )}
       <View style={styles.chatPillWrap}>
-        {items.length > 0 ? (
+        {visibleItems.length > 0 ? (
           <ChatAboutButton
-            label="Chat about this list"
-            accessibilityLabel="Chat about this nearby list"
+            label={`Chat about this ${listScope} list`}
+            accessibilityLabel={`Chat about this ${listScope} list`}
             onPress={() =>
               openChatAbout(router, {
                 kind: "list",
-                label: `${items.length} nearby brands`,
+                label: `${visibleItems.length} ${listScope} brands`,
                 items: chatSeedItems,
               })
             }
@@ -191,24 +374,51 @@ export default function ListScreen() {
       </View>
 
       <ScreenFade>
-        {q.isLoading ? (
+        {resolvingLocation ? (
           <SkeletonList rows={7} />
+        ) : nearbyLoading ? (
+          <View>
+            <Text style={styles.queryLoading}>Loading brands around this area…</Text>
+            <SkeletonList rows={7} />
+          </View>
         ) : q.isError ? (
           <EmptyState
             icon="alert-circle-outline"
             title="Could not load nearby brands"
             subtitle={(q.error as Error).message}
           />
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <EmptyState
             icon="location-outline"
-            title="Nothing nearby yet"
-            subtitle="Move around or check location permissions — investable brands within 1.5km show up here."
+            title={
+              locationContext.kind === "fallback" ||
+              ((locationContext.kind === "permission-denied" ||
+                locationContext.kind === "unavailable") &&
+                locationContext.previous === "demo")
+                ? "Explore the demo area"
+                : locationContext.kind === "map-area"
+                  ? "Nothing in this map area yet"
+                  : lastKnownContext
+                    ? "Nothing at your last known location yet"
+                    : "Nothing nearby yet"
+            }
+            subtitle={
+              locationContext.kind === "fallback" ||
+              ((locationContext.kind === "permission-denied" ||
+                locationContext.kind === "unavailable") &&
+                locationContext.previous === "demo")
+                ? "Demo data is available while location is off. Use your location above to see what is around you."
+                : locationContext.kind === "map-area"
+                  ? "Pan the map or use your location to explore another area."
+                  : lastKnownContext
+                    ? "Use your location above to refresh, or explore another area."
+                    : "Move around to find investable brands within 1.5km."
+            }
           />
         ) : (
           <FlatList
             style={{ flex: 1 }}
-            data={items}
+            data={visibleItems}
             keyExtractor={(i) => i.place.id}
             renderItem={({ item }) => {
               const t =
@@ -317,6 +527,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 4,
+  },
+  queryLoading: {
+    color: colors.fgMuted,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   ringWrap: { paddingTop: 8, paddingBottom: 12 },
   chatPillWrap: {

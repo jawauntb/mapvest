@@ -145,6 +145,32 @@ last-updated context and asks the user to refresh Mapvest. The six-hour
 freshness window is deliberately shared by the TypeScript origin classifier
 and the Swift WidgetKit target.
 
+### Map and List context
+
+Map and List share one app-side location context through the React Query
+`tab-state` cache. Their precedence is: a linked map origin, the active
+Map/device context, a cached map viewport, then the persisted widget origin.
+With no usable origin, both screens enter an explicit loading state instead of
+querying the demo viewport; neither screen queries it while permission or
+origin resolution is pending. If permission is denied or a fix is unavailable
+with no selected map/known device origin, the app intentionally enters a
+visibly labeled **Explore demo area** state and may query the configured demo
+viewport (currently the San Francisco demo area). A frozen tab adopts the
+shared context when it regains focus, avoiding duplicate prompts. Only the
+focused screen initiates the first-use permission request; an outgoing tab
+invalidates its in-flight application request before another tab can take
+over. The platform permission prompt remains system-owned and single; a
+blurred tab's eventual application callback is ignored.
+
+When no current foreground fix is available, the app labels visible data
+“Explore demo area”, “Map area”, or “Last known location” and offers recovery.
+A map/demo context uses **Use my location**; an unavailable fix uses **Try
+again**; after iOS has denied the prompt, the action becomes **Open Settings**.
+A current GPS fix is labeled “Nearby” / “Your location”; a user pan is labeled
+“Map area”. List does not request an independent fallback or silently reset to
+San Francisco — it consumes the same context and writes widget origins with the
+matching `device` or `map` source.
+
 ### iOS — WidgetKit (`apps/ios/targets/widget/`)
 
 Built with [`@bacons/apple-targets`](https://github.com/EvanBacon/expo-apple-targets)
