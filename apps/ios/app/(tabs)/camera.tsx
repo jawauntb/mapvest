@@ -13,6 +13,7 @@ import {
   splitInvestableResults,
 } from "@/camera/resultPresentation";
 import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
+import { EvidenceSection } from "@/components/EvidenceSection";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { openChatAbout } from "@/nav/chatAbout";
@@ -35,7 +36,6 @@ import {
   ActivityIndicator,
   Image,
   type LayoutChangeEvent,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -611,24 +611,7 @@ export default function CameraScreen() {
                   </ScrollView>
                 </View>
               ) : null}
-              {top && top.sources.length > 0 ? (
-                <View style={styles.sourceRow}>
-                  {top.sources.slice(0, 3).map((s, i) => (
-                    <Pressable
-                      key={`${s.provider}-${i}`}
-                      style={styles.sourceChip}
-                      disabled={!s.url}
-                      onPress={() => {
-                        if (s.url) void Linking.openURL(s.url);
-                      }}
-                      accessibilityRole="link"
-                      accessibilityLabel={`Source ${s.provider}`}
-                    >
-                      <Text style={styles.sourceChipText}>{s.provider}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
+              {top ? <EvidenceSection sources={top.sources} /> : null}
               <View style={styles.cardActions}>
                 {ticker ? (
                   <Pressable
@@ -1021,16 +1004,6 @@ const styles = StyleSheet.create({
   confidencePillText: { color: colors.fgMuted, ...type.caption },
   meaning: { color: colors.fgMuted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   priceLine: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 4 },
-  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  sourceChip: {
-    backgroundColor: colors.bgGlass,
-    borderColor: colors.glassBorder,
-    borderWidth: 1,
-    borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  sourceChipText: { color: colors.fgMuted, fontSize: 11, fontWeight: "600" },
   dominantBtn: {
     minHeight: 44,
     flexDirection: "row",

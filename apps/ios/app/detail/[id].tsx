@@ -21,6 +21,7 @@ import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { ChartsSection } from "@/components/ChartsSection";
+import { EvidenceSection } from "@/components/EvidenceSection";
 import { OptionsChainSection } from "@/components/OptionsChainSection";
 import { OrbitView } from "@/components/OrbitView";
 import { RichText } from "@/components/RichText";
@@ -393,11 +394,16 @@ export default function DetailSheet() {
               </CollapsibleSection>
             ) : null}
 
-            {dedupedSources.length > 0 ? (
-              <CollapsibleSection title={`Sources · ${dedupedSources.length}`}>
-                <SourceList sources={dedupedSources} />
-              </CollapsibleSection>
-            ) : null}
+            <CollapsibleSection
+              title={
+                dedupedSources.length
+                  ? `Evidence · ${dedupedSources.length}`
+                  : "Evidence · no citations"
+              }
+              defaultOpen={dedupedSources.length === 0}
+            >
+              <EvidenceSection sources={dedupedSources} showTitle={false} />
+            </CollapsibleSection>
           </>
         ) : null}
       </ScrollView>
@@ -997,23 +1003,6 @@ function EtfRow({ e }: { e: EtfExposure }) {
         </Text>
       </View>
       <Text style={styles.score}>{formatPct(e.weight, { dp: 2 })}</Text>
-    </View>
-  );
-}
-
-function SourceList({ sources }: { sources: Source[] }) {
-  return (
-    <View style={{ gap: 6 }}>
-      {sources.map((s, i) => (
-        <Pressable
-          key={`${s.provider}-${s.url ?? i}`}
-          onPress={() => s.url && Linking.openURL(s.url)}
-        >
-          <Text style={styles.link}>
-            [{s.provider}] {s.url ?? "(no url)"} · {s.confidence}
-          </Text>
-        </Pressable>
-      ))}
     </View>
   );
 }
