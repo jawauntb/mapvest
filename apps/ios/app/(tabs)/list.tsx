@@ -13,6 +13,7 @@ import {
   type LocationContextState,
   type LocationRegion,
   MAP_REGION_QUERY_KEY,
+  isRecentDeviceOrigin,
   locationContextLabel,
   locationRegionFromLatLng,
   locationUnavailableContext,
@@ -180,6 +181,12 @@ export default function ListScreen() {
   }, [cachedContext, cachedRegion, isFocused, publishLocationContext, requestDeviceLocation]);
 
   useEffect(() => {
+    if (isFocused) return;
+    locationRequestGeneration.current += 1;
+    setIsLocating(false);
+  }, [isFocused]);
+
+  useEffect(() => {
     if (!isFocused) return;
     const next = resolveInitialLocationContext({
       cachedContext: qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
@@ -285,11 +292,17 @@ export default function ListScreen() {
     [items],
   );
   const resolvingLocation = isLocating || locationContext.kind === "loading";
+  const nearbyContext = isRecentDeviceOrigin(locationContext);
+  const lastKnownContext =
+    (locationContext.kind === "device-origin" && !nearbyContext) ||
+    ((locationContext.kind === "permission-denied" || locationContext.kind === "unavailable") &&
+      locationContext.previous === "device");
+  const listScope = nearbyContext ? "nearby" : lastKnownContext ? "last known" : "explore";
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <Text style={styles.lesson}>
-        {locationContext.kind === "device-origin"
+        {nearbyContext
           ? "Nearby places — tap one for the ticker."
           : `${locationContextLabel(locationContext)} — tap a place for its ticker.`}
       </Text>
@@ -307,12 +320,12 @@ export default function ListScreen() {
       <View style={styles.chatPillWrap}>
         {items.length > 0 ? (
           <ChatAboutButton
-            label={`Chat about this ${locationContext.kind === "device-origin" ? "nearby" : "explore"} list`}
-            accessibilityLabel={`Chat about this ${locationContext.kind === "device-origin" ? "nearby" : "explore"} list`}
+            label={`Chat about this ${listScope} list`}
+            accessibilityLabel={`Chat about this ${listScope} list`}
             onPress={() =>
               openChatAbout(router, {
                 kind: "list",
-                label: `${items.length} ${locationContext.kind === "device-origin" ? "nearby" : "explore"} brands`,
+                label: `${items.length} ${listScope} brands`,
                 items: chatSeedItems,
               })
             }
@@ -368,19 +381,27 @@ export default function ListScreen() {
             icon="location-outline"
             title={
               locationContext.kind === "fallback" ||
-              (locationContext.kind === "permission-denied" && locationContext.previous === "demo")
+              ((locationContext.kind === "permission-denied" ||
+                locationContext.kind === "unavailable") &&
+                locationContext.previous === "demo")
                 ? "Explore the demo area"
                 : locationContext.kind === "map-area"
                   ? "Nothing in this map area yet"
-                  : "Nothing nearby yet"
+                  : lastKnownContext
+                    ? "Nothing at your last known location yet"
+                    : "Nothing nearby yet"
             }
             subtitle={
               locationContext.kind === "fallback" ||
-              (locationContext.kind === "permission-denied" && locationContext.previous === "demo")
+              ((locationContext.kind === "permission-denied" ||
+                locationContext.kind === "unavailable") &&
+                locationContext.previous === "demo")
                 ? "Demo data is available while location is off. Use your location above to see what is around you."
                 : locationContext.kind === "map-area"
                   ? "Pan the map or use your location to explore another area."
-                  : "Move around to find investable brands within 1.5km."
+                  : lastKnownContext
+                    ? "Use your location above to refresh, or explore another area."
+                    : "Move around to find investable brands within 1.5km."
             }
           />
         ) : (

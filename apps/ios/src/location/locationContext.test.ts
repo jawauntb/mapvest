@@ -3,6 +3,7 @@ import {
   DEMO_EXPLORE_REGION,
   deviceOriginContext,
   fallbackContext,
+  isRecentDeviceOrigin,
   locationContextDescription,
   locationContextHeading,
   locationContextLabel,
@@ -72,6 +73,8 @@ describe("location context labels", () => {
     expect(locationContextLabel(mapAreaContext(mapRegion, now), now)).toBe("Map area");
     expect(locationContextLabel(device, now)).toBe("Your location");
     expect(locationContextLabel(oldDevice, now)).toBe("Last known location");
+    expect(isRecentDeviceOrigin(device, now)).toBe(true);
+    expect(isRecentDeviceOrigin(oldDevice, now)).toBe(false);
     expect(locationContextHeading(device, 3, false, now)).toBe("Nearby · 3");
     expect(locationContextHeading(oldDevice, 3, false, now)).toBe("Last known location · 3");
     expect(locationContextLabel(permissionDeniedContext(fallbackContext()), now)).toBe(
@@ -129,7 +132,7 @@ describe("location context transitions", () => {
       region: DEMO_EXPLORE_REGION,
       previous: "demo",
     });
-    expect(locationContextLabel(unavailable)).toBe("Location unavailable");
+    expect(locationContextLabel(unavailable)).toBe("Explore demo area");
     expect(locationUnavailableContext(mapAreaContext(mapRegion, now))).toEqual({
       kind: "unavailable",
       region: mapRegion,

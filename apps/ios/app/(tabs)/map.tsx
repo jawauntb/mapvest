@@ -238,6 +238,12 @@ export default function MapScreen() {
   ]);
 
   useEffect(() => {
+    if (isFocused) return;
+    locationRequestGeneration.current += 1;
+    setIsLocating(false);
+  }, [isFocused]);
+
+  useEffect(() => {
     if (!isFocused || linkedRegion) return;
     const next = resolveInitialLocationContext({
       cachedContext: qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
@@ -796,7 +802,8 @@ function NearbySheet({
             {loading
               ? "Checking your location before showing brands."
               : locationContext.kind === "fallback" ||
-                  (locationContext.kind === "permission-denied" &&
+                  ((locationContext.kind === "permission-denied" ||
+                    locationContext.kind === "unavailable") &&
                     locationContext.previous === "demo")
                 ? "Explore this demo area, or use your location to see what is around you."
                 : locationContext.kind === "map-area"

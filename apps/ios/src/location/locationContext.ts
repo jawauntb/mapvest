@@ -213,7 +213,7 @@ export function locationContextLabel(state: LocationContextState, now = Date.now
           ? "Map area"
           : "Last known location";
     case "unavailable":
-      return "Location unavailable";
+      return state.previous === "demo" ? "Explore demo area" : "Location unavailable";
     case "fallback":
       return "Explore demo area";
     case "map-area":
