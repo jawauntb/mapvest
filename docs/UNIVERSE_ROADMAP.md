@@ -34,7 +34,9 @@ What exists today, precisely:
   explicit: a signed-in launch never prompts iOS, and Settings is the only
   permission request surface. Each device persists a product-level
   `notifications_enabled` mute independent of OS authorization; every
-  notifier, including weekly rivalries, honors it.
+  notifier, including weekly rivalries, honors it. An Expo token has exactly
+  one active account claim; an account switch atomically resets its consent,
+  and sign-out unlinks only that installation before clearing its session.
 - **Collection structure is latent in the data**: `packages/finance/data/brands.json`
   (1,101 brands with sector/exchange/isPublic), geohash-6 tiling in
   `apps/api/src/lib/geohash.ts` + `nearby_cache`.

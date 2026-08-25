@@ -1,5 +1,6 @@
 import { ApiError, getMe } from "@/api/client";
 import type { Session, User } from "@/api/types";
+import { unlinkPushForSignOut } from "@/notif/signOut";
 import * as SecureStore from "expo-secure-store";
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 
@@ -97,6 +98,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setState(next);
       },
       async signOut() {
+        // Push unlink must complete while this bearer is still available.
+        // If neither the server nor native Expo can revoke a known token,
+        // this rejects and deliberately leaves the account/session in place
+        // so Settings or Admin can present a retry instead of false safety.
+        if (state?.session) await unlinkPushForSignOut(state.session);
         try {
           await SecureStore.deleteItemAsync(KEY, STORE);
         } catch {

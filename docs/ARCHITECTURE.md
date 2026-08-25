@@ -181,6 +181,33 @@ clients do not know which upstream provider supplied a response.
 | Request log (admin) | Postgres | 30d |
 | Cost telemetry | Logfire | 90d |
 
+## Push notification account isolation
+
+An Expo token represents one physical application installation, not an account.
+`push_tokens` retains its historical per-user rows, while
+`push_token_claims` is the authoritative global ownership record: a token can
+have one active `(token_id, user_id)` claim, or a tombstone after unlinking.
+Every push-delivery, preference-read, preference-write, and token-list query
+joins the claim, so an old or duplicate row is never deliverable.
+
+Registration for the already-claimed account is idempotent and keeps that
+installation's choices. Registration under another account runs in a Postgres
+transaction guarded by a token-specific advisory lock, switches the claim, and
+resets `prefs` to `{ notifications_enabled: false }`. This deliberately never
+carries notification consent, scheduler state, or location from the prior
+account. Existing duplicate database rows are not mass-deleted: the first
+claim elects the most recently seen row and leaves the rest inert, avoiding a
+risky lossy migration.
+
+Explicit iOS sign-out runs before the session is cleared. It attempts the
+authenticated `DELETE /v1/push/token/:id`, Expo native unregistration, and
+notification/response dismissal. Either a server or native revocation lets
+sign-out finish and clears the stored server token id. If both revocations
+fail while a token exists (or SecureStore cannot prove it does not), the app
+keeps the account signed in and shows a retryable Settings/Admin error. This
+only removes the current installation's claim; another phone or tablet remains
+registered independently.
+
 ## Observability
 
 - **Logs**: Logfire via `pydantic-logfire` on the API. Structured spans per request.

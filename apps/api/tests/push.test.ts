@@ -9,9 +9,11 @@ import { app } from "../src/index.js";
 import {
   _resetPushTokenMemory,
   listTokensForEvent,
+  listTokensForUser,
   listTokensForUserAndEvent,
   pushNotificationsEnabled,
   registerPushToken,
+  unregisterPushToken,
   updatePrefs,
 } from "../src/lib/push-tokens-store.js";
 import { __resetStore, ensureUser } from "../src/lib/store.js";
@@ -76,7 +78,98 @@ describe("push product-level mute", () => {
   });
 });
 
+describe("push token account isolation", () => {
+  test("reassigning one Expo token resets consent and removes the prior owner's delivery path", async () => {
+    const priorUser = userId();
+    const nextUser = userId();
+    const physicalToken = expoToken();
+    const prior = await registerPushToken(priorUser, physicalToken, "ios", "phone");
+    await updatePrefs(priorUser, prior.id, { notifications_enabled: true, daily_brief: true });
+    expect((await listTokensForEvent("daily_brief")).map((token) => token.userId)).toEqual([
+      priorUser,
+    ]);
+
+    const reassigned = await registerPushToken(nextUser, physicalToken, "ios", "phone");
+    expect(reassigned.userId).toBe(nextUser);
+    expect(reassigned.prefs).toEqual({ notifications_enabled: false });
+    expect(await listTokensForUser(priorUser)).toEqual([]);
+    expect(await listTokensForEvent("daily_brief")).toEqual([]);
+    expect(await updatePrefs(priorUser, prior.id, { daily_brief: true })).toBeNull();
+
+    await updatePrefs(nextUser, reassigned.id, { notifications_enabled: true, daily_brief: true });
+    expect((await listTokensForEvent("daily_brief")).map((token) => token.userId)).toEqual([
+      nextUser,
+    ]);
+  });
+
+  test("unregistering one installation leaves another installation for the same account active", async () => {
+    const uid = userId();
+    const phone = await registerPushToken(uid, expoToken(), "ios", "phone");
+    const tablet = await registerPushToken(uid, expoToken(), "ios", "tablet");
+    await updatePrefs(uid, phone.id, { notifications_enabled: true, daily_brief: true });
+    await updatePrefs(uid, tablet.id, { notifications_enabled: true, daily_brief: true });
+
+    expect(await unregisterPushToken(uid, phone.id)).toBe(true);
+    expect((await listTokensForUserAndEvent(uid, "daily_brief")).map((token) => token.id)).toEqual([
+      tablet.id,
+    ]);
+  });
+});
+
 describe("push prefs route", () => {
+  test("registration under a second account cannot deliver or edit the first account's token", async () => {
+    const firstId = userId();
+    const secondId = userId();
+    const firstBearer = await sessionFor(firstId, `${firstId}@mapvest.dev`);
+    const secondBearer = await sessionFor(secondId, `${secondId}@mapvest.dev`);
+    const physicalToken = expoToken();
+
+    const firstRegister = await app.fetch(
+      new Request("http://localhost/v1/push/register", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${firstBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, platform: "ios", deviceId: "phone" }),
+      }),
+    );
+    const first = (await firstRegister.json()) as { id: string };
+    const firstEnable = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${firstBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          tokenId: first.id,
+          prefs: { notifications_enabled: true, daily_brief: true },
+        }),
+      }),
+    );
+    expect(firstEnable.status).toBe(200);
+
+    const secondRegister = await app.fetch(
+      new Request("http://localhost/v1/push/register", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secondBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, platform: "ios", deviceId: "phone" }),
+      }),
+    );
+    expect(secondRegister.status).toBe(200);
+    const second = (await secondRegister.json()) as {
+      id: string;
+      prefs: { notifications_enabled?: boolean };
+    };
+    expect(second.prefs).toEqual({ notifications_enabled: false });
+
+    const staleWrite = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${firstBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: first.id, prefs: { daily_brief: true } }),
+      }),
+    );
+    expect(staleWrite.status).toBe(404);
+    expect(await listTokensForUser(firstId)).toEqual([]);
+    expect(await listTokensForEvent("daily_brief")).toEqual([]);
+  });
+
   test("persists and reads the master switch for the requested device", async () => {
     const uid = userId();
     const email = `${uid}@mapvest.dev`;

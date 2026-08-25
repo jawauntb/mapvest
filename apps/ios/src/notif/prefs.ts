@@ -115,6 +115,32 @@ export async function setPushPref(
 }
 
 /**
+ * Remove this installation's server token before clearing its bearer session.
+ * A 404 is safe to treat as unlinked: the authenticated account no longer
+ * owns that token (for example, after an account switch already reassigned
+ * the physical Expo token), so it cannot receive its notifications.
+ */
+export async function unlinkPushToken(tokenId: string, session: { token: string }): Promise<void> {
+  const res = await fetch(`${API_URL}/v1/push/token/${encodeURIComponent(tokenId)}`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+  });
+  if (res.ok || res.status === 404) return;
+
+  let message = `Could not remove this device from notifications (${res.status})`;
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error.trim()) message = body.error;
+  } catch {
+    // Keep the status-based message when the API did not return JSON.
+  }
+  throw new Error(message);
+}
+
+/**
  * Heartbeat the user's last known coordinates so the push scheduler can
  * decide when a "you moved to a new area" local-brief notification is due.
  * Resolves the device's push token id (stored id first, server lookup as

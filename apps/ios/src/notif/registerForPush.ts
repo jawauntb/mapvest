@@ -24,6 +24,7 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 
 const PUSH_TOKEN_ID_KEY = "mapvest.pushTokenId.v1";
@@ -47,11 +48,37 @@ export async function getStoredTokenId(): Promise<string | null> {
   }
 }
 
+/**
+ * Sign-out needs to distinguish "there is no server token" from "secure
+ * storage could not be read." In the latter case a token may still exist, so
+ * the caller must not clear the account until a revocation path succeeds.
+ */
+export async function readStoredTokenIdForSignOut(): Promise<{
+  tokenId: string | null;
+  readable: boolean;
+}> {
+  try {
+    return { tokenId: await SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY), readable: true };
+  } catch {
+    return { tokenId: null, readable: false };
+  }
+}
+
 async function persistTokenId(id: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id);
   } catch {
     /* SecureStore unavailable — client falls back to fetching prefs each time */
+  }
+}
+
+/** Clear the account-scoped server token id after a successful unlink. */
+export async function clearStoredTokenId(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY);
+  } catch {
+    // Revocation is already complete; a stale local id cannot re-enable a
+    // token, and the next registration replaces it.
   }
 }
 
@@ -110,9 +137,16 @@ export async function registerForPush(
   if (!expoToken) return null;
 
   try {
+    let deviceId: string | undefined;
+    try {
+      deviceId = await getDeviceId();
+    } catch {
+      // Server registration remains valid without this advisory identifier.
+    }
     const body = {
       token: expoToken,
       platform: Platform.OS === "android" ? "android" : "ios",
+      deviceId,
     };
     const res = await fetch(`${API_URL}/v1/push/register`, {
       method: "POST",

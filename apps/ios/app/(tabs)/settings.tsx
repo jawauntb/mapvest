@@ -56,6 +56,7 @@ export default function SettingsScreen() {
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Hooks below must stay unconditional — the tab tree keeps this screen
   // mounted (`unmountOnBlur: false`), so `session` can flip from null to set
@@ -215,16 +216,26 @@ export default function SettingsScreen() {
 
         <Pressable
           style={styles.btn}
+          disabled={signingOut}
           onPress={async () => {
             hapticSelect();
-            await signOut();
-            router.replace("/auth");
+            setSigningOut(true);
+            setStatus(null);
+            try {
+              await signOut();
+              router.replace("/auth");
+            } catch (e) {
+              const detail = e instanceof Error ? e.message : "Could not remove this device.";
+              setStatus(`Still signed in. ${detail} Retry sign out once your connection is back.`);
+            } finally {
+              setSigningOut(false);
+            }
           }}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
         >
           <Ionicons name="log-out-outline" size={15} color={colors.fg} />
-          <Text style={styles.btnText}>Sign out</Text>
+          <Text style={styles.btnText}>{signingOut ? "Signing out…" : "Sign out"}</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

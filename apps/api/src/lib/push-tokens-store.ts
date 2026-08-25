@@ -18,11 +18,19 @@
  *     created_at    timestamptz default now(),
  *     unique (user_id, expo_token)
  *   )
+ *   push_token_claims (
+ *     expo_token    text primary key,
+ *     token_id      text,                       -- null is an explicit revocation tombstone
+ *     user_id       text,
+ *     claimed_at    timestamptz not null
+ *   )
  *
  * The `prefs` blob carries every per-event opt-in as a boolean, the persisted
  * product-level `notifications_enabled` mute, AND a small amount of scheduler
  * state (last-known lat/lng, last daily-brief send date). Keeping it JSONB
- * keeps schema churn to zero as new event types land.
+ * keeps schema churn to zero as new event types land. `push_token_claims`
+ * supplies the global ownership invariant that the historical per-user
+ * unique constraint cannot express: only its claimed row is deliverable.
  */
 import { dbEnabled, getSql, initDb } from "./db.js";
 
@@ -91,6 +99,19 @@ function memBucket(userId: string): Set<string> {
   return s;
 }
 
+/**
+ * The in-memory path is the test/local equivalent of `push_token_claims`.
+ * Remove an old owner before making a token visible to a new owner, so one
+ * Expo token can never be selected for two users in a process.
+ */
+function removeMemoryRowsForExpoToken(expoToken: string, exceptId?: string): void {
+  for (const [id, token] of memory) {
+    if (token.expoToken !== expoToken || id === exceptId) continue;
+    memory.delete(id);
+    memoryByUser.get(token.userId)?.delete(id);
+  }
+}
+
 let tableReady = false;
 async function ensureTable(): Promise<void> {
   if (tableReady) return;
@@ -119,6 +140,28 @@ async function ensureTable(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS push_tokens_user_idx ON push_tokens (user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS push_tokens_last_seen_idx ON push_tokens (last_seen_at DESC)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS push_token_claims (
+      expo_token TEXT PRIMARY KEY,
+      token_id TEXT,
+      user_id TEXT,
+      claimed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS push_token_claims_user_idx ON push_token_claims (user_id)`;
+
+  // Do not delete or rewrite legacy duplicate rows during a lazy startup
+  // migration. Instead, elect one deterministic (most recently seen) owner
+  // per Expo token. Every delivery/read/write query below joins this table,
+  // so the unclaimed historical rows are immediately non-deliverable. A
+  // future registration atomically replaces the claim and resets consent.
+  await sql`
+    INSERT INTO push_token_claims (expo_token, token_id, user_id, claimed_at)
+    SELECT DISTINCT ON (expo_token) expo_token, id, user_id, last_seen_at
+    FROM push_tokens
+    ORDER BY expo_token, last_seen_at DESC, id DESC
+    ON CONFLICT (expo_token) DO NOTHING
+  `;
   tableReady = true;
 }
 
@@ -168,10 +211,11 @@ function newId(): string {
 }
 
 /**
- * Idempotent register. Same (userId, expoToken) always returns the existing
- * row's id — devices that re-launch after granting perms never accumulate
- * duplicates. `last_seen_at` is bumped on every call so the scheduler can
- * later evict stale tokens if needed.
+ * Idempotent registration with global token ownership. Same-account launches
+ * retain their existing prefs; registration from another account atomically
+ * transfers the token claim and starts with all notification prefs muted.
+ * `last_seen_at` is bumped on every call so the scheduler can later evict
+ * stale tokens if needed.
  */
 export async function registerPushToken(
   userId: string,
@@ -185,57 +229,83 @@ export async function registerPushToken(
   if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
-      // Try existing first.
-      const existing = (await sql`
-        SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
-        FROM push_tokens
-        WHERE user_id = ${userId} AND expo_token = ${expoToken}
-        LIMIT 1
-      `) as Row[];
-      if (existing.length > 0) {
-        const tok = rowToToken(existing[0]!);
-        // Bump last_seen; refresh device_id if newly provided.
-        await sql`
-          UPDATE push_tokens
-          SET last_seen_at = ${now}, device_id = COALESCE(${deviceId ?? null}, device_id)
-          WHERE id = ${tok.id}
+      const tok = await sql.begin(async (tx) => {
+        // Claims for the same Expo token serialize even when two API
+        // instances receive account-switch registration at the same time.
+        await tx`SELECT pg_advisory_xact_lock(hashtextextended(${expoToken}, 0))`;
+        const active = (await tx`
+          SELECT p.id, p.user_id, p.device_id, p.expo_token, p.platform, p.prefs, p.last_seen_at, p.created_at
+          FROM push_token_claims AS c
+          JOIN push_tokens AS p ON p.id = c.token_id AND p.user_id = c.user_id
+          WHERE c.expo_token = ${expoToken}
+          FOR UPDATE OF c, p
+        `) as Row[];
+
+        if (active[0]?.user_id === userId) {
+          const updated = (await tx`
+            UPDATE push_tokens
+            SET last_seen_at = ${now}, device_id = COALESCE(${deviceId ?? null}, device_id)
+            WHERE id = ${active[0].id} AND user_id = ${userId}
+            RETURNING id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
+          `) as Row[];
+          return rowToToken(updated[0]!);
+        }
+
+        // A legacy row may already exist for this user. Reuse it, but reset
+        // every preference because this is a new ownership claim, never a
+        // continuation of consent granted under another account.
+        const existingForNewOwner = (await tx`
+          SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
+          FROM push_tokens
+          WHERE user_id = ${userId} AND expo_token = ${expoToken}
+          ORDER BY last_seen_at DESC, id DESC
+          LIMIT 1
+          FOR UPDATE
+        `) as Row[];
+        const resetPrefs = JSON.stringify({ notifications_enabled: false });
+        let claimed: Row[];
+        if (existingForNewOwner.length > 0) {
+          claimed = (await tx`
+            UPDATE push_tokens
+            SET device_id = ${deviceId ?? null}, platform = ${platform}, prefs = ${resetPrefs}::jsonb, last_seen_at = ${now}
+            WHERE id = ${existingForNewOwner[0]!.id} AND user_id = ${userId}
+            RETURNING id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
+          `) as Row[];
+        } else {
+          const id = newId();
+          claimed = (await tx`
+            INSERT INTO push_tokens (id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at)
+            VALUES (${id}, ${userId}, ${deviceId ?? null}, ${expoToken}, ${platform}, ${resetPrefs}::jsonb, ${now}, ${now})
+            RETURNING id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
+          `) as Row[];
+        }
+        const token = rowToToken(claimed[0]!);
+        await tx`
+          INSERT INTO push_token_claims (expo_token, token_id, user_id, claimed_at)
+          VALUES (${expoToken}, ${token.id}, ${userId}, ${now})
+          ON CONFLICT (expo_token) DO UPDATE
+          SET token_id = EXCLUDED.token_id, user_id = EXCLUDED.user_id, claimed_at = EXCLUDED.claimed_at
         `;
-        tok.lastSeenAt = now.toISOString();
-        if (deviceId) tok.deviceId = deviceId;
-        memory.set(tok.id, tok);
-        memBucket(userId).add(tok.id);
-        return tok;
-      }
-      const id = newId();
-      await sql`
-        INSERT INTO push_tokens (id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at)
-        VALUES (${id}, ${userId}, ${deviceId ?? null}, ${expoToken}, ${platform}, ${JSON.stringify({ notifications_enabled: false })}::jsonb, ${now}, ${now})
-      `;
-      const tok: PushToken = {
-        id,
-        userId,
-        deviceId,
-        expoToken,
-        platform,
-        prefs: { notifications_enabled: false },
-        lastSeenAt: now.toISOString(),
-        createdAt: now.toISOString(),
-      };
-      memory.set(id, tok);
-      memBucket(userId).add(id);
+        return token;
+      });
+      removeMemoryRowsForExpoToken(expoToken, tok.id);
+      memory.set(tok.id, tok);
+      memBucket(userId).add(tok.id);
       return tok;
     }
   }
 
-  // Memory fallback — find existing (userId, expoToken).
-  for (const tid of memBucket(userId)) {
-    const t = memory.get(tid);
-    if (t && t.expoToken === expoToken) {
-      t.lastSeenAt = now.toISOString();
-      if (deviceId) t.deviceId = deviceId;
-      return t;
-    }
+  // Memory fallback — the same Expo token has exactly one owner.
+  const existing = [...memory.values()].find((token) => token.expoToken === expoToken);
+  if (existing?.userId === userId) {
+    existing.lastSeenAt = now.toISOString();
+    if (deviceId) existing.deviceId = deviceId;
+    removeMemoryRowsForExpoToken(expoToken, existing.id);
+    return existing;
   }
+
+  // Account switch: remove the old owner and never carry over its consent.
+  removeMemoryRowsForExpoToken(expoToken);
   const id = newId();
   const tok: PushToken = {
     id,
@@ -254,23 +324,44 @@ export async function registerPushToken(
 
 export async function unregisterPushToken(userId: string, tokenId: string): Promise<boolean> {
   await ensureTable();
-  let removed = false;
-  const t = memory.get(tokenId);
-  if (t && t.userId === userId) {
-    memory.delete(tokenId);
-    memBucket(userId).delete(tokenId);
-    removed = true;
-  }
   if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
-      const rows = (await sql`
-        DELETE FROM push_tokens WHERE id = ${tokenId} AND user_id = ${userId} RETURNING id
-      `) as unknown[];
-      if (rows.length > 0) removed = true;
+      const removed = await sql.begin(async (tx) => {
+        // Lock the claim together with its active row. Registration also
+        // locks this claim, so an account switch cannot interleave with
+        // revocation and resurrect a token after this call succeeds.
+        const active = (await tx`
+          SELECT c.expo_token
+          FROM push_token_claims AS c
+          JOIN push_tokens AS p ON p.id = c.token_id AND p.user_id = c.user_id
+          WHERE p.id = ${tokenId} AND p.user_id = ${userId}
+          FOR UPDATE OF c, p
+        `) as { expo_token: string }[];
+        if (active.length === 0) return false;
+        await tx`DELETE FROM push_tokens WHERE id = ${tokenId} AND user_id = ${userId}`;
+        // Keep a tombstone rather than deleting the claim. A process restart
+        // must not promote a legacy duplicate after an explicit unlink.
+        await tx`
+          UPDATE push_token_claims
+          SET token_id = NULL, user_id = NULL, claimed_at = now()
+          WHERE expo_token = ${active[0]!.expo_token}
+        `;
+        return true;
+      });
+      if (removed) {
+        memory.delete(tokenId);
+        memBucket(userId).delete(tokenId);
+      }
+      return removed;
     }
   }
-  return removed;
+
+  const token = memory.get(tokenId);
+  if (!token || token.userId !== userId) return false;
+  memory.delete(tokenId);
+  memBucket(userId).delete(tokenId);
+  return true;
 }
 
 /**
@@ -283,22 +374,46 @@ export async function updatePrefs(
   patch: PushPrefs,
 ): Promise<PushToken | null> {
   await ensureTable();
-  // Read the current token from memory (populated from DB by list/register
-  // calls, warm across the process) — falls back to a DB roundtrip if this
-  // process hasn't seen the token yet.
-  let tok = memory.get(tokenId) ?? null;
-  if (!tok && dbEnabled()) {
+  if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
-      const rows = (await sql`
-        SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
-        FROM push_tokens WHERE id = ${tokenId} AND user_id = ${userId} LIMIT 1
-      `) as Row[];
-      if (rows.length > 0) tok = rowToToken(rows[0]!);
+      const updated = await sql.begin(async (tx) => {
+        // A claim lock makes this check-and-write atomic with registration.
+        // An old account can never update a row after a new account claims
+        // the same physical Expo token.
+        const active = (await tx`
+          SELECT p.id, p.user_id, p.device_id, p.expo_token, p.platform, p.prefs, p.last_seen_at, p.created_at
+          FROM push_token_claims AS c
+          JOIN push_tokens AS p ON p.id = c.token_id AND p.user_id = c.user_id
+          WHERE p.id = ${tokenId} AND p.user_id = ${userId}
+          FOR UPDATE OF c, p
+        `) as Row[];
+        if (active.length === 0) return null;
+        const token = rowToToken(active[0]!);
+        const merged: PushPrefs = { ...token.prefs, ...patch };
+        // Deep-merge nested last_sent so per-event dedupe keys don't get clobbered.
+        if (token.prefs.last_sent || patch.last_sent) {
+          merged.last_sent = { ...(token.prefs.last_sent ?? {}), ...(patch.last_sent ?? {}) };
+        }
+        const rows = (await tx`
+          UPDATE push_tokens
+          SET prefs = ${JSON.stringify(merged)}::jsonb, last_seen_at = now()
+          WHERE id = ${token.id} AND user_id = ${userId}
+          RETURNING id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
+        `) as Row[];
+        return rowToToken(rows[0]!);
+      });
+      if (updated) {
+        removeMemoryRowsForExpoToken(updated.expoToken, updated.id);
+        memory.set(updated.id, updated);
+        memBucket(userId).add(updated.id);
+      }
+      return updated;
     }
   }
-  if (!tok || tok.userId !== userId) return null;
 
+  const tok = memory.get(tokenId);
+  if (!tok || tok.userId !== userId) return null;
   const merged: PushPrefs = { ...tok.prefs, ...patch };
   // Deep-merge nested last_sent so per-event dedupe keys don't get clobbered.
   if (tok.prefs.last_sent || patch.last_sent) {
@@ -307,17 +422,6 @@ export async function updatePrefs(
   tok.prefs = merged;
   memory.set(tok.id, tok);
   memBucket(userId).add(tok.id);
-
-  if (dbEnabled()) {
-    const sql = getSql();
-    if (sql) {
-      await sql`
-        UPDATE push_tokens
-        SET prefs = ${JSON.stringify(merged)}::jsonb, last_seen_at = now()
-        WHERE id = ${tok.id} AND user_id = ${userId}
-      `;
-    }
-  }
   return tok;
 }
 
@@ -327,10 +431,11 @@ export async function listTokensForUser(userId: string): Promise<PushToken[]> {
     const sql = getSql();
     if (sql) {
       const rows = (await sql`
-        SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
-        FROM push_tokens
-        WHERE user_id = ${userId}
-        ORDER BY last_seen_at DESC
+        SELECT p.id, p.user_id, p.device_id, p.expo_token, p.platform, p.prefs, p.last_seen_at, p.created_at
+        FROM push_token_claims AS c
+        JOIN push_tokens AS p ON p.id = c.token_id AND p.user_id = c.user_id
+        WHERE c.user_id = ${userId}
+        ORDER BY p.last_seen_at DESC
       `) as Row[];
       const out = rows.map(rowToToken);
       const bucket = memBucket(userId);
@@ -360,11 +465,12 @@ export async function listTokensForEvent(eventKey: PushEventKey): Promise<PushTo
     const sql = getSql();
     if (sql) {
       const rows = (await sql`
-        SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
-        FROM push_tokens
-        WHERE (prefs ->> ${eventKey}) = 'true'
-          AND (prefs ->> 'notifications_enabled') IS DISTINCT FROM 'false'
-        ORDER BY last_seen_at DESC
+        SELECT p.id, p.user_id, p.device_id, p.expo_token, p.platform, p.prefs, p.last_seen_at, p.created_at
+        FROM push_token_claims AS c
+        JOIN push_tokens AS p ON p.id = c.token_id AND p.user_id = c.user_id
+        WHERE (p.prefs ->> ${eventKey}) = 'true'
+          AND (p.prefs ->> 'notifications_enabled') IS DISTINCT FROM 'false'
+        ORDER BY p.last_seen_at DESC
       `) as Row[];
       const out = rows.map(rowToToken);
       // Warm memory cache.
