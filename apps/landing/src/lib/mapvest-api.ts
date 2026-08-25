@@ -500,6 +500,35 @@ export type ResearchArticle = {
   toolsUsed: string[];
   sources: Array<{ label: string; url?: string }>;
   chartTickers: string[];
+  status?: ResearchConversationStatus;
+  phase?: string;
+  progress?: {
+    completedIterations?: number;
+    maxIterations?: number;
+    completedTasks?: number;
+    totalTasks?: number;
+    evidenceReady?: boolean;
+    essentialClaimsReady?: number;
+    essentialClaimsTotal?: number;
+  };
+  evidence?: Array<{
+    summary: string;
+    source?: string;
+    freshness?: string;
+    artifactRefs?: string[];
+  }>;
+  context?: Array<{ summary: string; reason?: string; source?: string }>;
+  blocker?: string;
+  specialists?: Array<{ role: string; status?: string; analysis?: string }>;
+  memo?: {
+    title?: string;
+    executiveSummary?: string;
+    verdict?: string;
+    rationale?: string;
+    bullCase?: string;
+    baseCase?: string;
+    bearCase?: string;
+  };
   mode?: string;
   error?: string;
 };
@@ -521,6 +550,8 @@ export type AgentThread = {
   createdAt?: string;
   updatedAt?: string;
   status: ResearchConversationStatus;
+  phase?: string;
+  memoUrl?: string;
   messages?: ResearchArticle[];
 };
 
@@ -543,6 +574,24 @@ export function getAgentConversationStatus(id: string, signal?: AbortSignal) {
     preview?: string;
     updatedAt?: string;
   }>(`/v1/agent/threads/${encodeURIComponent(id)}/status`, { signal });
+}
+
+export async function fetchAgentMemo(memoUrl: string) {
+  const url = new URL(memoUrl, `${API_URL}/`);
+  if (url.origin !== new URL(API_URL).origin) {
+    throw new ApiError(400, "invalid research memo URL");
+  }
+  const headers = new Headers({ Accept: "application/pdf" });
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const deviceId = getDeviceId();
+  if (deviceId) headers.set("X-Device-Id", deviceId);
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw apiErrorFromBody(response.status, text, response.statusText);
+  }
+  return response.blob();
 }
 
 export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
@@ -576,6 +625,7 @@ export function agentChat(
     userMessage?: ResearchArticle;
     provider?: string;
     sourceUrl?: string;
+    memoUrl?: string;
     pending?: boolean;
   }>("/v1/agent/chat", {
     method: "POST",

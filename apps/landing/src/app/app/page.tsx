@@ -16,6 +16,7 @@ import {
   clearRobinhoodMcp,
   clearSession,
   createAgentClientMessageId,
+  fetchAgentMemo,
   fetchAlerts,
   fetchCockpit,
   fetchEntitlements,
@@ -855,12 +856,169 @@ async function waitForDurableResearchThread(conversationId: string, signal: Abor
   throw new ResearchRecoveryTimeoutError();
 }
 
+function researchProgressLabel(article: ResearchArticle) {
+  const progress = article.progress;
+  const parts = [article.phase, article.status].filter(Boolean) as string[];
+  if (progress?.completedIterations !== undefined && progress.maxIterations !== undefined) {
+    parts.push(`${progress.completedIterations}/${progress.maxIterations} iterations`);
+  }
+  if (progress?.completedTasks !== undefined && progress.totalTasks !== undefined) {
+    parts.push(`${progress.completedTasks}/${progress.totalTasks} tasks`);
+  }
+  if (progress?.essentialClaimsReady !== undefined && progress.essentialClaimsTotal !== undefined) {
+    parts.push(`${progress.essentialClaimsReady}/${progress.essentialClaimsTotal} claims`);
+  }
+  if (progress?.evidenceReady) parts.push("evidence ready");
+  return parts.join(" · ");
+}
+
+function ResearchChatArticle({ article }: { article: ResearchArticle }) {
+  const progress = researchProgressLabel(article);
+  return (
+    <article className="app-article">
+      {progress ? <p className="app-article-tools">Progress · {progress}</p> : null}
+      <p className="app-article-lede">{article.content}</p>
+
+      {article.interesting.length ? (
+        <ul className="app-article-bullets">
+          {article.interesting.slice(0, 5).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {article.evidence?.length ? (
+        <div>
+          <p className="app-article-tools">Evidence</p>
+          <ul className="app-article-bullets">
+            {article.evidence.slice(0, 6).map((item) => (
+              <li key={`${item.summary}:${item.source ?? ""}`}>
+                {item.summary}
+                {item.source || item.freshness ? (
+                  <span className="app-muted">
+                    {item.source ? ` · ${item.source}` : ""}
+                    {item.freshness ? ` · ${item.freshness}` : ""}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {article.context?.length ? (
+        <div>
+          <p className="app-article-tools">Context</p>
+          <ul className="app-article-bullets">
+            {article.context.slice(0, 4).map((item) => (
+              <li key={`${item.summary}:${item.reason ?? ""}`}>
+                {item.summary}
+                {item.reason ? <span className="app-muted"> · {item.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {article.ideas.length ? (
+        <div className="app-article-ideas">
+          {article.ideas.slice(0, 4).map((idea) => (
+            <div key={`${idea.title}:${idea.thesis}`} className="app-article-idea">
+              <strong>{idea.title}</strong>
+              {idea.disposition ? <span className="app-muted"> · {idea.disposition}</span> : null}
+              {idea.thesis ? <p className="app-muted">{idea.thesis}</p> : null}
+              {idea.findings.length ? (
+                <p className="app-muted">{idea.findings.slice(0, 3).join(" · ")}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {article.specialists?.length ? (
+        <div className="app-article-ideas">
+          {article.specialists.slice(0, 5).map((specialist) => (
+            <div key={specialist.role} className="app-article-idea">
+              <strong>{specialist.role}</strong>
+              {specialist.status ? <span className="app-muted"> · {specialist.status}</span> : null}
+              {specialist.analysis ? <p className="app-muted">{specialist.analysis}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {article.memo ? (
+        <div className="app-article-idea">
+          <strong>{article.memo.title ?? "Research memo"}</strong>
+          {article.memo.executiveSummary ? (
+            <p className="app-muted">{article.memo.executiveSummary}</p>
+          ) : null}
+          {article.memo.verdict ? (
+            <p className="app-muted">Verdict · {article.memo.verdict}</p>
+          ) : null}
+          {article.memo.rationale ? (
+            <p className="app-muted">Rationale · {article.memo.rationale}</p>
+          ) : null}
+          {article.memo.bullCase ? (
+            <p className="app-muted">Bull · {article.memo.bullCase}</p>
+          ) : null}
+          {article.memo.baseCase ? (
+            <p className="app-muted">Base · {article.memo.baseCase}</p>
+          ) : null}
+          {article.memo.bearCase ? (
+            <p className="app-muted">Bear · {article.memo.bearCase}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {article.blocker ? <p className="app-err">Blocked · {article.blocker}</p> : null}
+      {article.error ? <p className="app-err">{article.error}</p> : null}
+
+      {article.chartTickers.length || article.sources.length ? (
+        <div className="app-source-links">
+          {article.chartTickers.slice(0, 3).map((symbol) => (
+            <Link
+              key={symbol}
+              href={`/app/ticker/${encodeURIComponent(symbol)}`}
+              className="app-source-chip"
+            >
+              ${symbol}
+            </Link>
+          ))}
+          {article.sources.slice(0, 8).map((source) =>
+            source.url ? (
+              <a
+                key={`${source.label}:${source.url}`}
+                className="app-source-chip"
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {source.label}
+              </a>
+            ) : (
+              <span key={source.label} className="app-source-chip">
+                {source.label}
+              </span>
+            ),
+          )}
+        </div>
+      ) : null}
+
+      {article.toolsUsed.length ? (
+        <p className="app-article-tools">Tools · {article.toolsUsed.slice(0, 8).join(" · ")}</p>
+      ) : null}
+    </article>
+  );
+}
+
 function ResearchChatTab({ userId }: { userId?: string }) {
   const { presentPaywall } = usePaywall();
   const storageKey = useMemo(() => activeResearchConversationKey(userId), [userId]);
   const [threads, setThreads] = useState<AgentThread[] | null>(null);
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
+  const [memoUrl, setMemoUrl] = useState<string | undefined>();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -884,7 +1042,10 @@ function ResearchChatTab({ userId }: { userId?: string }) {
         let thread: AgentThread | undefined;
         try {
           thread = (await getAgentThread(conversationId, controller.signal)).thread;
-          if (!controller.signal.aborted) setTurns(thread.messages ?? []);
+          if (!controller.signal.aborted) {
+            setTurns(thread.messages ?? []);
+            setMemoUrl(thread.memoUrl);
+          }
         } catch (error) {
           if (controller.signal.aborted || isStaleResearchPointerError(error)) throw error;
           // Recover through the lightweight status endpoint when display briefly fails.
@@ -892,7 +1053,10 @@ function ResearchChatTab({ userId }: { userId?: string }) {
 
         if (!thread || PENDING_RESEARCH_STATUSES.has(thread.status)) {
           thread = await waitForDurableResearchThread(conversationId, controller.signal);
-          if (!controller.signal.aborted) setTurns(thread.messages ?? []);
+          if (!controller.signal.aborted) {
+            setTurns(thread.messages ?? []);
+            setMemoUrl(thread.memoUrl);
+          }
         }
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -900,6 +1064,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
           setThreadId(undefined);
           persistActiveResearchConversation(storageKey);
           setTurns([]);
+          setMemoUrl(undefined);
           setErr(error instanceof Error ? error.message : "research conversation not found");
         } else if (error instanceof ResearchRecoveryTimeoutError) {
           setErr("Research is still running. This chat is saved; reopen it to refresh.");
@@ -944,6 +1109,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
     retryRef.current = null;
     persistActiveResearchConversation(storageKey, id);
     setTurns([]);
+    setMemoUrl(undefined);
     void title;
     await loadResearchConversation(id);
   }
@@ -955,6 +1121,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
     retryRef.current = null;
     persistActiveResearchConversation(storageKey);
     setTurns([]);
+    setMemoUrl(undefined);
     setInput("");
     setBusy(false);
     setErr(null);
@@ -999,6 +1166,7 @@ function ResearchChatTab({ userId }: { userId?: string }) {
         persistActiveResearchConversation(storageKey, conversationId);
       }
       retryRef.current = null;
+      setMemoUrl(r.memoUrl);
       setTurns((turns) =>
         turns.some((turn) => turn.id === r.article.id) ? turns : [...turns, r.article],
       );
@@ -1015,6 +1183,23 @@ function ResearchChatTab({ userId }: { userId?: string }) {
       setErr(e instanceof Error ? e.message : "research failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function downloadMemo() {
+    if (!memoUrl) return;
+    try {
+      const blob = await fetchAgentMemo(memoUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "mapvest-research-memo.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "memo download failed");
     }
   }
 
@@ -1091,28 +1276,21 @@ function ResearchChatTab({ userId }: { userId?: string }) {
               {t.content}
             </div>
           ) : (
-            <article key={t.id} className="app-article">
-              <p className="app-article-lede">{t.content}</p>
-              {t.interesting.slice(0, 4).map((x, i) => (
-                <p key={i} className="app-muted">
-                  · {x}
-                </p>
-              ))}
-              {t.chartTickers.slice(0, 3).map((sym) => (
-                <Link
-                  key={sym}
-                  href={`/app/ticker/${encodeURIComponent(sym)}`}
-                  className="app-source-chip"
-                >
-                  ${sym}
-                </Link>
-              ))}
-              {t.toolsUsed.length ? (
-                <p className="app-article-tools">Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</p>
-              ) : null}
-            </article>
+            <ResearchChatArticle key={t.id} article={t} />
           ),
         )}
+        {memoUrl ? (
+          <div className="app-source-links">
+            <button
+              type="button"
+              className="app-source-chip"
+              style={{ background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => void downloadMemo()}
+            >
+              Download memo PDF ↓
+            </button>
+          </div>
+        ) : null}
         {busy ? <div className="app-chart-skel" aria-label="Researching…" /> : null}
         {err ? <p className="app-err">{err}</p> : null}
       </div>
