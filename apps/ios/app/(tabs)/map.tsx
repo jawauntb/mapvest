@@ -75,6 +75,18 @@ export default function MapScreen() {
   const params = useLocalSearchParams<{ lat?: string | string[]; lng?: string | string[] }>();
   const qc = useQueryClient();
   const { session } = useSession();
+  useQuery<LocationContextState | undefined>({
+    queryKey: LOCATION_CONTEXT_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  useQuery<Region | undefined>({
+    queryKey: MAP_REGION_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
   const cachedContext = qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY);
   const cachedRegion = qc.getQueryData<Region>(MAP_REGION_QUERY_KEY);
   const linkedRegion = useMemo(

@@ -42,6 +42,7 @@ export function LocationContextNotice({
       {!busy && showAction ? (
         <ScalePressable
           onPress={onAction}
+          hitSlop={5}
           style={styles.action}
           accessibilityRole="button"
           accessibilityLabel={

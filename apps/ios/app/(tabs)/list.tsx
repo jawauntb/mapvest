@@ -11,6 +11,7 @@ import { LocationContextNotice } from "@/location/LocationContextNotice";
 import {
   LOCATION_CONTEXT_QUERY_KEY,
   type LocationContextState,
+  type LocationRegion,
   MAP_REGION_QUERY_KEY,
   locationContextLabel,
   locationRegionFromLatLng,
@@ -46,13 +47,20 @@ export default function ListScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { session } = useSession();
+  useQuery<LocationContextState | undefined>({
+    queryKey: LOCATION_CONTEXT_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  useQuery<LocationRegion | undefined>({
+    queryKey: MAP_REGION_QUERY_KEY,
+    queryFn: () => undefined,
+    enabled: false,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
   const cachedContext = qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY);
-  const cachedRegion = qc.getQueryData<{
-    latitude: number;
-    longitude: number;
-    latitudeDelta: number;
-    longitudeDelta: number;
-  }>(MAP_REGION_QUERY_KEY);
+  const cachedRegion = qc.getQueryData<LocationRegion>(MAP_REGION_QUERY_KEY);
   const initialContext = resolveInitialLocationContext({ cachedContext, cachedRegion });
   const [locationContext, setLocationContext] = useState<LocationContextState>(initialContext);
   const contextRef = useRef(locationContext);
@@ -175,12 +183,7 @@ export default function ListScreen() {
     if (!isFocused) return;
     const next = resolveInitialLocationContext({
       cachedContext: qc.getQueryData<LocationContextState>(LOCATION_CONTEXT_QUERY_KEY),
-      cachedRegion: qc.getQueryData<{
-        latitude: number;
-        longitude: number;
-        latitudeDelta: number;
-        longitudeDelta: number;
-      }>(MAP_REGION_QUERY_KEY),
+      cachedRegion: qc.getQueryData<LocationRegion>(MAP_REGION_QUERY_KEY),
     });
     if (next.kind === "loading" || next === contextRef.current) return;
     contextRef.current = next;
