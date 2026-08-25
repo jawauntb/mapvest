@@ -1,6 +1,7 @@
 import type { LatLng } from "@/api/types";
 import { API_URL } from "@/util/env";
-import { readLastLocationForWidgets } from "./widgetLocation";
+import { type WidgetLocationState, widgetLocationState } from "./widgetFreshness";
+import { type StoredWidgetLocation, readLastLocationForWidgets } from "./widgetLocation";
 
 /** Mirrors `WidgetNearbyResponse` in packages/core — kept local so the widget
  * task handler doesn't pull in the full `@mapvest/core` zod dependency tree
@@ -20,10 +21,8 @@ export type WidgetData = {
   items: WidgetNearbyItem[];
   generatedAt: string;
   error?: string;
+  locationState: WidgetLocationState;
 };
-
-/** Same default as the Map tab's `FALLBACK_REGION` — San Francisco. */
-const FALLBACK_ORIGIN: LatLng = { lat: 37.7749, lng: -122.4194 };
 
 const FETCH_TIMEOUT_MS = 8000;
 const WIDGET_LIMIT = 8;
@@ -35,7 +34,16 @@ const WIDGET_RADIUS = 1500;
  * the widget rather than crashing the launcher's remote view.
  */
 export async function fetchWidgetNearby(): Promise<WidgetData> {
-  const origin = (await readLastLocationForWidgets()) ?? FALLBACK_ORIGIN;
+  const stored: StoredWidgetLocation | null = await readLastLocationForWidgets();
+  const locationState = widgetLocationState(stored);
+  if (locationState.kind !== "fresh") {
+    return {
+      items: [],
+      generatedAt: new Date().toISOString(),
+      locationState,
+    };
+  }
+  const origin: LatLng = locationState.location;
   const qs = new URLSearchParams({
     lat: String(origin.lat),
     lng: String(origin.lng),
@@ -50,15 +58,21 @@ export async function fetchWidgetNearby(): Promise<WidgetData> {
       signal: controller.signal,
     });
     if (!res.ok) {
-      return { items: [], generatedAt: new Date().toISOString(), error: `HTTP ${res.status}` };
+      return {
+        items: [],
+        generatedAt: new Date().toISOString(),
+        error: `HTTP ${res.status}`,
+        locationState,
+      };
     }
     const body = (await res.json()) as { items: WidgetNearbyItem[]; generatedAt: string };
-    return { items: body.items ?? [], generatedAt: body.generatedAt };
+    return { items: body.items ?? [], generatedAt: body.generatedAt, locationState };
   } catch (e) {
     return {
       items: [],
       generatedAt: new Date().toISOString(),
       error: e instanceof Error ? e.message : "network error",
+      locationState,
     };
   } finally {
     clearTimeout(timer);

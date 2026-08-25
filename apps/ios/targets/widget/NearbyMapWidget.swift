@@ -22,21 +22,31 @@ struct NearbyMapWidgetView: View {
             overlay
         }
         .clipped()
-        .widgetURL(URL(string: "mapvest://"))
+        .widgetURL(widgetMapURL(for: entry.locationState))
     }
 
     @ViewBuilder
     private var overlay: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("MAPVEST · NEARBY")
+            Text(widgetHeader(for: entry.locationState))
                 .font(.system(size: 9, weight: .bold))
                 .foregroundColor(.mapvestAccent)
+            WidgetLastUpdatedView(state: entry.locationState)
 
-            if entry.mapImage != nil {
+            if entry.locationState.location == nil {
+                WidgetLocationStatusView(state: entry.locationState)
+            } else if entry.mapImage != nil {
                 if let top = entry.items.first {
-                    Text(top.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(top.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text("\(top.label) · \(widgetDistanceText(top.distanceM))")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.85))
+                            .lineLimit(1)
+                    }
                 }
             } else if let errorMessage = entry.errorMessage {
                 Text(errorMessage).font(.system(size: 11)).foregroundColor(.mapvestDanger)
@@ -44,10 +54,18 @@ struct NearbyMapWidgetView: View {
                 Text("Nothing nearby yet").font(.system(size: 11)).foregroundColor(.mapvestFgMuted)
             } else {
                 ForEach(entry.items.prefix(3)) { item in
-                    Text(item.label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.mapvestFg)
-                        .lineLimit(1)
+                    Link(destination: item.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.name)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.mapvestFg)
+                                .lineLimit(1)
+                            Text("\(item.label) · \(widgetDistanceText(item.distanceM))")
+                                .font(.system(size: 9))
+                                .foregroundColor(.mapvestFgMuted)
+                                .lineLimit(1)
+                        }
+                    }
                 }
             }
         }

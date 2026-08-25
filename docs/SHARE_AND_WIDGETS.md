@@ -93,10 +93,16 @@ returns `501` and the map widget falls back to the same list layout as the
 
 ### Where the widgets get a location
 
-Widgets can't prompt for GPS permission themselves. Whenever the Map or
-List tab gets a location fix, it calls
-`saveLastLocationForWidgets()` (`apps/ios/src/widgets/widgetLocation.ts`),
-which:
+Widgets can't prompt for GPS permission themselves. Whenever the Map tab gets
+a location fix, it calls `saveLastLocationForWidgets()`
+(`apps/ios/src/widgets/widgetLocation.ts`), which persists
+`{lat, lng, capturedAt, source}`. A widget origin is fresh for six hours;
+older or legacy coordinates are shown as stale/setup state and are never
+queried or labeled "Nearby". A GPS fix uses `source: "device"`; a user-panned
+map center uses `source: "map"` and is labeled "Map area" rather than
+implying the device is there.
+
+The storage paths are:
 
 - **Android**: writes to `AsyncStorage` — the widget's headless task
   handler (`apps/ios/src/widgets/widget-task-handler.tsx`, registered from
@@ -108,9 +114,11 @@ which:
   Swift process with zero JS/RN access. `targets/widget/NearbyModels.swift`
   reads it back with `UserDefaults(suiteName:)`.
 
-A widget that's never seen a location (freshly added, before the app has
-ever obtained a GPS fix) falls back to San Francisco — the same default the
-Map tab's `FALLBACK_REGION` uses.
+A widget that has never seen a location shows “Set up your nearby location”
+and asks the user to open Mapvest and visit Map. A stale location shows its
+last-updated context and asks the user to refresh Mapvest. The six-hour
+freshness window is deliberately shared by the TypeScript origin classifier
+and the Swift WidgetKit target.
 
 ### iOS — WidgetKit (`apps/ios/targets/widget/`)
 
@@ -125,13 +133,19 @@ generated.
 
 - `expo-target.config.js` — target type `widget`, App Group entitlement.
 - `NearbyModels.swift` — DTOs mirroring `WidgetNearbyResponse`
-  (`packages/core`), the App Group reader, and the two `fetch*` network
-  calls (plain `URLSession`, no dependencies).
+  (`packages/core`), the timestamped App Group reader, freshness classifier,
+  deep-link builders, and the two `fetch*` network calls (plain `URLSession`,
+  no dependencies).
 - `NearbyProvider.swift` — shared `TimelineProvider`, refreshes every 30
   minutes.
-- `NearbyListWidget.swift` — small/medium/large list of nearby tickers.
-- `NearbyMapWidget.swift` — medium/large map snapshot with the nearest
-  ticker overlaid; falls back to a list if the snapshot didn't load.
+- `NearbyListWidget.swift` — small/medium/large list of nearby brands with
+  ticker/comparable labeling, distance, and last-updated context. Each ticker
+  row opens its detail route; the widget surface opens Map centered on the
+  shown origin.
+- `NearbyMapWidget.swift` — medium/large map snapshot with the nearest brand,
+  ticker/comparable label, distance, and last-updated context; the widget opens
+  Map centered on the shown origin and falls back to an honest text state when
+  the origin is not fresh or the snapshot is unavailable.
 - `MapvestWidgetBundle.swift` — `@main` `WidgetBundle` registering both.
 - `ColorHex.swift` — the RN app's palette (`apps/ios/src/theme/tokens.ts`)
   mirrored as plain hex `Color` values, so the widget target doesn't need

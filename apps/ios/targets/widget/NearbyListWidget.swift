@@ -3,14 +3,20 @@ import WidgetKit
 
 struct NearbyListWidgetView: View {
     var entry: NearbyEntry
+    @Environment(\.widgetFamily) private var family
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("MAPVEST · NEARBY")
+            Text(widgetHeader(for: entry.locationState))
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.mapvestAccent)
+            WidgetLastUpdatedView(state: entry.locationState)
 
-            if let errorMessage = entry.errorMessage {
+            if entry.locationState.location == nil {
+                Spacer()
+                WidgetLocationStatusView(state: entry.locationState)
+                Spacer()
+            } else if let errorMessage = entry.errorMessage {
                 Spacer()
                 Text(errorMessage)
                     .font(.system(size: 12))
@@ -23,8 +29,10 @@ struct NearbyListWidgetView: View {
                     .foregroundColor(.mapvestFgMuted)
                 Spacer()
             } else {
-                ForEach(entry.items.prefix(6)) { item in
-                    NearbyRow(item: item)
+                ForEach(entry.items.prefix(maxRows)) { item in
+                    Link(destination: item.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
+                        NearbyRow(item: item, showPrice: family != .systemSmall)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -32,21 +40,36 @@ struct NearbyListWidgetView: View {
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.mapvestBg)
-        .widgetURL(URL(string: "mapvest://"))
+        .widgetURL(widgetMapURL(for: entry.locationState))
+    }
+
+    private var maxRows: Int {
+        switch family {
+        case .systemSmall: return 3
+        case .systemMedium: return 5
+        default: return 8
+        }
     }
 }
 
 private struct NearbyRow: View {
     let item: NearbyItemDTO
+    let showPrice: Bool
 
     var body: some View {
         HStack {
-            Text(item.label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.mapvestFg)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.mapvestFg)
+                    .lineLimit(1)
+                Text("\(item.label) · \(widgetDistanceText(item.distanceM))")
+                    .font(.system(size: 10))
+                    .foregroundColor(.mapvestFgMuted)
+                    .lineLimit(1)
+            }
             Spacer()
-            if let price = item.price {
+            if showPrice, let price = item.price {
                 Text(priceText(price: price, changePct: item.changePct))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor((item.changePct ?? 0) >= 0 ? .mapvestAccent : .mapvestDanger)

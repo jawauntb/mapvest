@@ -1,12 +1,17 @@
 import type { LatLng } from "@/api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import {
+  type WidgetLocation,
+  type WidgetLocationSource,
+  widgetLocationState,
+} from "./widgetFreshness";
 
 /**
  * Home-screen widgets can't get a fresh GPS fix themselves (no foreground
  * permission prompt, and iOS WidgetKit extensions run as a separate native
  * process with no access to the RN bridge at all). Instead, whenever the
- * main app gets a location fix — Map tab, List tab — it stashes it here so
+ * main app gets a location fix on the Map tab, it stashes it here so
  * a widget's next timeline refresh has *something* recent to center on.
  *
  * - Android: the widget's headless task handler (`widget-task-handler.tsx`)
@@ -16,8 +21,8 @@ import { Platform } from "react-native";
  *   `@bacons/apple-targets`' `ExtensionStorage` — see targets/widget/ for
  *   the Swift side that reads it back.
  *
- * Everything here is best-effort: a widget that never sees a location falls
- * back to San Francisco, same as the Map tab's `FALLBACK_REGION`.
+ * Every persisted origin includes a capture time and source. A widget that
+ * never sees a location must show setup copy instead of inventing a city.
  */
 
 const ASYNC_STORAGE_KEY = "mapvest.widget.lastLocation.v1";
@@ -61,16 +66,28 @@ function getIosStorage(): IosExtensionStorage | null {
   return iosExtensionStorage;
 }
 
-export async function saveLastLocationForWidgets(loc: LatLng): Promise<void> {
+export type StoredWidgetLocation = Omit<WidgetLocation, "capturedAt" | "source"> &
+  Partial<Pick<WidgetLocation, "capturedAt" | "source">>;
+
+export async function saveLastLocationForWidgets(
+  loc: LatLng,
+  options: { capturedAt?: number; source?: WidgetLocationSource } = {},
+): Promise<void> {
+  const value: WidgetLocation = {
+    lat: loc.lat,
+    lng: loc.lng,
+    capturedAt: options.capturedAt ?? Date.now(),
+    source: options.source ?? "map",
+  };
   try {
-    await AsyncStorage.setItem(ASYNC_STORAGE_KEY, JSON.stringify(loc));
+    await AsyncStorage.setItem(ASYNC_STORAGE_KEY, JSON.stringify(value));
   } catch {
-    /* best-effort — Android widget just falls back to SF next refresh */
+    /* best-effort — the Android widget shows setup/stale state on failure */
   }
   try {
     const storage = getIosStorage();
     if (!storage) return;
-    storage.set(IOS_LOCATION_KEY, { lat: loc.lat, lng: loc.lng });
+    storage.set(IOS_LOCATION_KEY, value);
     // Reload both widget kinds (Nearby list + Nearby map) — cheap, and
     // simpler than tracking which kinds are actually on a home screen.
     (require("@bacons/apple-targets") as ExtensionStorageModule).ExtensionStorage.reloadWidget();
@@ -123,12 +140,14 @@ export async function readWidgetCapturedFix(): Promise<WidgetCapturedFix | null>
   }
 }
 
-export async function readLastLocationForWidgets(): Promise<LatLng | null> {
+export async function readLastLocationForWidgets(): Promise<StoredWidgetLocation | null> {
   try {
     const raw = await AsyncStorage.getItem(ASYNC_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as LatLng;
-    if (typeof parsed?.lat === "number" && typeof parsed?.lng === "number") return parsed;
+    const parsed = JSON.parse(raw) as Partial<StoredWidgetLocation>;
+    if (typeof parsed?.lat === "number" && typeof parsed?.lng === "number") {
+      return parsed as StoredWidgetLocation;
+    }
     return null;
   } catch {
     return null;

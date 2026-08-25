@@ -17,8 +17,8 @@ struct NearbyProvider: TimelineProvider {
             return
         }
         // Snapshots must be fast (widget gallery, transitions), so skip the B3
-        // location fix here and render from the last known origin. Only the
-        // real timeline refresh pays for a fix.
+        // location fix here. An unknown/stale origin renders setup copy rather
+        // than using a fabricated city.
         loadNearby { timeline in
             completion(timeline.entries.first ?? .placeholder)
         }
@@ -34,8 +34,8 @@ struct NearbyProvider: TimelineProvider {
         // on the next foreground.
         //
         // Strictly best-effort: unauthorized, failed, or slow (6s cap) all
-        // fall through to the previous behavior — `widgetOrigin()` reads the
-        // last known lat/lng, or San Francisco.
+        // fall through to the last *fresh* origin. If none exists, the widget
+        // renders an honest setup/stale state.
         WidgetLocationHeartbeat.shared.requestFix { _ in
             // The fix (if any) is already persisted to the App Group, so
             // `widgetOrigin()` inside `fetchNearby` picks it up.
@@ -46,11 +46,22 @@ struct NearbyProvider: TimelineProvider {
     /// The pre-B3 timeline body, unchanged apart from being hoisted out of
     /// `getTimeline` so the location fix can run in front of it.
     private func loadNearby(completion: @escaping (Timeline<NearbyEntry>) -> Void) {
-        fetchNearby(limit: limit) { response in
+        let locationState = widgetOriginState()
+        guard case let .fresh(origin) = locationState else {
+            let entry = NearbyEntry(
+                date: Date(), items: [], mapImage: nil,
+                errorMessage: nil, locationState: locationState
+            )
+            completion(Timeline(entries: [entry], policy: .after(nextRefreshDate())))
+            return
+        }
+
+        fetchNearby(origin: origin, limit: limit) { response in
             guard let response else {
                 let entry = NearbyEntry(
                     date: Date(), items: [], mapImage: nil,
-                    errorMessage: "Couldn't load nearby brands"
+                    errorMessage: "Couldn't load nearby brands",
+                    locationState: locationState
                 )
                 completion(Timeline(entries: [entry], policy: .after(nextRefreshDate())))
                 return
@@ -58,7 +69,8 @@ struct NearbyProvider: TimelineProvider {
 
             let finish: (PlatformImage?) -> Void = { image in
                 let entry = NearbyEntry(
-                    date: Date(), items: response.items, mapImage: image, errorMessage: nil
+                    date: Date(), items: response.items, mapImage: image,
+                    errorMessage: nil, locationState: locationState
                 )
                 completion(Timeline(entries: [entry], policy: .after(nextRefreshDate())))
             }

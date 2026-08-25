@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
@@ -42,12 +42,34 @@ const PLAIN_H = 28;
 /** ~meters between pins that count as overlapping for two-tap reveal. */
 const OVERLAP_METERS = 55;
 
+function regionFromWidgetParams(
+  rawLat: string | string[] | undefined,
+  rawLng: string | string[] | undefined,
+): Region | null {
+  const lat = Number(Array.isArray(rawLat) ? rawLat[0] : rawLat);
+  const lng = Number(Array.isArray(rawLng) ? rawLng[0] : rawLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return null;
+  }
+  return {
+    latitude: lat,
+    longitude: lng,
+    latitudeDelta: 0.02,
+    longitudeDelta: 0.02,
+  };
+}
+
 export default function MapScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ lat?: string | string[]; lng?: string | string[] }>();
   const qc = useQueryClient();
   const { session } = useSession();
   const cachedRegion = qc.getQueryData<Region>(["tab-state", "map-region"]);
-  const [region, setRegion] = useState<Region>(cachedRegion ?? FALLBACK_REGION);
+  const linkedRegion = useMemo(
+    () => regionFromWidgetParams(params.lat, params.lng),
+    [params.lat, params.lng],
+  );
+  const [region, setRegion] = useState<Region>(linkedRegion ?? cachedRegion ?? FALLBACK_REGION);
   const [permErr, setPermErr] = useState<string | null>(null);
   /** Tracks until quotes render into the bitmap, then freezes for perf. */
   const [trackMarkers, setTrackMarkers] = useState(true);
@@ -59,8 +81,14 @@ export default function MapScreen() {
   const [showUncaught, setShowUncaught] = useState(true);
 
   useEffect(() => {
+    if (!linkedRegion) return;
+    setRegion(linkedRegion);
+    qc.setQueryData(["tab-state", "map-region"], linkedRegion);
+  }, [linkedRegion, qc]);
+
+  useEffect(() => {
     (async () => {
-      if (cachedRegion) return;
+      if (cachedRegion || linkedRegion) return;
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setPermErr("Location permission denied. Showing San Francisco.");
@@ -77,9 +105,12 @@ export default function MapScreen() {
       };
       setRegion(next);
       qc.setQueryData(["tab-state", "map-region"], next);
-      void saveLastLocationForWidgets({ lat: next.latitude, lng: next.longitude });
+      void saveLastLocationForWidgets(
+        { lat: next.latitude, lng: next.longitude },
+        { capturedAt: loc.timestamp, source: "device" },
+      );
     })();
-  }, [cachedRegion, qc]);
+  }, [cachedRegion, linkedRegion, qc]);
 
   const nearbyQuery = useQuery({
     queryKey: [
@@ -289,12 +320,19 @@ export default function MapScreen() {
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         region={region}
-        onRegionChangeComplete={(r) => {
+        onRegionChangeComplete={(r, details) => {
           setRegion(r);
           qc.setQueryData(["tab-state", "map-region"], r);
           setFocusedPlaceId(null);
           setTrackMarkers(true);
-          void saveLastLocationForWidgets({ lat: r.latitude, lng: r.longitude });
+          // A user-panned map is a map-area origin, not a claim about the
+          // device's current location. Preserve the GPS source otherwise.
+          if (details?.isGesture) {
+            void saveLastLocationForWidgets(
+              { lat: r.latitude, lng: r.longitude },
+              { source: "map" },
+            );
+          }
         }}
         onPress={() => setFocusedPlaceId(null)}
         showsUserLocation
