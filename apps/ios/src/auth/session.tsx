@@ -1,4 +1,4 @@
-import { ApiError, getMe } from "@/api/client";
+import { getMe } from "@/api/client";
 import type { Session, User } from "@/api/types";
 import { cancelPushOperationsAndWait, runPushRevocation } from "@/notif/lifecycle";
 import { unlinkPushForSignOut } from "@/notif/signOut";
@@ -12,170 +12,141 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  authFailureNeedsPushCleanup,
-  secureStoreReadNeedsPushCleanup,
-  sessionExpired,
-} from "./sessionPolicy";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { type CleanupReason, SessionController, type SessionSnapshot } from "./sessionController";
+import { createSessionStore } from "./sessionStore";
+
+export { SessionCleanupRequiredError, SessionPersistenceError } from "./sessionController";
+export type { CleanupReason } from "./sessionController";
 
 const KEY = "mapvest.session.v1";
 const STORE: SecureStore.SecureStoreOptions = {
   keychainService: "com.mapvest.app",
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };
-const STORE_MS = 800;
 
-function readStoredSession(): Promise<{ raw: string | null; timedOut: boolean }> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      settled = true;
-      resolve({ raw: null, timedOut: true });
-    }, STORE_MS);
-    SecureStore.getItemAsync(KEY, STORE)
-      .then((raw) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve({ raw, timedOut: false });
-      })
-      .catch(() => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve({ raw: null, timedOut: false });
-      });
-  });
-}
-
-type Stored = { session: Session; user: User };
+const sessionStore = createSessionStore(
+  {
+    getItem: () => SecureStore.getItemAsync(KEY, STORE),
+    setItem: (raw) => SecureStore.setItemAsync(KEY, raw, STORE),
+    deleteItem: () => SecureStore.deleteItemAsync(KEY, STORE),
+  },
+  800,
+);
 
 type SessionCtx = {
   ready: boolean;
   session: Session | null;
   user: User | null;
+  cleanupRequired: boolean;
+  cleanupReason: CleanupReason | null;
+  authGeneration: number;
   signIn: (s: Session, u: User) => Promise<void>;
   signOut: () => Promise<void>;
+  retryCleanup: () => Promise<void>;
+  isAuthGenerationCurrent: (generation: number) => boolean;
+  isActiveSession: (generation: number, token: string) => boolean;
   isAdmin: boolean;
 };
 
 const Ctx = createContext<SessionCtx | null>(null);
 
+const INITIAL_SNAPSHOT: SessionSnapshot = {
+  phase: "booting",
+  ready: false,
+  session: null,
+  user: null,
+  cleanupRequired: false,
+  cleanupReason: null,
+  authGeneration: 0,
+};
+
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-  const [state, setState] = useState<Stored | null>(null);
-  const stateRef = useRef<Stored | null>(null);
-  stateRef.current = state;
+  const [snapshot, setSnapshot] = useState<SessionSnapshot>(INITIAL_SNAPSHOT);
+  const controllerRef = useRef<SessionController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = new SessionController(
+      {
+        readStoredSession: sessionStore.read,
+        getMe: (token, signal) => getMe(token, { signal }),
+        revokePush: (session, options) =>
+          runPushRevocation(() => unlinkPushForSignOut(session, options)),
+        cancelPush: cancelPushOperationsAndWait,
+        writeStoredSession: sessionStore.write,
+        deleteStoredSession: sessionStore.remove,
+      },
+      setSnapshot,
+    );
+  }
+  const controller = controllerRef.current;
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const loaded = await readStoredSession();
-        if (secureStoreReadNeedsPushCleanup(loaded.timedOut)) {
-          // We cannot prove the session is absent. Revoke the physical push
-          // identity without a bearer and retry on the next boot.
-          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
-          return;
-        }
-        if (!loaded.raw) return;
-        let parsed: Stored;
-        try {
-          parsed = JSON.parse(loaded.raw) as Stored;
-        } catch {
-          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
-          await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
-          return;
-        }
-        if (
-          !parsed?.session ||
-          typeof parsed.session.token !== "string" ||
-          typeof parsed.session.expiresAt !== "string"
-        ) {
-          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
-          await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
-          return;
-        }
-        if (sessionExpired(parsed.session.expiresAt)) {
-          const revoked = await runPushRevocation(() => unlinkPushForSignOut(parsed.session))
-            .then(() => true)
-            .catch(() => false);
-          // Keep an expired record when cleanup failed so the next boot (or a
-          // direct sign-in) retries the physical-token revocation.
-          if (revoked) await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
-          return;
-        }
-        if (!cancelled) setState(parsed);
-        // Refresh profile in the background; keep the same token (no rotation
-        // needed — sessions are long-lived). Only clear the stored session on
-        // a definitive "this token will never work again" signal (unknown
-        // user after a Postgres reset, or a token that fails verification).
-        // A network blip, timeout, or transient 5xx must NOT sign the user
-        // out — that would break "stay signed in until explicit Sign out".
-        try {
-          const { user } = await getMe(parsed.session.token);
-          if (!cancelled) setState({ session: parsed.session, user });
-        } catch (e) {
-          if (e instanceof ApiError && authFailureNeedsPushCleanup(e.status)) {
-            const revoked = await runPushRevocation(() => unlinkPushForSignOut(parsed.session))
-              .then(() => true)
-              .catch(() => false);
-            if (revoked) await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
-            if (!cancelled) setState(null);
-          }
-          // else: keep the cached session/user; retry on next app foreground.
-        }
-      } finally {
-        if (!cancelled) setReady(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void controller.startBoot();
+    return () => controller.dispose();
+  }, [controller]);
 
   const value = useMemo<SessionCtx>(
     () => ({
-      ready,
-      session: state?.session ?? null,
-      user: state?.user ?? null,
-      isAdmin: !!state?.user?.scopes?.includes("admin"),
-      async signIn(session, user) {
-        const previous = stateRef.current;
-        if (!previous?.session || previous.session.token !== session.token) {
-          // Direct A→B login is an account switch even when no explicit
-          // sign-out screen ran. Revoke A (or retry a pending boot cleanup)
-          // before B becomes observable.
-          await runPushRevocation(() => unlinkPushForSignOut(previous?.session));
-        } else {
-          await cancelPushOperationsAndWait();
-        }
-        const next = { session, user };
-        try {
-          await SecureStore.setItemAsync(KEY, JSON.stringify(next), STORE);
-        } catch (e) {
-          console.warn("[session] persist failed (in-memory only):", e);
-        }
-        setState(next);
-      },
-      async signOut() {
-        // Push unlink must complete while this bearer is still available.
-        // If the server cannot revoke a known token, this rejects and
-        // deliberately leaves the account/session in place so Settings or
-        // Admin can present a retry instead of treating local cleanup as safe.
-        await runPushRevocation(() => unlinkPushForSignOut(stateRef.current?.session));
-        try {
-          await SecureStore.deleteItemAsync(KEY, STORE);
-        } catch {
-          /* keychain miss is fine */
-        }
-        setState(null);
-      },
+      ready: snapshot.ready,
+      session: snapshot.session,
+      user: snapshot.user,
+      cleanupRequired: snapshot.cleanupRequired,
+      cleanupReason: snapshot.cleanupReason,
+      authGeneration: snapshot.authGeneration,
+      signIn: (session, user) => controller.signIn(session, user),
+      signOut: () => controller.signOut(),
+      retryCleanup: () => controller.retryCleanup(),
+      isAuthGenerationCurrent: (generation) => controller.isAuthGenerationCurrent(generation),
+      isActiveSession: (generation, token) => controller.isActiveSession(generation, token),
+      isAdmin: !!snapshot.user?.scopes?.includes("admin"),
     }),
-    [ready, state],
+    [controller, snapshot],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {snapshot.cleanupRequired ? <CleanupRequiredScreen retry={value.retryCleanup} /> : children}
+    </Ctx.Provider>
+  );
+}
+
+function CleanupRequiredScreen({ retry }: { retry: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <View style={styles.cleanupRoot}>
+      <Text style={styles.cleanupTitle}>Finishing account cleanup</Text>
+      <Text style={styles.cleanupBody}>
+        Mapvest could not safely confirm this device is disconnected. Keep this screen open and
+        retry before signing in again.
+      </Text>
+      {error ? <Text style={styles.cleanupError}>{error}</Text> : null}
+      <Pressable
+        style={styles.cleanupButton}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Retry account cleanup"
+        accessibilityState={{ disabled: busy, busy }}
+        onPress={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await retry();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Cleanup is still unavailable.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text style={styles.cleanupButtonText}>Retry</Text>
+        )}
+      </Pressable>
+    </View>
+  );
 }
 
 export function useSession(): SessionCtx {
@@ -183,3 +154,27 @@ export function useSession(): SessionCtx {
   if (!v) throw new Error("useSession must be used inside <SessionProvider>");
   return v;
 }
+
+const styles = StyleSheet.create({
+  cleanupRoot: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 28,
+    backgroundColor: "#09090b",
+    gap: 14,
+  },
+  cleanupTitle: { color: "#ffffff", fontSize: 22, fontWeight: "700", textAlign: "center" },
+  cleanupBody: { color: "#a1a1aa", fontSize: 15, lineHeight: 22, textAlign: "center" },
+  cleanupError: { color: "#fb7185", fontSize: 14, textAlign: "center" },
+  cleanupButton: {
+    minHeight: 48,
+    minWidth: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    backgroundColor: "#2563eb",
+  },
+  cleanupButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
+});

@@ -110,6 +110,61 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["native", "dismiss", "clear"]);
   });
 
+  test("expired cleanup may use successful native unregister when no claimant id exists", async () => {
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: false,
+      mayBeRegistered: true,
+      unlinkServer: undefined,
+      unlinkServerByIdentity: undefined,
+    });
+
+    await expect(
+      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
+    ).resolves.toMatchObject({ serverUnlinked: false, nativeUnregistered: true });
+    expect(deps.calls).toEqual(["native", "dismiss", "clear"]);
+  });
+
+  test("may-be-registered evidence fails closed when native unregister fails", async () => {
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: true,
+      mayBeRegistered: true,
+      unlinkServer: undefined,
+      unlinkServerByIdentity: undefined,
+    });
+    deps.unregisterNative = async () => {
+      deps.calls.push("native");
+      throw new Error("native unavailable");
+    };
+
+    await expect(
+      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
+    ).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["native", "dismiss"]);
+  });
+
+  test("a readable null id plus transient identity failure still fails closed", async () => {
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: true,
+      registrationEvidenceReadable: true,
+      mayBeRegistered: false,
+      physicalIdentityReadable: false,
+      unlinkServer: undefined,
+      unlinkServerByIdentity: undefined,
+    });
+    deps.unregisterNative = async () => {
+      deps.calls.push("native");
+      throw new Error("native unavailable");
+    };
+
+    await expect(
+      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
+    ).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["native", "dismiss"]);
+  });
+
   test("keeps the authenticated session retryable when every revocation path fails", async () => {
     const deps = fixture();
     deps.unlinkServer = async () => {

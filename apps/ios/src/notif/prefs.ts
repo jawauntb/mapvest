@@ -157,18 +157,21 @@ export async function unlinkPushToken(tokenId: string, session: { token: string 
 
 /**
  * Revocation-only fallback for expired sessions or a lost SecureStore id.
- * The server accepts only this physical installation identity and returns no
- * account data, so any 2xx response is safe to treat as an idempotent unlink.
+ * The server accepts an Expo token only when paired with the opaque claimant
+ * id (or an authenticated current-account proof). Token-only public requests
+ * are rejected so a stale account cannot revoke a newly transferred claim.
  */
 export async function unlinkPushTokenByIdentity(
   identity: { expoToken: string; deviceId?: string },
   tokenId?: string | null,
+  session?: { token: string },
 ): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/v1/push/revoke-device`, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
     },
     body: JSON.stringify({
       token: identity.expoToken,
@@ -176,7 +179,17 @@ export async function unlinkPushTokenByIdentity(
       tokenId: tokenId ?? undefined,
     }),
   });
-  if (res.ok) return;
+  if (res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      revoked?: unknown;
+      matched?: unknown;
+      proofRequired?: unknown;
+    };
+    if (body.proofRequired === true) {
+      throw new Error("This device needs a claimant id before notifications can be removed.");
+    }
+    return;
+  }
   throw new Error(`Could not remove this device from notifications (${res.status})`);
 }
 

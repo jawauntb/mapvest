@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 /**
  * One-time Expo push token registration.
  *
@@ -5,7 +6,8 @@
  *   1. Read permission without prompting on launch.
  *   2. Fetch the device's Expo push token via projectId 'e3902302-…'.
  *   3. POST it to /v1/push/register with the current bearer.
- *   4. Store the returned server-issued id in expo-secure-store.
+ *   4. Store the returned server-issued id in expo-secure-store and retain a
+ *      non-secret registration marker until server revocation succeeds.
  *
  * Tokens are re-registered every launch (server-side is idempotent on
  * (userId, expoToken) unique) so a user who signs out of one account and back
@@ -27,8 +29,10 @@ import { Platform } from "react-native";
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 import { runPushOperation } from "./lifecycle";
+import { persistPushTokenId } from "./pushRegistrationStore";
 
 const PUSH_TOKEN_ID_KEY = "mapvest.pushTokenId.v1";
+const PUSH_MAYBE_REGISTERED_KEY = "mapvest.pushMayBeRegistered.v1";
 const EXPO_PROJECT_ID = "e3902302-dff0-4dee-9974-d74166073356";
 const PUSH_IO_TIMEOUT_MS = 8_000;
 const SECURE_STORE_TIMEOUT_MS = 800;
@@ -42,6 +46,18 @@ export type RegisterResult = {
 export type PushIdentity = {
   expoToken: string;
   deviceId?: string;
+};
+
+export type PushRegistrationEvidence = {
+  mayBeRegistered: boolean;
+  /** False means the marker store could not be inspected; fail closed. */
+  readable: boolean;
+};
+
+export type PushIdentityRead = {
+  identity: PushIdentity | null;
+  /** False means native identity lookup failed transiently. */
+  readable: boolean;
 };
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -101,22 +117,68 @@ export async function readStoredTokenIdForSignOut(): Promise<{
   }
 }
 
-async function persistTokenId(id: string, isCurrent: () => boolean): Promise<boolean> {
-  const write = SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id);
-  // SecureStore has no cancellation primitive. If a timed-out write resolves
-  // after sign-out/account-switch invalidated this operation, remove the late
-  // value so it cannot resurrect the previous account's token id.
-  void write.then(
-    () => {
-      if (!isCurrent()) void SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY).catch(() => undefined);
-    },
-    () => undefined,
-  );
+/** A non-secret durable marker that a server row may exist without its id. */
+export async function markPushRegistrationEvidence(): Promise<boolean> {
   try {
-    await withTimeout(write, SECURE_STORE_TIMEOUT_MS, "SecureStore write timed out");
+    await withTimeout(
+      AsyncStorage.setItem(PUSH_MAYBE_REGISTERED_KEY, "1"),
+      SECURE_STORE_TIMEOUT_MS,
+      "push registration evidence write timed out",
+    );
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function readPushRegistrationEvidence(): Promise<PushRegistrationEvidence> {
+  try {
+    const value = await withTimeout(
+      AsyncStorage.getItem(PUSH_MAYBE_REGISTERED_KEY),
+      SECURE_STORE_TIMEOUT_MS,
+      "push registration evidence read timed out",
+    );
+    return { mayBeRegistered: value === "1", readable: true };
+  } catch {
+    return { mayBeRegistered: true, readable: false };
+  }
+}
+
+async function clearPushRegistrationEvidence(): Promise<void> {
+  try {
+    await withTimeout(
+      AsyncStorage.removeItem(PUSH_MAYBE_REGISTERED_KEY),
+      SECURE_STORE_TIMEOUT_MS,
+      "push registration evidence delete timed out",
+    );
+  } catch {
+    // A stale marker is safe: the next sign-out retries idempotent cleanup.
+  }
+}
+
+async function rollbackRegistration(identity: PushIdentity, tokenId: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUSH_IO_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_URL}/v1/push/revoke-device`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: identity.expoToken,
+        deviceId: identity.deviceId,
+        tokenId,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => ({}))) as { matched?: unknown };
+    // A stale id must not be treated as proof that the current claimant was
+    // revoked. Only a positive claimant match closes this rollback path.
+    return body.matched === true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -133,6 +195,7 @@ export async function clearStoredTokenId(): Promise<void> {
     // Revocation is already complete; a stale local id cannot re-enable a
     // token, and the next registration replaces it.
   }
+  await clearPushRegistrationEvidence();
 }
 
 /**
@@ -166,21 +229,25 @@ export async function ensurePermissions(): Promise<boolean> {
  * This never prompts; it only reads already-granted OS state.
  */
 export async function getCurrentPushIdentity(): Promise<PushIdentity | null> {
-  if (currentIdentity) return currentIdentity;
-  if (!Device.isDevice) return null;
+  return (await readCurrentPushIdentity()).identity;
+}
+
+export async function readCurrentPushIdentity(): Promise<PushIdentityRead> {
+  if (currentIdentity) return { identity: currentIdentity, readable: true };
+  if (!Device.isDevice) return { identity: null, readable: true };
   try {
     const permission = await withTimeout(
       Notifications.getPermissionsAsync(),
       PUSH_IO_TIMEOUT_MS,
       "Notification permission check timed out",
     );
-    if (permission.status !== "granted") return null;
+    if (permission.status !== "granted") return { identity: null, readable: true };
     const result = await withTimeout(
       Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID }),
       PUSH_IO_TIMEOUT_MS,
       "Expo token lookup timed out",
     );
-    if (!result.data) return null;
+    if (!result.data) return { identity: null, readable: false };
     const identity: PushIdentity = { expoToken: result.data };
     try {
       identity.deviceId = await withTimeout(
@@ -189,12 +256,13 @@ export async function getCurrentPushIdentity(): Promise<PushIdentity | null> {
         "Device id timed out",
       );
     } catch {
-      // Expo token remains a sufficient revocation identity.
+      // Without the server-issued id, the Expo token alone is not a safe
+      // claimant proof; sign-out remains fail-closed until it can recover one.
     }
     currentIdentity = identity;
-    return identity;
+    return { identity, readable: true };
   } catch {
-    return null;
+    return { identity: null, readable: false };
   }
 }
 
@@ -244,7 +312,9 @@ export async function registerForPush(
     } catch {
       // Server registration remains valid without this advisory identifier.
     }
-    currentIdentity = { expoToken, ...(deviceId ? { deviceId } : {}) };
+    const identity: PushIdentity = { expoToken, ...(deviceId ? { deviceId } : {}) };
+    currentIdentity = identity;
+    if (!(await markPushRegistrationEvidence()) || !isCurrent()) return null;
     try {
       const body = {
         token: expoToken,
@@ -268,7 +338,22 @@ export async function registerForPush(
       if (!res.ok || !isCurrent()) return null;
       const j = (await res.json()) as { id?: string };
       if (!j.id || !isCurrent()) return null;
-      await persistTokenId(j.id, isCurrent);
+      const persisted = await persistPushTokenId(
+        {
+          set: (id) => SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id),
+          delete: () => SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY),
+        },
+        j.id,
+        isCurrent,
+        SECURE_STORE_TIMEOUT_MS,
+      );
+      if (!persisted) {
+        // The API may already have committed the row even when keychain write
+        // timed out. Roll it back with the just-issued claimant id; if that
+        // cannot be proven, retain the durable marker and fail closed.
+        if (await rollbackRegistration(identity, j.id)) await clearPushRegistrationEvidence();
+        return null;
+      }
       if (!isCurrent()) return null;
       return { tokenId: j.id, expoToken, permissionGranted };
     } catch {

@@ -78,8 +78,8 @@ export function verifyMagicLink(
   });
 }
 
-export function getMe(token: string): Promise<{ user: User }> {
-  return jsonFetch("/v1/auth/me", { method: "GET" }, { token });
+export function getMe(token: string, opts: { signal?: AbortSignal } = {}): Promise<{ user: User }> {
+  return jsonFetch("/v1/auth/me", { method: "GET" }, { token, signal: opts.signal });
 }
 
 // -------- nearby / identify / resolve --------

@@ -3,7 +3,7 @@
  *
  * This module stays free of Expo/React Native imports so the failure policy is
  * unit-testable: do not clear an authenticated session while a known (or
- * unreadable) push token has no successful server revocation path.
+ * unreadable) push token has no successful claimant-bound revocation path.
  */
 export class PushSignOutRevocationError extends Error {
   constructor() {
@@ -18,11 +18,19 @@ export type PushSignOutDependencies = {
   tokenId: string | null;
   /** False means secure storage could not be inspected, so a token may exist. */
   tokenStorageReadable: boolean;
+  /** False means the non-secret registration marker could not be inspected. */
+  registrationEvidenceReadable?: boolean;
+  /** A registration may have committed while its id write timed out. */
+  mayBeRegistered?: boolean;
   unlinkServer?: () => Promise<void>;
-  /** Identity fallback works without a valid bearer or stored token id. */
+  /** Claimant-bound identity fallback; valid bearer may recover a missing id. */
   unlinkServerByIdentity?: () => Promise<void>;
   /** True when native identity lookup found an Expo token. */
   hasPhysicalIdentity?: boolean;
+  /** False means native identity lookup failed, not that no token exists. */
+  physicalIdentityReadable?: boolean;
+  /** Safe only when no claimant-bound server path exists (expired bearer). */
+  allowNativeOnlyFallback?: boolean;
   unregisterNative: () => Promise<void>;
   dismissNative: () => Promise<void>;
   clearStoredTokenId: () => Promise<void>;
@@ -64,6 +72,9 @@ export async function revokePushForSignOut(
   const serverRequired =
     Boolean(dependencies.tokenId) ||
     !dependencies.tokenStorageReadable ||
+    dependencies.registrationEvidenceReadable === false ||
+    Boolean(dependencies.mayBeRegistered) ||
+    dependencies.physicalIdentityReadable === false ||
     Boolean(dependencies.unlinkServerByIdentity) ||
     Boolean(dependencies.hasPhysicalIdentity);
   let serverUnlinked = false;
@@ -76,10 +87,15 @@ export async function revokePushForSignOut(
   const nativeUnregistered = await attempted(dependencies.unregisterNative);
   await attempted(dependencies.dismissNative);
 
-  // Native unregistration only stops future local delivery. It cannot revoke
-  // a server row, so it never substitutes for server cleanup when a token is
-  // known or a physical identity was available.
-  if (serverRequired && !serverUnlinked) {
+  // Native unregistration is accepted only for an expired/invalid bearer when
+  // no claimant-bound server path exists. A valid bearer or known id still
+  // requires the server proof; native cleanup cannot mask that failure.
+  const nativeOnlySafe =
+    Boolean(dependencies.allowNativeOnlyFallback) &&
+    !dependencies.tokenId &&
+    !dependencies.unlinkServer &&
+    !dependencies.unlinkServerByIdentity;
+  if (serverRequired && !serverUnlinked && !(nativeOnlySafe && nativeUnregistered)) {
     throw new PushSignOutRevocationError();
   }
 
