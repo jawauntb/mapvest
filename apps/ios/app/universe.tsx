@@ -38,11 +38,12 @@ import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
 import { shareBriefImage } from "@/util/share";
+import { canStartShareAttempt, isShareCardReady } from "@/util/shareReadiness";
 import { universeShareCopy } from "@/util/universeShare";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -136,9 +137,32 @@ export default function UniverseScreen() {
   const shareCardRef = useRef<View>(null);
   const sharingRef = useRef(false);
   const [isSharing, setIsSharing] = useState(false);
+  const shareCardKey = shareCopy?.message ?? null;
+  const [shareCardLayoutKey, setShareCardLayoutKey] = useState<string | null>(null);
+  const [shareBrandMarkKey, setShareBrandMarkKey] = useState<string | null>(null);
+  const shareCardReady =
+    shareCardKey !== null &&
+    isShareCardReady({
+      laidOut: shareCardLayoutKey === shareCardKey,
+      brandMarkLoaded: shareBrandMarkKey === shareCardKey,
+    });
+
+  const markShareCardLaidOut = useCallback(() => {
+    if (shareCardKey) setShareCardLayoutKey(shareCardKey);
+  }, [shareCardKey]);
+
+  const markBrandMarkReady = useCallback(() => {
+    if (shareCardKey) setShareBrandMarkKey(shareCardKey);
+  }, [shareCardKey]);
 
   async function shareUniverse() {
-    if (!summary || !shareCopy || sharingRef.current) return;
+    if (
+      !summary ||
+      !shareCopy ||
+      !canStartShareAttempt({ ready: shareCardReady, inFlight: sharingRef.current })
+    ) {
+      return;
+    }
     sharingRef.current = true;
     setIsSharing(true);
     try {
@@ -284,7 +308,7 @@ export default function UniverseScreen() {
                     <View style={styles.cfHead}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.cfLine}>
-                          <Text style={styles.cfLabel}>$100 per find → worth </Text>
+                          <Text style={styles.cfLabel}>{shareCopy.basis} → worth </Text>
                           <Text style={styles.cfValue}>{money(summary.hypotheticalValue)}</Text>
                           <Text
                             style={[
@@ -303,26 +327,36 @@ export default function UniverseScreen() {
                           Hypothetical · {summary.valuedFinds} of {summary.findCount} find
                           {summary.findCount === 1 ? "" : "s"} priced when found
                         </Text>
+                        <Text style={styles.cfProvenance}>{shareCopy.provenance}</Text>
                       </View>
                       <ShareButton
-                        label={isSharing ? "Preparing…" : "Share"}
+                        label={isSharing || !shareCardReady ? "Preparing…" : "Share"}
                         accessibilityLabel={
-                          isSharing ? "Preparing universe share" : "Share your universe"
+                          isSharing || !shareCardReady
+                            ? "Preparing universe share"
+                            : "Share your universe"
                         }
-                        busy={isSharing}
+                        busy={isSharing || !shareCardReady}
+                        disabled={!shareCardReady}
                         onPress={shareUniverse}
                       />
                     </View>
                     {/* Kept mounted off-screen so view-shot can capture a stable
                         4:5 card without exposing private Find records. */}
                     <View
+                      key={shareCardKey}
                       style={styles.shareCardCapture}
                       pointerEvents="none"
                       accessible={false}
                       accessibilityElementsHidden
                       importantForAccessibility="no-hide-descendants"
                     >
-                      <UniverseShareCard ref={shareCardRef} copy={shareCopy} />
+                      <UniverseShareCard
+                        ref={shareCardRef}
+                        copy={shareCopy}
+                        onLayout={markShareCardLaidOut}
+                        onBrandMarkReady={markBrandMarkReady}
+                      />
                     </View>
                   </View>
                 ) : null}
@@ -587,6 +621,7 @@ const styles = StyleSheet.create({
   cfValue: { color: colors.fg, fontSize: 18, fontWeight: "800" },
   cfDelta: { fontSize: 13, fontWeight: "700" },
   cfFoot: { color: colors.fgDim, fontSize: 11, marginTop: 2 },
+  cfProvenance: { color: colors.fgDim, fontSize: 10, lineHeight: 14, marginTop: 2 },
   shareCardCapture: {
     position: "absolute",
     left: -10_000,

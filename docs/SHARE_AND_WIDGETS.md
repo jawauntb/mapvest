@@ -82,13 +82,17 @@ card. It is a fixed 4:5, Mapvest-branded PNG sized for social feeds and
 contains only the server-produced summary: the hypothetical basis, find
 coverage, value, and change. The card and its text fallback explicitly label
 the result hypothetical and include `https://mapvest.app`; they never include
-find photos, precise locations, email addresses, or raw Find records.
+find photos, precise locations, email addresses, or raw Find records. They also
+carry the server's calculation date, returned provider names, and the lowest
+returned confidence. An empty source list is labeled uncited/low confidence;
+the calculation date is not presented as quote freshness.
 
 `apps/ios/src/util/share.ts` uses `react-native-view-shot@5.1.0` to capture the
 off-screen card, then `expo-sharing` hands the PNG to the native share sheet.
 If capture, native sharing, or the module is unavailable, the same summary is
 shared as paste-safe text instead. The Share button shows a preparation state
-and blocks duplicate sheets until the current share attempt resolves.
+until the off-screen card has laid out and its local brand mark is ready, then
+blocks duplicate sheets until the current share attempt resolves.
 
 This native module is activated only in a rebuilt binary. After dependency
 changes, run `cd apps/ios && bun install && bunx expo prebuild --clean`, then

@@ -1,4 +1,4 @@
-import { Image, type ImageStyle, type StyleProp, StyleSheet } from "react-native";
+import { Image, type ImageProps, type ImageStyle, type StyleProp, StyleSheet } from "react-native";
 
 /**
  * The real Mapvest mark — black field, teal pin, white tape line.
@@ -7,9 +7,13 @@ import { Image, type ImageStyle, type StyleProp, StyleSheet } from "react-native
 export function BrandMark({
   size = 28,
   style,
+  onLoad,
+  onError,
 }: {
   size?: number;
   style?: StyleProp<ImageStyle>;
+  onLoad?: ImageProps["onLoad"];
+  onError?: ImageProps["onError"];
 }) {
   return (
     <Image
@@ -17,6 +21,8 @@ export function BrandMark({
       style={[styles.img, { width: size, height: size, borderRadius: size * 0.22 }, style]}
       accessibilityIgnoresInvertColors
       accessibilityLabel="Mapvest"
+      onLoad={onLoad}
+      onError={onError}
     />
   );
 }

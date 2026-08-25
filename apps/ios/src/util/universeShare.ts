@@ -1,3 +1,5 @@
+import type { Source } from "@/api/types";
+import { providerName } from "@/evidence/presentation";
 import { MAPVEST_URL } from "@/util/shareLinks";
 
 /**
@@ -11,6 +13,8 @@ export type UniverseShareSummary = {
   hypotheticalBasis?: number;
   hypotheticalValue: number;
   changePct: number;
+  generatedAt: string;
+  sources: readonly Source[];
 };
 
 export type UniverseShareCopy = {
@@ -21,6 +25,7 @@ export type UniverseShareCopy = {
   changePositive: boolean | null;
   basis: string;
   coverage: string;
+  provenance: string;
   disclaimer: string;
   footer: string;
   body: string;
@@ -59,6 +64,47 @@ function formatBasis(value: number | undefined): string {
     : "Hypothetical basis unavailable";
 }
 
+function formatCalculatedAt(raw: string): string {
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) return "Calculated time unavailable";
+
+  return `Calculated ${new Date(timestamp).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })}`;
+}
+
+function formatProvenance(sources: readonly Source[], generatedAt: string): string {
+  const calculatedAt = formatCalculatedAt(generatedAt);
+  const providers = [
+    ...new Set(
+      sources
+        .map((source) => providerName(source.provider))
+        .filter(
+          (provider): provider is string => typeof provider === "string" && provider.length > 0,
+        ),
+    ),
+  ];
+  const confidence = sources.some((source) => source.confidence === "low")
+    ? "low"
+    : sources.some((source) => source.confidence === "medium")
+      ? "medium"
+      : sources.every((source) => source.confidence === "high")
+        ? "high"
+        : "low";
+
+  if (sources.length === 0) {
+    return `No source citations returned · low confidence · ${calculatedAt}`;
+  }
+  if (providers.length === 0) {
+    return `Source attribution unavailable · ${confidence} confidence · ${calculatedAt}`;
+  }
+
+  return `Sources: ${providers.join(", ")} · ${confidence} confidence · ${calculatedAt}`;
+}
+
 function formatCoverage(summary: UniverseShareSummary): string {
   const valued = formatCount(summary.valuedFinds);
   const total = formatCount(summary.findCount);
@@ -82,15 +128,17 @@ export function universeShareCopy(summary: UniverseShareSummary): UniverseShareC
   const changePositive = Number.isFinite(summary.changePct) ? summary.changePct >= 0 : null;
   const basis = formatBasis(summary.hypotheticalBasis);
   const coverage = formatCoverage(summary);
+  const provenance = formatProvenance(summary.sources, summary.generatedAt);
   const disclaimer = "Collection snapshot, not a holdings statement or advice.";
   const eyebrow = "HYPOTHETICAL UNIVERSE";
   const headline = "My Mapvest universe";
-  const body = `${basis}\n${coverage}.\n${disclaimer}`;
+  const body = `${basis}\n${coverage}.\n${provenance}\n${disclaimer}`;
   const message = [
     headline,
     "",
     `${eyebrow}: ${basis} → ${value} (${change})`,
     `${coverage}.`,
+    provenance,
     disclaimer,
     "",
     `${MAPVEST_URL} · Mapvest`,
@@ -104,6 +152,7 @@ export function universeShareCopy(summary: UniverseShareSummary): UniverseShareC
     changePositive,
     basis,
     coverage,
+    provenance,
     disclaimer,
     footer: `${MAPVEST_URL} · Mapvest`,
     body,

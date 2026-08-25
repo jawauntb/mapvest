@@ -1,8 +1,8 @@
 import { BrandMark } from "@/components/BrandMark";
 import { colors, fonts, radii } from "@/theme/tokens";
 import type { UniverseShareCopy } from "@/util/universeShare";
-import { forwardRef } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { forwardRef, useState } from "react";
+import { StyleSheet, Text, View, type ViewProps } from "react-native";
 
 /**
  * A summary-only 4:5 card for social sharing. It intentionally accepts the
@@ -11,18 +11,38 @@ import { StyleSheet, Text, View } from "react-native";
  */
 export type UniverseShareCardProps = {
   copy: UniverseShareCopy;
+  onLayout?: ViewProps["onLayout"];
+  onBrandMarkReady?: () => void;
 };
 
 const CARD_WIDTH = 360;
 const CARD_HEIGHT = 450;
 
 export const UniverseShareCard = forwardRef<View, UniverseShareCardProps>(
-  function UniverseShareCard({ copy }, ref) {
+  function UniverseShareCard({ copy, onLayout, onBrandMarkReady }, ref) {
+    const [brandMarkFailed, setBrandMarkFailed] = useState(false);
+
     return (
-      <View ref={ref} collapsable={false} style={styles.card}>
+      <View ref={ref} collapsable={false} onLayout={onLayout} style={styles.card}>
         <View style={styles.header}>
           <View style={styles.brand}>
-            <BrandMark size={24} />
+            {brandMarkFailed ? (
+              <View accessible={false} style={styles.captureMark}>
+                <View style={styles.capturePin} />
+                <View style={styles.captureTape} />
+              </View>
+            ) : (
+              <BrandMark
+                size={24}
+                onLoad={onBrandMarkReady}
+                onError={() => {
+                  // A bundled asset should not fail, but the view-only mark keeps
+                  // capture usable if a platform cannot decode the PNG.
+                  setBrandMarkFailed(true);
+                  onBrandMarkReady?.();
+                }}
+              />
+            )}
             <Text style={styles.wordmark}>Mapvest</Text>
           </View>
           <Text style={styles.eyebrow}>{copy.eyebrow}</Text>
@@ -48,6 +68,7 @@ export const UniverseShareCard = forwardRef<View, UniverseShareCardProps>(
           </View>
           <Text style={styles.basis}>{copy.basis}</Text>
           <Text style={styles.coverage}>{copy.coverage}</Text>
+          <Text style={styles.provenance}>{copy.provenance}</Text>
           <Text style={styles.disclaimer}>{copy.disclaimer}</Text>
         </View>
 
@@ -79,6 +100,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  captureMark: {
+    width: 24,
+    height: 24,
+    borderRadius: 5,
+    overflow: "hidden",
+    backgroundColor: "#0C0E10",
+    position: "relative",
+  },
+  capturePin: {
+    position: "absolute",
+    left: 7,
+    top: 3,
+    width: 10,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 3,
+    borderColor: colors.accent,
+  },
+  captureTape: {
+    position: "absolute",
+    left: 3,
+    top: 16,
+    width: 18,
+    height: 2,
+    backgroundColor: colors.fg,
+    transform: [{ rotate: "-18deg" }],
   },
   wordmark: {
     color: colors.fg,
@@ -146,6 +194,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     fontWeight: "700",
+  },
+  provenance: {
+    color: colors.fgMuted,
+    fontSize: 11,
+    lineHeight: 16,
   },
   disclaimer: {
     color: colors.fgDim,
