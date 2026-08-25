@@ -1,5 +1,6 @@
 import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
 import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
+import { authSavePath } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ENTITLEMENTS_QUERY_KEY, useEntitlements } from "@/billing/useEntitlements";
@@ -75,6 +76,8 @@ export default function CameraScreen() {
   const { online } = useNetworkSync({ token: session?.token });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
+  const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
+  const authSaveNavigationRef = useRef(false);
   const [identifyStage, setIdentifyStage] = useState<IdentifyProgressStage>("preparing");
   // Never restore a frozen frame on mount — Camera means take a new picture.
   const [frozenUri, setFrozenUri] = useState<string | null>(null);
@@ -146,6 +149,10 @@ export default function CameraScreen() {
   // in the query cache as a Last snap chip, not as a stuck frozen frame.
   useFocusEffect(
     useCallback(() => {
+      // A cancelled/failed push leaves this tab in place; re-enable Save when
+      // it regains focus instead of leaving the control permanently locked.
+      authSaveNavigationRef.current = false;
+      setAuthSaveNavigationPending(false);
       resetToLive();
     }, [resetToLive]),
   );
@@ -335,7 +342,22 @@ export default function CameraScreen() {
   async function onSave() {
     if (!ticker || !top) return;
     if (!session?.token) {
-      router.push("/auth");
+      if (authSaveNavigationRef.current) return;
+      authSaveNavigationRef.current = true;
+      setAuthSaveNavigationPending(true);
+      try {
+        router.push(
+          authSavePath({
+            ticker,
+            name: top.brand.name,
+            sector: top.brand.sector,
+            source: "camera",
+          }) as never,
+        );
+      } catch {
+        authSaveNavigationRef.current = false;
+        setAuthSaveNavigationPending(false);
+      }
       return;
     }
     setSavedNote(`Saving ${ticker}…`);
@@ -610,9 +632,11 @@ export default function CameraScreen() {
               <View style={styles.cardActions}>
                 {ticker ? (
                   <Pressable
-                    style={styles.miniBtn}
+                    style={[styles.miniBtn, authSaveNavigationPending && { opacity: 0.55 }]}
                     onPress={() => void onSave()}
+                    disabled={authSaveNavigationPending}
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: authSaveNavigationPending }}
                     accessibilityLabel={`Save ${ticker} to watchlist`}
                   >
                     <Ionicons name="star-outline" size={13} color={colors.accent} />
