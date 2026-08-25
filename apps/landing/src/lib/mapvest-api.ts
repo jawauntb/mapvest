@@ -504,6 +504,14 @@ export type ResearchArticle = {
   error?: string;
 };
 
+export type ResearchConversationStatus =
+  | "queued"
+  | "running"
+  | "conclusive"
+  | "exhausted"
+  | "blocked"
+  | "error";
+
 export type AgentThread = {
   id: string;
   /** Canonical durable research identifier; `id` remains the compatibility alias. */
@@ -512,6 +520,7 @@ export type AgentThread = {
   preview: string;
   createdAt?: string;
   updatedAt?: string;
+  status: ResearchConversationStatus;
   messages?: ResearchArticle[];
 };
 
@@ -519,8 +528,21 @@ export function listAgentThreads() {
   return req<{ threads: AgentThread[]; count: number }>("/v1/agent/threads");
 }
 
-export function getAgentThread(id: string) {
-  return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`);
+export function getAgentThread(id: string, signal?: AbortSignal) {
+  return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`, { signal });
+}
+
+export function getAgentConversationStatus(id: string, signal?: AbortSignal) {
+  return req<{
+    conversationId: string;
+    status: ResearchConversationStatus;
+    phase?: string;
+    active?: boolean;
+    completedIterations?: number;
+    maxIterations?: number;
+    preview?: string;
+    updatedAt?: string;
+  }>(`/v1/agent/threads/${encodeURIComponent(id)}/status`, { signal });
 }
 
 export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
@@ -548,11 +570,13 @@ export function agentChat(
     conversationId?: string;
     threadId?: string;
     clientMessageId?: string;
+    status: ResearchConversationStatus;
     ticker?: string;
     article: ResearchArticle;
     userMessage?: ResearchArticle;
     provider?: string;
     sourceUrl?: string;
+    pending?: boolean;
   }>("/v1/agent/chat", {
     method: "POST",
     body: JSON.stringify({

@@ -8,6 +8,7 @@ import {
   type EntitlementState,
   type NearbyItem,
   type ResearchArticle,
+  type ResearchConversationStatus,
   type User,
   type WatchEntry,
   addToWatchlist,
@@ -21,7 +22,9 @@ import {
   fetchNearby,
   fetchSettings,
   generateMemo,
+  getAgentConversationStatus,
   getAgentThread,
+  getDeviceId,
   getMe,
   getQuote,
   getToken,
@@ -39,7 +42,7 @@ import {
 } from "@/lib/mapvest-api";
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 export default function AppPage() {
@@ -252,7 +255,9 @@ function Home({
         ) : null}
         {tab === "nearby" ? <NearbyTab /> : null}
         {tab === "identify" ? <IdentifyTab /> : null}
-        {tab === "research" ? <ResearchChatTab /> : null}
+        {tab === "research" ? (
+          <ResearchChatTab key={user?.id ?? "anonymous"} userId={user?.id} />
+        ) : null}
         {tab === "saved" ? (
           user ? (
             <SavedTab />
@@ -776,22 +781,83 @@ function IdentifyTab() {
 
 /* -------------------------- Research chat --------------------------- */
 
-const ACTIVE_RESEARCH_CONVERSATION_KEY = "mapvest.research.activeConversationId.v1";
+const LEGACY_ACTIVE_RESEARCH_CONVERSATION_KEY = "mapvest.research.activeConversationId.v1";
+const ACTIVE_RESEARCH_CONVERSATION_KEY_PREFIX = "mapvest.research.activeConversationId.v2";
+const RESEARCH_RECOVERY_INTERVAL_MS = 3_000;
+const RESEARCH_RECOVERY_MAX_ATTEMPTS = 100;
 
-function persistActiveResearchConversation(conversationId?: string) {
+const PENDING_RESEARCH_STATUSES = new Set<ResearchConversationStatus>(["queued", "running"]);
+
+class ResearchRecoveryTimeoutError extends Error {
+  constructor() {
+    super("Research is still running");
+    this.name = "ResearchRecoveryTimeoutError";
+  }
+}
+
+function activeResearchConversationKey(userId?: string) {
+  const scope = userId ? `user:${userId}` : `device:${getDeviceId() ?? "unavailable"}`;
+  return `${ACTIVE_RESEARCH_CONVERSATION_KEY_PREFIX}:${scope}`;
+}
+
+function persistActiveResearchConversation(storageKey: string, conversationId?: string) {
   try {
     if (conversationId) {
-      window.localStorage.setItem(ACTIVE_RESEARCH_CONVERSATION_KEY, conversationId);
+      window.localStorage.setItem(storageKey, conversationId);
     } else {
-      window.localStorage.removeItem(ACTIVE_RESEARCH_CONVERSATION_KEY);
+      window.localStorage.removeItem(storageKey);
     }
   } catch {
     // The in-memory conversation id still preserves continuity for this tab.
   }
 }
 
-function ResearchChatTab() {
+function isStaleResearchPointerError(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    (error.code === "research_conversation_not_found" ||
+      /research conversation not found/i.test(error.message))
+  );
+}
+
+function waitForResearchRecoveryInterval(signal: AbortSignal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, RESEARCH_RECOVERY_INTERVAL_MS);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForDurableResearchThread(conversationId: string, signal: AbortSignal) {
+  for (let attempt = 0; attempt < RESEARCH_RECOVERY_MAX_ATTEMPTS; attempt += 1) {
+    if (signal.aborted) throw signal.reason;
+    try {
+      const progress = await getAgentConversationStatus(conversationId, signal);
+      if (!PENDING_RESEARCH_STATUSES.has(progress.status)) {
+        return (await getAgentThread(conversationId, signal)).thread;
+      }
+    } catch (error) {
+      if (signal.aborted || isStaleResearchPointerError(error)) throw error;
+      // A transient status/display failure should not lose the durable pointer.
+    }
+    if (attempt + 1 < RESEARCH_RECOVERY_MAX_ATTEMPTS) {
+      await waitForResearchRecoveryInterval(signal);
+    }
+  }
+  throw new ResearchRecoveryTimeoutError();
+}
+
+function ResearchChatTab({ userId }: { userId?: string }) {
   const { presentPaywall } = usePaywall();
+  const storageKey = useMemo(() => activeResearchConversationKey(userId), [userId]);
   const [threads, setThreads] = useState<AgentThread[] | null>(null);
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
@@ -800,32 +866,70 @@ function ResearchChatTab() {
   const [err, setErr] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "chat">("list");
   const retryRef = useRef<{ message: string; clientMessageId: string } | null>(null);
+  const researchLoadRef = useRef<AbortController | null>(null);
+
+  const cancelResearchLoad = useCallback(() => {
+    researchLoadRef.current?.abort();
+    researchLoadRef.current = null;
+  }, []);
+
+  const loadResearchConversation = useCallback(
+    async (conversationId: string) => {
+      cancelResearchLoad();
+      const controller = new AbortController();
+      researchLoadRef.current = controller;
+      setBusy(true);
+      setErr(null);
+      try {
+        let thread: AgentThread | undefined;
+        try {
+          thread = (await getAgentThread(conversationId, controller.signal)).thread;
+          if (!controller.signal.aborted) setTurns(thread.messages ?? []);
+        } catch (error) {
+          if (controller.signal.aborted || isStaleResearchPointerError(error)) throw error;
+          // Recover through the lightweight status endpoint when display briefly fails.
+        }
+
+        if (!thread || PENDING_RESEARCH_STATUSES.has(thread.status)) {
+          thread = await waitForDurableResearchThread(conversationId, controller.signal);
+          if (!controller.signal.aborted) setTurns(thread.messages ?? []);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (isStaleResearchPointerError(error)) {
+          setThreadId(undefined);
+          persistActiveResearchConversation(storageKey);
+          setTurns([]);
+          setErr(error instanceof Error ? error.message : "research conversation not found");
+        } else if (error instanceof ResearchRecoveryTimeoutError) {
+          setErr("Research is still running. This chat is saved; reopen it to refresh.");
+        } else {
+          setErr("Could not refresh research yet. This chat is still saved.");
+        }
+      } finally {
+        if (researchLoadRef.current === controller) {
+          researchLoadRef.current = null;
+          setBusy(false);
+        }
+      }
+    },
+    [cancelResearchLoad, storageKey],
+  );
 
   useEffect(() => {
-    let active = true;
     try {
-      const persisted = window.localStorage.getItem(ACTIVE_RESEARCH_CONVERSATION_KEY);
+      // The old unscoped key could belong to a different signed-in owner.
+      window.localStorage.removeItem(LEGACY_ACTIVE_RESEARCH_CONVERSATION_KEY);
+      const persisted = window.localStorage.getItem(storageKey);
       if (!persisted) return;
       setView("chat");
       setThreadId(persisted);
-      getAgentThread(persisted)
-        .then((response) => {
-          if (active) setTurns(response.thread.messages ?? []);
-        })
-        .catch((error) => {
-          if (active) {
-            setThreadId(undefined);
-            persistActiveResearchConversation();
-            setErr(error instanceof Error ? error.message : "load failed");
-          }
-        });
+      void loadResearchConversation(persisted);
     } catch {
       // Research remains usable when browser storage is unavailable.
     }
-    return () => {
-      active = false;
-    };
-  }, []);
+    return cancelResearchLoad;
+  }, [cancelResearchLoad, loadResearchConversation, storageKey]);
 
   useEffect(() => {
     if (view !== "list") return;
@@ -838,27 +942,21 @@ function ResearchChatTab() {
     setView("chat");
     setThreadId(id);
     retryRef.current = null;
-    persistActiveResearchConversation(id);
-    setErr(null);
-    try {
-      const r = await getAgentThread(id);
-      setTurns(r.thread.messages ?? []);
-      void title;
-    } catch (e) {
-      setThreadId(undefined);
-      persistActiveResearchConversation();
-      setErr(e instanceof Error ? e.message : "load failed");
-      setTurns([]);
-    }
+    persistActiveResearchConversation(storageKey, id);
+    setTurns([]);
+    void title;
+    await loadResearchConversation(id);
   }
 
   function newChat() {
+    cancelResearchLoad();
     setView("chat");
     setThreadId(undefined);
     retryRef.current = null;
-    persistActiveResearchConversation();
+    persistActiveResearchConversation(storageKey);
     setTurns([]);
     setInput("");
+    setBusy(false);
     setErr(null);
   }
 
@@ -898,12 +996,15 @@ function ResearchChatTab() {
       const conversationId = r.conversationId ?? r.threadId;
       if (conversationId) {
         setThreadId(conversationId);
-        persistActiveResearchConversation(conversationId);
+        persistActiveResearchConversation(storageKey, conversationId);
       }
       retryRef.current = null;
       setTurns((turns) =>
         turns.some((turn) => turn.id === r.article.id) ? turns : [...turns, r.article],
       );
+      if (conversationId && (r.pending || PENDING_RESEARCH_STATUSES.has(r.status))) {
+        await loadResearchConversation(conversationId);
+      }
     } catch (e) {
       retryRef.current = { message: msg, clientMessageId };
       setInput(msg);
