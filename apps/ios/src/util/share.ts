@@ -20,6 +20,7 @@ import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import type { RefObject } from "react";
 import { Share } from "react-native";
 import { MAPVEST_URL } from "./shareLinks";
 
@@ -124,12 +125,14 @@ export async function shareResearchMemo(memoUrl: string, token?: string): Promis
  * We sanitize it before use.
  *
  * `textFallback` is the text used if the view-shot library isn't available.
- * Callers should always pass this so degradation is silent to the user.
+ * Pass a string for an already-formatted message, or a ShareBriefTextInput
+ * for the standard Mapvest Daily formatter. Callers should always pass this so
+ * degradation is silent to the user.
  */
 export async function shareBriefImage(
-  viewRef: React.RefObject<unknown> | null,
+  viewRef: RefObject<unknown> | null,
   filename: string,
-  textFallback: ShareBriefTextInput,
+  textFallback: ShareBriefTextInput | string,
 ): Promise<void> {
   // Dynamic require so bundlers/metro don't try to resolve at build time —
   // matches the "degrade gracefully if not installed" contract.
@@ -164,7 +167,7 @@ export async function shareBriefImage(
       // eslint-disable-next-line no-console
       console.info("[share] view-shot not available — falling back to text share");
     }
-    return shareBriefText(textFallback);
+    return shareTextFallback(textFallback);
   }
 
   try {
@@ -183,11 +186,23 @@ export async function shareBriefImage(
       });
     } else {
       // No sharing sheet — fall back to text so the tap isn't a dead-end.
-      await shareBriefText(textFallback);
+      await shareTextFallback(textFallback);
     }
   } catch {
     // Snapshot itself failed (off-screen view, GL surface issues, etc.) —
     // silently fall back to text so the share button is never "broken".
-    await shareBriefText(textFallback);
+    await shareTextFallback(textFallback);
   }
+}
+
+async function shareTextFallback(textFallback: ShareBriefTextInput | string): Promise<void> {
+  if (typeof textFallback === "string") {
+    try {
+      await Share.share({ message: textFallback });
+    } catch {
+      // A dismissed or unavailable native sheet is still a graceful fallback.
+    }
+    return;
+  }
+  await shareBriefText(textFallback);
 }
