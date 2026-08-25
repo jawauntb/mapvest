@@ -88,6 +88,7 @@ const S = {
   AgentChatRequest: component("AgentChatRequest", raw.AgentChatRequest),
   AgentChatResponse: component("AgentChatResponse", raw.AgentChatResponse),
   AgentThreadSummary: component("AgentThreadSummary", raw.AgentThreadSummary),
+  AgentConversationStatus: component("AgentConversationStatus", raw.AgentConversationStatus),
   ResearchArticle: component("ResearchArticle", raw.ResearchArticle),
   User: component("User", raw.User),
   Session: component("Session", raw.Session),
@@ -1052,9 +1053,9 @@ registry.registerPath({
 registry.registerPath({
   method: "post",
   path: "/v1/agent/chat",
-  summary: "Ticker-bound research brief (Derivation idea-chats)",
+  summary: "Start or continue a durable research conversation",
   description:
-    "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off.",
+    "Uses Derivation Research Console /api/explore in agent mode, then returns its display projection as an article-shaped turn. Follow-ups reuse conversationId and one clientMessageId per user message. Broker orders stay disabled.",
   tags: ["finance"],
   request: {
     body: {
@@ -1068,10 +1069,17 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: "Research article + optional thread id.",
+      description: "Completed research turn and durable conversation reference.",
       content: { "application/json": { schema: S.AgentChatResponse } },
     },
-    402: errorResponses[402],
+    202: {
+      description: "Conversation accepted and still running; recover through the status endpoint.",
+      content: { "application/json": { schema: S.AgentChatResponse } },
+    },
+    404: errorResponse("Conversation does not belong to this caller or no longer exists."),
+    409: errorResponse("Conversation is blocked or has exhausted its iteration budget."),
+    502: errorResponse("Research Console returned an invalid response or failed."),
+    503: errorResponse("Research Console configuration or service is unavailable."),
     ...errorResponses,
   },
 });
@@ -1080,7 +1088,7 @@ registry.registerPath({
   method: "get",
   path: "/v1/agent/threads",
   summary: "List persisted research brief threads",
-  description: "Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs.",
+  description: "Lists the caller's Mapvest-owned durable conversation references.",
   tags: ["finance"],
   responses: {
     200: {
@@ -1101,8 +1109,34 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/v1/agent/threads/{id}/status",
+  summary: "Get lightweight durable research status",
+  description: "Uses Derivation GET /api/autoresearch?summary=1 for an owned conversation.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      id: z.string().openapi({
+        param: { name: "id", in: "path" },
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Conversation status and progress.",
+      content: { "application/json": { schema: S.AgentConversationStatus } },
+    },
+    404: errorResponse("Conversation does not belong to this caller or no longer exists."),
+    502: errorResponse("Research Console status recovery failed."),
+    503: errorResponse("Research Console configuration or service is unavailable."),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/v1/agent/threads/{id}",
   summary: "Get one research brief thread",
+  description: "Uses Derivation GET /api/autoresearch?display=1 for an owned conversation.",
   tags: ["finance"],
   request: {
     params: z.object({
@@ -1120,6 +1154,9 @@ registry.registerPath({
         },
       },
     },
+    404: errorResponse("Conversation does not belong to this caller or no longer exists."),
+    502: errorResponse("Research Console display recovery failed."),
+    503: errorResponse("Research Console configuration or service is unavailable."),
     ...errorResponses,
   },
 });

@@ -661,6 +661,7 @@ export const AgentChatResponse = z.object({
     .optional(),
   sourceUrl: z.string().url().optional(),
   provider: z.string().optional(),
+  pending: z.boolean().optional(),
 });
 export type AgentChatResponse = z.infer<typeof AgentChatResponse>;
 

@@ -1190,7 +1190,7 @@
           }
         },
         {
-          "name": "Ticker-bound research brief (Derivation idea-chats)",
+          "name": "Start or continue a durable research conversation",
           "request": {
             "method": "POST",
             "header": [
@@ -1213,14 +1213,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"\",\n  \"ticker\": \"\",\n  \"threadId\": \"\"\n}",
+              "raw": "{\n  \"message\": \"\",\n  \"ticker\": \"\",\n  \"conversationId\": \"\",\n  \"threadId\": \"\",\n  \"clientMessageId\": \"\",\n  \"researchDepth\": \"auto\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off."
+            "description": "Uses Derivation Research Console /api/explore in agent mode, then returns its display projection as an article-shaped turn. Follow-ups reuse conversationId and one clientMessageId per user message. Broker orders stay disabled."
           }
         },
         {
@@ -1239,7 +1239,28 @@
                 "threads"
               ]
             },
-            "description": "Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs."
+            "description": "Lists the caller's Mapvest-owned durable conversation references."
+          }
+        },
+        {
+          "name": "Get lightweight durable research status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agent/threads/{id}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "agent",
+                "threads",
+                "{id}",
+                "status"
+              ]
+            },
+            "description": "Uses Derivation GET /api/autoresearch?summary=1 for an owned conversation."
           }
         },
         {
@@ -1258,7 +1279,8 @@
                 "threads",
                 "{id}"
               ]
-            }
+            },
+            "description": "Uses Derivation GET /api/autoresearch?display=1 for an owned conversation."
           }
         },
         {

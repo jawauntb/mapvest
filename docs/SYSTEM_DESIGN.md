@@ -143,13 +143,13 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 **Trade-off accepted**: Postgres is queried with a `count(*)` per quota check rather than a cached counter. At v0.1 traffic this is fine (`usage_events` is indexed on both `user_id` and `device_id`); revisit with a materialized counter column if quota checks show up in the hot-path latency budget.
 
-## D13 — Research SSE must heartbeat or the brief never lands
+## D13 — Research chat is one durable Console conversation
 
-**Decision**: `POST /v1/agent/stream` emits a `ping` SSE frame every 3s for the whole handler (serialized with article/token writes) and sets `X-Accel-Buffering: no`. The iOS Research sheet falls back to blocking `POST /v1/agent/chat` whenever the stream ends without an `article`, even if it already received `reasoning` / keepalive frames.
+**Decision**: Both Mapvest research entry points call Derivation `POST /api/explore` with `mode: "agent"`. A follow-up sends the returned conversation ID with `message_mode: "steer"`; retries reuse the same client message ID. Mapvest polls `/api/autoresearch?summary=1` for progress and requests `display=1` for the full article projection.
 
-**Why**: Production reproduction on 2026-08-18: `/v1/agent/stream` sent `event: reasoning` ("Contacting research agent…") then EOF at ~10s with no article. The same prompt on `/v1/agent/chat` returned an OpenRouter fallback brief in ~18s (`provider: "openrouter"`, Derivation `mode: "blocked"`). Railway Hikari closes idle streamed responses around 10s; iOS URLSession does the same. The first reasoning frame made the client treat the stream as started, so it did **not** fall back to `/chat` and showed `stream ended without an article`.
+**Why**: The Console now puts its full research behavior behind `/api/explore`; campaigns are an internal execution detail. Keeping the existing Mapvest chat and SSE routes avoids a second campaign UI while giving every turn the richer evidence path. The service bearer remains server-side, and Mapvest stores only owner-scoped conversation references.
 
-Heartbeats keep the Mapvest→client pipe open while Derivation and/or OpenRouter run. `/chat` remains the source of truth if the stream still dies. Fixing Derivation's blocked/budget path is still a sibling-service change.
+`POST /v1/agent/stream` still emits 3-second `ping` frames so Railway and iOS do not close an otherwise idle poll. If the client retries through `/v1/agent/chat`, it reuses the same client message ID so the Console does not start duplicate work. Blocked or exhausted conversations are surfaced as such; Mapvest does not replace them with a tools-free model response.
 
 ## D14 — Global rate limit keys by session, not shared NAT IP
 

@@ -31,7 +31,7 @@ in `eas.json`.
 - `/(tabs)/camera` — full-frame capture → `POST /v1/identify`. Result card
   taps through to the detail sheet.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
-- `/(tabs)/research` — ChatGPT-like research threads (Derivation idea-chats → article briefs).
+- `/(tabs)/research` — ChatGPT-like durable research conversations (Derivation unified agent → article briefs).
 - `/watchlists` — watchlist + cockpit/alerts; ★ Save / memos from detail.
 - `/(tabs)/admin` — hidden unless the signed-in user has `admin` scope.
 - `/detail/[id]` — Investable is a stack **card** (not a page-sheet modal).
