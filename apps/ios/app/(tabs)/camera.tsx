@@ -1,5 +1,6 @@
 import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
 import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
+import { authSavePath } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ENTITLEMENTS_QUERY_KEY, useEntitlements } from "@/billing/useEntitlements";
@@ -335,7 +336,14 @@ export default function CameraScreen() {
   async function onSave() {
     if (!ticker || !top) return;
     if (!session?.token) {
-      router.push("/auth");
+      router.push(
+        authSavePath({
+          ticker,
+          name: top.brand.name,
+          sector: top.brand.sector,
+          source: "camera",
+        }) as never,
+      );
       return;
     }
     setSavedNote(`Saving ${ticker}…`);

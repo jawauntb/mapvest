@@ -16,6 +16,7 @@ import {
 } from "@/api/client";
 import { coerceResolve, looksLikeTicker, routeParam } from "@/api/resolveFallback";
 import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
+import { authSavePath } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
@@ -1137,16 +1138,19 @@ function WatchlistActions({
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
-            onPress={() => router.push("/auth")}
+            onPress={() =>
+              router.push(authSavePath({ ticker: sym, name, sector, source: "detail" }) as never)
+            }
             style={({ pressed }) => [
               styles.actionBtn,
               styles.actionBtnActive,
               pressed && { opacity: 0.7 },
             ]}
             accessibilityRole="button"
-            accessibilityLabel="Sign in"
+            accessibilityLabel={`Sign in to save ${sym}`}
           >
-            <Text style={[styles.actionBtnText, { color: colors.accentInk }]}>Sign in</Text>
+            <Ionicons name="star-outline" size={15} color={colors.accentInk} />
+            <Text style={[styles.actionBtnText, { color: colors.accentInk }]}>Save</Text>
           </Pressable>
           <Pressable
             onPress={() => memoM.mutate()}

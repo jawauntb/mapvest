@@ -1,4 +1,5 @@
-import { requestMagicLink, verifyMagicLink } from "@/api/client";
+import { addToWatchlist, requestMagicLink, verifyMagicLink } from "@/api/client";
+import { parseSaveContinuation, saveContinuationDestination } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -6,8 +7,8 @@ import { ScreenFade } from "@/components/ScreenFade";
 import { colors, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -24,11 +25,31 @@ type Stage = "email" | "code";
 export default function AuthScreen() {
   const { signIn } = useSession();
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    intent?: string | string[];
+    ticker?: string | string[];
+    name?: string | string[];
+    sector?: string | string[];
+    source?: string | string[];
+  }>();
+  const continuation = useMemo(
+    () =>
+      parseSaveContinuation({
+        intent: params.intent,
+        ticker: params.ticker,
+        name: params.name,
+        sector: params.sector,
+        source: params.source,
+      }),
+    [params.intent, params.name, params.sector, params.source, params.ticker],
+  );
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const submitInFlight = useRef(false);
   // v0.1: API returns devCode inline (AUTH_RETURN_CODE=1) since email isn't
   // wired yet. Show it under the code input so the demo can complete.
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -48,16 +69,41 @@ export default function AuthScreen() {
   }
 
   async function submitCode() {
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setErr(null);
     setBusy(true);
+    setStatus("Verifying your code…");
+    let navigating = false;
     try {
       const { session, user } = await verifyMagicLink(email.trim().toLowerCase(), code.trim());
       await signIn(session, user);
-      router.replace("/(tabs)/map");
+      if (continuation) {
+        setStatus(`Saving $${continuation.ticker} to your watchlist…`);
+        await addToWatchlist(
+          {
+            ticker: continuation.ticker,
+            name: continuation.name,
+            sector: continuation.sector,
+            source: continuation.source,
+          },
+          { token: session.token },
+        );
+        router.replace(saveContinuationDestination(continuation) as never);
+      } else {
+        router.replace("/(tabs)/map");
+      }
+      navigating = true;
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Invalid code. Try again.");
+      setStatus(null);
+      setErr(e instanceof Error ? e.message : "Could not sign in. Try again.");
     } finally {
-      setBusy(false);
+      // Keep the CTA locked until the completed route replaces this screen.
+      // A double press cannot create a second post-auth save request.
+      if (!navigating) {
+        submitInFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -75,7 +121,9 @@ export default function AuthScreen() {
             <Text style={styles.title}>Mapvest</Text>
             <Text style={styles.subtitle}>
               {stage === "email"
-                ? "Enter your email — we'll send you a one-time code."
+                ? continuation
+                  ? `Sign in to save $${continuation.ticker}. We’ll return to its details when it’s saved.`
+                  : "Enter your email — we'll send you a one-time code."
                 : `We sent a code to ${email}. Enter it below.`}
             </Text>
 
@@ -126,6 +174,11 @@ export default function AuthScreen() {
               </Pressable>
             ) : null}
 
+            {status ? (
+              <Text accessibilityLiveRegion="polite" style={styles.status}>
+                {status}
+              </Text>
+            ) : null}
             {err ? <Text style={styles.err}>{err}</Text> : null}
 
             <PrimaryButton
@@ -178,6 +231,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   err: { color: colors.danger, fontSize: 13 },
+  status: { color: colors.fgMuted, fontSize: 13 },
   devCode: {
     color: colors.accent,
     fontSize: 13,

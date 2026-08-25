@@ -57,6 +57,10 @@ identify, the camera only marks client-observable work complete (photo ready,
 then request started) and names the public-match lookup as the next step — it
 does not fabricate server-side progress. Result-card motion is disabled when
 the system requests Reduce Motion.
+A signed-out **Save** from Camera or Detail carries the ticker and save source
+through magic-link auth, shows a verified-then-saving state, upserts the
+watchlist entry idempotently, and returns to that ticker’s Detail context. The
+client never accepts an arbitrary post-auth redirect URL.
 
 The product is four layers, in this order: **(A) identify** anything around
 you via camera or map (public ticker, or private → public comparable + ETF)
