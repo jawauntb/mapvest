@@ -33,15 +33,17 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
+import { UniverseShareCard } from "@/components/UniverseShareCard";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
-import { MAPVEST_URL } from "@/util/share";
+import { shareBriefImage } from "@/util/share";
+import { universeShareCopy } from "@/util/universeShare";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { useMemo } from "react";
-import { FlatList, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Row =
@@ -70,21 +72,6 @@ function money(n: number): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })}`;
-}
-
-/**
- * The shareable form of the counterfactual. It says "hypothetical" by saying
- * "per $100/find" — this is a collection artifact, never a holdings statement
- * and never advice (roadmap A3 framing rule).
- */
-function shareTextFor(summary: UniverseSummary): string {
-  const sign = summary.changePct >= 0 ? "+" : "";
-  return [
-    `My Mapvest universe: ${money(summary.hypotheticalValue)} per $100/find`,
-    ` (${sign}${summary.changePct.toFixed(1)}%) across ${summary.valuedFinds} find`,
-    summary.valuedFinds === 1 ? "" : "s",
-    `\nHypothetical — $100 into each brand the moment I found it. ${MAPVEST_URL}`,
-  ].join("");
 }
 
 /** "Lv 3 · 240 XP" — compact, and only when the progression store answered. */
@@ -145,6 +132,22 @@ export default function UniverseScreen() {
     retry: false,
   });
   const summary: UniverseSummary | undefined = summaryQ.data;
+  const shareCopy = summary ? universeShareCopy(summary) : undefined;
+  const shareCardRef = useRef<View>(null);
+  const sharingRef = useRef(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  async function shareUniverse() {
+    if (!summary || !shareCopy || sharingRef.current) return;
+    sharingRef.current = true;
+    setIsSharing(true);
+    try {
+      await shareBriefImage(shareCardRef, "mapvest-universe.png", shareCopy.message);
+    } finally {
+      sharingRef.current = false;
+      setIsSharing(false);
+    }
+  }
 
   const dexQ = useQuery({
     queryKey: ["dex", session?.token],
@@ -276,7 +279,7 @@ export default function UniverseScreen() {
                 </View>
                 {/* Counterfactual portfolio — hypothetical, and only ever drawn
                     from finds the server could actually value. */}
-                {summary && summary.valuedFinds > 0 ? (
+                {summary && summary.valuedFinds > 0 && shareCopy ? (
                   <View style={styles.counterfactual}>
                     <View style={styles.cfHead}>
                       <View style={{ flex: 1 }}>
@@ -302,13 +305,24 @@ export default function UniverseScreen() {
                         </Text>
                       </View>
                       <ShareButton
-                        accessibilityLabel="Share your universe"
-                        onPress={() => {
-                          // RN's Share sheet resolves quietly on dismiss and
-                          // rejects on odd OS failures — neither is worth an alert.
-                          void Share.share({ message: shareTextFor(summary) }).catch(() => {});
-                        }}
+                        label={isSharing ? "Preparing…" : "Share"}
+                        accessibilityLabel={
+                          isSharing ? "Preparing universe share" : "Share your universe"
+                        }
+                        busy={isSharing}
+                        onPress={shareUniverse}
                       />
+                    </View>
+                    {/* Kept mounted off-screen so view-shot can capture a stable
+                        4:5 card without exposing private Find records. */}
+                    <View
+                      style={styles.shareCardCapture}
+                      pointerEvents="none"
+                      accessible={false}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      <UniverseShareCard ref={shareCardRef} copy={shareCopy} />
                     </View>
                   </View>
                 ) : null}
@@ -573,6 +587,11 @@ const styles = StyleSheet.create({
   cfValue: { color: colors.fg, fontSize: 18, fontWeight: "800" },
   cfDelta: { fontSize: 13, fontWeight: "700" },
   cfFoot: { color: colors.fgDim, fontSize: 11, marginTop: 2 },
+  shareCardCapture: {
+    position: "absolute",
+    left: -10_000,
+    top: 0,
+  },
   dexRow: {
     paddingHorizontal: 16,
     paddingTop: 10,

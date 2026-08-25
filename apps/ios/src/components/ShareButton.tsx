@@ -1,7 +1,7 @@
 import { colors, motion, radii } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -19,19 +19,27 @@ export function ShareButton({
   label,
   style,
   accessibilityLabel,
+  busy = false,
+  disabled = false,
 }: {
   onPress: () => void;
   /** Optional label — omit for icon-only. */
   label?: string;
   style?: ViewStyle;
   accessibilityLabel?: string;
+  /** Shows a spinner and blocks duplicate native share sheets. */
+  busy?: boolean;
+  disabled?: boolean;
 }) {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const isDisabled = disabled || busy;
 
   return (
     <AnimatedPressable
+      disabled={isDisabled}
       onPress={() => {
+        if (isDisabled) return;
         hapticTap();
         onPress();
       }}
@@ -43,10 +51,21 @@ export function ShareButton({
       }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label ?? "Share"}
+      accessibilityState={{ disabled: isDisabled, busy }}
       hitSlop={8}
-      style={[animStyle, styles.btn, label ? styles.btnWithLabel : styles.btnIconOnly, style]}
+      style={[
+        animStyle,
+        styles.btn,
+        label ? styles.btnWithLabel : styles.btnIconOnly,
+        isDisabled && styles.disabled,
+        style,
+      ]}
     >
-      <Ionicons name="share-outline" size={16} color={colors.accent} />
+      {busy ? (
+        <ActivityIndicator size="small" color={colors.accent} />
+      ) : (
+        <Ionicons name="share-outline" size={16} color={colors.accent} />
+      )}
       {label ? <Text style={styles.label}>{label}</Text> : null}
     </AnimatedPressable>
   );
@@ -76,5 +95,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.2,
+  },
+  disabled: {
+    opacity: 0.65,
   },
 });
