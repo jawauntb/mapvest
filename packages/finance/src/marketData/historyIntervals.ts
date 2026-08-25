@@ -48,7 +48,9 @@ const LOOKBACK_DAYS: Record<HistoryPeriod, number> = {
 };
 
 export function normalizeHistoryInterval(value?: string | null): HistoryInterval {
-  const raw = String(value ?? "1d").trim().toLowerCase();
+  const raw = String(value ?? "1d")
+    .trim()
+    .toLowerCase();
   const interval = INTERVAL_ALIASES[raw];
   if (!interval) throw new Error("interval must be 15m, 1d, or 1w");
   return interval;
@@ -88,7 +90,9 @@ export function applyLiveClose(
 ): HistoryPoint[] {
   if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return points;
   const parsed = Date.parse(quote.ts);
-  const quoteTs = Number.isFinite(parsed) ? Math.floor(parsed / 1_000) : Math.floor(Date.now() / 1_000);
+  const quoteTs = Number.isFinite(parsed)
+    ? Math.floor(parsed / 1_000)
+    : Math.floor(Date.now() / 1_000);
   if (points.length === 0) return [{ ts: quoteTs, close: quote.price }];
   const last = points[points.length - 1]!;
   if (barKey(last.ts, interval) === barKey(quoteTs, interval)) {

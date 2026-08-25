@@ -157,7 +157,8 @@ export async function createAlert(userId: string, input: CreateAlertInput): Prom
     createdAt: createdAt.toISOString(),
     disabled: false,
   };
-  if (input.note && input.note.trim()) alert.note = input.note.trim();
+  const note = input.note?.trim();
+  if (note) alert.note = note;
 
   memBucket(userId).set(id, alert);
 

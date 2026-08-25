@@ -102,8 +102,8 @@ describe("mapvest resolve", () => {
   });
 
   test("returns 1 on API error", async () => {
-    const restore = mockFetch(async () =>
-      new Response(JSON.stringify({ error: "brand required" }), { status: 400 }),
+    const restore = mockFetch(
+      async () => new Response(JSON.stringify({ error: "brand required" }), { status: 400 }),
     );
     const out: string[] = [];
     const code = await runResolve(["x"], (s) => out.push(s));

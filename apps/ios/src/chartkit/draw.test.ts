@@ -9,7 +9,7 @@ import {
   polygonFillStrips,
   segmentFrame,
   sparklinePoints,
-} from "./draw.ts";
+} from "./draw";
 
 describe("segmentFrame", () => {
   test("centers the bar on the true midpoint so rotation covers A→B", () => {

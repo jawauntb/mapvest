@@ -24,8 +24,8 @@ import {
   renameWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
-import { BacktestCard } from "@/components/BacktestCard";
 import { AppTopBar } from "@/components/AppTopBar";
+import { BacktestCard } from "@/components/BacktestCard";
 import { EmptyState } from "@/components/EmptyState";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -37,16 +37,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import {
-  Alert,
-  FlatList,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -232,27 +223,18 @@ export default function WatchlistDetailScreen() {
                 <Pressable
                   onPress={submitAdd}
                   disabled={!addSym.trim() || addMut.isPending}
-                  style={[
-                    styles.addBtn,
-                    (!addSym.trim() || addMut.isPending) && { opacity: 0.5 },
-                  ]}
+                  style={[styles.addBtn, (!addSym.trim() || addMut.isPending) && { opacity: 0.5 }]}
                   accessibilityRole="button"
                   accessibilityLabel="Add ticker"
                 >
-                  <Text style={styles.addBtnText}>
-                    {addMut.isPending ? "…" : "Add"}
-                  </Text>
+                  <Text style={styles.addBtnText}>{addMut.isPending ? "…" : "Add"}</Text>
                 </Pressable>
               </View>
 
-              {session?.token ? (
-                <BacktestCard tickers={tickers} token={session.token} />
-              ) : null}
+              {session?.token ? <BacktestCard tickers={tickers} token={session.token} /> : null}
 
               <Text style={styles.sectionTitle}>Tickers</Text>
-              <Text style={styles.count}>
-                {entries.length} in this list
-              </Text>
+              <Text style={styles.count}>{entries.length} in this list</Text>
             </View>
           }
           ItemSeparatorComponent={() => <View style={styles.sep} />}
@@ -260,9 +242,7 @@ export default function WatchlistDetailScreen() {
             <WatchRow
               entry={item}
               quote={quotes[item.ticker.toUpperCase()]}
-              onPress={() =>
-                router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })
-              }
+              onPress={() => router.push({ pathname: "/detail/[id]", params: { id: item.ticker } })}
               onDelete={() => removeMut.mutate(item.ticker)}
             />
           )}
@@ -481,7 +461,13 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  titleWrap: { flex: 1, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 },
+  titleWrap: {
+    flex: 1,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  },
   title: { color: colors.fg, ...type.h3, fontSize: 18, maxWidth: 220 },
   titleTag: {
     color: colors.accent,
@@ -576,7 +562,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 4,
   },
-  count: { color: colors.fgDim, fontSize: 12, paddingHorizontal: 16, marginTop: 2, marginBottom: 6 },
+  count: {
+    color: colors.fgDim,
+    fontSize: 12,
+    paddingHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 6,
+  },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 16 },
   row: {
     flexDirection: "row",

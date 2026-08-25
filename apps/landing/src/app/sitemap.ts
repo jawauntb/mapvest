@@ -1,7 +1,7 @@
-import type { MetadataRoute } from 'next';
-import { listDocs } from '../lib/docs';
+import type { MetadataRoute } from "next";
+import { listDocs } from "../lib/docs";
 
-const SITE_URL = 'https://mapvest.app';
+const SITE_URL = "https://mapvest.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -9,25 +9,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
     {
       url: `${SITE_URL}/`,
       lastModified: now,
-      changeFrequency: 'weekly',
+      changeFrequency: "weekly",
       priority: 1,
     },
     {
       url: `${SITE_URL}/docs`,
       lastModified: now,
-      changeFrequency: 'weekly',
+      changeFrequency: "weekly",
       priority: 0.8,
     },
     {
       url: `${SITE_URL}/privacy`,
       lastModified: now,
-      changeFrequency: 'yearly',
+      changeFrequency: "yearly",
       priority: 0.3,
     },
     {
       url: `${SITE_URL}/terms`,
       lastModified: now,
-      changeFrequency: 'yearly',
+      changeFrequency: "yearly",
       priority: 0.3,
     },
   ];
@@ -36,7 +36,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     entries.push({
       url: `${SITE_URL}/docs/${doc.slug}`,
       lastModified: now,
-      changeFrequency: 'monthly',
+      changeFrequency: "monthly",
       priority: 0.6,
     });
   }

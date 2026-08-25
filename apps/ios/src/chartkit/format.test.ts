@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { safeFixed, safeUpper } from "./format.ts";
+import { safeFixed, safeUpper } from "./format";
 
 describe("chart formatters", () => {
   test("safeFixed never throws on junk", () => {

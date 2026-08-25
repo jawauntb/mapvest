@@ -39,10 +39,7 @@ const UNKNOWN_LABEL = "Unknown";
  * "Other" bucket. Sorted descending by count. Percentages sum to 1 within
  * float tolerance.
  */
-export function buildSegments(
-  counts: Record<string, number>,
-  maxTop = 6,
-): SectorSegment[] {
+export function buildSegments(counts: Record<string, number>, maxTop = 6): SectorSegment[] {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (total === 0) return [];
 
@@ -73,20 +70,12 @@ export function buildSegments(
   return segs;
 }
 
-export function SectorRing({
-  segments,
-  loading,
-  onSelect,
-  selectedSector,
-}: SectorRingProps) {
+export function SectorRing({ segments, loading, onSelect, selectedSector }: SectorRingProps) {
   const [localSelected, setLocalSelected] = useState<string | null>(null);
   // Support controlled and uncontrolled selection.
   const selected = selectedSector !== undefined ? selectedSector : localSelected;
 
-  const total = useMemo(
-    () => segments.reduce((a, s) => a + s.count, 0),
-    [segments],
-  );
+  const total = useMemo(() => segments.reduce((a, s) => a + s.count, 0), [segments]);
 
   const selectedSeg = useMemo(
     () => segments.find((s) => s.sector === selected) ?? null,
@@ -148,14 +137,12 @@ export function SectorRing({
 
       {selectedSeg ? (
         <View style={styles.pill}>
-          <View
-            style={[styles.pillDot, { backgroundColor: selectedSeg.color }]}
-          />
+          <View style={[styles.pillDot, { backgroundColor: selectedSeg.color }]} />
           <Text style={styles.pillText} numberOfLines={1}>
             {formatSector(selectedSeg.sector)}
-            <Text style={styles.pillSep}>  ·  </Text>
+            <Text style={styles.pillSep}>{"  ·  "}</Text>
             {selectedSeg.count} ticker{selectedSeg.count === 1 ? "" : "s"}
-            <Text style={styles.pillSep}>  ·  </Text>
+            <Text style={styles.pillSep}>{"  ·  "}</Text>
             {(selectedSeg.pct * 100).toFixed(1)}% of nearby
           </Text>
         </View>

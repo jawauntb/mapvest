@@ -1,10 +1,11 @@
 import {
   DEFAULT_PERIOD_FOR_INTERVAL,
+  type HistoryInterval,
+  type HistoryPeriod,
   VALID_HISTORY_PERIODS,
   clampPeriodForInterval,
   getHistoricalClosesWithProvider,
   normalizeHistoryInterval,
-  type HistoryPeriod,
 } from "@mapvest/finance";
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
@@ -27,7 +28,7 @@ quoteHistory.get("/", async (c) => {
       return c.json({ error: "symbol required" }, 400);
     }
 
-    let interval;
+    let interval: HistoryInterval;
     try {
       interval = normalizeHistoryInterval(c.req.query("interval"));
     } catch {

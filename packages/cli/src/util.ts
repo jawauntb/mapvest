@@ -86,7 +86,7 @@ export function readFlag(args: string[], name: string): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === long) return args[i + 1];
-    if (a && a.startsWith(`${long}=`)) return a.slice(long.length + 1);
+    if (a?.startsWith(`${long}=`)) return a.slice(long.length + 1);
   }
   return undefined;
 }

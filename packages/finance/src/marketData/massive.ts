@@ -1,6 +1,11 @@
 import type { Source } from "@mapvest/core";
 import type { Quote } from "../quote.js";
-import { historyDateRange, massiveIntervalSpec, type HistoryInterval, type HistoryPeriod } from "./historyIntervals.js";
+import {
+  type HistoryInterval,
+  type HistoryPeriod,
+  historyDateRange,
+  massiveIntervalSpec,
+} from "./historyIntervals.js";
 import {
   type AggregateBar,
   type AggregatePage,

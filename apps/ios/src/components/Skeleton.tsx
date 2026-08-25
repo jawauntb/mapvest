@@ -67,10 +67,12 @@ export function SkeletonRow() {
 }
 
 export function SkeletonList({ rows = 5 }: { rows?: number }) {
+  const rowKeys = Array.from({ length: rows }, (_, row) => `skeleton-row-${row + 1}`);
+
   return (
     <View style={{ paddingHorizontal: 16, gap: 2 }}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <SkeletonRow key={i} />
+      {rowKeys.map((key) => (
+        <SkeletonRow key={key} />
       ))}
     </View>
   );

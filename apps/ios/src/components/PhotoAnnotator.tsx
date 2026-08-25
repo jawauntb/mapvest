@@ -152,6 +152,7 @@ export function PhotoAnnotator({ imageUri, onCancel, onConfirm }: PhotoAnnotator
     hapticTap();
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reanimated shared values and runOnJS targets are stable worklet references; rebuilding this native gesture would interrupt active drags
   const pan = useMemo(
     () =>
       Gesture.Pan()
@@ -180,9 +181,6 @@ export function PhotoAnnotator({ imageUri, onCancel, onConfirm }: PhotoAnnotator
           "worklet";
           active.value = 0;
         }),
-    // The shared values / worklet-called JS fns are stable-refs, so an
-    // empty deps array is safe and keeps the gesture instance stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

@@ -224,11 +224,7 @@ export default async function HomePage() {
           </p>
         </Reveal>
 
-        <div
-          className="shots__scroller"
-          role="region"
-          aria-label="Screenshot gallery — scroll horizontally"
-        >
+        <section className="shots__scroller" aria-label="Screenshot gallery — scroll horizontally">
           <div className="shots__track">
             {screenshots.map((s) => (
               <figure className="shot" key={s.key}>
@@ -253,7 +249,7 @@ export default async function HomePage() {
               </figure>
             ))}
           </div>
-        </div>
+        </section>
       </section>
 
       <section className="section container" aria-labelledby="how-title">

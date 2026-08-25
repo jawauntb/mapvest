@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ApiError, shouldRetryQuery } from "./errors.ts";
+import { ApiError, shouldRetryQuery } from "./errors";
 
 describe("shouldRetryQuery", () => {
   test("does not retry rate limits or expired sessions", () => {

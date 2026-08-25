@@ -140,7 +140,7 @@ describe("maps-token + places proxy", () => {
       expect(capturedUrl).toContain("location=37.77%2C-122.42");
     } finally {
       globalThis.fetch = originalFetch;
-      delete process.env.GOOGLE_MAPS_API_KEY;
+      Reflect.deleteProperty(process.env, "GOOGLE_MAPS_API_KEY");
     }
   });
 });

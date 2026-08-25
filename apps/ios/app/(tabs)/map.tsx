@@ -228,6 +228,7 @@ export default function MapScreen() {
     [items, isUncaught],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these values intentionally reopen the native marker rasterization window when pin content changes
   useEffect(() => {
     setTrackMarkers(true);
     // Long enough for the staggered pin-drop springs (~315ms max delay +

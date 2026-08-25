@@ -59,9 +59,19 @@ export async function runIdentify(
       ["parent", brand.parent],
       ["sector", brand.sector],
       ["public", brand.isPublic ? "yes" : "no"],
-      ["ticker", brand.ticker ? `${brand.ticker.symbol}${brand.ticker.exchange ? ` (${brand.ticker.exchange})` : ""}` : "—"],
+      [
+        "ticker",
+        brand.ticker
+          ? `${brand.ticker.symbol}${brand.ticker.exchange ? ` (${brand.ticker.exchange})` : ""}`
+          : "—",
+      ],
       ["confidence", top.confidence],
-      ["quote", q ? `${price(q.price)} ${q.currency} (${signed(q.change)} / ${signed(q.changePct)}%)` : undefined],
+      [
+        "quote",
+        q
+          ? `${price(q.price)} ${q.currency} (${signed(q.change)} / ${signed(q.changePct)}%)`
+          : undefined,
+      ],
     ],
     print,
   );

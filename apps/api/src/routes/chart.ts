@@ -42,7 +42,8 @@ chart.get("/:type", async (c) => {
     if (!CHART_TYPES.has(type) && !CHART_TYPES.has(type.replace(/-/g, "_"))) {
       return c.json(
         {
-          error: `unsupported chart type (use auction|performance|regression|ridge-growth|flow-compass|torque)`,
+          error:
+            "unsupported chart type (use auction|performance|regression|ridge-growth|flow-compass|torque)",
         },
         400,
       );

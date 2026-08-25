@@ -52,7 +52,12 @@ export function InAppReader({ url, title, source, visible, onClose }: Props) {
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
         <View style={styles.toolbar}>
           <Pressable

@@ -78,7 +78,7 @@ export function filenameToSlug(filename: string): string {
 function deriveTitle(content: string | null, slug: string): string {
   if (content) {
     const m = content.match(/^\s*#\s+(.+?)\s*$/m);
-    if (m && m[1]) return m[1].trim();
+    if (m?.[1]) return m[1].trim();
   }
   return slug
     .split("-")
@@ -95,9 +95,7 @@ export function listDocs(): DocMeta[] {
   // /docs/*.md
   try {
     if (safeExists(DOCS_DIR)) {
-      const files = fs
-        .readdirSync(DOCS_DIR)
-        .filter((f) => f.toLowerCase().endsWith(".md"));
+      const files = fs.readdirSync(DOCS_DIR).filter((f) => f.toLowerCase().endsWith(".md"));
       for (const f of files) {
         const slug = filenameToSlug(f);
         if (HIDDEN_SLUGS.has(slug)) continue;
@@ -165,9 +163,7 @@ export function readDoc(slug: string): Doc | null {
   // Otherwise scan /docs
   try {
     if (!safeExists(DOCS_DIR)) return null;
-    const files = fs
-      .readdirSync(DOCS_DIR)
-      .filter((f) => f.toLowerCase().endsWith(".md"));
+    const files = fs.readdirSync(DOCS_DIR).filter((f) => f.toLowerCase().endsWith(".md"));
     for (const f of files) {
       if (filenameToSlug(f) === normalized) {
         const content = safeRead(path.join(DOCS_DIR, f));

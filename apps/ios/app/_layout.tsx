@@ -100,11 +100,12 @@ const persistOptions = {
 function PushBridge() {
   const { session } = useSession();
   const router = useRouter();
+  const sessionToken = session?.token;
 
   useEffect(() => {
-    if (!session?.token) return;
-    void registerForPush(session);
-  }, [session?.token]);
+    if (!sessionToken) return;
+    void registerForPush({ token: sessionToken });
+  }, [sessionToken]);
 
   // Relay any fix the WidgetKit extension captured while the app was closed
   // (roadmap §2 B3). It posts to the same /v1/push/prefs heartbeat this

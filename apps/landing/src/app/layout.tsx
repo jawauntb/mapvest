@@ -1,7 +1,7 @@
 import { TESTFLIGHT_URL } from "@/lib/site";
 import type { Metadata, Viewport } from "next";
-import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Syne } from "next/font/google";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 const syne = Syne({
@@ -110,13 +110,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="site-header">
           <div className="container site-header__inner">
             <a href="/" className="brand" aria-label="Mapvest home">
-              <img
-                className="brand__mark"
-                src="/brand/mark.svg"
-                alt=""
-                width={28}
-                height={28}
-              />
+              <img className="brand__mark" src="/brand/mark.svg" alt="" width={28} height={28} />
               mapvest
             </a>
             <nav className="nav" aria-label="Primary">

@@ -33,8 +33,9 @@ export type ChatSeed =
  */
 function utf8ToBase64(input: string): string {
   // Prefer Buffer when the runtime exposes it (Metro + polyfills usually do).
-  const B = (globalThis as { Buffer?: { from(s: string, enc: string): { toString(enc: string): string } } })
-    .Buffer;
+  const B = (
+    globalThis as { Buffer?: { from(s: string, enc: string): { toString(enc: string): string } } }
+  ).Buffer;
   if (B) {
     try {
       return B.from(input, "utf-8").toString("base64");
@@ -70,10 +71,7 @@ export function decodeChatSeed(encoded: string | undefined | null): ChatSeed | n
       const bin = g.atob(encoded);
       // Reverse of the encoder: binary string → UTF-8 via
       // `decodeURIComponent(escape(…))`.
-      jsonStr =
-        typeof g.escape === "function"
-          ? decodeURIComponent(g.escape(bin))
-          : bin;
+      jsonStr = typeof g.escape === "function" ? decodeURIComponent(g.escape(bin)) : bin;
     } else {
       // The absolute-last-resort encoder path used percent-encoding.
       jsonStr = decodeURIComponent(encoded);
@@ -126,7 +124,5 @@ export function openChatAbout(router: Router, seed: ChatSeed): void {
   const b64 = utf8ToBase64(JSON.stringify(seed));
   // `as never` matches the pattern used elsewhere (see AppSidebar) — expo-
   // router's typed-routes plugin doesn't know about arbitrary query strings.
-  router.push(
-    `/(tabs)/research?intent=new&seed=${encodeURIComponent(b64)}` as never,
-  );
+  router.push(`/(tabs)/research?intent=new&seed=${encodeURIComponent(b64)}` as never);
 }

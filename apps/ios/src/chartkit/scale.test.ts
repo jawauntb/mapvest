@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isSafeSvgPoints, linearScale, polylinePoints } from "./scale.ts";
+import { isSafeSvgPoints, linearScale, polylinePoints } from "./scale";
 
 describe("polylinePoints", () => {
   const idx = new Map([

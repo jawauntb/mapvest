@@ -46,6 +46,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormattedBrief } from "./FormattedBrief";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
+import { withOccurrenceKeys } from "./stableListKeys";
 
 export default function AppPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -159,7 +160,12 @@ function SignIn({
             placeholder="you@example.com"
             className="app-input"
           />
-          <button className="app-btn app-btn-primary" disabled={busy || !email} onClick={sendCode}>
+          <button
+            type="button"
+            className="app-btn app-btn-primary"
+            disabled={busy || !email}
+            onClick={sendCode}
+          >
             {busy ? "…" : "Send code"}
           </button>
         </>
@@ -179,10 +185,15 @@ function SignIn({
               Demo code (tap to fill): {devCode}
             </button>
           ) : null}
-          <button className="app-btn app-btn-primary" disabled={busy || !code} onClick={verify}>
+          <button
+            type="button"
+            className="app-btn app-btn-primary"
+            disabled={busy || !code}
+            onClick={verify}
+          >
             {busy ? "…" : "Verify"}
           </button>
-          <button className="app-link" onClick={() => setStage("email")}>
+          <button type="button" className="app-link" onClick={() => setStage("email")}>
             Use a different email
           </button>
         </>
@@ -234,21 +245,16 @@ function Home({
           </TabBtn>
         </nav>
         {user ? (
-          <button className="app-signout" onClick={onSignOut}>
+          <button type="button" className="app-signout" onClick={onSignOut}>
             {user.email} · sign out
           </button>
         ) : (
-          <button className="app-signout" onClick={() => setTab("home")}>
+          <button type="button" className="app-signout" onClick={() => setTab("home")}>
             Sign in
           </button>
         )}
       </header>
-      <a
-        className="app-tf-banner"
-        href={TESTFLIGHT_URL}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
+      <a className="app-tf-banner" href={TESTFLIGHT_URL} target="_blank" rel="noreferrer noopener">
         The iPhone app is the product — get TestFlight
       </a>
       <main className="app-main">
@@ -405,18 +411,28 @@ function SignedInHomeSettings({
           onChange={(e) => setToken(e.target.value)}
         />
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="app-btn" disabled={!token.trim() || busy} onClick={() => void save()}>
+          <button
+            type="button"
+            className="app-btn"
+            disabled={!token.trim() || busy}
+            onClick={() => void save()}
+          >
             Save key
           </button>
           {rh?.configured ? (
-            <button className="app-btn secondary" disabled={busy} onClick={() => void clear()}>
+            <button
+              type="button"
+              className="app-btn secondary"
+              disabled={busy}
+              onClick={() => void clear()}
+            >
               Clear
             </button>
           ) : null}
         </div>
       </div>
       {status ? <p className="app-muted">{status}</p> : null}
-      <button className="app-btn secondary" onClick={onSignOut}>
+      <button type="button" className="app-btn secondary" onClick={onSignOut}>
         Sign out
       </button>
     </section>
@@ -449,11 +465,7 @@ function PlanPanel({ initial }: { initial?: EntitlementState | null }) {
 
   if (!ent) return null;
   const unlimited = ent.freeForever || ent.subscribed;
-  const label = ent.freeForever
-    ? "Free forever"
-    : ent.subscribed
-      ? "Mapvest Pro"
-      : "Free tier";
+  const label = ent.freeForever ? "Free forever" : ent.subscribed ? "Mapvest Pro" : "Free tier";
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -464,7 +476,9 @@ function PlanPanel({ initial }: { initial?: EntitlementState | null }) {
           ? ". Unlimited identify, research, and memos."
           : `. ${ent.remaining} of ${ent.limit} free generations left. Identify, research, and memos count. Map and nearby stay free.`}
       </p>
-      <p className="app-muted">Pro is $19.99/month. Research, not a brokerage, not investment advice.</p>
+      <p className="app-muted">
+        Pro is $19.99/month. Research, not a brokerage, not investment advice.
+      </p>
       {!unlimited ? (
         <button type="button" className="app-btn app-btn-primary" onClick={() => presentPaywall()}>
           Subscribe $19.99/mo
@@ -488,7 +502,7 @@ function TabBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button className={`app-tab ${active ? "app-tab-active" : ""}`} onClick={onClick}>
+    <button type="button" className={`app-tab ${active ? "app-tab-active" : ""}`} onClick={onClick}>
       {children}
     </button>
   );
@@ -543,14 +557,14 @@ function NearbyTab() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
 
-  function useCoords(next: { lat: number; lng: number }, label?: string) {
+  const useCoords = useCallback((next: { lat: number; lng: number }, label?: string) => {
     setErr(null);
     setItems(null);
     setPlaceLabel(label ?? null);
     setCoords(next);
-  }
+  }, []);
 
-  async function requestLocation() {
+  const requestLocation = useCallback(async () => {
     setLocating(true);
     setErr(null);
     try {
@@ -565,11 +579,11 @@ function NearbyTab() {
     } finally {
       setLocating(false);
     }
-  }
+  }, [useCoords]);
 
   useEffect(() => {
     void requestLocation();
-  }, []);
+  }, [requestLocation]);
 
   useEffect(() => {
     if (!coords) return;
@@ -737,7 +751,13 @@ function IdentifyTab() {
       {preview ? <img src={preview} alt="preview" className="app-preview" /> : null}
       {busy ? <p className="app-muted">Analyzing…</p> : null}
       {err ? <p className="app-err">{err}</p> : null}
-      {result?.investables.map((inv, i) => {
+      {withOccurrenceKeys(
+        result?.investables ?? [],
+        (inv) =>
+          `${inv.brand.name}:${inv.brand.ticker?.symbol ?? ""}:${(inv.comparables ?? [])
+            .map((comparable) => comparable.ticker)
+            .join(",")}:${inv.confidence}`,
+      ).map(({ key, value: inv }) => {
         const ticker = inv.brand.ticker?.symbol;
         const comps = (inv.comparables ?? [])
           .map((c) => c.ticker)
@@ -746,7 +766,7 @@ function IdentifyTab() {
         const hrefTicker = ticker ?? comps[0] ?? inv.brand.name;
         return (
           <Link
-            key={i}
+            key={key}
             href={`/app/ticker/${encodeURIComponent(hrefTicker)}`}
             className={`app-row ${ticker || comps.length ? "app-row-public" : "app-row-private"}`}
           >
@@ -769,7 +789,7 @@ function IdentifyTab() {
                     ))}
                   </>
                 ) : (
-                  "no public ticker · confidence " + inv.confidence
+                  `no public ticker · confidence ${inv.confidence}`
                 )}
               </div>
             </div>
@@ -1357,7 +1377,7 @@ function SavedTab() {
   const [panelBusy, setPanelBusy] = useState<"" | "cockpit" | "alerts">("");
   const [panelErr, setPanelErr] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setErr(null);
     try {
       const r = await listWatchlist();
@@ -1387,11 +1407,11 @@ function SavedTab() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "load failed");
     }
-  }
+  }, []);
 
   useEffect(() => {
-    refresh();
-  }, []);
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (segment !== "briefs") return;
@@ -1484,11 +1504,13 @@ function SavedTab() {
                 ) : (
                   <article className="app-article">
                     <p className="app-article-lede">{m.content}</p>
-                    {m.interesting?.slice(0, 4).map((x, i) => (
-                      <p key={i} className="app-muted">
-                        · {x}
-                      </p>
-                    ))}
+                    {withOccurrenceKeys(m.interesting?.slice(0, 4) ?? [], (item) => item).map(
+                      ({ key, value: item }) => (
+                        <p key={key} className="app-muted">
+                          · {item}
+                        </p>
+                      ),
+                    )}
                   </article>
                 )}
               </div>
@@ -1600,8 +1622,12 @@ function SavedTab() {
                 <p className="app-muted">No alerts for this set.</p>
               ) : (
                 <ul className="app-alert-list">
-                  {alerts.map((a, i) => (
-                    <li key={i}>
+                  {withOccurrenceKeys(
+                    alerts,
+                    (alert) =>
+                      `${alert.ticker ?? ""}:${alert.title ?? ""}:${alert.summary ?? alert.message ?? ""}`,
+                  ).map(({ key, value: a }) => (
+                    <li key={key}>
                       <strong>
                         {a.ticker ? `$${a.ticker}` : "—"}
                         {a.title ? ` · ${a.title}` : ""}
