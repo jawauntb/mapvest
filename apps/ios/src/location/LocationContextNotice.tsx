@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    minHeight: 34,
+    minHeight: 44,
     justifyContent: "center",
   },
   actionText: { color: colors.accent, fontSize: 12, fontWeight: "700" },

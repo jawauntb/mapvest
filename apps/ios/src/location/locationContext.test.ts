@@ -11,6 +11,7 @@ import {
   mapAreaContext,
   permissionDeniedContext,
   resolveInitialLocationContext,
+  sameLocationRegion,
   shouldApplyDeviceFix,
   transitionLocationContext,
 } from "./locationContext";
@@ -144,5 +145,22 @@ describe("location context transitions", () => {
     expect(shouldApplyDeviceFix(mapAreaContext(mapRegion, now + 1), now)).toBe(false);
     expect(shouldApplyDeviceFix(mapAreaContext(mapRegion, now - 1), now)).toBe(true);
     expect(shouldApplyDeviceFix(deviceOriginContext(mapRegion, now + 1), now)).toBe(true);
+  });
+
+  test("matches provider-rounded camera regions without hiding real camera changes", () => {
+    expect(
+      sameLocationRegion(mapRegion, {
+        ...mapRegion,
+        latitude: mapRegion.latitude + 0.000001,
+        longitudeDelta: mapRegion.longitudeDelta - 0.000001,
+      }),
+    ).toBe(true);
+    expect(
+      sameLocationRegion(mapRegion, {
+        ...mapRegion,
+        longitudeDelta: mapRegion.longitudeDelta + 0.001,
+      }),
+    ).toBe(false);
+    expect(sameLocationRegion(mapRegion, null)).toBe(false);
   });
 });

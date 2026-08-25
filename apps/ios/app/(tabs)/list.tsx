@@ -292,6 +292,7 @@ export default function ListScreen() {
     [items],
   );
   const resolvingLocation = isLocating || locationContext.kind === "loading";
+  const nearbyLoading = q.isFetching && items.length === 0;
   const nearbyContext = isRecentDeviceOrigin(locationContext);
   const lastKnownContext =
     (locationContext.kind === "device-origin" && !nearbyContext) ||
@@ -312,9 +313,9 @@ export default function ListScreen() {
         compact
         onAction={handleLocationAction}
       />
-      {(resolvingLocation || q.isLoading || sectorSegments.length > 0) && (
+      {(resolvingLocation || nearbyLoading || sectorSegments.length > 0) && (
         <View style={styles.ringWrap}>
-          <SectorRing segments={sectorSegments} loading={resolvingLocation || q.isLoading} />
+          <SectorRing segments={sectorSegments} loading={resolvingLocation || nearbyLoading} />
         </View>
       )}
       <View style={styles.chatPillWrap}>
@@ -368,8 +369,13 @@ export default function ListScreen() {
       </View>
 
       <ScreenFade>
-        {resolvingLocation || q.isLoading ? (
+        {resolvingLocation ? (
           <SkeletonList rows={7} />
+        ) : nearbyLoading ? (
+          <View>
+            <Text style={styles.queryLoading}>Loading brands around this area…</Text>
+            <SkeletonList rows={7} />
+          </View>
         ) : q.isError ? (
           <EmptyState
             icon="alert-circle-outline"
@@ -516,6 +522,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 4,
+  },
+  queryLoading: {
+    color: colors.fgMuted,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   ringWrap: { paddingTop: 8, paddingBottom: 12 },
   chatPillWrap: {

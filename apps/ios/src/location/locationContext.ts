@@ -192,6 +192,22 @@ export function shouldApplyDeviceFix(
   );
 }
 
+/** Map providers can round a camera region slightly between callbacks. */
+export function sameLocationRegion(
+  left: LocationRegion | null | undefined,
+  right: LocationRegion | null | undefined,
+  epsilon = 0.00001,
+): boolean {
+  return Boolean(
+    left &&
+      right &&
+      Math.abs(left.latitude - right.latitude) <= epsilon &&
+      Math.abs(left.longitude - right.longitude) <= epsilon &&
+      Math.abs(left.latitudeDelta - right.latitudeDelta) <= epsilon &&
+      Math.abs(left.longitudeDelta - right.longitudeDelta) <= epsilon,
+  );
+}
+
 export function isRecentDeviceOrigin(state: LocationContextState, now = Date.now()): boolean {
   return (
     state.kind === "device-origin" &&
