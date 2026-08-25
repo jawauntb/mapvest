@@ -34,6 +34,7 @@ import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { UniverseShareCard } from "@/components/UniverseShareCard";
+import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
@@ -41,8 +42,8 @@ import { shareBriefImage } from "@/util/share";
 import { canStartShareAttempt, isShareCardReady } from "@/util/shareReadiness";
 import { universeShareCopy } from "@/util/universeShare";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -101,7 +102,15 @@ const RARITY_COLORS: Record<DexRarity, string> = {
 
 export default function UniverseScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!session?.token) return;
+      return refreshFindSurfacesOnFocus(qc, session.token);
+    }, [qc, session?.token]),
+  );
 
   const findsQ = useQuery({
     queryKey: ["finds", session?.token],

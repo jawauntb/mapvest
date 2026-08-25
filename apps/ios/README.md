@@ -44,6 +44,11 @@ in `eas.json`.
   `EXPO_PUBLIC_UNDERLYING_API_URL`. Below it: Research, Save/memo, comps,
   ETFs, SEC, news, agent brief.
 
+Home and Your universe refresh their signed-in finds, progression, summary,
+dex, and quests data whenever they regain focus. A single cancellable follow-up
+refresh covers the short window in which the identify endpoint records a find
+after its response has returned.
+
 ## Offline photo queue
 
 `src/queue/photoQueue.ts` persists pending captures to AsyncStorage and

@@ -23,6 +23,7 @@ import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
+import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -147,10 +148,10 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (session?.token) {
-        void qc.invalidateQueries({ queryKey: ["watchlist", session.token] });
-        void qc.invalidateQueries({ queryKey: ["watchlists", session.token] });
-      }
+      if (!session?.token) return;
+      void qc.invalidateQueries({ queryKey: ["watchlist", session.token] });
+      void qc.invalidateQueries({ queryKey: ["watchlists", session.token] });
+      return refreshFindSurfacesOnFocus(qc, session.token);
     }, [qc, session?.token]),
   );
 
