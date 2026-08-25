@@ -30,6 +30,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { formatCompact, formatDecimal, formatMoney, formatPct } from "@/util/format";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { investableShareUrl } from "@/util/shareLinks";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
@@ -139,11 +140,11 @@ export default function DetailSheet() {
     const priceLine = quote
       ? ` — $${fmtLvl(quote.price)} (${quote.change >= 0 ? "+" : ""}${fmtLvl(quote.changePct)}%)`
       : "";
-    const deepLink = `mapvest://detail/${encodeURIComponent(ticker ?? data.brand.name)}`;
-    const message = `${data.brand.name} (${label})${priceLine} — via Mapvest\n${deepLink}`;
+    const webUrl = investableShareUrl(ticker ?? data.brand.name);
+    const message = `${data.brand.name} (${label})${priceLine} — via Mapvest\n${webUrl}`;
     try {
       await Share.share(
-        Platform.OS === "ios" ? { message, url: deepLink, title: data.brand.name } : { message },
+        Platform.OS === "ios" ? { message, url: webUrl, title: data.brand.name } : { message },
       );
     } catch {
       // User cancelled or the share sheet failed to open — nothing to surface.

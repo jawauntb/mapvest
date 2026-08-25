@@ -6,6 +6,14 @@ const nextConfig = {
   // that filesystem access is intended (moved out of `experimental` in
   // Next 15.x).
   outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
+  async headers() {
+    return [
+      {
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

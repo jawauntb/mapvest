@@ -46,7 +46,14 @@ TestFlight/Play build.
 - **Outbound half**: the detail sheet (`apps/ios/app/detail/[id].tsx`) has a
   header **Share** button using React Native's built-in `Share` API — the
   native OS share sheet, so a ticker can be shared right back out to
-  Messages, Notes, Claude, etc.
+  Messages, Notes, Claude, etc. Shared investables use the canonical
+  `https://www.mapvest.app/app/ticker/{symbol-or-brand}` URL. The `www` host
+  serves the landing app directly (the apex currently redirects there), so
+  Apple can fetch its association file without following a redirect. The web
+  app resolves that route for recipients without Mapvest; iOS builds associate
+  `mapvest.app` and rewrite the same path to native `/detail/[id]` through
+  `app/+native-intent.tsx`. The AASA file is served from
+  `apps/landing/public/.well-known/apple-app-site-association`.
 
 ### Activation checklist (share)
 
@@ -63,6 +70,10 @@ TestFlight/Play build.
 5. Before the next EAS build, check that only **one** iOS extension target
    exists in `app.json`/credentials (EAS flags multiple `appExtensions`
    entries — see expo-share-intent's README FAQ).
+6. After deploying the landing app and installing a fresh native build, tap
+   a `https://www.mapvest.app/app/ticker/AAPL` link from Notes or Messages. It
+   must open AAPL detail in Mapvest; the same URL must remain a useful web
+   ticker page on a device without the app.
 
 ## Home-screen widgets
 
