@@ -10,6 +10,7 @@
  * Postgres is used when POSTGRES_URL is configured. Tests and local development
  * use the in-memory fallback, matching the other API stores.
  */
+import type { ResearchConversationStatus } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
 
 export type ResearchConversation = Readonly<{
@@ -17,7 +18,7 @@ export type ResearchConversation = Readonly<{
   ownerKey: string;
   title: string;
   preview: string;
-  status: string;
+  status: ResearchConversationStatus;
   createdAt: string;
   updatedAt: string;
 }>;
@@ -47,7 +48,7 @@ type ResearchConversationRow = {
   owner_key: string;
   title: string;
   preview: string;
-  status: string;
+  status: ResearchConversationStatus;
   created_at: Date | string;
   updated_at: Date | string;
 };
