@@ -123,5 +123,17 @@ describe("push prefs route", () => {
       tokenId: registered.id,
       prefs: { notifications_enabled: true, daily_brief: true },
     });
+
+    const tablet = await registerPushToken(uid, expoToken(), "ios", "tablet");
+    const tabletRead = await app.fetch(
+      new Request(`http://localhost/v1/push/prefs?tokenId=${tablet.id}`, {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(tabletRead.status).toBe(200);
+    expect(await tabletRead.json()).toMatchObject({
+      tokenId: tablet.id,
+      prefs: { notifications_enabled: false },
+    });
   });
 });

@@ -67,7 +67,16 @@ export async function getPushPrefs(
       Authorization: `Bearer ${session.token}`,
     },
   });
-  if (!res.ok) return { prefs: {}, tokenId: null };
+  if (!res.ok) {
+    let message = `Could not load notification settings (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) message = body.error;
+    } catch {
+      // Keep the status-based message when the API did not return JSON.
+    }
+    throw new Error(message);
+  }
   const j = (await res.json()) as { prefs?: PushPrefs; tokenId?: string | null };
   return { prefs: j.prefs ?? {}, tokenId: j.tokenId ?? null };
 }
