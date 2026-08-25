@@ -1,9 +1,13 @@
+import { DEFAULT_FINDS_LIMIT } from "@/finds/queryKeys";
+import { type FetchOpts, apiFetch } from "./http";
+
+export { DEFAULT_FINDS_LIMIT, findsQueryKey, findsQueryKeyPrefix } from "@/finds/queryKeys";
+
 /**
  * Finds journal — every successful identify is recorded server-side for the
  * signed-in user ("things you found, and where"). The server writes finds
  * automatically inside POST /v1/identify; this client only reads them.
  */
-import { type FetchOpts, apiFetch } from "./http";
 
 export type Find = {
   id: string;
@@ -106,7 +110,7 @@ export function changeSinceFoundPct(
 
 export async function listFinds(
   opts: FetchOpts = {},
-  limit = 100,
+  limit = DEFAULT_FINDS_LIMIT,
 ): Promise<{ finds: Find[]; count: number }> {
   const res = await apiFetch<{ finds: Find[]; count: number }>(
     `/v1/finds?limit=${limit}`,

@@ -1,7 +1,7 @@
 /**
  * Your universe — the full finds journal. Every camera identify lands here,
  * grouped day by day. Home shows the 8 newest as a strip; this screen is the
- * whole record. Shares the ["finds", token] cache with Home.
+ * whole record. Uses a distinct 200-row finds cache from Home's 100-row view.
  */
 import {
   type DexRarity,
@@ -35,6 +35,7 @@ import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { UniverseShareCard } from "@/components/UniverseShareCard";
 import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
+import { findsQueryKey } from "@/finds/queryKeys";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
@@ -113,7 +114,7 @@ export default function UniverseScreen() {
   );
 
   const findsQ = useQuery({
-    queryKey: ["finds", session?.token],
+    queryKey: findsQueryKey(session?.token, 200),
     queryFn: () => listFinds({ token: session?.token }, 200),
     enabled: !!session?.token,
     staleTime: 60_000,

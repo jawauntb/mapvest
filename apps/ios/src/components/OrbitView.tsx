@@ -11,7 +11,7 @@
  * Constellation rule (same visual language as the map's silhouette pins in
  * app/(tabs)/map.tsx): a node whose ticker is **not** in the user's finds is
  * an *uncaught* node — muted, silhouetted, tagged "uncaught". Caught nodes
- * are lit. The caught set comes from the `["finds", token]` query, which is a
+ * are lit. The caught set comes from the token-scoped 200-row finds query, which is a
  * different query from the graph, so catching a node relights it on the next
  * finds refresh **without refetching the graph** (the C2 acceptance test).
  *
@@ -36,6 +36,7 @@ import {
 } from "@/api/graph";
 import type { Source } from "@/api/types";
 import { usePaywall } from "@/billing/Paywall";
+import { findsQueryKey } from "@/finds/queryKeys";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -143,10 +144,10 @@ export function OrbitView({
     retry: false,
   });
 
-  // Same key the journal / map use, so the caught set is already warm and a
-  // new find relights nodes here without touching the graph query.
+  // Same 200-row key as Universe; Home/Map intentionally use a separate
+  // 100-row projection so the two server limits cannot share stale data.
   const findsQ = useQuery({
-    queryKey: ["finds", token],
+    queryKey: findsQueryKey(token, 200),
     enabled: !!token,
     queryFn: () => listFinds({ token }, 200),
     staleTime: 60_000,

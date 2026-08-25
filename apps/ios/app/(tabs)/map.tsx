@@ -10,6 +10,7 @@ import {
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
+import { findsQueryKey } from "@/finds/queryKeys";
 import { LocationContextNotice } from "@/location/LocationContextNotice";
 import {
   LOCATION_CONTEXT_QUERY_KEY,
@@ -339,9 +340,9 @@ export default function MapScreen() {
 
   const quotes = quotesQuery.data ?? {};
 
-  // Same key/shape as Home so the journal cache is shared across tabs.
+  // Keep the map's 100-row projection distinct from Universe's 200-row cache.
   const findsQuery = useQuery({
-    queryKey: ["finds", session?.token],
+    queryKey: findsQueryKey(session?.token),
     queryFn: () => listFinds({ token: session?.token }),
     enabled: !!session?.token,
     staleTime: 60_000,

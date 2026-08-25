@@ -24,6 +24,7 @@ import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
+import { findsQueryKey } from "@/finds/queryKeys";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -167,7 +168,7 @@ export default function HomeScreen() {
 
   // "Your universe" — everything the user has identified, newest first.
   const findsQ = useQuery({
-    queryKey: ["finds", session?.token],
+    queryKey: findsQueryKey(session?.token),
     queryFn: () => listFinds({ token: session?.token }),
     enabled: !!session?.token,
     staleTime: 60_000,
