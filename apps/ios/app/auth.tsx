@@ -50,6 +50,7 @@ export default function AuthScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const submitInFlight = useRef(false);
+  const verifiedSessionToken = useRef<string | null>(null);
   // v0.1: API returns devCode inline (AUTH_RETURN_CODE=1) since email isn't
   // wired yet. Show it under the code input so the demo can complete.
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -73,11 +74,20 @@ export default function AuthScreen() {
     submitInFlight.current = true;
     setErr(null);
     setBusy(true);
-    setStatus("Verifying your code…");
+    setStatus(
+      verifiedSessionToken.current && continuation
+        ? `Saving $${continuation.ticker} to your watchlist…`
+        : "Verifying your code…",
+    );
     let navigating = false;
     try {
-      const { session, user } = await verifyMagicLink(email.trim().toLowerCase(), code.trim());
-      await signIn(session, user);
+      let sessionToken = verifiedSessionToken.current;
+      if (!sessionToken) {
+        const { session, user } = await verifyMagicLink(email.trim().toLowerCase(), code.trim());
+        await signIn(session, user);
+        sessionToken = session.token;
+        verifiedSessionToken.current = sessionToken;
+      }
       if (continuation) {
         setStatus(`Saving $${continuation.ticker} to your watchlist…`);
         await addToWatchlist(
@@ -87,7 +97,7 @@ export default function AuthScreen() {
             sector: continuation.sector,
             source: continuation.source,
           },
-          { token: session.token },
+          { token: sessionToken },
         );
         router.replace(saveContinuationDestination(continuation) as never);
       } else {
@@ -96,7 +106,12 @@ export default function AuthScreen() {
       navigating = true;
     } catch (e) {
       setStatus(null);
-      setErr(e instanceof Error ? e.message : "Could not sign in. Try again.");
+      const detail = e instanceof Error ? e.message : "Please try again.";
+      setErr(
+        verifiedSessionToken.current && continuation
+          ? `You're signed in, but $${continuation.ticker} wasn't saved. ${detail}`
+          : detail,
+      );
     } finally {
       // Keep the CTA locked until the completed route replaces this screen.
       // A double press cannot create a second post-auth save request.
@@ -182,14 +197,20 @@ export default function AuthScreen() {
             {err ? <Text style={styles.err}>{err}</Text> : null}
 
             <PrimaryButton
-              label={stage === "email" ? "Send code" : "Verify"}
+              label={
+                stage === "email"
+                  ? "Send code"
+                  : verifiedSessionToken.current && continuation
+                    ? "Retry save"
+                    : "Verify"
+              }
               onPress={stage === "email" ? sendLink : submitCode}
               busy={busy}
               disabled={stage === "email" ? !email : !code}
               style={{ marginTop: 4 }}
             />
 
-            {stage === "code" ? (
+            {stage === "code" && !verifiedSessionToken.current ? (
               <Pressable
                 onPress={() => {
                   hapticSelect();
