@@ -8,19 +8,24 @@ import {
   type EntitlementState,
   type NearbyItem,
   type ResearchArticle,
+  type ResearchConversationStatus,
   type User,
   type WatchEntry,
   addToWatchlist,
   agentChat,
   clearRobinhoodMcp,
   clearSession,
+  createAgentClientMessageId,
+  fetchAgentMemo,
   fetchAlerts,
   fetchCockpit,
   fetchEntitlements,
   fetchNearby,
   fetchSettings,
   generateMemo,
+  getAgentConversationStatus,
   getAgentThread,
+  getDeviceId,
   getMe,
   getQuote,
   getToken,
@@ -38,7 +43,8 @@ import {
 } from "@/lib/mapvest-api";
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormattedBrief } from "./FormattedBrief";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 export default function AppPage() {
@@ -251,7 +257,9 @@ function Home({
         ) : null}
         {tab === "nearby" ? <NearbyTab /> : null}
         {tab === "identify" ? <IdentifyTab /> : null}
-        {tab === "research" ? <ResearchChatTab /> : null}
+        {tab === "research" ? (
+          <ResearchChatTab key={user?.id ?? "anonymous"} userId={user?.id} />
+        ) : null}
         {tab === "saved" ? (
           user ? (
             <SavedTab />
@@ -775,15 +783,327 @@ function IdentifyTab() {
 
 /* -------------------------- Research chat --------------------------- */
 
-function ResearchChatTab() {
+const LEGACY_ACTIVE_RESEARCH_CONVERSATION_KEY = "mapvest.research.activeConversationId.v1";
+const ACTIVE_RESEARCH_CONVERSATION_KEY_PREFIX = "mapvest.research.activeConversationId.v2";
+const RESEARCH_RECOVERY_INTERVAL_MS = 3_000;
+const RESEARCH_RECOVERY_MAX_ATTEMPTS = 100;
+
+const PENDING_RESEARCH_STATUSES = new Set<ResearchConversationStatus>(["queued", "running"]);
+
+class ResearchRecoveryTimeoutError extends Error {
+  constructor() {
+    super("Research is still running");
+    this.name = "ResearchRecoveryTimeoutError";
+  }
+}
+
+function activeResearchConversationKey(userId?: string) {
+  const scope = userId ? `user:${userId}` : `device:${getDeviceId() ?? "unavailable"}`;
+  return `${ACTIVE_RESEARCH_CONVERSATION_KEY_PREFIX}:${scope}`;
+}
+
+function persistActiveResearchConversation(storageKey: string, conversationId?: string) {
+  try {
+    if (conversationId) {
+      window.localStorage.setItem(storageKey, conversationId);
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // The in-memory conversation id still preserves continuity for this tab.
+  }
+}
+
+function isStaleResearchPointerError(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    (error.code === "research_conversation_not_found" ||
+      /research conversation not found/i.test(error.message))
+  );
+}
+
+function waitForResearchRecoveryInterval(signal: AbortSignal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, RESEARCH_RECOVERY_INTERVAL_MS);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForDurableResearchThread(conversationId: string, signal: AbortSignal) {
+  for (let attempt = 0; attempt < RESEARCH_RECOVERY_MAX_ATTEMPTS; attempt += 1) {
+    if (signal.aborted) throw signal.reason;
+    try {
+      const progress = await getAgentConversationStatus(conversationId, signal);
+      if (!PENDING_RESEARCH_STATUSES.has(progress.status)) {
+        return (await getAgentThread(conversationId, signal)).thread;
+      }
+    } catch (error) {
+      if (signal.aborted || isStaleResearchPointerError(error)) throw error;
+      // A transient status/display failure should not lose the durable pointer.
+    }
+    if (attempt + 1 < RESEARCH_RECOVERY_MAX_ATTEMPTS) {
+      await waitForResearchRecoveryInterval(signal);
+    }
+  }
+  throw new ResearchRecoveryTimeoutError();
+}
+
+function researchProgressLabel(article: ResearchArticle) {
+  const progress = article.progress;
+  const parts = [article.phase, article.status].filter(Boolean) as string[];
+  if (progress?.completedIterations !== undefined && progress.maxIterations !== undefined) {
+    parts.push(`${progress.completedIterations}/${progress.maxIterations} iterations`);
+  }
+  if (progress?.completedTasks !== undefined && progress.totalTasks !== undefined) {
+    parts.push(`${progress.completedTasks}/${progress.totalTasks} tasks`);
+  }
+  if (progress?.essentialClaimsReady !== undefined && progress.essentialClaimsTotal !== undefined) {
+    parts.push(`${progress.essentialClaimsReady}/${progress.essentialClaimsTotal} claims`);
+  }
+  if (progress?.evidenceReady) parts.push("evidence ready");
+  return parts.join(" · ");
+}
+
+function ResearchChatArticle({ article }: { article: ResearchArticle }) {
+  const progress = researchProgressLabel(article);
+  return (
+    <article className="app-article">
+      {progress ? <p className="app-article-tools">Progress · {progress}</p> : null}
+      <FormattedBrief text={article.content} />
+
+      {article.interesting.length ? (
+        <ul className="app-article-bullets">
+          {article.interesting.slice(0, 5).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {article.evidence?.length ? (
+        <div>
+          <p className="app-article-tools">Evidence</p>
+          <ul className="app-article-bullets">
+            {article.evidence.slice(0, 6).map((item) => (
+              <li key={`${item.summary}:${item.source ?? ""}`}>
+                {item.summary}
+                {item.source || item.freshness ? (
+                  <span className="app-muted">
+                    {item.source ? ` · ${item.source}` : ""}
+                    {item.freshness ? ` · ${item.freshness}` : ""}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {article.context?.length ? (
+        <div>
+          <p className="app-article-tools">Context</p>
+          <ul className="app-article-bullets">
+            {article.context.slice(0, 4).map((item) => (
+              <li key={`${item.summary}:${item.reason ?? ""}`}>
+                {item.summary}
+                {item.reason ? <span className="app-muted"> · {item.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {article.ideas.length ? (
+        <div className="app-article-ideas">
+          {article.ideas.slice(0, 4).map((idea) => (
+            <div key={`${idea.title}:${idea.thesis}`} className="app-article-idea">
+              <strong>{idea.title}</strong>
+              {idea.disposition ? <span className="app-muted"> · {idea.disposition}</span> : null}
+              {idea.thesis ? <p className="app-muted">{idea.thesis}</p> : null}
+              {idea.findings.length ? (
+                <p className="app-muted">{idea.findings.slice(0, 3).join(" · ")}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {article.specialists?.length ? (
+        <div className="app-article-ideas">
+          {article.specialists.slice(0, 5).map((specialist) => (
+            <div key={specialist.role} className="app-article-idea">
+              <strong>{specialist.role}</strong>
+              {specialist.status ? <span className="app-muted"> · {specialist.status}</span> : null}
+              {specialist.analysis ? <p className="app-muted">{specialist.analysis}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {article.memo ? (
+        <div className="app-article-idea">
+          <strong>{article.memo.title ?? "Research memo"}</strong>
+          {article.memo.executiveSummary ? (
+            <p className="app-muted">{article.memo.executiveSummary}</p>
+          ) : null}
+          {article.memo.verdict ? (
+            <p className="app-muted">Verdict · {article.memo.verdict}</p>
+          ) : null}
+          {article.memo.rationale ? (
+            <p className="app-muted">Rationale · {article.memo.rationale}</p>
+          ) : null}
+          {article.memo.bullCase ? (
+            <p className="app-muted">Bull · {article.memo.bullCase}</p>
+          ) : null}
+          {article.memo.baseCase ? (
+            <p className="app-muted">Base · {article.memo.baseCase}</p>
+          ) : null}
+          {article.memo.bearCase ? (
+            <p className="app-muted">Bear · {article.memo.bearCase}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {article.blocker ? <p className="app-err">Blocked · {article.blocker}</p> : null}
+      {article.error ? <p className="app-err">{article.error}</p> : null}
+
+      {article.chartTickers.length || article.sources.length ? (
+        <div className="app-source-links">
+          {article.chartTickers.slice(0, 3).map((symbol) => (
+            <Link
+              key={symbol}
+              href={`/app/ticker/${encodeURIComponent(symbol)}`}
+              className="app-source-chip"
+            >
+              ${symbol}
+            </Link>
+          ))}
+          {article.sources.slice(0, 8).map((source) =>
+            source.url ? (
+              <a
+                key={`${source.label}:${source.url}`}
+                className="app-source-chip"
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {source.label}
+              </a>
+            ) : (
+              <span key={source.label} className="app-source-chip">
+                {source.label}
+              </span>
+            ),
+          )}
+        </div>
+      ) : null}
+
+      {article.toolsUsed.length ? (
+        <p className="app-article-tools">Tools · {article.toolsUsed.slice(0, 8).join(" · ")}</p>
+      ) : null}
+    </article>
+  );
+}
+
+function ResearchChatTab({ userId }: { userId?: string }) {
   const { presentPaywall } = usePaywall();
+  const storageKey = useMemo(() => activeResearchConversationKey(userId), [userId]);
   const [threads, setThreads] = useState<AgentThread[] | null>(null);
   const [threadId, setThreadId] = useState<string | undefined>();
   const [turns, setTurns] = useState<ResearchArticle[]>([]);
+  const [memoUrl, setMemoUrl] = useState<string | undefined>();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "chat">("list");
+  const retryRef = useRef<{ message: string; clientMessageId: string } | null>(null);
+  const researchLoadRef = useRef<AbortController | null>(null);
+  const researchOperationGenerationRef = useRef(0);
+
+  const cancelResearchLoad = useCallback(() => {
+    researchLoadRef.current?.abort();
+    researchLoadRef.current = null;
+  }, []);
+
+  const cancelResearchOperation = useCallback(() => {
+    researchOperationGenerationRef.current += 1;
+    cancelResearchLoad();
+  }, [cancelResearchLoad]);
+
+  const loadResearchConversation = useCallback(
+    async (conversationId: string, knownPending = false) => {
+      cancelResearchLoad();
+      const controller = new AbortController();
+      researchLoadRef.current = controller;
+      setBusy(true);
+      setErr(null);
+      try {
+        let thread: AgentThread | undefined;
+        if (!knownPending) {
+          try {
+            thread = (await getAgentThread(conversationId, controller.signal)).thread;
+            if (!controller.signal.aborted) {
+              setTurns(thread.messages ?? []);
+              setMemoUrl(thread.memoUrl);
+            }
+          } catch (error) {
+            if (controller.signal.aborted || isStaleResearchPointerError(error)) throw error;
+            // Recover through the lightweight status endpoint when display briefly fails.
+          }
+        }
+
+        if (!thread || PENDING_RESEARCH_STATUSES.has(thread.status)) {
+          thread = await waitForDurableResearchThread(conversationId, controller.signal);
+          if (!controller.signal.aborted) {
+            setTurns(thread.messages ?? []);
+            setMemoUrl(thread.memoUrl);
+          }
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (isStaleResearchPointerError(error)) {
+          setThreadId(undefined);
+          persistActiveResearchConversation(storageKey);
+          setTurns([]);
+          setMemoUrl(undefined);
+          setErr(error instanceof Error ? error.message : "research conversation not found");
+        } else if (error instanceof ResearchRecoveryTimeoutError) {
+          setErr("Research is still running. This chat is saved; reopen it to refresh.");
+        } else {
+          setErr("Could not refresh research yet. This chat is still saved.");
+        }
+      } finally {
+        if (researchLoadRef.current === controller) {
+          researchLoadRef.current = null;
+          setBusy(false);
+        }
+      }
+    },
+    [cancelResearchLoad, storageKey],
+  );
+
+  useEffect(() => {
+    try {
+      // The old unscoped key could belong to a different signed-in owner.
+      window.localStorage.removeItem(LEGACY_ACTIVE_RESEARCH_CONVERSATION_KEY);
+      const persisted = window.localStorage.getItem(storageKey);
+      if (!persisted) return;
+      setView("chat");
+      setThreadId(persisted);
+      void loadResearchConversation(persisted);
+    } catch {
+      // Research remains usable when browser storage is unavailable.
+    }
+    return cancelResearchOperation;
+  }, [cancelResearchOperation, loadResearchConversation, storageKey]);
 
   useEffect(() => {
     if (view !== "list") return;
@@ -793,59 +1113,109 @@ function ResearchChatTab() {
   }, [view]);
 
   async function openThread(id: string, title: string) {
+    cancelResearchOperation();
     setView("chat");
     setThreadId(id);
-    setErr(null);
-    try {
-      const r = await getAgentThread(id);
-      setTurns(r.thread.messages ?? []);
-      void title;
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "load failed");
-      setTurns([]);
-    }
+    retryRef.current = null;
+    persistActiveResearchConversation(storageKey, id);
+    setTurns([]);
+    setMemoUrl(undefined);
+    void title;
+    await loadResearchConversation(id);
   }
 
   function newChat() {
+    cancelResearchOperation();
     setView("chat");
     setThreadId(undefined);
+    retryRef.current = null;
+    persistActiveResearchConversation(storageKey);
     setTurns([]);
+    setMemoUrl(undefined);
     setInput("");
+    setBusy(false);
     setErr(null);
   }
 
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    cancelResearchOperation();
+    const operationGeneration = researchOperationGenerationRef.current;
+    const isCurrent = () => researchOperationGenerationRef.current === operationGeneration;
+    const retry = retryRef.current;
+    const clientMessageId =
+      retry?.message === msg ? retry.clientMessageId : createAgentClientMessageId();
+    const optimisticId = `u-${clientMessageId}`;
     setBusy(true);
     setErr(null);
-    setTurns((t) => [
-      ...t,
-      {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: msg,
-        createdAt: new Date().toISOString(),
-        interesting: [],
-        ideas: [],
-        toolsUsed: [],
-        sources: [],
-        chartTickers: [],
-      },
-    ]);
+    setTurns((turns) =>
+      turns.some((turn) => turn.id === optimisticId)
+        ? turns
+        : [
+            ...turns,
+            {
+              id: optimisticId,
+              role: "user",
+              content: msg,
+              createdAt: new Date().toISOString(),
+              interesting: [],
+              ideas: [],
+              toolsUsed: [],
+              sources: [],
+              chartTickers: [],
+            },
+          ],
+    );
     setInput("");
     try {
-      const r = await agentChat(msg, { threadId });
-      if (r.threadId) setThreadId(r.threadId);
-      setTurns((t) => [...t, r.article]);
+      const r = await agentChat(msg, {
+        conversationId: threadId,
+        clientMessageId,
+      });
+      if (!isCurrent()) return;
+      const conversationId = r.conversationId ?? r.threadId;
+      if (conversationId) {
+        setThreadId(conversationId);
+        persistActiveResearchConversation(storageKey, conversationId);
+      }
+      retryRef.current = null;
+      setMemoUrl(r.memoUrl);
+      setTurns((turns) =>
+        turns.some((turn) => turn.id === r.article.id) ? turns : [...turns, r.article],
+      );
+      if (conversationId && (r.pending || PENDING_RESEARCH_STATUSES.has(r.status))) {
+        await loadResearchConversation(conversationId, true);
+        if (!isCurrent()) return;
+      }
     } catch (e) {
+      if (!isCurrent()) return;
+      retryRef.current = { message: msg, clientMessageId };
+      setInput(msg);
       if (presentPaywallIfQuota(e, presentPaywall)) {
         setErr("Free generations used. Subscribe to keep researching.");
         return;
       }
       setErr(e instanceof Error ? e.message : "research failed");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
+    }
+  }
+
+  async function downloadMemo() {
+    if (!memoUrl) return;
+    try {
+      const blob = await fetchAgentMemo(memoUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "mapvest-research-memo.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "memo download failed");
     }
   }
 
@@ -883,7 +1253,7 @@ function ResearchChatTab() {
               type="button"
               className="app-row app-row-public"
               style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
-              onClick={() => void openThread(b.id, b.title)}
+              onClick={() => void openThread(b.conversationId ?? b.id, b.title)}
             >
               <div style={{ flex: 1 }}>
                 <div className="app-row-title">{b.title}</div>
@@ -904,7 +1274,13 @@ function ResearchChatTab() {
           type="button"
           className="app-link"
           style={{ padding: 0 }}
-          onClick={() => setView("list")}
+          onClick={() => {
+            cancelResearchOperation();
+            retryRef.current = null;
+            setBusy(false);
+            setErr(null);
+            setView("list");
+          }}
         >
           ← Chats
         </button>
@@ -922,28 +1298,21 @@ function ResearchChatTab() {
               {t.content}
             </div>
           ) : (
-            <article key={t.id} className="app-article">
-              <p className="app-article-lede">{t.content}</p>
-              {t.interesting.slice(0, 4).map((x, i) => (
-                <p key={i} className="app-muted">
-                  · {x}
-                </p>
-              ))}
-              {t.chartTickers.slice(0, 3).map((sym) => (
-                <Link
-                  key={sym}
-                  href={`/app/ticker/${encodeURIComponent(sym)}`}
-                  className="app-source-chip"
-                >
-                  ${sym}
-                </Link>
-              ))}
-              {t.toolsUsed.length ? (
-                <p className="app-article-tools">Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</p>
-              ) : null}
-            </article>
+            <ResearchChatArticle key={t.id} article={t} />
           ),
         )}
+        {memoUrl ? (
+          <div className="app-source-links">
+            <button
+              type="button"
+              className="app-source-chip"
+              style={{ background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => void downloadMemo()}
+            >
+              Download memo PDF ↓
+            </button>
+          </div>
+        ) : null}
         {busy ? <div className="app-chart-skel" aria-label="Researching…" /> : null}
         {err ? <p className="app-err">{err}</p> : null}
       </div>

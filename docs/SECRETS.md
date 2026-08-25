@@ -31,7 +31,7 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `MASSIVE_S3_ENDPOINT` | Massive | optional flat-file ingestion; shared Doppler |
 | `MASSIVE_S3_BUCKET` | Massive | optional flat-file ingestion; shared Doppler |
 | `MASSIVE_BASE_URL` | Massive | optional REST base URL; defaults to `https://api.massive.com` |
-| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, nearby_cache, brand_ticker_cache, usage/entitlements |
+| `POSTGRES_URL` | Railway Postgres (`${{Postgres.DATABASE_URL}}`) | users, Robinhood MCP, `user_watchlist`, owner-scoped research conversations, nearby_cache, brand_ticker_cache, usage/entitlements |
 | `STRIPE_SECRET_KEY` | Stripe (**Artesanato Poesia** `acct_1Pj15wKwhiITC0uV`) — Mapvest only, not objetdart | Checkout + portal (Phase 8 Slice E). Railway API currently uses test-mode `sk_test_…` until live keys have `product_write`. |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `POST /v1/billing/webhook` | Subscription webhooks |
 | `STRIPE_PRICE_ID_MONTHLY` | Stripe Price **Mapvest Pro** $19.99/mo (`price_…`) on Artesanato Poesia | Checkout line item |
@@ -42,10 +42,10 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
 | `EXPO_TOKEN` | Expo | GitHub Actions `ios-eas-production` only. Create at expo.dev → Access tokens. Never put it in the iOS bundle, Doppler-to-client path, or a commit. |
-| `DERIVATION_URL` | Railway Derivation Research Console | `apps/api` agent proxy (Railway origin, not workers.dev) |
-| `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Host attestation header for Derivation request-guard |
-| `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` | Derivation Doppler/Railway | Bearer for GET `/api/idea-chats` |
-| `RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE` | Derivation Doppler/Railway | Bearer for POST `/api/idea-chats/stream` |
+| `DERIVATION_RESEARCH_API_ORIGIN` | Railway Derivation Research Console | Server-only origin for `/api/explore` and `/api/autoresearch`; `DERIVATION_URL` remains a compatibility alias |
+| `DERIVATION_RESEARCH_SERVICE_TOKEN` | Derivation Doppler/Railway | Server-only bearer used by Mapvest's research proxy; never expose it to web or iOS |
+| `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Optional host attestation for proxy deployments; omit it for direct local Console calls. The canonical production Railway origin uses the existing front-door default. |
+| `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` | Derivation Doppler/Railway | Legacy aliases retained during rollout; `_READ` is recovery-only, while `/api/explore` requires the primary or `_MUTATE` credential |
 
 ### Massive market data
 

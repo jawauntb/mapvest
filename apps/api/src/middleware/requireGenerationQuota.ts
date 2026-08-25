@@ -1,6 +1,11 @@
 import type { User } from "@mapvest/core";
-import type { MiddlewareHandler } from "hono";
-import { MONTHLY_PRICE_USD, getEntitlementState, recordGeneration } from "../lib/entitlements.js";
+import type { Context, MiddlewareHandler } from "hono";
+import {
+  MONTHLY_PRICE_USD,
+  getEntitlementState,
+  hasRecordedGeneration,
+  recordGeneration,
+} from "../lib/entitlements.js";
 
 const MAX_DEVICE_ID_LEN = 128;
 
@@ -23,7 +28,10 @@ export function deviceIdFromRequest(c: {
  * Records the usage event only once the wrapped handler completes
  * successfully (status < 400), so failed upstream calls don't burn quota.
  */
-export function requireGenerationQuota(kind: string): MiddlewareHandler {
+export function requireGenerationQuota(
+  kind: string,
+  requestKeyFromContext?: (context: Context) => Promise<string | undefined> | string | undefined,
+): MiddlewareHandler {
   return async (c, next) => {
     const user = (c as unknown as { get: (k: string) => User | undefined }).get("user");
     const deviceId = deviceIdFromRequest(c);
@@ -31,8 +39,14 @@ export function requireGenerationQuota(kind: string): MiddlewareHandler {
       return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
     }
 
-    const state = await getEntitlementState({ userId: user?.id, deviceId, email: user?.email });
-    if (!state.canGenerate) {
+    const requestKey = await requestKeyFromContext?.(c);
+    const alreadyRecorded = requestKey
+      ? await hasRecordedGeneration({ userId: user?.id, deviceId, kind, requestKey })
+      : false;
+    const state = alreadyRecorded
+      ? null
+      : await getEntitlementState({ userId: user?.id, deviceId, email: user?.email });
+    if (state && !state.canGenerate) {
       return c.json(
         {
           error: "generation quota exceeded",
@@ -48,8 +62,8 @@ export function requireGenerationQuota(kind: string): MiddlewareHandler {
 
     await next();
 
-    if (c.res.status < 400) {
-      await recordGeneration({ userId: user?.id, deviceId, kind });
+    if (c.res.status < 400 && !alreadyRecorded) {
+      await recordGeneration({ userId: user?.id, deviceId, kind, requestKey });
     }
   };
 }

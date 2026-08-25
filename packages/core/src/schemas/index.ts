@@ -563,10 +563,58 @@ export const AlertsResponse = z.object({
 });
 export type AlertsResponse = z.infer<typeof AlertsResponse>;
 
+export const ResearchDepth = z.enum(["auto", "instant", "standard", "deep", "max"]);
+export type ResearchDepth = z.infer<typeof ResearchDepth>;
+
+export const ResearchConversationStatus = z.enum([
+  "queued",
+  "running",
+  "conclusive",
+  "exhausted",
+  "blocked",
+  "error",
+]);
+export type ResearchConversationStatus = z.infer<typeof ResearchConversationStatus>;
+
+export const ResearchConversationReference = z.object({
+  schema_version: z.literal("research_conversation_ref_v1"),
+  id: z.string(),
+  conversation_id: z.string(),
+  status: ResearchConversationStatus,
+  deliverable: z.enum(["ideas", "memo"]),
+  href: z.string(),
+  stream_href: z.string(),
+  pdf_url: z.string().nullable(),
+});
+export type ResearchConversationReference = z.infer<typeof ResearchConversationReference>;
+
+export const LegacyResearchConversationReference = z
+  .object({
+    id: z.string(),
+    status: ResearchConversationStatus,
+    deliverable: z.enum(["ideas", "memo"]),
+    href: z.string(),
+    pdf_url: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type LegacyResearchConversationReference = z.infer<
+  typeof LegacyResearchConversationReference
+>;
+
+export const ResearchConversation = z.union([
+  ResearchConversationReference,
+  LegacyResearchConversationReference,
+]);
+export type ResearchConversation = z.infer<typeof ResearchConversation>;
+
 export const AgentChatRequest = z.object({
   message: z.string().min(1).max(4000),
   ticker: z.string().optional(),
+  conversationId: z.string().optional(),
+  /** Compatibility alias for clients released before the conversation migration. */
   threadId: z.string().optional(),
+  clientMessageId: z.string().min(1).max(128).optional(),
+  researchDepth: ResearchDepth.optional(),
 });
 export type AgentChatRequest = z.infer<typeof AgentChatRequest>;
 
@@ -590,13 +638,71 @@ export const ResearchArticle = z.object({
   toolsUsed: z.array(z.string()).default([]),
   sources: z.array(z.object({ label: z.string(), url: z.string().url().optional() })).default([]),
   chartTickers: z.array(z.string()).default([]),
+  status: ResearchConversationStatus.optional(),
+  phase: z.string().optional(),
+  progress: z
+    .object({
+      completedIterations: z.number().optional(),
+      maxIterations: z.number().optional(),
+      completedTasks: z.number().optional(),
+      totalTasks: z.number().optional(),
+      evidenceReady: z.boolean().optional(),
+      essentialClaimsReady: z.number().optional(),
+      essentialClaimsTotal: z.number().optional(),
+    })
+    .optional(),
+  evidence: z
+    .array(
+      z.object({
+        summary: z.string(),
+        source: z.string().optional(),
+        freshness: z.string().optional(),
+        artifactRefs: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  context: z
+    .array(
+      z.object({
+        summary: z.string(),
+        reason: z.string().optional(),
+        source: z.string().optional(),
+      }),
+    )
+    .optional(),
+  blocker: z.string().optional(),
+  specialists: z
+    .array(
+      z.object({
+        role: z.string(),
+        status: z.string().optional(),
+        analysis: z.string().optional(),
+      }),
+    )
+    .optional(),
+  memo: z
+    .object({
+      title: z.string().optional(),
+      executiveSummary: z.string().optional(),
+      verdict: z.string().optional(),
+      rationale: z.string().optional(),
+      bullCase: z.string().optional(),
+      baseCase: z.string().optional(),
+      bearCase: z.string().optional(),
+    })
+    .optional(),
   mode: z.string().optional(),
   error: z.string().optional(),
 });
 export type ResearchArticle = z.infer<typeof ResearchArticle>;
 
 export const AgentChatResponse = z.object({
-  threadId: z.string().optional(),
+  conversationId: z.string(),
+  /** Compatibility alias; new clients use conversationId. */
+  threadId: z.string(),
+  clientMessageId: z.string(),
+  status: ResearchConversationStatus,
+  conversation: ResearchConversation,
   ticker: z.string().optional(),
   article: ResearchArticle,
   userMessage: ResearchArticle.optional(),
@@ -607,16 +713,23 @@ export const AgentChatResponse = z.object({
     })
     .optional(),
   sourceUrl: z.string().url().optional(),
+  memoUrl: z.string().optional(),
   provider: z.string().optional(),
+  pending: z.boolean().optional(),
 });
 export type AgentChatResponse = z.infer<typeof AgentChatResponse>;
 
 export const AgentThreadSummary = z.object({
   id: z.string(),
+  conversationId: z.string(),
   title: z.string(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   preview: z.string(),
+  status: ResearchConversationStatus,
+  phase: z.string().optional(),
+  memoUrl: z.string().optional(),
+  conversation: ResearchConversation.optional(),
   messages: z.array(ResearchArticle).optional(),
   safety: z
     .object({
@@ -627,6 +740,18 @@ export const AgentThreadSummary = z.object({
   sourceUrl: z.string().url().optional(),
 });
 export type AgentThreadSummary = z.infer<typeof AgentThreadSummary>;
+
+export const AgentConversationStatus = z.object({
+  conversationId: z.string(),
+  status: ResearchConversationStatus,
+  phase: z.string().optional(),
+  active: z.boolean().optional(),
+  completedIterations: z.number().optional(),
+  maxIterations: z.number().optional(),
+  preview: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+export type AgentConversationStatus = z.infer<typeof AgentConversationStatus>;
 
 // -------- sibling link-outs (v0.1 scaffold, see docs/SYSTEM_DESIGN.md D10) --------
 

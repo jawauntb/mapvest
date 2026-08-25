@@ -2987,15 +2987,114 @@ components:
           maxLength: 4000
         ticker:
           type: string
+        conversationId:
+          type: string
         threadId:
           type: string
+        clientMessageId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        researchDepth:
+          type: string
+          enum:
+            - auto
+            - instant
+            - standard
+            - deep
+            - max
       required:
         - message
     AgentChatResponse:
       type: object
       properties:
+        conversationId:
+          type: string
         threadId:
           type: string
+        clientMessageId:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - conclusive
+            - exhausted
+            - blocked
+            - error
+        conversation:
+          anyOf:
+            - type: object
+              properties:
+                schema_version:
+                  type: string
+                  enum:
+                    - research_conversation_ref_v1
+                id:
+                  type: string
+                conversation_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - running
+                    - conclusive
+                    - exhausted
+                    - blocked
+                    - error
+                deliverable:
+                  type: string
+                  enum:
+                    - ideas
+                    - memo
+                href:
+                  type: string
+                stream_href:
+                  type: string
+                pdf_url:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - schema_version
+                - id
+                - conversation_id
+                - status
+                - deliverable
+                - href
+                - stream_href
+                - pdf_url
+            - type: object
+              properties:
+                id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - running
+                    - conclusive
+                    - exhausted
+                    - blocked
+                    - error
+                deliverable:
+                  type: string
+                  enum:
+                    - ideas
+                    - memo
+                href:
+                  type: string
+                pdf_url:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - id
+                - status
+                - deliverable
+                - href
         ticker:
           type: string
         article:
@@ -3060,6 +3159,96 @@ components:
               items:
                 type: string
               default: []
+            status:
+              type: string
+              enum:
+                - queued
+                - running
+                - conclusive
+                - exhausted
+                - blocked
+                - error
+            phase:
+              type: string
+            progress:
+              type: object
+              properties:
+                completedIterations:
+                  type: number
+                maxIterations:
+                  type: number
+                completedTasks:
+                  type: number
+                totalTasks:
+                  type: number
+                evidenceReady:
+                  type: boolean
+                essentialClaimsReady:
+                  type: number
+                essentialClaimsTotal:
+                  type: number
+            evidence:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  source:
+                    type: string
+                  freshness:
+                    type: string
+                  artifactRefs:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - summary
+            context:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  reason:
+                    type: string
+                  source:
+                    type: string
+                required:
+                  - summary
+            blocker:
+              type: string
+            specialists:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  status:
+                    type: string
+                  analysis:
+                    type: string
+                required:
+                  - role
+            memo:
+              type: object
+              properties:
+                title:
+                  type: string
+                executiveSummary:
+                  type: string
+                verdict:
+                  type: string
+                rationale:
+                  type: string
+                bullCase:
+                  type: string
+                baseCase:
+                  type: string
+                bearCase:
+                  type: string
             mode:
               type: string
             error:
@@ -3131,6 +3320,96 @@ components:
               items:
                 type: string
               default: []
+            status:
+              type: string
+              enum:
+                - queued
+                - running
+                - conclusive
+                - exhausted
+                - blocked
+                - error
+            phase:
+              type: string
+            progress:
+              type: object
+              properties:
+                completedIterations:
+                  type: number
+                maxIterations:
+                  type: number
+                completedTasks:
+                  type: number
+                totalTasks:
+                  type: number
+                evidenceReady:
+                  type: boolean
+                essentialClaimsReady:
+                  type: number
+                essentialClaimsTotal:
+                  type: number
+            evidence:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  source:
+                    type: string
+                  freshness:
+                    type: string
+                  artifactRefs:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - summary
+            context:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  reason:
+                    type: string
+                  source:
+                    type: string
+                required:
+                  - summary
+            blocker:
+              type: string
+            specialists:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  status:
+                    type: string
+                  analysis:
+                    type: string
+                required:
+                  - role
+            memo:
+              type: object
+              properties:
+                title:
+                  type: string
+                executiveSummary:
+                  type: string
+                verdict:
+                  type: string
+                rationale:
+                  type: string
+                bullCase:
+                  type: string
+                baseCase:
+                  type: string
+                bearCase:
+                  type: string
             mode:
               type: string
             error:
@@ -3153,14 +3432,25 @@ components:
         sourceUrl:
           type: string
           format: uri
+        memoUrl:
+          type: string
         provider:
           type: string
+        pending:
+          type: boolean
       required:
+        - conversationId
+        - threadId
+        - clientMessageId
+        - status
+        - conversation
         - article
     AgentThreadSummary:
       type: object
       properties:
         id:
+          type: string
+        conversationId:
           type: string
         title:
           type: string
@@ -3170,6 +3460,91 @@ components:
           type: string
         preview:
           type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - conclusive
+            - exhausted
+            - blocked
+            - error
+        phase:
+          type: string
+        memoUrl:
+          type: string
+        conversation:
+          anyOf:
+            - type: object
+              properties:
+                schema_version:
+                  type: string
+                  enum:
+                    - research_conversation_ref_v1
+                id:
+                  type: string
+                conversation_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - running
+                    - conclusive
+                    - exhausted
+                    - blocked
+                    - error
+                deliverable:
+                  type: string
+                  enum:
+                    - ideas
+                    - memo
+                href:
+                  type: string
+                stream_href:
+                  type: string
+                pdf_url:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - schema_version
+                - id
+                - conversation_id
+                - status
+                - deliverable
+                - href
+                - stream_href
+                - pdf_url
+            - type: object
+              properties:
+                id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - running
+                    - conclusive
+                    - exhausted
+                    - blocked
+                    - error
+                deliverable:
+                  type: string
+                  enum:
+                    - ideas
+                    - memo
+                href:
+                  type: string
+                pdf_url:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - id
+                - status
+                - deliverable
+                - href
         messages:
           type: array
           items:
@@ -3234,6 +3609,96 @@ components:
                 items:
                   type: string
                 default: []
+              status:
+                type: string
+                enum:
+                  - queued
+                  - running
+                  - conclusive
+                  - exhausted
+                  - blocked
+                  - error
+              phase:
+                type: string
+              progress:
+                type: object
+                properties:
+                  completedIterations:
+                    type: number
+                  maxIterations:
+                    type: number
+                  completedTasks:
+                    type: number
+                  totalTasks:
+                    type: number
+                  evidenceReady:
+                    type: boolean
+                  essentialClaimsReady:
+                    type: number
+                  essentialClaimsTotal:
+                    type: number
+              evidence:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    summary:
+                      type: string
+                    source:
+                      type: string
+                    freshness:
+                      type: string
+                    artifactRefs:
+                      type: array
+                      items:
+                        type: string
+                  required:
+                    - summary
+              context:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    summary:
+                      type: string
+                    reason:
+                      type: string
+                    source:
+                      type: string
+                  required:
+                    - summary
+              blocker:
+                type: string
+              specialists:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    role:
+                      type: string
+                    status:
+                      type: string
+                    analysis:
+                      type: string
+                  required:
+                    - role
+              memo:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  executiveSummary:
+                    type: string
+                  verdict:
+                    type: string
+                  rationale:
+                    type: string
+                  bullCase:
+                    type: string
+                  baseCase:
+                    type: string
+                  bearCase:
+                    type: string
               mode:
                 type: string
               error:
@@ -3258,8 +3723,39 @@ components:
           format: uri
       required:
         - id
+        - conversationId
         - title
         - preview
+        - status
+    AgentConversationStatus:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - conclusive
+            - exhausted
+            - blocked
+            - error
+        phase:
+          type: string
+        active:
+          type: boolean
+        completedIterations:
+          type: number
+        maxIterations:
+          type: number
+        preview:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - conversationId
+        - status
     ResearchArticle:
       type: object
       properties:
@@ -3322,6 +3818,96 @@ components:
           items:
             type: string
           default: []
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - conclusive
+            - exhausted
+            - blocked
+            - error
+        phase:
+          type: string
+        progress:
+          type: object
+          properties:
+            completedIterations:
+              type: number
+            maxIterations:
+              type: number
+            completedTasks:
+              type: number
+            totalTasks:
+              type: number
+            evidenceReady:
+              type: boolean
+            essentialClaimsReady:
+              type: number
+            essentialClaimsTotal:
+              type: number
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              summary:
+                type: string
+              source:
+                type: string
+              freshness:
+                type: string
+              artifactRefs:
+                type: array
+                items:
+                  type: string
+            required:
+              - summary
+        context:
+          type: array
+          items:
+            type: object
+            properties:
+              summary:
+                type: string
+              reason:
+                type: string
+              source:
+                type: string
+            required:
+              - summary
+        blocker:
+          type: string
+        specialists:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              status:
+                type: string
+              analysis:
+                type: string
+            required:
+              - role
+        memo:
+          type: object
+          properties:
+            title:
+              type: string
+            executiveSummary:
+              type: string
+            verdict:
+              type: string
+            rationale:
+              type: string
+            bullCase:
+              type: string
+            baseCase:
+              type: string
+            bearCase:
+              type: string
         mode:
           type: string
         error:
@@ -6855,8 +7441,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /v1/agent/chat:
     post:
-      summary: Ticker-bound research brief (Derivation idea-chats)
-      description: "Aggregates Derivation Research Console SSE into one article-shaped assistant turn. Product IA: open from ticker Research…; history under Saved → Briefs. Factory/Jobs UI not exposed. Broker orders off."
+      summary: Start or continue a durable research conversation
+      description: Uses Derivation Research Console /api/explore in agent mode, then returns its display projection as an article-shaped turn. Follow-ups reuse conversationId and one clientMessageId per user message. Broker orders stay disabled.
       tags:
         - finance
       requestBody:
@@ -6867,7 +7453,13 @@ paths:
               $ref: "#/components/schemas/AgentChatRequest"
       responses:
         "200":
-          description: Research article + optional thread id.
+          description: Completed research turn and durable conversation reference.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentChatResponse"
+        "202":
+          description: Conversation accepted and still running; recover through the status endpoint.
           content:
             application/json:
               schema:
@@ -6890,6 +7482,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: Conversation does not belong to this caller or no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conversation is blocked or has exhausted its iteration budget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -6902,10 +7506,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Research Console returned an invalid response or failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Research Console configuration or service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/agent/threads:
     get:
       summary: List persisted research brief threads
-      description: Proxies Derivation GET /api/idea-chats. Shown under Saved → Briefs.
+      description: Lists the caller's Mapvest-owned durable conversation references.
       tags:
         - finance
       responses:
@@ -6958,9 +7574,145 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/threads/{id}/status:
+    get:
+      summary: Get lightweight durable research status
+      description: Uses Derivation GET /api/autoresearch?summary=1 for an owned conversation.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Conversation status and progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConversationStatus"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: Conversation does not belong to this caller or no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Research Console status recovery failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Research Console configuration or service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/threads/{id}/memo:
+    get:
+      summary: Download a completed research memo
+      description: Owner-scoped PDF proxy for the durable conversation memo; the Console service credential remains server-only.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Completed research memo PDF.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: Conversation or completed memo does not exist for this caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Research Console memo recovery failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Research Console configuration or service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/agent/threads/{id}:
     get:
       summary: Get one research brief thread
+      description: Uses Derivation GET /api/autoresearch?display=1 for an owned conversation.
       tags:
         - finance
       parameters:
@@ -6999,6 +7751,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: Conversation does not belong to this caller or no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded (per-user or per-ip).
           content:
@@ -7007,6 +7765,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Research Console display recovery failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Research Console configuration or service is unavailable.
           content:
             application/json:
               schema:

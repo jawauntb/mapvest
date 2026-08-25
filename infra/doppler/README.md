@@ -46,7 +46,9 @@ When the **same underlying token** is on several apps, `shared` stores it once u
 - `ANTHROPIC_API_KEY` — derivation + objetdart
 - `GOOGLE_MAPS_API_KEY` — mapvest
 - `FRED_API_KEY` — mapvest macro series / environment layer
-- `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` — mapvest + derivation
+- `DERIVATION_RESEARCH_SERVICE_TOKEN` — Mapvest's server-only bearer for the
+  unified Console conversation API. Legacy read/mutate names remain only for
+  rollout compatibility.
 - `MASSIVE_API_KEY` and the four Massive flat-file variables — keep only in the
   personal `shared` Doppler project and never copy them into repo config or
   Railway variables. Railway should use the Doppler integration targeting

@@ -407,19 +407,99 @@ export type ResearchArticle = {
   content: string;
   createdAt: string;
   interesting: string[];
-  ideas: Array<{ title: string; thesis: string; disposition?: string }>;
+  ideas: Array<{
+    title: string;
+    thesis: string;
+    disposition?: string;
+    findings?: string[];
+  }>;
   toolsUsed: string[];
   sources: Array<{ label: string; url?: string }>;
   chartTickers: string[];
+  status?: ResearchConversationStatus;
+  phase?: string;
+  progress?: {
+    completedIterations?: number;
+    maxIterations?: number;
+    completedTasks?: number;
+    totalTasks?: number;
+    evidenceReady?: boolean;
+    essentialClaimsReady?: number;
+    essentialClaimsTotal?: number;
+  };
+  evidence?: Array<{
+    summary: string;
+    source?: string;
+    freshness?: string;
+    artifactRefs?: string[];
+  }>;
+  context?: Array<{ summary: string; reason?: string; source?: string }>;
+  blocker?: string;
+  specialists?: Array<{ role: string; status?: string; analysis?: string }>;
+  memo?: {
+    title?: string;
+    executiveSummary?: string;
+    verdict?: string;
+    rationale?: string;
+    bullCase?: string;
+    baseCase?: string;
+    bearCase?: string;
+  };
+  mode?: string;
   error?: string;
+};
+
+export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
+
+export type ResearchConversationStatus =
+  | "queued"
+  | "running"
+  | "conclusive"
+  | "exhausted"
+  | "blocked"
+  | "error";
+
+export type ResearchConversationReference = {
+  id: string;
+  status: ResearchConversationStatus;
+  deliverable: "ideas" | "memo";
+  href: string;
+  pdf_url?: string | null;
+  schema_version?: "research_conversation_ref_v1";
+  conversation_id?: string;
+  stream_href?: string;
 };
 
 export type AgentThread = {
   id: string;
+  conversationId?: string;
   title: string;
   preview: string;
+  status?: ResearchConversationStatus;
+  phase?: string;
+  memoUrl?: string;
+  sourceUrl?: string;
   messages?: ResearchArticle[];
 };
+
+export type AgentChatResponse = {
+  conversationId?: string;
+  /** Compatibility alias retained while released clients still call these threads. */
+  threadId: string;
+  clientMessageId?: string;
+  status?: ResearchConversationStatus;
+  conversation?: ResearchConversationReference;
+  article: ResearchArticle;
+  userMessage?: ResearchArticle;
+  memoUrl?: string;
+  sourceUrl?: string;
+  pending?: boolean;
+};
+
+export function createResearchClientMessageId(): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `ios_${Date.now().toString(36)}_${random}`;
+}
 
 export function listAgentThreads(opts: FetchOpts = {}) {
   return jsonFetch<{ threads: AgentThread[]; count: number }>(
@@ -437,23 +517,106 @@ export function getAgentThread(id: string, opts: FetchOpts = {}) {
   );
 }
 
+export type AgentConversationStatus = {
+  conversationId: string;
+  status: ResearchConversationStatus;
+  phase?: string;
+  active?: boolean;
+  completedIterations?: number;
+  maxIterations?: number;
+  preview?: string;
+  updatedAt?: string;
+};
+
+export function getAgentConversationStatus(id: string, opts: FetchOpts = {}) {
+  return jsonFetch<AgentConversationStatus>(
+    `/v1/agent/threads/${encodeURIComponent(id)}/status`,
+    { method: "GET" },
+    opts,
+  );
+}
+
+const RESEARCH_TERMINAL_STATUSES = new Set<ResearchConversationStatus>([
+  "conclusive",
+  "exhausted",
+  "blocked",
+  "error",
+]);
+
+function waitForResearchPoll(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason ?? new Error("request aborted"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("request aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Follow an already-admitted durable run without POSTing the prompt again. */
+export async function waitForAgentThread(
+  id: string,
+  opts: FetchOpts = {},
+  polling: {
+    maxAttempts?: number;
+    intervalMs?: number;
+    onProgress?: (status: AgentConversationStatus) => void;
+  } = {},
+): Promise<{ thread: AgentThread }> {
+  const maxAttempts = Math.max(1, Math.floor(polling.maxAttempts ?? 100));
+  const intervalMs = Math.max(0, Math.floor(polling.intervalMs ?? 3_000));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await getAgentConversationStatus(id, opts);
+      polling.onProgress?.(status);
+      if (RESEARCH_TERMINAL_STATUSES.has(status.status)) {
+        return await getAgentThread(id, opts);
+      }
+    } catch (error) {
+      const retryable = !(error instanceof ApiError) || error.status >= 500;
+      if (!retryable || attempt + 1 >= maxAttempts) throw error;
+    }
+    if (attempt + 1 < maxAttempts) {
+      await waitForResearchPoll(intervalMs, opts.signal);
+    }
+  }
+  throw new ApiError(
+    202,
+    "Research is still running. Tap send to check this same run again.",
+    "research_pending",
+  );
+}
+
 export function agentChat(
   message: string,
-  args: { ticker?: string; threadId?: string } = {},
+  args: {
+    ticker?: string;
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  } = {},
   opts: FetchOpts = {},
 ) {
-  return jsonFetch<{
-    threadId?: string;
-    article: ResearchArticle;
-    userMessage?: ResearchArticle;
-  }>(
+  const conversationId = args.conversationId ?? args.threadId;
+  const clientMessageId = args.clientMessageId ?? createResearchClientMessageId();
+  return jsonFetch<AgentChatResponse>(
     "/v1/agent/chat",
     {
       method: "POST",
       body: JSON.stringify({
         message,
         ticker: args.ticker,
-        threadId: args.threadId,
+        conversationId,
+        clientMessageId,
+        researchDepth: args.researchDepth ?? "auto",
       }),
     },
     opts,
@@ -476,10 +639,21 @@ export type AgentStreamEvent =
   | { type: "ping"; data: { ts?: number } }
   | { type: "tool"; data: { name: string; arg?: string } }
   | { type: "tool_end"; data: { name: string; ok: boolean } }
-  | { type: "reasoning"; data: { text: string } }
+  | {
+      type: "reasoning";
+      data: { text: string; conversationId?: string; progress?: unknown };
+    }
   | { type: "token"; data: { text: string } }
   | { type: "article"; data: ResearchArticle }
-  | { type: "done"; data: { threadId?: string } }
+  | {
+      type: "done";
+      data: {
+        conversationId: string;
+        threadId: string;
+        clientMessageId: string;
+        status: ResearchConversationStatus;
+      };
+    }
   | { type: "error"; data: { message: string } }
   | { type: string; data: unknown };
 
@@ -494,10 +668,24 @@ function nextSseBoundary(buf: string): { idx: number; sep: number } {
 
 export async function agentChatStream(
   message: string,
-  args: { ticker?: string; threadId?: string },
+  args: {
+    ticker?: string;
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  },
   onEvent: (event: AgentStreamEvent) => void,
   opts: FetchOpts = {},
-): Promise<{ article: ResearchArticle; threadId?: string }> {
+): Promise<{
+  article: ResearchArticle;
+  conversationId: string;
+  threadId: string;
+  clientMessageId: string;
+  status: ResearchConversationStatus;
+}> {
+  const conversationId = args.conversationId ?? args.threadId;
+  const clientMessageId = args.clientMessageId ?? createResearchClientMessageId();
   const headers = new Headers();
   headers.set("Accept", "text/event-stream");
   headers.set("Content-Type", "application/json");
@@ -514,7 +702,9 @@ export async function agentChatStream(
     body: JSON.stringify({
       message,
       ticker: args.ticker,
-      threadId: args.threadId,
+      conversationId,
+      clientMessageId,
+      researchDepth: args.researchDepth ?? "auto",
     }),
     signal: opts.signal,
   });
@@ -531,7 +721,9 @@ export async function agentChatStream(
   const decoder = new TextDecoder("utf-8");
 
   let finalArticle: ResearchArticle | undefined;
-  let finalThreadId: string | undefined;
+  let finalConversationId = conversationId;
+  let finalClientMessageId = clientMessageId;
+  let finalStatus: ResearchConversationStatus | undefined;
   let errored: string | undefined;
   let tokenText = "";
 
@@ -556,15 +748,25 @@ export async function agentChatStream(
     onEvent(evt);
     if (eventName === "article") {
       finalArticle = data as ResearchArticle;
+    } else if (eventName === "reasoning") {
+      const d = data as { conversationId?: string };
+      finalConversationId = d?.conversationId ?? finalConversationId;
     } else if (eventName === "token") {
       const d = data as { text?: string };
       if (typeof d?.text === "string") tokenText += d.text;
     } else if (eventName === "done") {
-      const d = data as { threadId?: string };
-      finalThreadId = d?.threadId;
+      const d = data as {
+        conversationId?: string;
+        threadId?: string;
+        clientMessageId?: string;
+        status?: ResearchConversationStatus;
+      };
+      finalConversationId = d?.conversationId ?? d?.threadId ?? finalConversationId;
+      finalClientMessageId = d?.clientMessageId ?? finalClientMessageId;
+      finalStatus = d?.status;
     } else if (eventName === "error") {
-      const d = data as { message?: string };
-      errored = d?.message || "stream error";
+      const d = data as { error?: string; message?: string };
+      errored = d?.error || d?.message || "stream error";
     }
   };
 
@@ -610,7 +812,14 @@ export async function agentChatStream(
     };
   }
   if (!finalArticle) throw new ApiError(500, "stream ended without an article");
-  return { article: finalArticle, threadId: finalThreadId };
+  if (!finalConversationId) throw new ApiError(500, "stream ended without a conversation id");
+  return {
+    article: finalArticle,
+    conversationId: finalConversationId,
+    threadId: finalConversationId,
+    clientMessageId: finalClientMessageId,
+    status: finalStatus ?? "conclusive",
+  };
 }
 
 export function secFilings(

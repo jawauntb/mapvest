@@ -1,5 +1,5 @@
 /**
- * Keep an SSE response alive while we wait on Derivation or OpenRouter.
+ * Keep an SSE response alive while we poll a durable Derivation conversation.
  *
  * Railway Hikari (and iOS URLSession) close idle streamed responses after
  * ~10s with no bytes. /v1/agent/stream used to send one "Contacting

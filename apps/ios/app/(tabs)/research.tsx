@@ -1,9 +1,12 @@
 import {
   type AgentThread,
+  ApiError,
   type ResearchArticle,
   agentChat,
+  createResearchClientMessageId,
   getAgentThread,
   listAgentThreads,
+  waitForAgentThread,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
@@ -17,6 +20,12 @@ import { SkeletonList } from "@/components/Skeleton";
 import { decodeChatSeed, seedToDraft } from "@/nav/chatAbout";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
+import {
+  clearResearchConversationId,
+  loadResearchConversationId,
+  saveResearchConversationId,
+} from "@/util/researchConversation";
+import { shareResearchMemo } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -66,12 +75,27 @@ function deriveThreadTitle(msg: string): string {
   return msg.slice(0, 48);
 }
 
+function researchProgressLabel(article: ResearchArticle): string | undefined {
+  const progress = article.progress;
+  const count =
+    progress?.completedTasks != null && progress.totalTasks != null
+      ? `${progress.completedTasks}/${progress.totalTasks} tasks`
+      : progress?.completedIterations != null && progress.maxIterations != null
+        ? `${progress.completedIterations}/${progress.maxIterations} passes`
+        : progress?.essentialClaimsReady != null && progress.essentialClaimsTotal != null
+          ? `${progress.essentialClaimsReady}/${progress.essentialClaimsTotal} claims`
+          : progress?.evidenceReady
+            ? "evidence ready"
+            : undefined;
+  return [article.phase ?? article.status, count].filter(Boolean).join(" · ") || undefined;
+}
+
 /**
  * ChatGPT-like research surface — thread list + article briefs.
  * Tools (Derivation) run server-side; no Factory/Jobs UI.
  */
 export default function ResearchChatScreen() {
-  const { session } = useSession();
+  const { session, user } = useSession();
   const { presentPaywall } = usePaywall();
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string; id?: string; seed?: string }>();
@@ -83,11 +107,28 @@ export default function ResearchChatScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [memoUrl, setMemoUrl] = useState<string | undefined>();
   const inputRef = useRef<TextInput>(null);
+  const retryAttemptRef = useRef<
+    | {
+        message: string;
+        clientMessageId: string;
+        acceptedConversationId?: string;
+      }
+    | undefined
+  >(undefined);
   // Track which seed we've already consumed so a re-render (or the effect
   // re-running because of the router/params identity churn) doesn't clobber
   // a draft the user has since edited.
   const consumedSeedRef = useRef<string | null>(null);
+  const researchOperationGenerationRef = useRef(0);
+  const researchOperationAbortRef = useRef<AbortController | null>(null);
+
+  const cancelResearchOperation = useCallback(() => {
+    researchOperationGenerationRef.current += 1;
+    researchOperationAbortRef.current?.abort();
+    researchOperationAbortRef.current = null;
+  }, []);
 
   const threadsQ = useQuery({
     queryKey: ["agent-threads", session?.token],
@@ -98,34 +139,127 @@ export default function ResearchChatScreen() {
 
   const openThread = useCallback(
     async (t: AgentThread) => {
+      cancelResearchOperation();
+      const generation = researchOperationGenerationRef.current;
+      const controller = new AbortController();
+      researchOperationAbortRef.current = controller;
+      const isCurrent = () =>
+        researchOperationGenerationRef.current === generation &&
+        researchOperationAbortRef.current === controller &&
+        !controller.signal.aborted;
+
+      retryAttemptRef.current = undefined;
       setErr(null);
       setMode("chat");
-      setThreadId(t.id);
+      setBusy(true);
+      setStatus(null);
+      const conversationId = t.conversationId ?? t.id;
+      setThreadId(conversationId);
       setTitle(t.title || "Research");
+      setTurns(t.messages ?? []);
+      setMemoUrl(t.memoUrl);
       try {
-        const r = await getAgentThread(t.id, { token: session?.token });
-        setTurns(r.thread.messages ?? []);
-      } catch {
-        setTurns([]);
+        let thread = (
+          await getAgentThread(conversationId, {
+            token: session?.token,
+            signal: controller.signal,
+          })
+        ).thread;
+        if (!isCurrent()) return;
+        if (thread.status === "queued" || thread.status === "running") {
+          setStatus("Researching… gathering more evidence");
+          thread = (
+            await waitForAgentThread(
+              conversationId,
+              { token: session?.token, signal: controller.signal },
+              {
+                onProgress: (progress) => {
+                  if (!isCurrent()) return;
+                  setStatus(
+                    progress.status === "queued"
+                      ? "Research queued…"
+                      : "Researching… gathering more evidence",
+                  );
+                },
+              },
+            )
+          ).thread;
+        }
+        if (!isCurrent()) return;
+        const canonicalId = thread.conversationId ?? thread.id;
+        setThreadId(canonicalId);
+        void saveResearchConversationId("chat", canonicalId, user?.id);
+        setTurns(thread.messages ?? []);
+        setMemoUrl(thread.memoUrl);
+        setStatus(thread.status === "blocked" || thread.status === "error" ? null : "Brief ready");
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (error instanceof ApiError && error.status === 404) {
+          const persistedId = await loadResearchConversationId("chat", user?.id);
+          if (!isCurrent()) return;
+          if (persistedId === conversationId) {
+            void clearResearchConversationId("chat", user?.id);
+          }
+          setThreadId(undefined);
+          setTurns([]);
+          setMemoUrl(undefined);
+          setErr("This saved research is no longer available.");
+        } else {
+          setErr("Couldn’t load this research right now. Its saved conversation was preserved.");
+        }
+      } finally {
+        if (isCurrent()) {
+          researchOperationAbortRef.current = null;
+          setBusy(false);
+        }
       }
     },
-    [session?.token],
+    [cancelResearchOperation, session?.token, user?.id],
   );
 
-  function newChat(prefill?: string) {
-    hapticTap();
-    setMode("chat");
-    setThreadId(undefined);
-    setTurns([]);
-    setTitle("New research");
-    setInput(prefill ?? "");
-    setErr(null);
-    if (prefill) {
-      // Auto-focus so the user lands on the composer with the draft ready
-      // to edit + send. Small delay lets the chat view mount first.
-      setTimeout(() => inputRef.current?.focus(), 120);
-    }
-  }
+  const newChat = useCallback(
+    (prefill?: string) => {
+      hapticTap();
+      cancelResearchOperation();
+      retryAttemptRef.current = undefined;
+      void clearResearchConversationId("chat", user?.id);
+      setMode("chat");
+      setThreadId(undefined);
+      setTurns([]);
+      setMemoUrl(undefined);
+      setTitle("New research");
+      setInput(prefill ?? "");
+      setErr(null);
+      setStatus(null);
+      setBusy(false);
+      if (prefill) {
+        // Auto-focus so the user lands on the composer with the draft ready
+        // to edit + send. Small delay lets the chat view mount first.
+        setTimeout(() => inputRef.current?.focus(), 120);
+      }
+    },
+    [cancelResearchOperation, user?.id],
+  );
+
+  useEffect(() => {
+    if (params.intent) return;
+    let active = true;
+    const restoreGeneration = researchOperationGenerationRef.current;
+    void loadResearchConversationId("chat", user?.id).then((conversationId) => {
+      if (
+        active &&
+        researchOperationGenerationRef.current === restoreGeneration &&
+        conversationId
+      ) {
+        void openThread({ id: conversationId, title: "Research", preview: "" });
+      }
+    });
+    return () => {
+      active = false;
+      cancelResearchOperation();
+      retryAttemptRef.current = undefined;
+    };
+  }, [params.intent, user?.id, openThread, cancelResearchOperation]);
 
   // Sidebar deep-links: ?intent=new | ?intent=thread&id= | ?seed=<b64>
   useEffect(() => {
@@ -149,19 +283,33 @@ export default function ResearchChatScreen() {
     if (params.intent === "thread" && params.id) {
       void openThread({ id: params.id, title: "Research", preview: "" });
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: newChat is a
-    // plain (unmemoized) function recreated every render — this effect must
-    // key off the URL params only, or it would re-fire on every render.
-  }, [params.intent, params.id, params.seed, openThread]);
+  }, [params.intent, params.id, params.seed, openThread, newChat]);
 
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    cancelResearchOperation();
+    const generation = researchOperationGenerationRef.current;
+    const controller = new AbortController();
+    researchOperationAbortRef.current = controller;
+    const isCurrent = () =>
+      researchOperationGenerationRef.current === generation &&
+      researchOperationAbortRef.current === controller &&
+      !controller.signal.aborted;
+    const previousAttempt = retryAttemptRef.current;
+    const attempt =
+      previousAttempt?.message === msg
+        ? previousAttempt
+        : {
+            message: msg,
+            clientMessageId: createResearchClientMessageId(),
+          };
+    retryAttemptRef.current = attempt;
     setBusy(true);
     setErr(null);
     setStatus("Researching… tools running");
     const optimistic: ResearchArticle = {
-      id: `u-${Date.now()}`,
+      id: `user-${attempt.clientMessageId}`,
       role: "user",
       content: msg,
       createdAt: new Date().toISOString(),
@@ -171,32 +319,101 @@ export default function ResearchChatScreen() {
       sources: [],
       chartTickers: [],
     };
-    setTurns((t) => [...t, optimistic]);
+    setTurns((t) => (t.some((turn) => turn.id === optimistic.id) ? t : [...t, optimistic]));
     setInput("");
     try {
-      const r = await agentChat(msg, { threadId }, { token: session?.token });
-      if (r.threadId) setThreadId(r.threadId);
-      setTurns((t) => [...t, r.article]);
+      let article: ResearchArticle | undefined;
+      let conversationId = attempt.acceptedConversationId;
+      if (!conversationId) {
+        const r = await agentChat(
+          msg,
+          { conversationId: threadId, clientMessageId: attempt.clientMessageId },
+          { token: session?.token, signal: controller.signal },
+        );
+        if (!isCurrent()) return;
+        conversationId = r.conversationId ?? r.threadId;
+        attempt.acceptedConversationId = conversationId;
+        setThreadId(conversationId);
+        void saveResearchConversationId("chat", conversationId, user?.id);
+        setMemoUrl(r.memoUrl);
+        if (!r.pending && r.status !== "queued" && r.status !== "running") {
+          article = r.article;
+        }
+      }
+
+      if (!article) {
+        const recovered = await waitForAgentThread(
+          conversationId,
+          { token: session?.token, signal: controller.signal },
+          {
+            onProgress: (thread) => {
+              if (!isCurrent()) return;
+              setStatus(
+                thread.status === "queued"
+                  ? "Research queued…"
+                  : "Researching… gathering more evidence",
+              );
+            },
+          },
+        );
+        if (!isCurrent()) return;
+        const canonicalId = recovered.thread.conversationId ?? recovered.thread.id;
+        attempt.acceptedConversationId = canonicalId;
+        setThreadId(canonicalId);
+        void saveResearchConversationId("chat", canonicalId, user?.id);
+        setMemoUrl(recovered.thread.memoUrl);
+        const recoveredTurns = recovered.thread.messages ?? [];
+        setTurns(recoveredTurns);
+        article = [...recoveredTurns].reverse().find((turn) => turn.role === "assistant");
+      } else {
+        setTurns((turns) =>
+          turns.some((turn) => turn.id === article?.id)
+            ? turns
+            : [...turns, article as ResearchArticle],
+        );
+      }
+
+      if (!article) throw new Error("Research finished without a displayable brief.");
+      if (!isCurrent()) return;
+      retryAttemptRef.current = undefined;
       if (title === "New research") setTitle(deriveThreadTitle(msg));
-      if (r.article.error) {
+      if (article.error) {
         setErr("Research hit a limit — we wrote a shorter brief instead, or try again.");
         setStatus(null);
       } else {
-        const tools = r.article.toolsUsed?.length
-          ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+        const tools = article.toolsUsed?.length
+          ? ` · ${article.toolsUsed.slice(0, 3).join(", ")}`
           : "";
         setStatus(`Brief ready${tools}`);
       }
     } catch (e) {
+      if (!isCurrent()) {
+        if (controller.signal.aborted && retryAttemptRef.current === attempt) {
+          retryAttemptRef.current = undefined;
+        }
+        return;
+      }
+      setInput(msg);
       if (presentPaywallIfQuota(e, presentPaywall)) {
         setErr("Free generations used. Subscribe to keep researching.");
         setStatus(null);
         return;
       }
-      setErr((e as Error).message);
+      if (e instanceof ApiError && e.status === 404) {
+        void clearResearchConversationId("chat", user?.id);
+        setThreadId(undefined);
+        setMemoUrl(undefined);
+        retryAttemptRef.current = undefined;
+        setErr("This saved research is no longer available. Send again to start a new one.");
+      } else {
+        setErr((e as Error).message);
+      }
       setStatus(null);
     } finally {
-      setBusy(false);
+      if (isCurrent()) {
+        researchOperationAbortRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -218,9 +435,7 @@ export default function ResearchChatScreen() {
             </Pressable>
           }
         />
-        <Text style={styles.hint}>
-          Article-style briefs · not advice
-        </Text>
+        <Text style={styles.hint}>Article-style briefs · not advice</Text>
         <ScreenFade>
           {threadsQ.isLoading ? (
             <SkeletonList rows={5} />
@@ -271,6 +486,8 @@ export default function ResearchChatScreen() {
     );
   }
 
+  const latestAssistantId = [...turns].reverse().find((turn) => turn.role === "assistant")?.id;
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <KeyboardAvoidingView
@@ -284,6 +501,10 @@ export default function ResearchChatScreen() {
             <Pressable
               onPress={() => {
                 hapticSelect();
+                cancelResearchOperation();
+                retryAttemptRef.current = undefined;
+                setBusy(false);
+                setStatus(null);
                 setMode("list");
               }}
               style={styles.back}
@@ -321,11 +542,80 @@ export default function ResearchChatScreen() {
             ) : (
               <View key={t.id} style={styles.article}>
                 <RichText text={t.content} />
+                {researchProgressLabel(t) ? (
+                  <Text style={styles.meta}>Progress · {researchProgressLabel(t)}</Text>
+                ) : null}
                 {t.interesting.slice(0, 4).map((x, i) => (
-                  <Text key={i} style={styles.bullet}>
+                  <Text key={`${i}-${x}`} style={styles.bullet}>
                     · {x}
                   </Text>
                 ))}
+                {t.evidence?.slice(0, 4).map((item, i) => (
+                  <View key={`${i}-${item.summary}`} style={styles.evidenceRow}>
+                    <Text style={styles.bullet}>Evidence · {item.summary}</Text>
+                    {item.source || item.freshness ? (
+                      <Text style={styles.meta}>
+                        {[item.source, item.freshness].filter(Boolean).join(" · ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+                {t.context?.slice(0, 2).map((item, i) => (
+                  <Text key={`${i}-${item.summary}`} style={styles.bullet}>
+                    Context · {item.summary}
+                    {item.reason ? ` — ${item.reason}` : ""}
+                  </Text>
+                ))}
+                {t.ideas.slice(0, 3).map((idea, i) => (
+                  <View key={`${i}-${idea.title}`} style={styles.detailCard}>
+                    <Text style={styles.detailTitle}>
+                      {idea.title}
+                      {idea.disposition ? ` · ${idea.disposition}` : ""}
+                    </Text>
+                    {idea.thesis ? <Text style={styles.bullet}>{idea.thesis}</Text> : null}
+                    {idea.findings?.slice(0, 2).map((finding) => (
+                      <Text key={finding} style={styles.meta}>
+                        · {finding}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+                {t.specialists?.slice(0, 3).map((specialist, i) => (
+                  <View key={`${i}-${specialist.role}`} style={styles.evidenceRow}>
+                    <Text style={styles.detailTitle}>
+                      {specialist.role}
+                      {specialist.status ? ` · ${specialist.status}` : ""}
+                    </Text>
+                    {specialist.analysis ? (
+                      <Text style={styles.bullet}>{specialist.analysis}</Text>
+                    ) : null}
+                  </View>
+                ))}
+                {t.memo ? (
+                  <View style={styles.memoCard}>
+                    <Text style={styles.detailTitle}>{t.memo.title || "Research memo"}</Text>
+                    {t.memo.executiveSummary ? (
+                      <Text style={styles.bullet}>{t.memo.executiveSummary}</Text>
+                    ) : null}
+                    {t.memo.verdict ? (
+                      <Text style={styles.meta}>Verdict · {t.memo.verdict}</Text>
+                    ) : null}
+                    {t.memo.rationale ? (
+                      <Text style={styles.bullet}>{t.memo.rationale}</Text>
+                    ) : null}
+                    {t.memo.bullCase ? (
+                      <Text style={styles.meta}>Bull · {t.memo.bullCase}</Text>
+                    ) : null}
+                    {t.memo.baseCase ? (
+                      <Text style={styles.meta}>Base · {t.memo.baseCase}</Text>
+                    ) : null}
+                    {t.memo.bearCase ? (
+                      <Text style={styles.meta}>Bear · {t.memo.bearCase}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {t.blocker ? <Text style={styles.inlineError}>Blocked · {t.blocker}</Text> : null}
+                {t.error ? <Text style={styles.inlineError}>{t.error}</Text> : null}
                 {t.chartTickers.slice(0, 3).map((sym) => (
                   <Pressable
                     key={sym}
@@ -370,6 +660,22 @@ export default function ResearchChatScreen() {
                       );
                     })}
                   </View>
+                ) : null}
+                {memoUrl && t.id === latestAssistantId ? (
+                  <Pressable
+                    onPress={() => {
+                      hapticTap();
+                      void shareResearchMemo(memoUrl, session?.token).catch((error) => {
+                        setErr(error instanceof Error ? error.message : "Memo download failed.");
+                      });
+                    }}
+                    style={styles.memoLink}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open full research memo"
+                  >
+                    <Ionicons name="document-text-outline" size={13} color={colors.accent} />
+                    <Text style={styles.memoLinkText}>Open memo PDF</Text>
+                  </Pressable>
                 ) : null}
               </View>
             ),
@@ -482,6 +788,34 @@ const styles = StyleSheet.create({
   },
   article: { gap: 8 },
   bullet: { color: colors.fgMuted, fontSize: 13, lineHeight: 18 },
+  meta: { color: colors.fgDim, fontSize: 11, lineHeight: 16 },
+  evidenceRow: { gap: 2 },
+  detailCard: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: 10,
+    gap: 4,
+  },
+  detailTitle: { color: colors.fg, fontWeight: "600", fontSize: 13 },
+  memoCard: {
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: 10,
+    gap: 5,
+    backgroundColor: colors.bgElevated,
+  },
+  inlineError: { color: colors.danger, fontSize: 12, lineHeight: 17 },
+  memoLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    minHeight: 32,
+    paddingVertical: 5,
+  },
+  memoLinkText: { color: colors.accent, fontWeight: "600", fontSize: 12 },
   tickerChip: {
     flexDirection: "row",
     alignItems: "center",

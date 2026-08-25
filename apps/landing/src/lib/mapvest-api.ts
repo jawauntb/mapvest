@@ -500,16 +500,58 @@ export type ResearchArticle = {
   toolsUsed: string[];
   sources: Array<{ label: string; url?: string }>;
   chartTickers: string[];
+  status?: ResearchConversationStatus;
+  phase?: string;
+  progress?: {
+    completedIterations?: number;
+    maxIterations?: number;
+    completedTasks?: number;
+    totalTasks?: number;
+    evidenceReady?: boolean;
+    essentialClaimsReady?: number;
+    essentialClaimsTotal?: number;
+  };
+  evidence?: Array<{
+    summary: string;
+    source?: string;
+    freshness?: string;
+    artifactRefs?: string[];
+  }>;
+  context?: Array<{ summary: string; reason?: string; source?: string }>;
+  blocker?: string;
+  specialists?: Array<{ role: string; status?: string; analysis?: string }>;
+  memo?: {
+    title?: string;
+    executiveSummary?: string;
+    verdict?: string;
+    rationale?: string;
+    bullCase?: string;
+    baseCase?: string;
+    bearCase?: string;
+  };
   mode?: string;
   error?: string;
 };
 
+export type ResearchConversationStatus =
+  | "queued"
+  | "running"
+  | "conclusive"
+  | "exhausted"
+  | "blocked"
+  | "error";
+
 export type AgentThread = {
   id: string;
+  /** Canonical durable research identifier; `id` remains the compatibility alias. */
+  conversationId?: string;
   title: string;
   preview: string;
   createdAt?: string;
   updatedAt?: string;
+  status: ResearchConversationStatus;
+  phase?: string;
+  memoUrl?: string;
   messages?: ResearchArticle[];
 };
 
@@ -517,25 +559,83 @@ export function listAgentThreads() {
   return req<{ threads: AgentThread[]; count: number }>("/v1/agent/threads");
 }
 
-export function getAgentThread(id: string) {
-  return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`);
+export function getAgentThread(id: string, signal?: AbortSignal) {
+  return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`, { signal });
 }
 
-/** Context-bound research brief (Derivation idea-chats under the hood). */
-export function agentChat(message: string, opts?: { ticker?: string; threadId?: string }) {
+export function getAgentConversationStatus(id: string, signal?: AbortSignal) {
   return req<{
+    conversationId: string;
+    status: ResearchConversationStatus;
+    phase?: string;
+    active?: boolean;
+    completedIterations?: number;
+    maxIterations?: number;
+    preview?: string;
+    updatedAt?: string;
+  }>(`/v1/agent/threads/${encodeURIComponent(id)}/status`, { signal });
+}
+
+export async function fetchAgentMemo(memoUrl: string) {
+  const url = new URL(memoUrl, `${API_URL}/`);
+  if (url.origin !== new URL(API_URL).origin) {
+    throw new ApiError(400, "invalid research memo URL");
+  }
+  const headers = new Headers({ Accept: "application/pdf" });
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const deviceId = getDeviceId();
+  if (deviceId) headers.set("X-Device-Id", deviceId);
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw apiErrorFromBody(response.status, text, response.statusText);
+  }
+  return response.blob();
+}
+
+export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
+
+export function createAgentClientMessageId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? `web_${crypto.randomUUID()}`
+    : `web_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/** Context-bound research brief backed by one durable research conversation. */
+export function agentChat(
+  message: string,
+  opts?: {
+    ticker?: string;
+    conversationId?: string;
+    /** Compatibility alias for clients released before conversation unification. */
     threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  },
+) {
+  const conversationId = opts?.conversationId ?? opts?.threadId;
+  return req<{
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
+    status: ResearchConversationStatus;
     ticker?: string;
     article: ResearchArticle;
     userMessage?: ResearchArticle;
     provider?: string;
     sourceUrl?: string;
+    memoUrl?: string;
+    pending?: boolean;
   }>("/v1/agent/chat", {
     method: "POST",
     body: JSON.stringify({
       message,
       ticker: opts?.ticker,
-      threadId: opts?.threadId,
+      conversationId,
+      threadId: conversationId,
+      clientMessageId: opts?.clientMessageId ?? createAgentClientMessageId(),
+      researchDepth: opts?.researchDepth ?? "auto",
     }),
   });
 }

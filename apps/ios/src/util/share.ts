@@ -2,7 +2,7 @@
  * Share a Brief — shared utility for exporting Mapvest daily briefs and
  * research articles.
  *
- * Two entry points:
+ * Three entry points:
  *   • shareBriefText(...)  — clean paste-safe text via expo-sharing (with a
  *     react-native Share.share fallback). Always works.
  *   • shareBriefImage(...) — snapshots a React view to PNG via
@@ -10,12 +10,17 @@
  *     file off to expo-sharing. Degrades gracefully to text when the
  *     view-shot library is not installed — we do NOT crash and we do NOT
  *     try to install a new dep at runtime.
+ *   • shareResearchMemo(...) — downloads an authenticated research PDF and
+ *     opens the native share sheet.
  *
  * Kept UI-free so callers (Home, ResearchSheet) can drive their own buttons.
  */
 
-import { Share } from "react-native";
+import { getDeviceId } from "@/util/deviceId";
+import { API_URL } from "@/util/env";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { Share } from "react-native";
 
 /** Public site URL — surface in shared text so recipients can click through. */
 export const MAPVEST_URL = "https://mapvest.co";
@@ -47,12 +52,7 @@ export type ShareBriefTextInput = {
  * asterisks — just unicode punctuation (·, —) that survives Twitter, iMessage,
  * Slack, and email without any weird rendering. Line breaks are preserved.
  */
-export function formatBriefText({
-  headline,
-  body,
-  ticker,
-  footer,
-}: ShareBriefTextInput): string {
+export function formatBriefText({ headline, body, ticker, footer }: ShareBriefTextInput): string {
   const header = ticker
     ? `$${ticker.replace(/^\$/, "").toUpperCase()} · Mapvest Daily`
     : "Mapvest Daily";
@@ -82,6 +82,36 @@ export async function shareBriefText(input: ShareBriefTextInput): Promise<void> 
   }
 }
 
+/** Download an owner-scoped research memo and hand the PDF to the native share sheet. */
+export async function shareResearchMemo(memoUrl: string, token?: string): Promise<void> {
+  const url = new URL(memoUrl, `${API_URL}/`);
+  if (url.origin !== new URL(API_URL).origin) {
+    throw new Error("Invalid research memo URL.");
+  }
+  if (!FileSystem.cacheDirectory) throw new Error("Memo storage is unavailable.");
+  const headers: Record<string, string> = { Accept: "application/pdf" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    headers["X-Device-Id"] = await getDeviceId();
+  } catch {
+    /* Signed-in requests can still be authorized without a device id. */
+  }
+  const destination = `${FileSystem.cacheDirectory}mapvest-research-${Date.now()}.pdf`;
+  const result = await FileSystem.downloadAsync(url.toString(), destination, { headers });
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`Memo download failed (${result.status}).`);
+  }
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, {
+      mimeType: "application/pdf",
+      UTI: "com.adobe.pdf",
+      dialogTitle: "Open research memo",
+    });
+    return;
+  }
+  await Share.share({ url: result.uri });
+}
+
 /**
  * Try to snapshot a React ref to PNG and share it. Falls back to text share
  * when no view-shot library is installed (we do not want to add a runtime
@@ -103,10 +133,7 @@ export async function shareBriefImage(
 ): Promise<void> {
   // Dynamic require so bundlers/metro don't try to resolve at build time —
   // matches the "degrade gracefully if not installed" contract.
-  type CaptureRefFn = (
-    ref: unknown,
-    opts?: Record<string, unknown>,
-  ) => Promise<string>;
+  type CaptureRefFn = (ref: unknown, opts?: Record<string, unknown>) => Promise<string>;
   let captureRef: CaptureRefFn | null = null;
   try {
     // Try the community-maintained package first (most common).
@@ -135,9 +162,7 @@ export async function shareBriefImage(
     // text so the user still gets something out of tapping Share.
     if (__DEV__) {
       // eslint-disable-next-line no-console
-      console.info(
-        "[share] view-shot not available — falling back to text share",
-      );
+      console.info("[share] view-shot not available — falling back to text share");
     }
     return shareBriefText(textFallback);
   }
