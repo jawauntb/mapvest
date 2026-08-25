@@ -258,6 +258,68 @@ export async function listResearchConversations(ownerKey: string): Promise<Resea
     .map(copy);
 }
 
+/**
+ * Move one anonymous device conversation into an authenticated user's scope.
+ * Callers must prove both identities on the same request before invoking this.
+ */
+export async function claimResearchConversation(
+  fromOwnerKey: string,
+  toOwnerKey: string,
+  conversationId: string,
+): Promise<ResearchConversation | null> {
+  if (fromOwnerKey === toOwnerKey) return getResearchConversation(toOwnerKey, conversationId);
+  await initDb();
+
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = (await sql`
+        UPDATE research_conversations
+        SET owner_key = ${toOwnerKey}
+        WHERE conversation_id = ${conversationId} AND owner_key = ${fromOwnerKey}
+        RETURNING conversation_id, owner_key, title, preview, status, created_at, updated_at
+      `) as ResearchConversationRow[];
+      const row = rows[0];
+      return row ? copy(cache(rowToConversation(row))) : null;
+    }
+  }
+
+  const existing = memory.get(conversationId);
+  if (!existing || existing.ownerKey !== fromOwnerKey) return null;
+  return copy(cache({ ...existing, ownerKey: toOwnerKey }));
+}
+
+/** Claim all conversations created anonymously on the caller's current device. */
+export async function claimResearchConversations(
+  fromOwnerKey: string,
+  toOwnerKey: string,
+): Promise<number> {
+  if (fromOwnerKey === toOwnerKey) return 0;
+  await initDb();
+
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = (await sql`
+        UPDATE research_conversations
+        SET owner_key = ${toOwnerKey}
+        WHERE owner_key = ${fromOwnerKey}
+        RETURNING conversation_id, owner_key, title, preview, status, created_at, updated_at
+      `) as ResearchConversationRow[];
+      for (const row of rows) cache(rowToConversation(row));
+      return rows.length;
+    }
+  }
+
+  let claimed = 0;
+  for (const conversation of memory.values()) {
+    if (conversation.ownerKey !== fromOwnerKey) continue;
+    cache({ ...conversation, ownerKey: toOwnerKey });
+    claimed += 1;
+  }
+  return claimed;
+}
+
 /** Test-only hook for the in-memory fallback. */
 export function __resetResearchConversationStore(): void {
   memory.clear();

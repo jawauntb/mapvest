@@ -135,6 +135,7 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 - `optionalAuth` runs first and populates `c.get("user")` from a session bearer token *without* rejecting anonymous requests — these routes must stay usable by guests (Phase 8 product rule 1).
 - `requireGenerationQuota(kind)` then requires either that user or an `X-Device-Id` header, checks `getEntitlementState()`, and returns `402 { error, code: "quota_exceeded", remaining, limit, priceUsd, interval }` when the quota is spent. It records the usage event only after the wrapped handler responds with status `< 400`, so failed upstream calls (e.g. a 502 from Derivation/Underlying) don't burn a user's quota.
+- Research chat supplies its stable `clientMessageId` as the usage-event request key. A lost-response retry or `/stream` → `/chat` recovery therefore reuses the original event and remains recoverable even when that first accepted request spent the user's last free generation.
 - **Clients must present a paywall on that 402**, not a generic error. iOS (`PaywallProvider`) and web (`/app` `PaywallRoot`) show remaining count, require sign-in, then start `POST /v1/billing/checkout` with `{ platform }`. Camera does **not** enqueue a snap that failed with `quota_exceeded`.
 - Checkout is channel-aware: **iOS StoreKit 2** posts the signed transaction to `POST /v1/billing/apple` (Apple Root CA G3 pin); `ios` + `APPLE_IAP_PRODUCT_ID` → `{ channel: "apple_iap", productId }`. Web uses Stripe Checkout. Android Play Billing remains deferred. Do not open Stripe from the iOS paywall on StoreKit builds.
 - `free_forever` (auto-granted for emails containing `jawaun`, or admin-scoped accounts; also settable via `POST /v1/admin/users/:id/entitlement`) and `subscribed` (Stripe, Slice E) both short-circuit to unlimited.
@@ -149,7 +150,11 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 **Why**: The Console now puts its full research behavior behind `/api/explore`; campaigns are an internal execution detail. Keeping the existing Mapvest chat and SSE routes avoids a second campaign UI while giving every turn the richer evidence path. The service bearer remains server-side, and Mapvest stores only owner-scoped conversation references.
 
-`POST /v1/agent/stream` still emits 3-second `ping` frames so Railway and iOS do not close an otherwise idle poll. If the client retries through `/v1/agent/chat`, it reuses the same client message ID so the Console does not start duplicate work. Blocked or exhausted conversations are surfaced as such; Mapvest does not replace them with a tools-free model response.
+`POST /v1/agent/stream` still emits 3-second `ping` frames so Railway and iOS do not close an otherwise idle poll. Before forwarding, Mapvest hashes a stable isolation namespace plus the client message ID: the owned conversation for follow-ups, or the device/user for a new conversation. That keeps retries stable across conversation claims without letting one shared service credential deduplicate unrelated users or conversations. Mapvest retains the caller's original ID in its response and applies the same scoping to retry-safe quota metering.
+
+Completed display projections keep progress, evidence, context, tool activity, ideas, specialist findings, memo summaries, and failures in the existing chat. `GET /v1/agent/threads/{id}/memo` proxies a finished PDF without exposing the Console service token. A signed-in request carrying its existing device ID claims that device's anonymous research references into the user scope; quota counters remain separate as described in D12.
+
+Blocked or exhausted conversations are surfaced as such; Mapvest does not replace them with a tools-free model response. Local direct Console calls omit proxy-shaped headers, while the canonical Railway deployment (or an explicitly configured `RESEARCH_CONSOLE_FORWARDED_HOST`) retains the front-door attestation.
 
 ## D14 — Global rate limit keys by session, not shared NAT IP
 

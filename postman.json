@@ -1264,6 +1264,27 @@
           }
         },
         {
+          "name": "Download a completed research memo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agent/threads/{id}/memo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "agent",
+                "threads",
+                "{id}",
+                "memo"
+              ]
+            },
+            "description": "Owner-scoped PDF proxy for the durable conversation memo; the Console service credential remains server-only."
+          }
+        },
+        {
           "name": "Get one research brief thread",
           "request": {
             "method": "GET",

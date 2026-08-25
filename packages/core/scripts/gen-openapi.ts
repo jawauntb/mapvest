@@ -1134,6 +1134,36 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/v1/agent/threads/{id}/memo",
+  summary: "Download a completed research memo",
+  description:
+    "Owner-scoped PDF proxy for the durable conversation memo; the Console service credential remains server-only.",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      id: z.string().openapi({
+        param: { name: "id", in: "path" },
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Completed research memo PDF.",
+      content: {
+        "application/pdf": {
+          schema: z.string().openapi({ type: "string", format: "binary" }),
+        },
+      },
+    },
+    404: errorResponse("Conversation or completed memo does not exist for this caller."),
+    502: errorResponse("Research Console memo recovery failed."),
+    503: errorResponse("Research Console configuration or service is unavailable."),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/v1/agent/threads/{id}",
   summary: "Get one research brief thread",
   description: "Uses Derivation GET /api/autoresearch?display=1 for an owned conversation.",

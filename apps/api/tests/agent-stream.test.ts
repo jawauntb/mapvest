@@ -176,8 +176,36 @@ describe("POST /v1/agent/stream", () => {
     expect(requests.find((item) => item.url.endsWith("/api/explore"))?.body).toMatchObject({
       mode: "agent",
       research_depth: "standard",
-      client_message_id: "stable-stream-message-id",
     });
+    expect(
+      (
+        requests.find((item) => item.url.endsWith("/api/explore"))?.body as {
+          client_message_id?: string;
+        }
+      )?.client_message_id,
+    ).toMatch(/^mapvest_[a-f0-9]{64}$/);
+
+    const recovery = await app.fetch(
+      new Request(url("/agent/chat"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Device-Id": DEVICE_ID,
+        },
+        body: JSON.stringify({
+          message: "Is it a good time to research MXL?",
+          ticker: "MXL",
+          clientMessageId: "stable-stream-message-id",
+          researchDepth: "standard",
+        }),
+      }),
+    );
+    expect(recovery.status).toBe(200);
+
+    const quota = await app.fetch(
+      new Request(url("/entitlements"), { headers: { "X-Device-Id": DEVICE_ID } }),
+    );
+    expect(await quota.json()).toMatchObject({ remaining: 49 });
   });
 
   test("returns a semantic 409 before opening SSE and never calls a fallback model", async () => {

@@ -2,10 +2,11 @@
  * Server-only Derivation Research Console boundary.
  *
  * The unified conversation API uses the mutate-capable service credential and
- * retains the forwarded-host attestation required by older Console deployments.
+ * adds forwarded-host attestation only when calling the production proxy path.
  */
 
 const DEFAULT_DERIVATION_FORWARDED_HOST = "derivation-research-jawaun.jtbx.workers.dev";
+const PRODUCTION_RAILWAY_HOST = "derivation-research-console-production.up.railway.app";
 
 function configuredOrigin(): string | undefined {
   const value =
@@ -13,17 +14,29 @@ function configuredOrigin(): string | undefined {
   return value ? value.replace(/\/+$/, "") : undefined;
 }
 
-function configuredServiceToken(): string | undefined {
+function configuredMutationServiceToken(): string | undefined {
   return (
     process.env.DERIVATION_RESEARCH_SERVICE_TOKEN?.trim() ||
     process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE?.trim() ||
-    process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_READ?.trim() ||
     undefined
   );
 }
 
-function forwardedHost(): string {
-  return process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || DEFAULT_DERIVATION_FORWARDED_HOST;
+function configuredReadServiceToken(): string | undefined {
+  return (
+    process.env.DERIVATION_RESEARCH_SERVICE_TOKEN?.trim() ||
+    process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_READ?.trim() ||
+    process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE?.trim() ||
+    undefined
+  );
+}
+
+function forwardedHost(origin: URL): string | undefined {
+  const configured = process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim();
+  if (configured) return configured;
+  return origin.hostname === PRODUCTION_RAILWAY_HOST
+    ? DEFAULT_DERIVATION_FORWARDED_HOST
+    : undefined;
 }
 
 export class DerivationConfigurationError extends Error {
@@ -51,23 +64,31 @@ export function getDerivationOrigin(): string {
   return origin;
 }
 
-function requireServiceToken(): string {
-  const token = configuredServiceToken();
+function requireServiceToken(access: "mutate" | "read"): string {
+  const token =
+    access === "mutate" ? configuredMutationServiceToken() : configuredReadServiceToken();
   if (!token) {
     throw new DerivationConfigurationError(
-      "DERIVATION_RESEARCH_SERVICE_TOKEN (or a legacy Console service token) is required",
+      access === "mutate"
+        ? "DERIVATION_RESEARCH_SERVICE_TOKEN (or legacy mutate token) is required"
+        : "DERIVATION_RESEARCH_SERVICE_TOKEN (or a legacy Console service token) is required",
     );
   }
   return token;
 }
 
-function attestationHeaders(token: string): Record<string, string> {
-  const host = forwardedHost();
+function authorizationHeaders(token: string): Record<string, string> {
+  const origin = new URL(getDerivationOrigin());
+  const host = forwardedHost(origin);
   return {
-    "x-research-console-forwarded-host": host,
-    "x-forwarded-proto": "https",
-    Origin: `https://${host}`,
     Authorization: `Bearer ${token}`,
+    ...(host
+      ? {
+          "x-research-console-forwarded-host": host,
+          "x-forwarded-proto": "https",
+          Origin: `https://${host}`,
+        }
+      : {}),
   };
 }
 
@@ -199,11 +220,11 @@ async function requestJson(
   return body as DerivationResponse;
 }
 
-function unifiedJsonHeaders(contentType = false): HeadersInit {
+function unifiedJsonHeaders(access: "mutate" | "read", contentType = false): HeadersInit {
   return {
     Accept: "application/json",
     ...(contentType ? { "Content-Type": "application/json" } : {}),
-    ...attestationHeaders(requireServiceToken()),
+    ...authorizationHeaders(requireServiceToken(access)),
   };
 }
 
@@ -216,7 +237,7 @@ export async function exploreDerivation(
     url,
     {
       method: "POST",
-      headers: unifiedJsonHeaders(true),
+      headers: unifiedJsonHeaders("mutate", true),
       body: JSON.stringify(request),
     },
     options,
@@ -238,9 +259,33 @@ export async function getDerivationAutoresearch(
     url,
     {
       method: "GET",
-      headers: unifiedJsonHeaders(),
+      headers: unifiedJsonHeaders("read"),
     },
     options,
   );
   return normalizeDerivationResponse(response) as DerivationAutoresearchResponse;
+}
+
+/** Fetch a completed memo through the same server-only authenticated channel. */
+export async function getDerivationResearchMemo(
+  conversationId: string,
+  options: DerivationFetchOptions = {},
+): Promise<Response> {
+  const url = new URL(
+    `/api/autoresearch/${encodeURIComponent(conversationId)}/pdf`,
+    getDerivationOrigin(),
+  );
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const response = await fetcher(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/pdf",
+      ...authorizationHeaders(requireServiceToken("read")),
+    },
+    signal: options.signal ?? AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new DerivationUpstreamError(response.status, await responseBody(response));
+  }
+  return response;
 }

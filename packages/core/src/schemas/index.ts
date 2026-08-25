@@ -638,6 +638,59 @@ export const ResearchArticle = z.object({
   toolsUsed: z.array(z.string()).default([]),
   sources: z.array(z.object({ label: z.string(), url: z.string().url().optional() })).default([]),
   chartTickers: z.array(z.string()).default([]),
+  status: ResearchConversationStatus.optional(),
+  phase: z.string().optional(),
+  progress: z
+    .object({
+      completedIterations: z.number().optional(),
+      maxIterations: z.number().optional(),
+      completedTasks: z.number().optional(),
+      totalTasks: z.number().optional(),
+      evidenceReady: z.boolean().optional(),
+      essentialClaimsReady: z.number().optional(),
+      essentialClaimsTotal: z.number().optional(),
+    })
+    .optional(),
+  evidence: z
+    .array(
+      z.object({
+        summary: z.string(),
+        source: z.string().optional(),
+        freshness: z.string().optional(),
+        artifactRefs: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  context: z
+    .array(
+      z.object({
+        summary: z.string(),
+        reason: z.string().optional(),
+        source: z.string().optional(),
+      }),
+    )
+    .optional(),
+  blocker: z.string().optional(),
+  specialists: z
+    .array(
+      z.object({
+        role: z.string(),
+        status: z.string().optional(),
+        analysis: z.string().optional(),
+      }),
+    )
+    .optional(),
+  memo: z
+    .object({
+      title: z.string().optional(),
+      executiveSummary: z.string().optional(),
+      verdict: z.string().optional(),
+      rationale: z.string().optional(),
+      bullCase: z.string().optional(),
+      baseCase: z.string().optional(),
+      bearCase: z.string().optional(),
+    })
+    .optional(),
   mode: z.string().optional(),
   error: z.string().optional(),
 });
@@ -660,6 +713,7 @@ export const AgentChatResponse = z.object({
     })
     .optional(),
   sourceUrl: z.string().url().optional(),
+  memoUrl: z.string().optional(),
   provider: z.string().optional(),
   pending: z.boolean().optional(),
 });

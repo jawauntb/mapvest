@@ -3159,6 +3159,96 @@ components:
               items:
                 type: string
               default: []
+            status:
+              type: string
+              enum:
+                - queued
+                - running
+                - conclusive
+                - exhausted
+                - blocked
+                - error
+            phase:
+              type: string
+            progress:
+              type: object
+              properties:
+                completedIterations:
+                  type: number
+                maxIterations:
+                  type: number
+                completedTasks:
+                  type: number
+                totalTasks:
+                  type: number
+                evidenceReady:
+                  type: boolean
+                essentialClaimsReady:
+                  type: number
+                essentialClaimsTotal:
+                  type: number
+            evidence:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  source:
+                    type: string
+                  freshness:
+                    type: string
+                  artifactRefs:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - summary
+            context:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  reason:
+                    type: string
+                  source:
+                    type: string
+                required:
+                  - summary
+            blocker:
+              type: string
+            specialists:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  status:
+                    type: string
+                  analysis:
+                    type: string
+                required:
+                  - role
+            memo:
+              type: object
+              properties:
+                title:
+                  type: string
+                executiveSummary:
+                  type: string
+                verdict:
+                  type: string
+                rationale:
+                  type: string
+                bullCase:
+                  type: string
+                baseCase:
+                  type: string
+                bearCase:
+                  type: string
             mode:
               type: string
             error:
@@ -3230,6 +3320,96 @@ components:
               items:
                 type: string
               default: []
+            status:
+              type: string
+              enum:
+                - queued
+                - running
+                - conclusive
+                - exhausted
+                - blocked
+                - error
+            phase:
+              type: string
+            progress:
+              type: object
+              properties:
+                completedIterations:
+                  type: number
+                maxIterations:
+                  type: number
+                completedTasks:
+                  type: number
+                totalTasks:
+                  type: number
+                evidenceReady:
+                  type: boolean
+                essentialClaimsReady:
+                  type: number
+                essentialClaimsTotal:
+                  type: number
+            evidence:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  source:
+                    type: string
+                  freshness:
+                    type: string
+                  artifactRefs:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - summary
+            context:
+              type: array
+              items:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  reason:
+                    type: string
+                  source:
+                    type: string
+                required:
+                  - summary
+            blocker:
+              type: string
+            specialists:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  status:
+                    type: string
+                  analysis:
+                    type: string
+                required:
+                  - role
+            memo:
+              type: object
+              properties:
+                title:
+                  type: string
+                executiveSummary:
+                  type: string
+                verdict:
+                  type: string
+                rationale:
+                  type: string
+                bullCase:
+                  type: string
+                baseCase:
+                  type: string
+                bearCase:
+                  type: string
             mode:
               type: string
             error:
@@ -3252,6 +3432,8 @@ components:
         sourceUrl:
           type: string
           format: uri
+        memoUrl:
+          type: string
         provider:
           type: string
         pending:
@@ -3427,6 +3609,96 @@ components:
                 items:
                   type: string
                 default: []
+              status:
+                type: string
+                enum:
+                  - queued
+                  - running
+                  - conclusive
+                  - exhausted
+                  - blocked
+                  - error
+              phase:
+                type: string
+              progress:
+                type: object
+                properties:
+                  completedIterations:
+                    type: number
+                  maxIterations:
+                    type: number
+                  completedTasks:
+                    type: number
+                  totalTasks:
+                    type: number
+                  evidenceReady:
+                    type: boolean
+                  essentialClaimsReady:
+                    type: number
+                  essentialClaimsTotal:
+                    type: number
+              evidence:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    summary:
+                      type: string
+                    source:
+                      type: string
+                    freshness:
+                      type: string
+                    artifactRefs:
+                      type: array
+                      items:
+                        type: string
+                  required:
+                    - summary
+              context:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    summary:
+                      type: string
+                    reason:
+                      type: string
+                    source:
+                      type: string
+                  required:
+                    - summary
+              blocker:
+                type: string
+              specialists:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    role:
+                      type: string
+                    status:
+                      type: string
+                    analysis:
+                      type: string
+                  required:
+                    - role
+              memo:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  executiveSummary:
+                    type: string
+                  verdict:
+                    type: string
+                  rationale:
+                    type: string
+                  bullCase:
+                    type: string
+                  baseCase:
+                    type: string
+                  bearCase:
+                    type: string
               mode:
                 type: string
               error:
@@ -3546,6 +3818,96 @@ components:
           items:
             type: string
           default: []
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - conclusive
+            - exhausted
+            - blocked
+            - error
+        phase:
+          type: string
+        progress:
+          type: object
+          properties:
+            completedIterations:
+              type: number
+            maxIterations:
+              type: number
+            completedTasks:
+              type: number
+            totalTasks:
+              type: number
+            evidenceReady:
+              type: boolean
+            essentialClaimsReady:
+              type: number
+            essentialClaimsTotal:
+              type: number
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              summary:
+                type: string
+              source:
+                type: string
+              freshness:
+                type: string
+              artifactRefs:
+                type: array
+                items:
+                  type: string
+            required:
+              - summary
+        context:
+          type: array
+          items:
+            type: object
+            properties:
+              summary:
+                type: string
+              reason:
+                type: string
+              source:
+                type: string
+            required:
+              - summary
+        blocker:
+          type: string
+        specialists:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              status:
+                type: string
+              analysis:
+                type: string
+            required:
+              - role
+        memo:
+          type: object
+          properties:
+            title:
+              type: string
+            executiveSummary:
+              type: string
+            verdict:
+              type: string
+            rationale:
+              type: string
+            bullCase:
+              type: string
+            baseCase:
+              type: string
+            bearCase:
+              type: string
         mode:
           type: string
         error:
@@ -7269,6 +7631,74 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: Research Console status recovery failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Research Console configuration or service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/agent/threads/{id}/memo:
+    get:
+      summary: Download a completed research memo
+      description: Owner-scoped PDF proxy for the durable conversation memo; the Console service credential remains server-only.
+      tags:
+        - finance
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Completed research memo PDF.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: Conversation or completed memo does not exist for this caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Research Console memo recovery failed.
           content:
             application/json:
               schema:

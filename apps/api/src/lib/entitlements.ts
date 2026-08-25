@@ -14,6 +14,7 @@
  *   - Only signed-in users (userId present) can persist (save/watchlist) —
  *     that's independent of quota, hence `canPersist` is its own field.
  */
+import { createHash } from "node:crypto";
 import type { User } from "@mapvest/core";
 import { dbEnabled, getSql, initDb } from "./db.js";
 
@@ -63,6 +64,7 @@ type UsageEvent = {
   deviceId: string | null;
   userId: string | null;
   kind: string;
+  requestKey: string | null;
   createdAt: number;
 };
 const memEvents: UsageEvent[] = [];
@@ -85,6 +87,21 @@ function memCountEvents(userId?: string, deviceId?: string): number {
   if (userId) return memEvents.filter((e) => e.userId === userId).length;
   if (deviceId) return memEvents.filter((e) => e.deviceId === deviceId && !e.userId).length;
   return 0;
+}
+
+function memHasEvent(params: {
+  userId?: string;
+  deviceId?: string;
+  kind: string;
+  requestKey: string;
+}): boolean {
+  return memEvents.some(
+    (event) =>
+      ((params.userId && event.userId === params.userId) ||
+        (params.deviceId && event.userId === null && event.deviceId === params.deviceId)) &&
+      event.kind === params.kind &&
+      event.requestKey === params.requestKey,
+  );
 }
 
 // ---- Postgres-backed helpers ----
@@ -159,14 +176,66 @@ async function dbInsertEvent(params: {
   userId?: string;
   deviceId?: string;
   kind: string;
+  requestKey?: string;
 }): Promise<void> {
   const sql = getSql();
   if (!sql) return;
-  const id = `evt_${crypto.randomUUID().replace(/-/g, "")}`;
+  const id = params.requestKey
+    ? `evt_${createHash("sha256")
+        .update(params.userId ? `user:${params.userId}` : `device:${params.deviceId ?? ""}`)
+        .update("\0")
+        .update(params.kind)
+        .update("\0")
+        .update(params.requestKey)
+        .digest("hex")}`
+    : `evt_${crypto.randomUUID().replace(/-/g, "")}`;
   await sql`
-    INSERT INTO usage_events (id, device_id, user_id, kind, created_at)
-    VALUES (${id}, ${params.deviceId ?? null}, ${params.userId ?? null}, ${params.kind}, now())
+    INSERT INTO usage_events (id, device_id, user_id, kind, request_key, created_at)
+    VALUES (
+      ${id}, ${params.deviceId ?? null}, ${params.userId ?? null}, ${params.kind},
+      ${params.requestKey ?? null}, now()
+    )
+    ON CONFLICT DO NOTHING
   `;
+}
+
+async function dbHasEvent(params: {
+  userId?: string;
+  deviceId?: string;
+  kind: string;
+  requestKey: string;
+}): Promise<boolean> {
+  const sql = getSql();
+  if (!sql) return false;
+  const rows =
+    params.userId && params.deviceId
+      ? await sql`
+        SELECT 1 FROM usage_events
+        WHERE (
+            user_id = ${params.userId}
+            OR (user_id IS NULL AND device_id = ${params.deviceId})
+          )
+          AND kind = ${params.kind}
+          AND request_key = ${params.requestKey}
+        LIMIT 1
+      `
+      : params.userId
+        ? await sql`
+        SELECT 1 FROM usage_events
+        WHERE user_id = ${params.userId}
+          AND kind = ${params.kind}
+          AND request_key = ${params.requestKey}
+        LIMIT 1
+      `
+        : await sql`
+        SELECT 1 FROM usage_events
+        WHERE user_id IS NULL
+          AND device_id = ${params.deviceId ?? null}
+          AND kind = ${params.kind}
+          AND request_key = ${params.requestKey}
+        LIMIT 1
+      `;
+  return Boolean(rows[0]);
 }
 
 // ---- public API ----
@@ -265,18 +334,32 @@ export async function recordGeneration(params: {
   userId?: string;
   deviceId?: string;
   kind: string;
+  requestKey?: string;
 }): Promise<void> {
   await initDb();
   if (dbEnabled()) {
     await dbInsertEvent(params);
   } else {
+    if (params.requestKey && memHasEvent({ ...params, requestKey: params.requestKey })) return;
     memEvents.push({
       userId: params.userId ?? null,
       deviceId: params.deviceId ?? null,
       kind: params.kind,
+      requestKey: params.requestKey ?? null,
       createdAt: Date.now(),
     });
   }
+}
+
+/** Whether this identity already paid quota for the same retry-safe request. */
+export async function hasRecordedGeneration(params: {
+  userId?: string;
+  deviceId?: string;
+  kind: string;
+  requestKey: string;
+}): Promise<boolean> {
+  await initDb();
+  return dbEnabled() ? dbHasEvent(params) : memHasEvent(params);
 }
 
 // ---- Stripe subscription helpers (Phase 8 Slice E) ----

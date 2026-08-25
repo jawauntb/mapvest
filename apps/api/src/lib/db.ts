@@ -51,12 +51,17 @@ export async function initDb(): Promise<void> {
         device_id TEXT,
         user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
         kind TEXT NOT NULL,
+        request_key TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `;
+    await sql`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS request_key TEXT`;
     await sql`CREATE INDEX IF NOT EXISTS usage_events_user_idx ON usage_events (user_id)`;
     await sql`CREATE INDEX IF NOT EXISTS usage_events_device_idx ON usage_events (device_id)`;
     await sql`CREATE INDEX IF NOT EXISTS usage_events_created_idx ON usage_events (created_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS usage_events_request_key_idx
+      ON usage_events (user_id, device_id, kind, request_key)
+      WHERE request_key IS NOT NULL`;
     await sql`
       CREATE TABLE IF NOT EXISTS user_robinhood_mcp (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

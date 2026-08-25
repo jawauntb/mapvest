@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AgentChatRequest, type User } from "@mapvest/core";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -8,6 +9,7 @@ import {
   DerivationUpstreamError,
   exploreDerivation,
   getDerivationAutoresearch,
+  getDerivationResearchMemo,
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
@@ -24,6 +26,8 @@ import {
 import {
   type ResearchConversation,
   ResearchConversationOwnershipError,
+  claimResearchConversation,
+  claimResearchConversations,
   getResearchConversation,
   listResearchConversations,
   updateResearchConversation,
@@ -114,12 +118,22 @@ type OwnerContext = {
   get: (key: string) => unknown;
 };
 
-function ownerKey(value: unknown) {
+type OwnerIdentity = Readonly<{
+  ownerKey: string;
+  deviceOwnerKey?: string;
+}>;
+
+function ownerIdentity(value: unknown): OwnerIdentity | undefined {
   const c = value as OwnerContext;
   const user = userFromContext(c);
-  if (user?.id) return `user:${user.id}`;
   const deviceId = deviceIdFromRequest(c);
-  return deviceId ? `device:${deviceId}` : undefined;
+  if (user?.id) {
+    return {
+      ownerKey: `user:${user.id}`,
+      ...(deviceId ? { deviceOwnerKey: `device:${deviceId}` } : {}),
+    };
+  }
+  return deviceId ? { ownerKey: `device:${deviceId}` } : undefined;
 }
 
 function userFromContext(value: unknown): User | undefined {
@@ -131,21 +145,59 @@ function requestedConversationId(body: ParsedChatRequest): string | undefined {
 }
 
 async function ownedConversation(
-  owner: string,
+  owner: OwnerIdentity,
   requestedId: string,
 ): Promise<ResearchConversation | null> {
-  const direct = await getResearchConversation(owner, requestedId);
-  if (direct) return direct;
-  return requestedId.startsWith("conv_")
-    ? getResearchConversation(owner, requestedId.slice("conv_".length))
-    : null;
+  const ids = requestedId.startsWith("conv_")
+    ? [requestedId, requestedId.slice("conv_".length)]
+    : [requestedId];
+  for (const conversationId of ids) {
+    const direct = await getResearchConversation(owner.ownerKey, conversationId);
+    if (direct) return direct;
+  }
+  if (!owner.deviceOwnerKey) return null;
+  for (const conversationId of ids) {
+    const claimed = await claimResearchConversation(
+      owner.deviceOwnerKey,
+      owner.ownerKey,
+      conversationId,
+    );
+    if (claimed) return claimed;
+  }
+  return null;
 }
 
 function responseConversationId(value: unknown): string | undefined {
   return conversationFromPayload(value)?.id;
 }
 
-async function admitResearch(body: ParsedChatRequest, owner: string): Promise<Admission> {
+function upstreamClientMessageId(namespace: string, clientMessageId: string): string {
+  const digest = createHash("sha256")
+    .update(namespace)
+    .update("\0")
+    .update(clientMessageId)
+    .digest("hex");
+  return `mapvest_${digest}`;
+}
+
+function normalizedConversationId(body: ParsedChatRequest): string | undefined {
+  const conversationId = requestedConversationId(body);
+  return conversationId?.startsWith("conv_")
+    ? conversationId.slice("conv_".length)
+    : conversationId;
+}
+
+function quotaRequestKey(body: ParsedChatRequest): string | undefined {
+  if (!body.clientMessageId) return undefined;
+  const digest = createHash("sha256")
+    .update(normalizedConversationId(body) ?? "new")
+    .update("\0")
+    .update(body.clientMessageId)
+    .digest("hex");
+  return `agent_${digest}`;
+}
+
+async function admitResearch(body: ParsedChatRequest, owner: OwnerIdentity): Promise<Admission> {
   const requestedId = requestedConversationId(body);
   let continued: ResearchConversation | null = null;
   if (requestedId) {
@@ -155,11 +207,14 @@ async function admitResearch(body: ParsedChatRequest, owner: string): Promise<Ad
 
   const clientMessageId = body.clientMessageId ?? `client_${crypto.randomUUID()}`;
   const prompt = buildResearchPrompt(body.message, body.ticker);
+  const retryNamespace = continued
+    ? `conversation:${continued.conversationId}`
+    : (owner.deviceOwnerKey ?? owner.ownerKey);
   const base = {
     prompt,
     mode: "agent" as const,
     research_depth: body.researchDepth ?? "auto",
-    client_message_id: clientMessageId,
+    client_message_id: upstreamClientMessageId(retryNamespace, clientMessageId),
   };
   const request: DerivationExploreRequest = continued
     ? {
@@ -173,7 +228,14 @@ async function admitResearch(body: ParsedChatRequest, owner: string): Promise<Ad
   const conversationId = responseConversationId(upstream);
   if (!conversation || !conversationId) throw new InvalidResearchResponseError();
 
-  const stored = await upsertResearchConversation(owner, {
+  // A new anonymous admission may be retried after sign-in before the caller
+  // has a conversation id. Console returns the same idempotent conversation;
+  // claim its device-owned reference before refreshing it under the user.
+  if (!continued && owner.deviceOwnerKey) {
+    await claimResearchConversation(owner.deviceOwnerKey, owner.ownerKey, conversationId);
+  }
+
+  const stored = await upsertResearchConversation(owner.ownerKey, {
     conversationId,
     title: continued?.title ?? titleFromResearchPrompt(body.message, body.ticker),
     preview: text(object(upstream)?.briefing)?.slice(0, 180) ?? body.message.slice(0, 180),
@@ -183,7 +245,7 @@ async function admitResearch(body: ParsedChatRequest, owner: string): Promise<Ad
     conversation,
     conversationId,
     clientMessageId,
-    ownerKey: owner,
+    ownerKey: owner.ownerKey,
     stored,
     ticker: body.ticker,
     message: body.message,
@@ -250,6 +312,7 @@ function completedResponse(
     safety: { liveTradingForbidden: true, orderSubmissionAllowed: false },
     provider: "derivation-research-console",
     sourceUrl: completion.thread.sourceUrl,
+    memoUrl: completion.thread.memoUrl,
   };
 }
 
@@ -354,9 +417,12 @@ function errorPayload(error: unknown) {
 }
 
 agent.get("/threads", optionalAuth, async (c) => {
-  const owner = ownerKey(c);
+  const owner = ownerIdentity(c);
   if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
-  const stored = await listResearchConversations(owner);
+  if (owner.deviceOwnerKey) {
+    await claimResearchConversations(owner.deviceOwnerKey, owner.ownerKey);
+  }
+  const stored = await listResearchConversations(owner.ownerKey);
   return c.json({
     threads: stored.map((conversation) => ({
       id: conversation.conversationId,
@@ -373,14 +439,14 @@ agent.get("/threads", optionalAuth, async (c) => {
 });
 
 agent.get("/threads/:id/status", optionalAuth, async (c) => {
-  const owner = ownerKey(c);
+  const owner = ownerIdentity(c);
   if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
   const stored = await ownedConversation(owner, c.req.param("id"));
   if (!stored) return c.json({ error: "research conversation not found" }, 404);
   try {
     const summary = await getDerivationAutoresearch(stored.conversationId, "summary");
     const progress = researchStatusFromRun(stored.conversationId, summary);
-    await updateResearchConversation(owner, stored.conversationId, {
+    await updateResearchConversation(owner.ownerKey, stored.conversationId, {
       status: progress.status,
       ...(progress.preview ? { preview: progress.preview.slice(0, 180) } : {}),
     });
@@ -391,15 +457,37 @@ agent.get("/threads/:id/status", optionalAuth, async (c) => {
   }
 });
 
+agent.get("/threads/:id/memo", optionalAuth, async (c) => {
+  const owner = ownerIdentity(c);
+  if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
+  const stored = await ownedConversation(owner, c.req.param("id"));
+  if (!stored) return c.json({ error: "research conversation not found" }, 404);
+  try {
+    const upstream = await getDerivationResearchMemo(stored.conversationId);
+    const headers = new Headers({
+      "Content-Type": upstream.headers.get("content-type") ?? "application/pdf",
+      "Cache-Control": "private, no-store",
+    });
+    const disposition = upstream.headers.get("content-disposition");
+    const length = upstream.headers.get("content-length");
+    if (disposition) headers.set("Content-Disposition", disposition);
+    if (length) headers.set("Content-Length", length);
+    return new Response(upstream.body, { status: 200, headers });
+  } catch (error) {
+    const response = errorPayload(error);
+    return c.json(response.body, response.status);
+  }
+});
+
 agent.get("/threads/:id", optionalAuth, async (c) => {
-  const owner = ownerKey(c);
+  const owner = ownerIdentity(c);
   if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
   const stored = await ownedConversation(owner, c.req.param("id"));
   if (!stored) return c.json({ error: "research conversation not found" }, 404);
   try {
     const run = await getDerivationAutoresearch(stored.conversationId, "display");
     const thread = researchThreadFromRun(stored, run);
-    await updateResearchConversation(owner, stored.conversationId, {
+    await updateResearchConversation(owner.ownerKey, stored.conversationId, {
       status: thread.status,
       preview: thread.preview,
     });
@@ -410,11 +498,17 @@ agent.get("/threads/:id", optionalAuth, async (c) => {
   }
 });
 
-agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c) => {
+const agentChatQuota = requireGenerationQuota("agent_chat", async (c) => {
+  const raw = await c.req.json().catch(() => undefined);
+  const parsed = parseChatRequest(raw);
+  return parsed ? quotaRequestKey(parsed) : undefined;
+});
+
+agent.post("/chat", optionalAuth, agentChatQuota, async (c) => {
   const raw = await c.req.json().catch(() => ({}));
   const body = parseChatRequest(raw);
   if (!body) return c.json({ error: "valid message required (1–4000 chars)" }, 400);
-  const owner = ownerKey(c);
+  const owner = ownerIdentity(c);
   if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
 
   try {
@@ -452,11 +546,11 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
   }
 });
 
-agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async (c) => {
+agent.post("/stream", optionalAuth, agentChatQuota, async (c) => {
   const raw = await c.req.json().catch(() => ({}));
   const body = parseChatRequest(raw);
   if (!body) return c.json({ error: "valid message required (1–4000 chars)" }, 400);
-  const owner = ownerKey(c);
+  const owner = ownerIdentity(c);
   if (!owner) return c.json({ error: "X-Device-Id header required for anonymous requests" }, 400);
 
   let admission: Admission;

@@ -7,6 +7,7 @@ import type {
 } from "@mapvest/core";
 import {
   type DerivationAutoresearchResponse,
+  DerivationUpstreamError,
   getDerivationAutoresearch,
   getDerivationOrigin,
 } from "./derivation.js";
@@ -28,6 +29,7 @@ const STATUS_VALUES = new Set<ResearchConversationStatus>([
 ]);
 
 type LooseObject = Record<string, unknown>;
+const USER_PROMPT_MARKER = "\n\nUser: ";
 
 function object(value: unknown): LooseObject | undefined {
   return value && typeof value === "object" ? (value as LooseObject) : undefined;
@@ -60,8 +62,13 @@ export function buildResearchPrompt(message: string, ticker?: string): string {
   const instruction =
     "Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.";
   return ticker
-    ? `Focus ticker: $${ticker}. ${instruction}\n\nUser: ${message}`
-    : `${instruction}\n\nUser: ${message}`;
+    ? `Focus ticker: $${ticker}. ${instruction}${USER_PROMPT_MARKER}${message}`
+    : `${instruction}${USER_PROMPT_MARKER}${message}`;
+}
+
+function userFacingPrompt(value: string): string {
+  const marker = value.indexOf(USER_PROMPT_MARKER);
+  return marker >= 0 ? value.slice(marker + USER_PROMPT_MARKER.length) : value;
 }
 
 export function titleFromResearchPrompt(message: string, ticker?: string): string {
@@ -122,7 +129,16 @@ function sourceList(value: unknown): Array<{ label: string; url?: string }> {
       nonEmptyString(source.name) ??
       nonEmptyString(source.provider) ??
       "source";
-    const url = nonEmptyString(source.url);
+    const rawUrl = nonEmptyString(source.url);
+    let url: string | undefined;
+    if (rawUrl) {
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") url = parsed.toString();
+      } catch {
+        // Provider-only citations remain useful when an upstream URL is malformed.
+      }
+    }
     return [{ label, ...(url ? { url } : {}) }];
   });
 }
@@ -165,6 +181,135 @@ function tools(result: LooseObject | undefined, run: LooseObject): string[] {
   return names;
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function researchProgress(run: LooseObject): ResearchArticle["progress"] {
+  const taskRuns = Array.isArray(run.task_runs) ? run.task_runs : [];
+  const planTasks = Array.isArray(object(run.research_plan)?.tasks)
+    ? (object(run.research_plan)?.tasks as unknown[])
+    : [];
+  const gate = object(run.evidence_gate);
+  const completedTasks = taskRuns.filter((item) => {
+    const task = object(item);
+    const taskStatus = nonEmptyString(task?.status)?.toLowerCase();
+    return (
+      Boolean(task?.result) ||
+      ["complete", "completed", "succeeded", "failed", "skipped", "error"].includes(
+        taskStatus ?? "",
+      )
+    );
+  }).length;
+  const progress = {
+    ...(finiteNumber(run.completed_iterations) !== undefined
+      ? { completedIterations: finiteNumber(run.completed_iterations) }
+      : {}),
+    ...(finiteNumber(run.max_iterations) !== undefined
+      ? { maxIterations: finiteNumber(run.max_iterations) }
+      : {}),
+    ...(taskRuns.length || planTasks.length
+      ? { completedTasks, totalTasks: planTasks.length }
+      : {}),
+    ...(typeof gate?.ready === "boolean" ? { evidenceReady: gate.ready } : {}),
+    ...(finiteNumber(gate?.essential_claims_ready) !== undefined
+      ? { essentialClaimsReady: finiteNumber(gate?.essential_claims_ready) }
+      : {}),
+    ...(finiteNumber(gate?.essential_claims_total) !== undefined
+      ? { essentialClaimsTotal: finiteNumber(gate?.essential_claims_total) }
+      : {}),
+  };
+  return Object.keys(progress).length ? progress : undefined;
+}
+
+function researchEvidence(run: LooseObject): NonNullable<ResearchArticle["evidence"]> {
+  const facts = Array.isArray(object(run.preview)?.facts) ? object(run.preview)?.facts : [];
+  return (facts as unknown[]).flatMap((item) => {
+    const fact = object(item);
+    const summary = nonEmptyString(fact?.summary);
+    if (!summary) return [];
+    return [
+      {
+        summary,
+        ...(nonEmptyString(fact?.source) ? { source: nonEmptyString(fact?.source) } : {}),
+        ...(nonEmptyString(fact?.freshness_verdict)
+          ? { freshness: nonEmptyString(fact?.freshness_verdict) }
+          : {}),
+        ...(stringArray(fact?.artifact_refs).length
+          ? { artifactRefs: stringArray(fact?.artifact_refs) }
+          : {}),
+      },
+    ];
+  });
+}
+
+function researchContext(run: LooseObject): NonNullable<ResearchArticle["context"]> {
+  const context = Array.isArray(object(run.preview)?.context) ? object(run.preview)?.context : [];
+  return (context as unknown[]).flatMap((item) => {
+    const detail = object(item);
+    const summary = nonEmptyString(detail?.summary);
+    if (!summary) return [];
+    return [
+      {
+        summary,
+        ...(nonEmptyString(detail?.reason) ? { reason: nonEmptyString(detail?.reason) } : {}),
+        ...(nonEmptyString(detail?.source) ? { source: nonEmptyString(detail?.source) } : {}),
+      },
+    ];
+  });
+}
+
+function researchSpecialists(run: LooseObject): NonNullable<ResearchArticle["specialists"]> {
+  const specialists = Array.isArray(run.specialist_runs) ? run.specialist_runs : [];
+  return specialists.flatMap((item) => {
+    const specialist = object(item);
+    const role = nonEmptyString(specialist?.role);
+    if (!role) return [];
+    return [
+      {
+        role,
+        ...(nonEmptyString(specialist?.status)
+          ? { status: nonEmptyString(specialist?.status) }
+          : {}),
+        ...(nonEmptyString(specialist?.analysis) || nonEmptyString(specialist?.summary)
+          ? {
+              analysis: nonEmptyString(specialist?.analysis) ?? nonEmptyString(specialist?.summary),
+            }
+          : {}),
+      },
+    ];
+  });
+}
+
+function researchMemo(run: LooseObject): ResearchArticle["memo"] {
+  const memo = object(run.memo);
+  if (!memo) return undefined;
+  const verdict = object(memo.verdict);
+  const scenarios = object(memo.scenarios);
+  const projected = {
+    ...(nonEmptyString(memo.title) ? { title: nonEmptyString(memo.title) } : {}),
+    ...(nonEmptyString(memo.executive_summary)
+      ? { executiveSummary: nonEmptyString(memo.executive_summary) }
+      : {}),
+    ...(nonEmptyString(verdict?.status) || nonEmptyString(verdict?.disposition)
+      ? { verdict: nonEmptyString(verdict?.status) ?? nonEmptyString(verdict?.disposition) }
+      : {}),
+    ...(nonEmptyString(verdict?.rationale)
+      ? { rationale: nonEmptyString(verdict?.rationale) }
+      : {}),
+    ...(nonEmptyString(scenarios?.bull_case)
+      ? { bullCase: nonEmptyString(scenarios?.bull_case) }
+      : {}),
+    ...(nonEmptyString(scenarios?.base_case)
+      ? { baseCase: nonEmptyString(scenarios?.base_case) }
+      : {}),
+    ...(nonEmptyString(scenarios?.bear_case)
+      ? { bearCase: nonEmptyString(scenarios?.bear_case) }
+      : {}),
+  };
+  return Object.keys(projected).length ? projected : undefined;
+}
+
 function finalContent(run: LooseObject, result: LooseObject | undefined): string {
   const runStatus = status(run.status, "running");
   return (
@@ -199,7 +344,13 @@ export function researchArticleFromRun(runValue: unknown, ticker?: string): Rese
   ]
     .filter((symbol, index, all) => all.indexOf(symbol) === index)
     .slice(0, 4);
-  const runStatus = status(run.status);
+  const runStatus = status(run.status, "running");
+  const evidence = researchEvidence(run);
+  const context = researchContext(run);
+  const specialists = researchSpecialists(run);
+  const memo = researchMemo(run);
+  const progress = researchProgress(run);
+  const blocker = nonEmptyString(object(object(run.preview)?.blocker)?.reason);
   return {
     id: articleId(run),
     role: "assistant",
@@ -211,6 +362,14 @@ export function researchArticleFromRun(runValue: unknown, ticker?: string): Rese
     toolsUsed: tools(result, run),
     sources: sourceList(result?.data_sources_used),
     chartTickers,
+    status: runStatus,
+    ...(nonEmptyString(run.phase) ? { phase: nonEmptyString(run.phase) } : {}),
+    ...(progress ? { progress } : {}),
+    ...(evidence.length ? { evidence } : {}),
+    ...(context.length ? { context } : {}),
+    ...(blocker ? { blocker } : {}),
+    ...(specialists.length ? { specialists } : {}),
+    ...(memo ? { memo } : {}),
     mode: nonEmptyString(result?.mode) ?? "agent",
     ...(runStatus === "blocked" || runStatus === "error"
       ? { error: nonEmptyString(run.error) ?? runStatus }
@@ -221,8 +380,14 @@ export function researchArticleFromRun(runValue: unknown, ticker?: string): Rese
 function messageArticle(value: unknown): ResearchArticle | undefined {
   const message = object(value);
   if (!message) return undefined;
-  const role = message.role === "user" ? "user" : message.role === "agent" ? "assistant" : null;
-  const content = nonEmptyString(message.content);
+  const role =
+    message.role === "user"
+      ? "user"
+      : message.role === "agent" || message.role === "assistant"
+        ? "assistant"
+        : null;
+  const rawContent = nonEmptyString(message.content);
+  const content = rawContent && role === "user" ? userFacingPrompt(rawContent) : rawContent;
   if (!role || !content) return undefined;
   return {
     id: nonEmptyString(message.id) ?? `research-message-${crypto.randomUUID()}`,
@@ -240,7 +405,9 @@ function messageArticle(value: unknown): ResearchArticle | undefined {
 function conversationSourceUrl(conversation: ResearchConversation | undefined): string | undefined {
   if (!conversation?.href) return undefined;
   try {
-    return new URL(conversation.href, `${getDerivationOrigin()}/`).toString();
+    const origin = new URL(getDerivationOrigin());
+    const url = new URL(conversation.href, origin);
+    return url.origin === origin.origin ? url.toString() : undefined;
   } catch {
     return undefined;
   }
@@ -255,7 +422,8 @@ export function researchThreadFromRun(
   const messages = (Array.isArray(run.messages) ? run.messages : [])
     .map(messageArticle)
     .filter((message): message is ResearchArticle => Boolean(message));
-  const prompt = nonEmptyString(run.prompt);
+  const rawPrompt = nonEmptyString(run.prompt);
+  const prompt = rawPrompt ? userFacingPrompt(rawPrompt) : undefined;
   if (
     prompt &&
     !messages.some((message) => message.role === "user" && message.content === prompt)
@@ -273,11 +441,17 @@ export function researchThreadFromRun(
     });
   }
   const finalArticle = researchArticleFromRun(run);
-  if (
-    !messages.some(
-      (message) => message.role === "assistant" && message.content === finalArticle.content,
-    )
-  ) {
+  let finalMessageIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "assistant" && message.content === finalArticle.content) {
+      finalMessageIndex = index;
+      break;
+    }
+  }
+  if (finalMessageIndex >= 0) {
+    messages[finalMessageIndex] = finalArticle;
+  } else {
     messages.push(finalArticle);
   }
   const runStatus = status(run.status, status(stored.status));
@@ -291,7 +465,9 @@ export function researchThreadFromRun(
     preview: finalArticle.content.slice(0, 180),
     status: runStatus,
     ...(nonEmptyString(run.phase) ? { phase: nonEmptyString(run.phase) } : {}),
-    ...(conversation?.pdf_url ? { memoUrl: conversation.pdf_url } : {}),
+    ...(conversation?.pdf_url
+      ? { memoUrl: `/v1/agent/threads/${encodeURIComponent(stored.conversationId)}/memo` }
+      : {}),
     ...(conversation ? { conversation } : {}),
     messages,
     safety: { liveTradingForbidden: true, orderSubmissionAllowed: false },
@@ -357,6 +533,16 @@ export class ResearchConversationPendingError extends Error {
   }
 }
 
+function isTransientPollingError(error: unknown): boolean {
+  if (error instanceof DerivationUpstreamError) {
+    return error.status === 429 || error.status >= 500;
+  }
+  return (
+    error instanceof Error &&
+    (error.name === "TimeoutError" || error.name === "AbortError" || error.name === "TypeError")
+  );
+}
+
 export async function waitForResearchConversation(
   conversationId: string,
   options: Readonly<{
@@ -367,12 +553,21 @@ export async function waitForResearchConversation(
   const deadline = Date.now() + pollTimeoutMs();
   let latest: DerivationAutoresearchResponse | undefined;
   while (Date.now() <= deadline) {
-    latest = await getDerivationAutoresearch(conversationId, "summary", {
-      signal: options.signal,
-    });
-    await options.onProgress?.(researchStatusFromRun(conversationId, latest));
-    if (isResearchConversationTerminal(latest.status)) {
-      return getDerivationAutoresearch(conversationId, "display", { signal: options.signal });
+    try {
+      latest = await getDerivationAutoresearch(conversationId, "summary", {
+        signal: options.signal,
+      });
+      await options.onProgress?.(researchStatusFromRun(conversationId, latest));
+      if (isResearchConversationTerminal(latest.status)) {
+        return await getDerivationAutoresearch(conversationId, "display", {
+          signal: options.signal,
+        });
+      }
+    } catch (error) {
+      if (isTransientPollingError(error)) {
+        throw new ResearchConversationPendingError(conversationId, latest);
+      }
+      throw error;
     }
     await delay(pollIntervalMs(), options.signal);
   }
