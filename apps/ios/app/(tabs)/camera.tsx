@@ -18,7 +18,7 @@ import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
-import { enqueuePhoto } from "@/queue/photoQueue";
+import { enqueuePhoto, queueScopeForUser } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
@@ -74,7 +74,11 @@ export default function CameraScreen() {
   const { session } = useSession();
   const { presentPaywall } = usePaywall();
   const entitlementsQ = useEntitlements();
-  const { online } = useNetworkSync({ token: session?.token });
+  const queueScope = useMemo(() => queueScopeForUser(session?.userId), [session?.userId]);
+  const { online, pending, legacyCount, recovery, resetRecovery } = useNetworkSync({
+    token: session?.token,
+    userId: session?.userId,
+  });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
   const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
@@ -85,6 +89,7 @@ export default function CameraScreen() {
   const [result, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
   const [err, setErr] = useState<string | null>(cached?.err ?? null);
   const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
+  const [resettingQueueRecovery, setResettingQueueRecovery] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
   const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({
     width: 0,
@@ -267,9 +272,21 @@ export default function CameraScreen() {
       queuedNote: null,
     });
     const location = await currentLocation();
+    const queueCapture = async (): Promise<boolean> => {
+      try {
+        await enqueuePhoto({ imageUri: args.imageUri, location, scope: queueScope });
+        return true;
+      } catch (queueError) {
+        const message = queueError instanceof Error ? queueError.message : String(queueError);
+        const queueFailure = `Couldn't safely queue this snap: ${message}`;
+        setErr(queueFailure);
+        persistCamera({ err: queueFailure, queuedNote: null });
+        return false;
+      }
+    };
     try {
       if (!online) {
-        await enqueuePhoto({ imageUri: args.imageUri, location });
+        if (!(await queueCapture())) return;
         const note = "Queued — finishing when you're back online.";
         setQueuedNote(note);
         persistCamera({ queuedNote: note });
@@ -300,7 +317,7 @@ export default function CameraScreen() {
           persistCamera({ err: "quota_exceeded" });
           return;
         }
-        await enqueuePhoto({ imageUri: args.imageUri, location });
+        if (!(await queueCapture())) return;
         const msg = e instanceof Error ? e.message : String(e);
         const failNote =
           "That didn't go through. Your snap is queued and will finish on its own — or retake now.";
@@ -329,6 +346,26 @@ export default function CameraScreen() {
       queuedNote: null,
       savedNote: null,
     });
+  }
+
+  async function discardUnrecoverableQueue() {
+    if (!recovery?.quarantined || resettingQueueRecovery) return;
+    setResettingQueueRecovery(true);
+    try {
+      await resetRecovery();
+      const note =
+        "Unreadable offline queue discarded. Its private recovery copy stays on this device.";
+      setQueuedNote(note);
+      setErr(null);
+      persistCamera({ queuedNote: note, err: null });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const queueFailure = `Couldn't discard the protected offline queue: ${message}`;
+      setErr(queueFailure);
+      persistCamera({ err: queueFailure });
+    } finally {
+      setResettingQueueRecovery(false);
+    }
   }
 
   const { primary: top, additional: additionalInvestables } = splitInvestableResults(
@@ -468,6 +505,28 @@ export default function CameraScreen() {
               </BlurView>
             </View>
           ) : null}
+          {pending.length > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="cloud-upload-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {pending.length} {pending.length === 1 ? "snap" : "snaps"} queued for{" "}
+                  {session?.userId ? "this account" : "guest mode"}.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
+          {legacyCount > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="shield-checkmark-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {legacyCount} older {legacyCount === 1 ? "snap is" : "snaps are"} protected and
+                  won't upload. Retake to send {legacyCount === 1 ? "it" : "them"}.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
           {!frozenUri && !result && !busy && !err ? (
             <View style={styles.lessonRow}>
               <BlurView intensity={40} tint="dark" style={styles.statusPill}>
@@ -496,7 +555,7 @@ export default function CameraScreen() {
           {busy ? <IdentifyProgress stage={identifyStage} /> : null}
         </View>
 
-        {result || err || queuedNote ? (
+        {result || err || queuedNote || recovery ? (
           <CardEntrance>
             <BlurView
               intensity={50}
@@ -563,6 +622,48 @@ export default function CameraScreen() {
                       <Text style={styles.miniBtnText}>Retake</Text>
                     </Pressable>
                   </View>
+                </View>
+              ) : null}
+              {recovery ? (
+                <View
+                  accessibilityRole="summary"
+                  accessibilityLabel="Offline queue recovery required"
+                >
+                  <View style={styles.noMatchHeading}>
+                    <Ionicons name="shield-outline" size={18} color={colors.warn} />
+                    <Text style={styles.resultTitle}>Offline queue needs attention</Text>
+                  </View>
+                  <Text style={styles.noMatchCopy}>
+                    Queued photos are blocked and will not upload. {recovery.message}
+                  </Text>
+                  {recovery.quarantined ? (
+                    <>
+                      <Text style={styles.noMatchCopy}>
+                        Discard removes these photos from the active queue. A private recovery copy
+                        stays on this device for diagnostics.
+                      </Text>
+                      <Pressable
+                        style={[styles.dominantBtn, resettingQueueRecovery && { opacity: 0.55 }]}
+                        onPress={() => void discardUnrecoverableQueue()}
+                        disabled={resettingQueueRecovery}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: resettingQueueRecovery }}
+                        accessibilityLabel="Discard unreadable offline queue"
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.accentInk} />
+                        <Text style={styles.dominantBtnText}>
+                          {resettingQueueRecovery
+                            ? "Discarding offline queue…"
+                            : "Discard offline queue"}
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Text style={styles.noMatchCopy}>
+                      Restore device storage and reopen Camera before trying again. Nothing was
+                      discarded.
+                    </Text>
+                  )}
                 </View>
               ) : null}
               {top ? (

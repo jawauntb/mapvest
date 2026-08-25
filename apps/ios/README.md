@@ -57,7 +57,35 @@ shared `finds/{token}` prefix to update both projections.
 
 `src/queue/photoQueue.ts` persists pending captures to AsyncStorage and
 `useNetworkSync` drains the queue whenever `@react-native-community/netinfo`
-reports the device is back online. The camera screen shows the queued count.
+reports the device is back online. Every new item is stamped with a non-secret
+ownership scope: `guest` or the stable authenticated user ID. The bearer token
+is used only for the live upload and is never written to AsyncStorage. The
+camera only counts and uploads items for its current scope, so a guest or one
+account can never drain another account's captures.
+
+The old v1 unscoped queue migrates to a protected `legacy-unscoped` state.
+Those photos fail closed: they are never attributed to, or uploaded by, a
+signed-in account. Camera truthfully shows their count and asks the person to
+retake the photo to requeue it under the current scope. Storage mutations are
+serialized so simultaneous enqueue, flush, and removal cannot overwrite jobs;
+an account switch aborts the stale flush and leaves its remaining jobs for the
+matching account's next session.
+
+New queue entries first copy their image to Mapvest's private
+`documentDirectory/mapvest-photo-queue/` folder. The queue persists only that
+managed URI and removes it after a confirmed upload or an explicit discard; it
+never deletes the original Camera or library URI. Corrupt, truncated,
+malformed, or unknown-version payloads are **not** treated as an empty queue:
+their exact raw value is retained under a private quarantine key, uploads and
+new captures stop, and Camera provides an accessible, informed discard action.
+That action clears only the active queue; the quarantine copy remains for local
+diagnostics.
+
+**Known follow-up (P2):** `/v1/identify` has no client idempotency key. If the
+server accepts an upload but the app crashes or AsyncStorage fails before its
+queue record can be removed, a later retry can submit it again. The client
+avoids retrying after a successful local removal, but a durable end-to-end
+guarantee needs server-supported identify idempotency.
 
 ## Build (EAS)
 

@@ -52,6 +52,25 @@ Design decisions and the reasoning behind them. Update this file when a decision
 
 **Why**: Real-world camera scans include storefronts, faces, license plates. The default has to protect the user.
 
+**Offline boundary**: The iOS retry queue stores only the local image URI plus a
+non-secret ownership scope (`guest` or stable authenticated user ID); bearer
+tokens exist only for the live upload. A queue flush sees only its exact active
+scope. Legacy v1 entries without a scope migrate to `legacy-unscoped` and fail
+closed rather than being assigned to whoever signs in next; Camera reports them
+as protected and asks the person to retake the photo. New entries copy their
+bytes into an app-private `documentDirectory` queue folder before the queue
+record is written; completion and explicit discard delete only that managed
+copy, never a Camera/library source URI. Unreadable, malformed, or
+unknown-version queue payloads are quarantined verbatim under a separate
+private key and block uploads/enqueues until an informed Camera action clears
+the active queue while retaining the diagnostic copy.
+
+**Known P2**: `/v1/identify` lacks a client idempotency key. The client does not
+retry after a locally confirmed removal, but a process/storage failure after
+the server accepts an upload and before the record removal persists can still
+cause one later duplicate submission. This needs a dedicated API idempotency
+slice rather than inventing a client-only guarantee.
+
 ## D8 — No live financial advice
 
 **Decision**: Every ticker view carries the disclaimer "not investment advice." Realtime quotes are best-effort.

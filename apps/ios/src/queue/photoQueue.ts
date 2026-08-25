@@ -1,111 +1,80 @@
-// Offline photo queue. Persists pending capture jobs to AsyncStorage; a
-// network listener drains the queue whenever connectivity returns.
-//
-// Storage shape:
-//   { version: 1, items: QueuedPhoto[] }
+// React Native adapter for the account-isolated offline photo queue.
+// Tokens are passed only to a live identify request; persisted records contain
+// an ownership scope (guest or stable user id), never a bearer token.
 
 import { identifyPhoto } from "@/api/client";
 import { isQuotaExceeded } from "@/api/errors";
-import type { IdentifyResponse, LatLng } from "@/api/types";
+import { markFindRefreshPending } from "@/finds/focusRefresh";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { photoQueueFiles } from "./photoQueueFiles";
+import {
+  type FlushQueueOptions,
+  type FlushResult,
+  type QueueRecovery,
+  type QueueScope,
+  type QueueStatus,
+  type QueuedPhoto,
+  createPhotoQueue,
+} from "./photoQueueStore";
 
-const STORAGE_KEY = "mapvest.photoQueue.v1";
+export {
+  PHOTO_QUEUE_QUARANTINE_STORAGE_KEY,
+  PHOTO_QUEUE_STORAGE_KEY,
+  type FlushQueueOptions,
+  type FlushResult,
+  type QueueRecovery,
+  type QueueScope,
+  type QueueStatus,
+  type QueuedPhoto,
+  queueScopeForUser,
+  queueScopeKey,
+} from "./photoQueueStore";
 
-export type QueuedPhoto = {
-  id: string;
+const queue = createPhotoQueue({
+  storage: AsyncStorage,
+  files: photoQueueFiles,
+  upload: (input) =>
+    identifyPhoto(
+      { imageUri: input.imageUri, location: input.location },
+      { token: input.token, signal: input.signal },
+    ),
+  isQuotaExceeded,
+  markAuthenticatedFindRefresh: markFindRefreshPending,
+});
+
+export function listQueue(scope: QueueScope): Promise<QueuedPhoto[]> {
+  return queue.status(scope).then((result) => result.pending);
+}
+
+export function queueStatus(scope: QueueScope): Promise<QueueStatus> {
+  return queue.status(scope);
+}
+
+/** Explicitly discard unreadable active queue data; its quarantine copy remains private. */
+export function resetUnrecoverableQueue(): Promise<void> {
+  return queue.resetRecovery();
+}
+
+export function enqueuePhoto(input: {
   imageUri: string;
-  location?: LatLng;
-  createdAt: number;
-  attempts: number;
-  lastError?: string;
-};
-
-type QueueFile = { version: 1; items: QueuedPhoto[] };
-
-async function readAll(): Promise<QueuedPhoto[]> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as QueueFile;
-    return parsed?.items ?? [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeAll(items: QueuedPhoto[]): Promise<void> {
-  const payload: QueueFile = { version: 1, items };
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-}
-
-export async function listQueue(): Promise<QueuedPhoto[]> {
-  return readAll();
-}
-
-export async function enqueuePhoto(input: {
-  imageUri: string;
-  location?: LatLng;
+  location?: import("@/api/types").LatLng;
+  scope: QueueScope;
 }): Promise<QueuedPhoto> {
-  const items = await readAll();
-  const item: QueuedPhoto = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    imageUri: input.imageUri,
-    location: input.location,
-    createdAt: Date.now(),
-    attempts: 0,
-  };
-  items.push(item);
-  await writeAll(items);
-  return item;
+  return queue.enqueue(input);
 }
 
-export async function removeFromQueue(id: string): Promise<void> {
-  const items = await readAll();
-  await writeAll(items.filter((i) => i.id !== id));
+export function removeFromQueue(id: string, scope: QueueScope): Promise<void> {
+  return queue.remove(id, scope);
 }
 
-export async function markAttempt(id: string, error?: string): Promise<void> {
-  const items = await readAll();
-  const next = items.map((i) =>
-    i.id === id ? { ...i, attempts: i.attempts + 1, lastError: error } : i,
-  );
-  await writeAll(next);
+export function markAttempt(id: string, scope: QueueScope, error?: string): Promise<void> {
+  return queue.markAttempt(id, scope, error);
 }
 
-/**
- * Attempt to upload every queued photo. Returns per-item results.
- * On success the item is removed from the queue; on failure attempts++ and
- * the item stays queued for the next flush.
- */
-export async function flushQueue(
-  opts: { token?: string } = {},
-): Promise<
-  Array<
-    { id: string; ok: true; response: IdentifyResponse } | { id: string; ok: false; error: string }
-  >
-> {
-  const items = await readAll();
-  const out: Array<
-    { id: string; ok: true; response: IdentifyResponse } | { id: string; ok: false; error: string }
-  > = [];
-  for (const item of items) {
-    try {
-      const response = await identifyPhoto(
-        { imageUri: item.imageUri, location: item.location },
-        { token: opts.token },
-      );
-      await removeFromQueue(item.id);
-      out.push({ id: item.id, ok: true, response });
-    } catch (err) {
-      if (isQuotaExceeded(err)) {
-        await markAttempt(item.id, "quota_exceeded");
-        out.push({ id: item.id, ok: false, error: "quota_exceeded" });
-        break;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      await markAttempt(item.id, msg);
-      out.push({ id: item.id, ok: false, error: msg });
-    }
-  }
-  return out;
+export function flushQueue(options: FlushQueueOptions): Promise<FlushResult[]> {
+  return queue.flush(options);
+}
+
+export function subscribeToQueue(listener: () => void): () => void {
+  return queue.subscribe(listener);
 }
