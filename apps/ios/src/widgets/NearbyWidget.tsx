@@ -14,8 +14,6 @@ const C = {
   border: "#242A32",
 } as const;
 
-const MAX_ROWS = 6;
-
 /**
  * Android home-screen widget: a compact list of investable brands near the
  * last location Mapvest saw (see `widgetLocation.ts`). Rendered by
@@ -25,8 +23,14 @@ const MAX_ROWS = 6;
  * geo-sorted nearby list the iOS Map widget falls back to when it can't
  * fetch a static map snapshot.
  */
-export function NearbyWidget({ items, error, locationState }: WidgetData) {
+export function NearbyWidget({
+  items,
+  error,
+  locationState,
+  maxRows = 3,
+}: WidgetData & { maxRows?: number }) {
   const fresh = locationState.kind === "fresh";
+  const mapUri = widgetMapUri(locationState);
   return (
     <FlexWidget
       style={{
@@ -37,13 +41,17 @@ export function NearbyWidget({ items, error, locationState }: WidgetData) {
         padding: 12,
         flexDirection: "column",
       }}
-      clickAction="OPEN_APP"
+      clickAction="OPEN_URI"
+      clickActionData={{ uri: mapUri }}
+      accessibilityLabel="Open Mapvest map"
     >
       <TextWidget
         text={
-          fresh && locationState.location.source === "map"
-            ? "MAPVEST · MAP AREA"
-            : "MAPVEST · NEARBY"
+          !fresh
+            ? "MAPVEST · LOCATION"
+            : locationState.location.source === "map"
+              ? "MAPVEST · MAP AREA"
+              : "MAPVEST · NEARBY"
         }
         style={{ color: C.accent, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}
       />
@@ -68,7 +76,7 @@ export function NearbyWidget({ items, error, locationState }: WidgetData) {
         </FlexWidget>
       ) : (
         <FlexWidget style={{ flexDirection: "column", marginTop: 6 }}>
-          {items.slice(0, MAX_ROWS).map((item) => (
+          {items.slice(0, maxRows).map((item) => (
             <Row key={`${item.name}-${item.ticker ?? ""}`} item={item} />
           ))}
         </FlexWidget>
@@ -93,7 +101,15 @@ function Row({ item }: { item: WidgetNearbyItem }) {
         borderBottomWidth: 1,
         borderBottomColor: C.border,
       }}
-      clickAction="OPEN_APP"
+      clickAction="OPEN_URI"
+      clickActionData={{
+        uri: item.ticker
+          ? `mapvest:///detail/${encodeURIComponent(item.ticker)}`
+          : "mapvest:///map",
+      }}
+      accessibilityLabel={
+        item.ticker ? `Open ${item.name} details` : `Open ${item.name} on Mapvest`
+      }
     >
       <FlexWidget style={{ flexDirection: "column", flex: 1, marginRight: 6 }}>
         <TextWidget
@@ -121,6 +137,12 @@ function Row({ item }: { item: WidgetNearbyItem }) {
       ) : null}
     </FlexWidget>
   );
+}
+
+function widgetMapUri(state: WidgetLocationState): string {
+  if (state.kind !== "fresh") return "mapvest:///map";
+  const { lat, lng } = state.location;
+  return `mapvest:///map?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
 }
 
 function LocationState({ state }: { state: WidgetLocationState }) {

@@ -104,7 +104,10 @@ func widgetOriginState(now: Date = Date()) -> WidgetLocationState {
     else {
         return .setup
     }
-    guard isValidWidgetLocation(loc), let capturedAt = loc.capturedAt, let source = loc.source else {
+    guard isValidWidgetLocation(loc) else {
+        return .setup
+    }
+    guard let capturedAt = loc.capturedAt, let source = loc.source else {
         return .stale(capturedAt: loc.capturedAt, source: loc.source)
     }
     let age = now.timeIntervalSince1970 * 1000 - capturedAt
@@ -150,9 +153,7 @@ func widgetMapURL(for state: WidgetLocationState) -> URL {
     guard let location = state.location else {
         return URL(string: "mapvest:///map")!
     }
-    var components = URLComponents()
-    components.scheme = "mapvest"
-    components.path = "/map"
+    var components = URLComponents(string: "mapvest:///map")!
     components.queryItems = [
         URLQueryItem(name: "lat", value: String(location.lat)),
         URLQueryItem(name: "lng", value: String(location.lng)),

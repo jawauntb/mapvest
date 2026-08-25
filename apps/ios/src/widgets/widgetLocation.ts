@@ -11,7 +11,7 @@ import {
  * Home-screen widgets can't get a fresh GPS fix themselves (no foreground
  * permission prompt, and iOS WidgetKit extensions run as a separate native
  * process with no access to the RN bridge at all). Instead, whenever the
- * main app gets a location fix on the Map tab, it stashes it here so
+ * main app gets a location fix on the Map or List tab, it stashes it here so
  * a widget's next timeline refresh has *something* recent to center on.
  *
  * - Android: the widget's headless task handler (`widget-task-handler.tsx`)
@@ -71,13 +71,13 @@ export type StoredWidgetLocation = Omit<WidgetLocation, "capturedAt" | "source">
 
 export async function saveLastLocationForWidgets(
   loc: LatLng,
-  options: { capturedAt?: number; source?: WidgetLocationSource } = {},
+  options: { capturedAt?: number; source: WidgetLocationSource },
 ): Promise<void> {
   const value: WidgetLocation = {
     lat: loc.lat,
     lng: loc.lng,
     capturedAt: options.capturedAt ?? Date.now(),
-    source: options.source ?? "map",
+    source: options.source,
   };
   try {
     await AsyncStorage.setItem(ASYNC_STORAGE_KEY, JSON.stringify(value));

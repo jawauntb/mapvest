@@ -41,22 +41,31 @@ export function widgetLocationState(
     !location ||
     typeof location.lat !== "number" ||
     typeof location.lng !== "number" ||
-    !isValidCoordinate({ lat: location.lat, lng: location.lng }) ||
-    typeof location.capturedAt !== "number" ||
-    !Number.isFinite(location.capturedAt) ||
-    (location.source !== "device" && location.source !== "map")
+    !isValidCoordinate({ lat: location.lat, lng: location.lng })
   ) {
-    return location && typeof location.capturedAt === "number"
-      ? { kind: "stale", capturedAt: location.capturedAt, source: location.source }
-      : { kind: "setup" };
+    return { kind: "setup" };
   }
 
-  const age = now - location.capturedAt;
+  const capturedAt =
+    typeof location.capturedAt === "number" && Number.isFinite(location.capturedAt)
+      ? location.capturedAt
+      : undefined;
+  const source =
+    location.source === "device" || location.source === "map" ? location.source : undefined;
+  if (capturedAt === undefined || source === undefined) {
+    return {
+      kind: "stale",
+      ...(capturedAt === undefined ? {} : { capturedAt }),
+      ...(source === undefined ? {} : { source }),
+    };
+  }
+
+  const age = now - capturedAt;
   if (age < 0 || age > WIDGET_LOCATION_MAX_AGE_MS) {
     return {
       kind: "stale",
-      capturedAt: location.capturedAt,
-      source: location.source,
+      capturedAt,
+      source,
     };
   }
 
@@ -65,8 +74,8 @@ export function widgetLocationState(
     location: {
       lat: location.lat,
       lng: location.lng,
-      capturedAt: location.capturedAt,
-      source: location.source,
+      capturedAt,
+      source,
     },
   };
 }

@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -61,6 +61,7 @@ function regionFromWidgetParams(
 
 export default function MapScreen() {
   const router = useRouter();
+  const mapPanInProgress = useRef(false);
   const params = useLocalSearchParams<{ lat?: string | string[]; lng?: string | string[] }>();
   const qc = useQueryClient();
   const { session } = useSession();
@@ -320,6 +321,11 @@ export default function MapScreen() {
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         region={region}
+        onPanDrag={() => {
+          // Apple Maps does not populate `details.isGesture`; remember an
+          // actual drag so its completed region is still treated as chosen.
+          mapPanInProgress.current = true;
+        }}
         onRegionChangeComplete={(r, details) => {
           setRegion(r);
           qc.setQueryData(["tab-state", "map-region"], r);
@@ -327,7 +333,9 @@ export default function MapScreen() {
           setTrackMarkers(true);
           // A user-panned map is a map-area origin, not a claim about the
           // device's current location. Preserve the GPS source otherwise.
-          if (details?.isGesture) {
+          const wasUserPan = details?.isGesture === true || mapPanInProgress.current;
+          mapPanInProgress.current = false;
+          if (wasUserPan) {
             void saveLastLocationForWidgets(
               { lat: r.latitude, lng: r.longitude },
               { source: "map" },

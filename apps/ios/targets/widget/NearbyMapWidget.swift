@@ -37,15 +37,17 @@ struct NearbyMapWidgetView: View {
                 WidgetLocationStatusView(state: entry.locationState)
             } else if entry.mapImage != nil {
                 if let top = entry.items.first {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(top.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        Text("\(top.label) · \(widgetDistanceText(top.distanceM))")
-                            .font(.system(size: 9))
-                            .foregroundColor(.white.opacity(0.85))
-                            .lineLimit(1)
+                    Link(destination: top.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(top.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            Text("\(top.label) · \(widgetDistanceText(top.distanceM))")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.85))
+                                .lineLimit(1)
+                        }
                     }
                 }
             } else if let errorMessage = entry.errorMessage {
@@ -91,7 +93,7 @@ struct NearbyMapWidget: Widget {
             NearbyMapWidgetView(entry: entry)
         }
         .configurationDisplayName("Mapvest Map")
-        .description("A map snapshot of investable brands near your last known location.")
+        .description("A map of investable brands around your recent location or chosen map area.")
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }

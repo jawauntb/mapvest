@@ -45,9 +45,9 @@ struct NearbyListWidgetView: View {
 
     private var maxRows: Int {
         switch family {
-        case .systemSmall: return 3
-        case .systemMedium: return 5
-        default: return 8
+        case .systemSmall: return 2
+        case .systemMedium: return 3
+        default: return 7
         }
     }
 }
@@ -95,7 +95,7 @@ struct NearbyListWidget: Widget {
             NearbyListWidgetView(entry: entry)
         }
         .configurationDisplayName("Mapvest Nearby")
-        .description("Investable brands near your last known location.")
+        .description("Investable brands around your recent location or chosen map area.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

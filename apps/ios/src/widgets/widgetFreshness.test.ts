@@ -6,7 +6,9 @@ const now = Date.parse("2026-08-25T12:00:00.000Z");
 describe("widgetLocationState", () => {
   test("requires a captured location instead of inventing San Francisco", () => {
     expect(widgetLocationState(null, now)).toEqual({ kind: "setup" });
-    expect(widgetLocationState({ lat: 37.7749, lng: -122.4194 }, now)).toEqual({ kind: "setup" });
+    expect(widgetLocationState({ lat: 37.7749, lng: -122.4194 }, now)).toEqual({
+      kind: "stale",
+    });
   });
 
   test("accepts a recent device fix", () => {
@@ -54,8 +56,10 @@ describe("widgetLocationState", () => {
       ).kind,
     ).toBe("stale");
     expect(
-      widgetLocationState({ lat: 91, lng: -74.006, capturedAt: now, source: "device" }, now).kind,
-    ).toBe("stale");
-    expect(widgetLocationState({ lat: 40.7128, lng: -74.006 }, now)).toEqual({ kind: "setup" });
+      widgetLocationState({ lat: 91, lng: -74.006, capturedAt: now, source: "device" }, now),
+    ).toEqual({
+      kind: "setup",
+    });
+    expect(widgetLocationState({ lat: 40.7128, lng: -74.006 }, now)).toEqual({ kind: "stale" });
   });
 });

@@ -93,8 +93,8 @@ returns `501` and the map widget falls back to the same list layout as the
 
 ### Where the widgets get a location
 
-Widgets can't prompt for GPS permission themselves. Whenever the Map tab gets
-a location fix, it calls `saveLastLocationForWidgets()`
+Widgets can't prompt for GPS permission themselves. Whenever the Map or List
+tab gets a location fix, it calls `saveLastLocationForWidgets()`
 (`apps/ios/src/widgets/widgetLocation.ts`), which persists
 `{lat, lng, capturedAt, source}`. A widget origin is fresh for six hours;
 older or legacy coordinates are shown as stale/setup state and are never
@@ -146,6 +146,8 @@ generated.
   ticker/comparable label, distance, and last-updated context; the widget opens
   Map centered on the shown origin and falls back to an honest text state when
   the origin is not fresh or the snapshot is unavailable.
+- Android applies the same setup/stale/map-area headers, adjusts visible rows
+  to the widget's current height, and deep-links ticker rows to Detail.
 - `MapvestWidgetBundle.swift` — `@main` `WidgetBundle` registering both.
 - `ColorHex.swift` — the RN app's palette (`apps/ios/src/theme/tokens.ts`)
   mirrored as plain hex `Color` values, so the widget target doesn't need

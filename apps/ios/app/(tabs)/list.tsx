@@ -46,7 +46,10 @@ export default function ListScreen() {
       });
       const next = { lat: loc.coords.latitude, lng: loc.coords.longitude };
       setOrigin(next);
-      void saveLastLocationForWidgets(next);
+      void saveLastLocationForWidgets(next, {
+        capturedAt: loc.timestamp,
+        source: "device",
+      });
     })();
   }, []);
 
