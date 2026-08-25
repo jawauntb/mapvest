@@ -1,4 +1,4 @@
-import { AgentChatRequest, type ResearchConversationStatus, type User } from "@mapvest/core";
+import { AgentChatRequest, type User } from "@mapvest/core";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
@@ -434,7 +434,9 @@ agent.post("/chat", optionalAuth, requireGenerationQuota("agent_chat"), async (c
         const user = userFromContext(c);
         if (user?.id) {
           const title = completion.article.content.split(/\r?\n/, 1)[0]?.trim() || "Research ready";
-          void onAgentResponseReady(user.id, admission.conversationId, title.slice(0, 160));
+          void onAgentResponseReady(user.id, admission.conversationId, title.slice(0, 160)).catch(
+            () => {},
+          );
         }
         return c.json(completedResponse(admission, completion));
       } catch (error) {
@@ -492,7 +494,9 @@ agent.post("/stream", optionalAuth, requireGenerationQuota("agent_chat"), async 
       const user = userFromContext(c);
       if (user?.id) {
         const title = completion.article.content.split(/\r?\n/, 1)[0]?.trim() || "Research ready";
-        void onAgentResponseReady(user.id, admission.conversationId, title.slice(0, 160));
+        void onAgentResponseReady(user.id, admission.conversationId, title.slice(0, 160)).catch(
+          () => {},
+        );
       }
     } catch (error) {
       if (error instanceof ResearchConversationPendingError) {

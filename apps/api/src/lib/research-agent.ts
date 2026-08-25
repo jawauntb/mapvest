@@ -166,13 +166,16 @@ function tools(result: LooseObject | undefined, run: LooseObject): string[] {
 }
 
 function finalContent(run: LooseObject, result: LooseObject | undefined): string {
+  const runStatus = status(run.status, "running");
   return (
     nonEmptyString(result?.briefing) ??
     nonEmptyString(object(run.preview)?.briefing) ??
     nonEmptyString(object(run.memo)?.executive_summary) ??
     nonEmptyString(object(run.conclusion)?.reason) ??
     nonEmptyString(run.error) ??
-    "Research finished without a displayable brief."
+    (runStatus === "queued" || runStatus === "running"
+      ? "Research is still running."
+      : "Research finished without a displayable brief.")
   );
 }
 
@@ -181,7 +184,7 @@ function articleId(run: LooseObject): string {
   const revision =
     typeof run.revision === "number"
       ? String(run.revision)
-      : (nonEmptyString(run.updated_at) ?? String(status(run.status)));
+      : (nonEmptyString(run.updated_at) ?? String(status(run.status, "running")));
   return `research-${id}-${revision}`.replace(/[^A-Za-z0-9._-]/g, "-");
 }
 
@@ -304,7 +307,7 @@ export function researchStatusFromRun(
   const preview = object(run.preview);
   return {
     conversationId,
-    status: status(run.status),
+    status: status(run.status, "running"),
     ...(nonEmptyString(run.phase) ? { phase: nonEmptyString(run.phase) } : {}),
     ...(typeof run.active === "boolean" ? { active: run.active } : {}),
     ...(typeof run.completed_iterations === "number"

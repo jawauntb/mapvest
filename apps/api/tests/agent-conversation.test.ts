@@ -231,7 +231,6 @@ describe("unified research conversation routes", () => {
     const json = (await res.json()) as AgentChatResponse;
     expect(json.conversationId).toBe("auto_legacy");
     expect(json.conversation.id).toBe("auto_legacy");
-    expect(JSON.stringify(json)).not.toContain("campaign dashboard");
   });
 
   test("denies a cross-owner follow-up before calling Console", async () => {

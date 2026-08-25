@@ -7,17 +7,11 @@
 
 const DEFAULT_DERIVATION_FORWARDED_HOST = "derivation-research-jawaun.jtbx.workers.dev";
 
-export const DERIVATION_FORWARDED_HOST =
-  process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || DEFAULT_DERIVATION_FORWARDED_HOST;
-
 function configuredOrigin(): string | undefined {
   const value =
     process.env.DERIVATION_RESEARCH_API_ORIGIN?.trim() || process.env.DERIVATION_URL?.trim();
   return value ? value.replace(/\/+$/, "") : undefined;
 }
-
-/** Legacy export retained while existing idea-chat callers move to the typed helpers below. */
-export const DERIVATION_URL = configuredOrigin() ?? "";
 
 function configuredServiceToken(): string | undefined {
   return (
@@ -67,32 +61,13 @@ function requireServiceToken(): string {
   return token;
 }
 
-function attestationHeaders(token = configuredServiceToken()): Record<string, string> {
+function attestationHeaders(token: string): Record<string, string> {
   const host = forwardedHost();
   return {
     "x-research-console-forwarded-host": host,
     "x-forwarded-proto": "https",
     Origin: `https://${host}`,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-/** Headers for legacy read endpoints. */
-export function derivationReadHeaders(extra: Record<string, string> = {}): HeadersInit {
-  return {
-    Accept: "application/json",
-    ...attestationHeaders(),
-    ...extra,
-  };
-}
-
-/** Headers for legacy streaming mutation endpoints. */
-export function derivationMutateHeaders(extra: Record<string, string> = {}): HeadersInit {
-  return {
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-    ...attestationHeaders(),
-    ...extra,
+    Authorization: `Bearer ${token}`,
   };
 }
 
@@ -217,7 +192,7 @@ async function requestJson(
   const fetcher = options.fetch ?? globalThis.fetch;
   const response = await fetcher(url, {
     ...init,
-    ...(options.signal ? { signal: options.signal } : {}),
+    signal: options.signal ?? AbortSignal.timeout(30_000),
   });
   const body = await responseBody(response);
   if (!response.ok) throw new DerivationUpstreamError(response.status, body);
