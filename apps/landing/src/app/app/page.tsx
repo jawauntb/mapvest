@@ -14,6 +14,7 @@ import {
   agentChat,
   clearRobinhoodMcp,
   clearSession,
+  createAgentClientMessageId,
   fetchAlerts,
   fetchCockpit,
   fetchEntitlements,
@@ -38,7 +39,7 @@ import {
 } from "@/lib/mapvest-api";
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
 
 export default function AppPage() {
@@ -775,6 +776,20 @@ function IdentifyTab() {
 
 /* -------------------------- Research chat --------------------------- */
 
+const ACTIVE_RESEARCH_CONVERSATION_KEY = "mapvest.research.activeConversationId.v1";
+
+function persistActiveResearchConversation(conversationId?: string) {
+  try {
+    if (conversationId) {
+      window.localStorage.setItem(ACTIVE_RESEARCH_CONVERSATION_KEY, conversationId);
+    } else {
+      window.localStorage.removeItem(ACTIVE_RESEARCH_CONVERSATION_KEY);
+    }
+  } catch {
+    // The in-memory conversation id still preserves continuity for this tab.
+  }
+}
+
 function ResearchChatTab() {
   const { presentPaywall } = usePaywall();
   const [threads, setThreads] = useState<AgentThread[] | null>(null);
@@ -784,6 +799,33 @@ function ResearchChatTab() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "chat">("list");
+  const retryRef = useRef<{ message: string; clientMessageId: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    try {
+      const persisted = window.localStorage.getItem(ACTIVE_RESEARCH_CONVERSATION_KEY);
+      if (!persisted) return;
+      setView("chat");
+      setThreadId(persisted);
+      getAgentThread(persisted)
+        .then((response) => {
+          if (active) setTurns(response.thread.messages ?? []);
+        })
+        .catch((error) => {
+          if (active) {
+            setThreadId(undefined);
+            persistActiveResearchConversation();
+            setErr(error instanceof Error ? error.message : "load failed");
+          }
+        });
+    } catch {
+      // Research remains usable when browser storage is unavailable.
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (view !== "list") return;
@@ -795,12 +837,16 @@ function ResearchChatTab() {
   async function openThread(id: string, title: string) {
     setView("chat");
     setThreadId(id);
+    retryRef.current = null;
+    persistActiveResearchConversation(id);
     setErr(null);
     try {
       const r = await getAgentThread(id);
       setTurns(r.thread.messages ?? []);
       void title;
     } catch (e) {
+      setThreadId(undefined);
+      persistActiveResearchConversation();
       setErr(e instanceof Error ? e.message : "load failed");
       setTurns([]);
     }
@@ -809,6 +855,8 @@ function ResearchChatTab() {
   function newChat() {
     setView("chat");
     setThreadId(undefined);
+    retryRef.current = null;
+    persistActiveResearchConversation();
     setTurns([]);
     setInput("");
     setErr(null);
@@ -817,28 +865,48 @@ function ResearchChatTab() {
   async function onSend() {
     const msg = input.trim();
     if (!msg || busy) return;
+    const retry = retryRef.current;
+    const clientMessageId =
+      retry?.message === msg ? retry.clientMessageId : createAgentClientMessageId();
+    const optimisticId = `u-${clientMessageId}`;
     setBusy(true);
     setErr(null);
-    setTurns((t) => [
-      ...t,
-      {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: msg,
-        createdAt: new Date().toISOString(),
-        interesting: [],
-        ideas: [],
-        toolsUsed: [],
-        sources: [],
-        chartTickers: [],
-      },
-    ]);
+    setTurns((turns) =>
+      turns.some((turn) => turn.id === optimisticId)
+        ? turns
+        : [
+            ...turns,
+            {
+              id: optimisticId,
+              role: "user",
+              content: msg,
+              createdAt: new Date().toISOString(),
+              interesting: [],
+              ideas: [],
+              toolsUsed: [],
+              sources: [],
+              chartTickers: [],
+            },
+          ],
+    );
     setInput("");
     try {
-      const r = await agentChat(msg, { threadId });
-      if (r.threadId) setThreadId(r.threadId);
-      setTurns((t) => [...t, r.article]);
+      const r = await agentChat(msg, {
+        conversationId: threadId,
+        clientMessageId,
+      });
+      const conversationId = r.conversationId ?? r.threadId;
+      if (conversationId) {
+        setThreadId(conversationId);
+        persistActiveResearchConversation(conversationId);
+      }
+      retryRef.current = null;
+      setTurns((turns) =>
+        turns.some((turn) => turn.id === r.article.id) ? turns : [...turns, r.article],
+      );
     } catch (e) {
+      retryRef.current = { message: msg, clientMessageId };
+      setInput(msg);
       if (presentPaywallIfQuota(e, presentPaywall)) {
         setErr("Free generations used. Subscribe to keep researching.");
         return;
@@ -883,7 +951,7 @@ function ResearchChatTab() {
               type="button"
               className="app-row app-row-public"
               style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
-              onClick={() => void openThread(b.id, b.title)}
+              onClick={() => void openThread(b.conversationId ?? b.id, b.title)}
             >
               <div style={{ flex: 1 }}>
                 <div className="app-row-title">{b.title}</div>

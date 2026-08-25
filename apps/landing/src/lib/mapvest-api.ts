@@ -506,6 +506,8 @@ export type ResearchArticle = {
 
 export type AgentThread = {
   id: string;
+  /** Canonical durable research identifier; `id` remains the compatibility alias. */
+  conversationId?: string;
   title: string;
   preview: string;
   createdAt?: string;
@@ -521,10 +523,31 @@ export function getAgentThread(id: string) {
   return req<{ thread: AgentThread }>(`/v1/agent/threads/${encodeURIComponent(id)}`);
 }
 
-/** Context-bound research brief (Derivation idea-chats under the hood). */
-export function agentChat(message: string, opts?: { ticker?: string; threadId?: string }) {
-  return req<{
+export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
+
+export function createAgentClientMessageId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? `web_${crypto.randomUUID()}`
+    : `web_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/** Context-bound research brief backed by one durable research conversation. */
+export function agentChat(
+  message: string,
+  opts?: {
+    ticker?: string;
+    conversationId?: string;
+    /** Compatibility alias for clients released before conversation unification. */
     threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  },
+) {
+  const conversationId = opts?.conversationId ?? opts?.threadId;
+  return req<{
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
     ticker?: string;
     article: ResearchArticle;
     userMessage?: ResearchArticle;
@@ -535,7 +558,10 @@ export function agentChat(message: string, opts?: { ticker?: string; threadId?: 
     body: JSON.stringify({
       message,
       ticker: opts?.ticker,
-      threadId: opts?.threadId,
+      conversationId,
+      threadId: conversationId,
+      clientMessageId: opts?.clientMessageId ?? createAgentClientMessageId(),
+      researchDepth: opts?.researchDepth ?? "auto",
     }),
   });
 }
