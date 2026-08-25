@@ -25,7 +25,7 @@ function deferred<T>() {
 }
 
 describe("session SecureStore adapter", () => {
-  test("a timed-out late write deletes itself after controller cleanup", async () => {
+  test("a timed-out write keeps cleanup blocked until its native mutation settles", async () => {
     let raw: string | null = null;
     const pending = deferred<void>();
     const store = createSessionStore(
@@ -43,11 +43,44 @@ describe("session SecureStore adapter", () => {
     );
 
     await expect(store.write(stored)).rejects.toThrow("sign-in");
-    await store.remove();
+    await expect(store.remove()).rejects.toThrow("sign-out");
     pending.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await store.remove();
 
     expect(raw).toBeNull();
+  });
+
+  test("a later B write cannot race an A timeout and late completion", async () => {
+    let raw: string | null = null;
+    const pending = deferred<void>();
+    const accountA = {
+      ...stored,
+      session: { ...stored.session, token: "token-a", userId: "account-a" },
+      user: { ...stored.user, id: "account-a", email: "account-a@mapvest.dev" },
+    };
+    const store = createSessionStore(
+      {
+        getItem: async () => raw,
+        setItem: async (next) => {
+          if (next === JSON.stringify(accountA)) await pending.promise;
+          raw = next;
+        },
+        deleteItem: async () => {
+          raw = null;
+        },
+      },
+      5,
+    );
+
+    await expect(store.write(accountA)).rejects.toThrow("sign-in");
+    // The controller cannot safely start B while A is still in native code.
+    await expect(store.write(stored)).rejects.toThrow("sign-in");
+    expect(raw).toBeNull();
+
+    pending.resolve();
+    await store.remove();
+    await store.write(stored);
+    expect(raw as string | null).toBe(JSON.stringify(stored));
   });
 
   test("successful write is not deleted by its own completion microtask", async () => {

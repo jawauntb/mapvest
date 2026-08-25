@@ -25,12 +25,10 @@ export type PushSignOutDependencies = {
   unlinkServer?: () => Promise<void>;
   /** Claimant-bound identity fallback; valid bearer may recover a missing id. */
   unlinkServerByIdentity?: () => Promise<void>;
-  /** True when native identity lookup found an Expo token. */
-  hasPhysicalIdentity?: boolean;
-  /** False means native identity lookup failed, not that no token exists. */
-  physicalIdentityReadable?: boolean;
-  /** Safe only when no claimant-bound server path exists (expired bearer). */
-  allowNativeOnlyFallback?: boolean;
+  /** Explicit native identity result; unavailable is not confirmed-none. */
+  physicalIdentityStatus?: "available" | "confirmed-none" | "unavailable";
+  /** Best-effort defense against Expo re-registering after cleanup starts. */
+  disableAutoRegistration?: () => Promise<void>;
   unregisterNative: () => Promise<void>;
   dismissNative: () => Promise<void>;
   clearStoredTokenId: () => Promise<void>;
@@ -74,9 +72,9 @@ export async function revokePushForSignOut(
     !dependencies.tokenStorageReadable ||
     dependencies.registrationEvidenceReadable === false ||
     Boolean(dependencies.mayBeRegistered) ||
-    dependencies.physicalIdentityReadable === false ||
-    Boolean(dependencies.unlinkServerByIdentity) ||
-    Boolean(dependencies.hasPhysicalIdentity);
+    dependencies.physicalIdentityStatus === "available" ||
+    dependencies.physicalIdentityStatus === "unavailable" ||
+    Boolean(dependencies.unlinkServerByIdentity);
   let serverUnlinked = false;
   if (dependencies.tokenId && dependencies.unlinkServer) {
     serverUnlinked = await attempted(dependencies.unlinkServer);
@@ -84,18 +82,16 @@ export async function revokePushForSignOut(
   if (!serverUnlinked && dependencies.unlinkServerByIdentity) {
     serverUnlinked = await attempted(dependencies.unlinkServerByIdentity);
   }
+  // Expo's native unregister only calls UIApplication's APNs detach method;
+  // neither it nor auto-registration shutdown revokes the server claim.
+  await attempted(dependencies.disableAutoRegistration);
   const nativeUnregistered = await attempted(dependencies.unregisterNative);
   await attempted(dependencies.dismissNative);
 
-  // Native unregistration is accepted only for an expired/invalid bearer when
-  // no claimant-bound server path exists. A valid bearer or known id still
-  // requires the server proof; native cleanup cannot mask that failure.
-  const nativeOnlySafe =
-    Boolean(dependencies.allowNativeOnlyFallback) &&
-    !dependencies.tokenId &&
-    !dependencies.unlinkServer &&
-    !dependencies.unlinkServerByIdentity;
-  if (serverRequired && !serverUnlinked && !(nativeOnlySafe && nativeUnregistered)) {
+  // Native cleanup cannot mask a missing server proof. If any evidence says a
+  // claim may exist, cleanup remains retry-required until the server confirms
+  // revoked or already-revoked.
+  if (serverRequired && !serverUnlinked) {
     throw new PushSignOutRevocationError();
   }
 

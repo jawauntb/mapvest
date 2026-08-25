@@ -9,19 +9,40 @@ import * as Notifications from "expo-notifications";
 import { unlinkPushToken, unlinkPushTokenByIdentity } from "./prefs";
 import {
   clearStoredTokenId,
-  readCurrentPushIdentity,
+  getCurrentPushIdentity,
   readPushRegistrationEvidence,
   readStoredTokenIdForSignOut,
 } from "./registerForPush";
 import { revokePushForSignOut } from "./signOutPolicy";
 
 type NotificationCleanup = {
+  setAutoServerRegistrationEnabledAsync?: (enabled: boolean) => Promise<void>;
   unregisterForNotificationsAsync?: () => Promise<void>;
   dismissAllNotificationsAsync?: () => Promise<void>;
   clearLastNotificationResponseAsync?: () => Promise<void>;
 };
 
 const cleanup = Notifications as typeof Notifications & NotificationCleanup;
+const AUTO_REGISTRATION_TIMEOUT_MS = 1_000;
+
+async function disableExpoAutoRegistration(): Promise<void> {
+  const disable = cleanup.setAutoServerRegistrationEnabledAsync;
+  if (!disable) return;
+  try {
+    await Promise.race([
+      disable(false),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Expo auto-registration shutdown timed out")),
+          AUTO_REGISTRATION_TIMEOUT_MS,
+        ),
+      ),
+    ]);
+  } catch {
+    // This is defense in depth only. Server revocation below remains the
+    // authoritative cleanup proof and is still required when evidence exists.
+  }
+}
 
 function unregisterNativePush(): Promise<void> {
   if (!cleanup.unregisterForNotificationsAsync) {
@@ -42,13 +63,16 @@ async function dismissNativeNotifications(): Promise<void> {
 
 export async function unlinkPushForSignOut(
   session?: { token: string },
-  options: { authenticatedBearer: boolean; allowNativeOnlyFallback: boolean } = {
+  options: { authenticatedBearer: boolean } = {
     authenticatedBearer: Boolean(session),
-    allowNativeOnlyFallback: false,
   },
 ): Promise<void> {
+  // getExpoPushTokenAsync enables Expo's automatic token registration as a
+  // side effect. Disable it before identity recovery and again in the policy
+  // immediately before native cleanup so sign-out cannot re-arm delivery.
+  await disableExpoAutoRegistration();
   const stored = await readStoredTokenIdForSignOut();
-  const identityRead = await readCurrentPushIdentity();
+  const identityRead = await getCurrentPushIdentity();
   const identity = identityRead.identity;
   const evidence = await readPushRegistrationEvidence();
   await revokePushForSignOut({
@@ -56,7 +80,7 @@ export async function unlinkPushForSignOut(
     tokenStorageReadable: stored.readable,
     registrationEvidenceReadable: evidence.readable,
     mayBeRegistered: evidence.mayBeRegistered,
-    physicalIdentityReadable: identityRead.readable,
+    physicalIdentityStatus: identityRead.status,
     unlinkServer:
       stored.tokenId && session
         ? () => unlinkPushToken(stored.tokenId!, { token: session.token })
@@ -73,8 +97,7 @@ export async function unlinkPushForSignOut(
               options.authenticatedBearer ? session : undefined,
             )
         : undefined,
-    hasPhysicalIdentity: Boolean(identity),
-    allowNativeOnlyFallback: options.allowNativeOnlyFallback,
+    disableAutoRegistration: disableExpoAutoRegistration,
     unregisterNative: unregisterNativePush,
     dismissNative: dismissNativeNotifications,
     clearStoredTokenId,

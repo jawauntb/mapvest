@@ -7,6 +7,7 @@
  */
 import { API_URL } from "@/util/env";
 import { getStoredTokenId } from "./registerForPush";
+import { buildPushRevokeRequest, isSuccessfulPushRevocation } from "./revokeOutcome";
 
 const PUSH_NETWORK_TIMEOUT_MS = 8_000;
 
@@ -131,9 +132,9 @@ export async function setPushPref(
 
 /**
  * Remove this installation's server token before clearing its bearer session.
- * A 404 is safe to treat as unlinked: the authenticated account no longer
- * owns that token (for example, after an account switch already reassigned
- * the physical Expo token), so it cannot receive its notifications.
+ * A real 204 delete is authoritative. A 404 is deliberately surfaced so the
+ * caller can use the claimant-identity endpoint and distinguish an
+ * already-revoked row from a stale or mismatched local id.
  */
 export async function unlinkPushToken(tokenId: string, session: { token: string }): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/v1/push/token/${encodeURIComponent(tokenId)}`, {
@@ -143,7 +144,15 @@ export async function unlinkPushToken(tokenId: string, session: { token: string 
       Authorization: `Bearer ${session.token}`,
     },
   });
-  if (res.ok || res.status === 404) return;
+  // The current authenticated contract is 204 on a real delete. A typed
+  // idempotent outcome is also accepted for mixed-version deployments; a
+  // 404 deliberately falls through as an error so identity recovery can
+  // distinguish an already-revoked row from a stale/corrupt local id.
+  if (res.status === 204) return;
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
+  }
 
   let message = `Could not remove this device from notifications (${res.status})`;
   try {
@@ -156,39 +165,25 @@ export async function unlinkPushToken(tokenId: string, session: { token: string 
 }
 
 /**
- * Revocation-only fallback for expired sessions or a lost SecureStore id.
- * The server accepts an Expo token only when paired with the opaque claimant
- * id (or an authenticated current-account proof). Token-only public requests
- * are rejected so a stale account cannot revoke a newly transferred claim.
+ * Claimant-bound fallback for expired sessions or a lost SecureStore id.
+ * With an opaque id this uses the public exact-claim endpoint. Without one it
+ * requires a valid bearer and uses the authenticated current-device endpoint;
+ * token-only public requests are never constructed.
  */
 export async function unlinkPushTokenByIdentity(
   identity: { expoToken: string; deviceId?: string },
   tokenId?: string | null,
   session?: { token: string },
 ): Promise<void> {
-  const res = await fetchWithTimeout(`${API_URL}/v1/push/revoke-device`, {
+  const request = buildPushRevokeRequest(API_URL, identity, tokenId, session);
+  const res = await fetchWithTimeout(request.url, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
-    },
-    body: JSON.stringify({
-      token: identity.expoToken,
-      deviceId: identity.deviceId,
-      tokenId: tokenId ?? undefined,
-    }),
+    headers: request.headers,
+    body: JSON.stringify(request.body),
   });
   if (res.ok) {
-    const body = (await res.json().catch(() => ({}))) as {
-      revoked?: unknown;
-      matched?: unknown;
-      proofRequired?: unknown;
-    };
-    if (body.proofRequired === true) {
-      throw new Error("This device needs a claimant id before notifications can be removed.");
-    }
-    return;
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
   }
   throw new Error(`Could not remove this device from notifications (${res.status})`);
 }

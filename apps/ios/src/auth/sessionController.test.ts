@@ -89,6 +89,9 @@ describe("SessionController async account lifecycle", () => {
     expect(f.controller.getSnapshot().session?.token).toBe("token-a");
 
     const signIn = f.controller.signIn(b.session, b.user);
+    const transitionGeneration = f.controller.getSnapshot().authGeneration;
+    expect(f.controller.getSnapshot().phase).toBe("booting");
+    expect(f.controller.isActiveSession(transitionGeneration, "token-a")).toBe(false);
     getMe.resolve({ user: a.user });
     await boot;
     await signIn;
@@ -130,6 +133,10 @@ describe("SessionController async account lifecycle", () => {
     expect(f.controller.isActiveSession(generationA, "token-a")).toBe(true);
 
     const signOut = f.controller.signOut();
+    const transitionGeneration = f.controller.getSnapshot().authGeneration;
+    expect(transitionGeneration).not.toBe(generationA);
+    expect(f.controller.getSnapshot().phase).toBe("booting");
+    expect(f.controller.isActiveSession(transitionGeneration, "token-a")).toBe(false);
     expect(f.controller.isActiveSession(generationA, "token-a")).toBe(false);
     await signOut;
     expect(f.controller.isActiveSession(generationA, "token-a")).toBe(false);

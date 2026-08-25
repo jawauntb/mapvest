@@ -45,6 +45,16 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["server", "native", "dismiss", "clear"]);
   });
 
+  test("disables Expo auto-registration but never counts it as revocation", async () => {
+    const deps = fixture();
+    deps.disableAutoRegistration = async () => {
+      deps.calls.push("disable-auto");
+    };
+
+    await expect(revokePushForSignOut(deps)).resolves.toMatchObject({ serverUnlinked: true });
+    expect(deps.calls).toEqual(["server", "disable-auto", "native", "dismiss", "clear"]);
+  });
+
   test("does not treat native Expo unregistration as server revocation", async () => {
     const deps = fixture();
     deps.unlinkServer = async () => {
@@ -87,6 +97,20 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["server", "identity", "native", "dismiss", "clear"]);
   });
 
+  test("falls back to claimant identity after an authenticated stale-id 404", async () => {
+    const deps = fixture();
+    deps.unlinkServer = async () => {
+      deps.calls.push("server");
+      throw new Error("404 token not found");
+    };
+    deps.unlinkServerByIdentity = async () => {
+      deps.calls.push("identity");
+    };
+
+    await expect(revokePushForSignOut(deps)).resolves.toMatchObject({ serverUnlinked: true });
+    expect(deps.calls).toEqual(["server", "identity", "native", "dismiss", "clear"]);
+  });
+
   test("fails closed when SecureStore times out and identity revocation hangs", async () => {
     const deps = fixture({ tokenId: null, tokenStorageReadable: false });
     deps.unlinkServer = undefined;
@@ -97,7 +121,11 @@ describe("push sign-out privacy policy", () => {
   });
 
   test("a confirmed no-token sign-out succeeds even if native cleanup is unavailable", async () => {
-    const deps = fixture({ tokenId: null, tokenStorageReadable: true });
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: true,
+      physicalIdentityStatus: "confirmed-none",
+    });
     deps.unregisterNative = async () => {
       deps.calls.push("native");
       throw new Error("unsupported platform");
@@ -110,7 +138,7 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["native", "dismiss", "clear"]);
   });
 
-  test("expired cleanup may use successful native unregister when no claimant id exists", async () => {
+  test("expired cleanup cannot complete from native unregister when a claim may exist", async () => {
     const deps = fixture({
       tokenId: null,
       tokenStorageReadable: false,
@@ -119,10 +147,8 @@ describe("push sign-out privacy policy", () => {
       unlinkServerByIdentity: undefined,
     });
 
-    await expect(
-      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
-    ).resolves.toMatchObject({ serverUnlinked: false, nativeUnregistered: true });
-    expect(deps.calls).toEqual(["native", "dismiss", "clear"]);
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["native", "dismiss"]);
   });
 
   test("may-be-registered evidence fails closed when native unregister fails", async () => {
@@ -138,9 +164,7 @@ describe("push sign-out privacy policy", () => {
       throw new Error("native unavailable");
     };
 
-    await expect(
-      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
-    ).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
     expect(deps.calls).toEqual(["native", "dismiss"]);
   });
 
@@ -150,7 +174,7 @@ describe("push sign-out privacy policy", () => {
       tokenStorageReadable: true,
       registrationEvidenceReadable: true,
       mayBeRegistered: false,
-      physicalIdentityReadable: false,
+      physicalIdentityStatus: "unavailable",
       unlinkServer: undefined,
       unlinkServerByIdentity: undefined,
     });
@@ -159,9 +183,22 @@ describe("push sign-out privacy policy", () => {
       throw new Error("native unavailable");
     };
 
-    await expect(
-      revokePushForSignOut({ ...deps, allowNativeOnlyFallback: true }),
-    ).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["native", "dismiss"]);
+  });
+
+  test("unknown identity does not clear cleanup even when native unregister succeeds", async () => {
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: true,
+      registrationEvidenceReadable: true,
+      mayBeRegistered: false,
+      physicalIdentityStatus: "unavailable",
+      unlinkServer: undefined,
+      unlinkServerByIdentity: undefined,
+    });
+
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
     expect(deps.calls).toEqual(["native", "dismiss"]);
   });
 

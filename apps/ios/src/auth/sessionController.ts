@@ -35,10 +35,7 @@ export type SessionSnapshot = {
 export type SessionControllerDeps = {
   readStoredSession: () => Promise<StoredSessionRead>;
   getMe: (token: string, signal: AbortSignal) => Promise<{ user: User }>;
-  revokePush: (
-    session?: Session,
-    options?: { authenticatedBearer: boolean; allowNativeOnlyFallback: boolean },
-  ) => Promise<void>;
+  revokePush: (session?: Session, options?: { authenticatedBearer: boolean }) => Promise<void>;
   cancelPush: () => Promise<void>;
   writeStoredSession: (stored: StoredSession) => Promise<void>;
   deleteStoredSession: () => Promise<void>;
@@ -49,7 +46,6 @@ type CleanupRequest = {
   session?: Session;
   revocationComplete: boolean;
   authenticatedBearer: boolean;
-  allowNativeOnlyFallback: boolean;
 };
 
 export class SessionTransitionCancelledError extends Error {
@@ -142,7 +138,11 @@ export class SessionController {
   }
 
   isActiveSession(generation: number, token: string): boolean {
-    return this.isCurrent(generation) && this.snapshot.session?.token === token;
+    return (
+      this.isCurrent(generation) &&
+      this.snapshot.phase === "authenticated" &&
+      this.snapshot.session?.token === token
+    );
   }
 
   startBoot(): Promise<void> {
@@ -181,7 +181,16 @@ export class SessionController {
   private beginTransition(): number {
     this.generation += 1;
     this.bootAbort?.abort();
-    this.emit({ ...this.snapshot, authGeneration: this.generation });
+    // Keep the old session available to the transition UI, but make it
+    // explicitly non-active before any async revoke/sign-in work begins.
+    // Native callbacks receive the new generation during this window.
+    const transitioningFromAuthenticated = this.snapshot.phase === "authenticated";
+    this.emit({
+      ...this.snapshot,
+      phase: transitioningFromAuthenticated ? "booting" : this.snapshot.phase,
+      ready: transitioningFromAuthenticated ? false : this.snapshot.ready,
+      authGeneration: this.generation,
+    });
     return this.generation;
   }
 
@@ -216,7 +225,6 @@ export class SessionController {
           reason: "secure-store-unreadable",
           revocationComplete: false,
           authenticatedBearer: false,
-          allowNativeOnlyFallback: true,
         },
         generation,
       );
@@ -247,7 +255,6 @@ export class SessionController {
           reason: "malformed-session",
           revocationComplete: false,
           authenticatedBearer: false,
-          allowNativeOnlyFallback: true,
         },
         generation,
       );
@@ -261,7 +268,6 @@ export class SessionController {
           session: parsed.session,
           revocationComplete: false,
           authenticatedBearer: false,
-          allowNativeOnlyFallback: true,
         },
         generation,
       );
@@ -289,7 +295,6 @@ export class SessionController {
             session: parsed.session,
             revocationComplete: false,
             authenticatedBearer: false,
-            allowNativeOnlyFallback: true,
           },
           generation,
         );
@@ -306,7 +311,6 @@ export class SessionController {
             session: parsed.session,
             revocationComplete: false,
             authenticatedBearer: false,
-            allowNativeOnlyFallback: true,
           },
           generation,
         );
@@ -341,7 +345,6 @@ export class SessionController {
       try {
         await this.deps.revokePush(request.session, {
           authenticatedBearer: request.authenticatedBearer,
-          allowNativeOnlyFallback: request.allowNativeOnlyFallback,
         });
       } catch {
         return false;
@@ -396,7 +399,6 @@ export class SessionController {
       } else {
         await this.deps.revokePush(previous?.session, {
           authenticatedBearer: true,
-          allowNativeOnlyFallback: false,
         });
         previousRevoked = true;
       }
@@ -407,7 +409,6 @@ export class SessionController {
           session: previous?.session,
           revocationComplete: false,
           authenticatedBearer: true,
-          allowNativeOnlyFallback: false,
         },
         generation,
       );
@@ -424,7 +425,6 @@ export class SessionController {
         session: previous?.session,
         revocationComplete: previousRevoked,
         authenticatedBearer: true,
-        allowNativeOnlyFallback: false,
       };
       this.setCleanupAfterFailure(request, generation);
       await this.attemptCleanup(generation);
@@ -457,7 +457,6 @@ export class SessionController {
     try {
       await this.deps.revokePush(previous?.session, {
         authenticatedBearer: true,
-        allowNativeOnlyFallback: false,
       });
     } catch (error) {
       this.setCleanupAfterFailure(
@@ -466,7 +465,6 @@ export class SessionController {
           session: previous?.session,
           revocationComplete: false,
           authenticatedBearer: true,
-          allowNativeOnlyFallback: false,
         },
         generation,
       );
@@ -483,7 +481,6 @@ export class SessionController {
           session: previous?.session,
           revocationComplete: true,
           authenticatedBearer: true,
-          allowNativeOnlyFallback: false,
         },
         generation,
       );

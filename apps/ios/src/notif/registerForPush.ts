@@ -29,7 +29,13 @@ import { Platform } from "react-native";
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 import { runPushOperation } from "./lifecycle";
-import { persistPushTokenId } from "./pushRegistrationStore";
+import {
+  type PushTokenIdStorage,
+  deletePersistedPushTokenId,
+  persistPushTokenId,
+  waitForPushTokenIdMutation,
+} from "./pushRegistrationStore";
+import { isSuccessfulPushRevocation } from "./revokeOutcome";
 
 const PUSH_TOKEN_ID_KEY = "mapvest.pushTokenId.v1";
 const PUSH_MAYBE_REGISTERED_KEY = "mapvest.pushMayBeRegistered.v1";
@@ -55,9 +61,8 @@ export type PushRegistrationEvidence = {
 };
 
 export type PushIdentityRead = {
+  status: "available" | "confirmed-none" | "unavailable";
   identity: PushIdentity | null;
-  /** False means native identity lookup failed transiently. */
-  readable: boolean;
 };
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -78,12 +83,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 let currentIdentity: PushIdentity | null = null;
 
+const pushTokenIdStorage: PushTokenIdStorage = {
+  set: (id) => SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id),
+  delete: () => SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY),
+};
+
+const pushEvidenceStorage: PushTokenIdStorage = {
+  set: (value) => AsyncStorage.setItem(PUSH_MAYBE_REGISTERED_KEY, value),
+  delete: () => AsyncStorage.removeItem(PUSH_MAYBE_REGISTERED_KEY),
+};
+
 /**
  * Read the previously-stored server-issued token id, if any. Used by the
  * Settings screen to POST prefs updates against the right token.
  */
 export async function getStoredTokenId(): Promise<string | null> {
   try {
+    if (!(await waitForPushTokenIdMutation(pushTokenIdStorage, SECURE_STORE_TIMEOUT_MS))) {
+      return null;
+    }
     return await withTimeout(
       SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY),
       SECURE_STORE_TIMEOUT_MS,
@@ -104,6 +122,9 @@ export async function readStoredTokenIdForSignOut(): Promise<{
   readable: boolean;
 }> {
   try {
+    if (!(await waitForPushTokenIdMutation(pushTokenIdStorage, SECURE_STORE_TIMEOUT_MS))) {
+      return { tokenId: null, readable: false };
+    }
     return {
       tokenId: await withTimeout(
         SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY),
@@ -119,20 +140,14 @@ export async function readStoredTokenIdForSignOut(): Promise<{
 
 /** A non-secret durable marker that a server row may exist without its id. */
 export async function markPushRegistrationEvidence(): Promise<boolean> {
-  try {
-    await withTimeout(
-      AsyncStorage.setItem(PUSH_MAYBE_REGISTERED_KEY, "1"),
-      SECURE_STORE_TIMEOUT_MS,
-      "push registration evidence write timed out",
-    );
-    return true;
-  } catch {
-    return false;
-  }
+  return persistPushTokenId(pushEvidenceStorage, "1", () => true, SECURE_STORE_TIMEOUT_MS);
 }
 
 export async function readPushRegistrationEvidence(): Promise<PushRegistrationEvidence> {
   try {
+    if (!(await waitForPushTokenIdMutation(pushEvidenceStorage, SECURE_STORE_TIMEOUT_MS))) {
+      return { mayBeRegistered: true, readable: false };
+    }
     const value = await withTimeout(
       AsyncStorage.getItem(PUSH_MAYBE_REGISTERED_KEY),
       SECURE_STORE_TIMEOUT_MS,
@@ -146,11 +161,7 @@ export async function readPushRegistrationEvidence(): Promise<PushRegistrationEv
 
 async function clearPushRegistrationEvidence(): Promise<void> {
   try {
-    await withTimeout(
-      AsyncStorage.removeItem(PUSH_MAYBE_REGISTERED_KEY),
-      SECURE_STORE_TIMEOUT_MS,
-      "push registration evidence delete timed out",
-    );
+    await deletePersistedPushTokenId(pushEvidenceStorage, SECURE_STORE_TIMEOUT_MS);
   } catch {
     // A stale marker is safe: the next sign-out retries idempotent cleanup.
   }
@@ -171,10 +182,10 @@ async function rollbackRegistration(identity: PushIdentity, tokenId: string): Pr
       signal: controller.signal,
     });
     if (!res.ok) return false;
-    const body = (await res.json().catch(() => ({}))) as { matched?: unknown };
-    // A stale id must not be treated as proof that the current claimant was
-    // revoked. Only a positive claimant match closes this rollback path.
-    return body.matched === true;
+    const body = await res.json().catch(() => null);
+    // A stale id or claimant mismatch must not be treated as proof that the
+    // current claimant was revoked. Idempotent already-revoked is safe.
+    return isSuccessfulPushRevocation(body);
   } catch {
     return false;
   } finally {
@@ -185,16 +196,10 @@ async function rollbackRegistration(identity: PushIdentity, tokenId: string): Pr
 /** Clear the account-scoped server token id after a successful unlink. */
 export async function clearStoredTokenId(): Promise<void> {
   currentIdentity = null;
-  try {
-    await withTimeout(
-      SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY),
-      SECURE_STORE_TIMEOUT_MS,
-      "SecureStore delete timed out",
-    );
-  } catch {
-    // Revocation is already complete; a stale local id cannot re-enable a
-    // token, and the next registration replaces it.
-  }
+  // Wait for any timed-out registration write before deleting. Swallowing
+  // this error would let a late native completion resurrect an old claimant
+  // after the server revoke had already allowed the account transition.
+  await deletePersistedPushTokenId(pushTokenIdStorage, SECURE_STORE_TIMEOUT_MS);
   await clearPushRegistrationEvidence();
 }
 
@@ -228,26 +233,24 @@ export async function ensurePermissions(): Promise<boolean> {
  * Recover the physical identity even when the server-issued id was lost.
  * This never prompts; it only reads already-granted OS state.
  */
-export async function getCurrentPushIdentity(): Promise<PushIdentity | null> {
-  return (await readCurrentPushIdentity()).identity;
-}
-
-export async function readCurrentPushIdentity(): Promise<PushIdentityRead> {
-  if (currentIdentity) return { identity: currentIdentity, readable: true };
-  if (!Device.isDevice) return { identity: null, readable: true };
+export async function getCurrentPushIdentity(): Promise<PushIdentityRead> {
+  if (currentIdentity) return { identity: currentIdentity, status: "available" };
+  if (!Device.isDevice) return { identity: null, status: "confirmed-none" };
   try {
     const permission = await withTimeout(
       Notifications.getPermissionsAsync(),
       PUSH_IO_TIMEOUT_MS,
       "Notification permission check timed out",
     );
-    if (permission.status !== "granted") return { identity: null, readable: true };
+    if (permission.status !== "granted") {
+      return { identity: null, status: "confirmed-none" };
+    }
     const result = await withTimeout(
       Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID }),
       PUSH_IO_TIMEOUT_MS,
       "Expo token lookup timed out",
     );
-    if (!result.data) return { identity: null, readable: false };
+    if (!result.data) return { identity: null, status: "unavailable" };
     const identity: PushIdentity = { expoToken: result.data };
     try {
       identity.deviceId = await withTimeout(
@@ -260,11 +263,16 @@ export async function readCurrentPushIdentity(): Promise<PushIdentityRead> {
       // claimant proof; sign-out remains fail-closed until it can recover one.
     }
     currentIdentity = identity;
-    return { identity, readable: true };
+    return { identity, status: "available" };
   } catch {
-    return { identity: null, readable: false };
+    return { identity: null, status: "unavailable" };
   }
 }
+
+// Kept as an internal compatibility alias for callers that used the earlier
+// read-prefixed name; unlike the old boolean shape, it preserves unavailable
+// versus confirmed-none for cleanup policy decisions.
+export const readCurrentPushIdentity = getCurrentPushIdentity;
 
 /**
  * Full registration flow. Returns null on simulator or when the platform has
@@ -339,10 +347,7 @@ export async function registerForPush(
       const j = (await res.json()) as { id?: string };
       if (!j.id || !isCurrent()) return null;
       const persisted = await persistPushTokenId(
-        {
-          set: (id) => SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id),
-          delete: () => SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY),
-        },
+        pushTokenIdStorage,
         j.id,
         isCurrent,
         SECURE_STORE_TIMEOUT_MS,
