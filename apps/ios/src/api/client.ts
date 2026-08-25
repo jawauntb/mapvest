@@ -414,12 +414,51 @@ export type ResearchArticle = {
   error?: string;
 };
 
+export type ResearchDepth = "auto" | "instant" | "standard" | "deep" | "max";
+
+export type ResearchConversationStatus =
+  | "queued"
+  | "running"
+  | "conclusive"
+  | "exhausted"
+  | "blocked"
+  | "error";
+
+export type ResearchConversationReference = {
+  id: string;
+  status: ResearchConversationStatus;
+  deliverable: "ideas" | "memo";
+  href: string;
+  pdf_url?: string | null;
+  schema_version?: "research_conversation_ref_v1";
+  conversation_id?: string;
+  stream_href?: string;
+};
+
 export type AgentThread = {
   id: string;
+  conversationId?: string;
   title: string;
   preview: string;
+  status?: ResearchConversationStatus;
   messages?: ResearchArticle[];
 };
+
+export type AgentChatResponse = {
+  conversationId?: string;
+  /** Compatibility alias retained while released clients still call these threads. */
+  threadId: string;
+  clientMessageId?: string;
+  status?: ResearchConversationStatus;
+  conversation?: ResearchConversationReference;
+  article: ResearchArticle;
+  userMessage?: ResearchArticle;
+};
+
+export function createResearchClientMessageId(): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `ios_${Date.now().toString(36)}_${random}`;
+}
 
 export function listAgentThreads(opts: FetchOpts = {}) {
   return jsonFetch<{ threads: AgentThread[]; count: number }>(
@@ -439,21 +478,27 @@ export function getAgentThread(id: string, opts: FetchOpts = {}) {
 
 export function agentChat(
   message: string,
-  args: { ticker?: string; threadId?: string } = {},
+  args: {
+    ticker?: string;
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  } = {},
   opts: FetchOpts = {},
 ) {
-  return jsonFetch<{
-    threadId?: string;
-    article: ResearchArticle;
-    userMessage?: ResearchArticle;
-  }>(
+  const conversationId = args.conversationId ?? args.threadId;
+  const clientMessageId = args.clientMessageId ?? createResearchClientMessageId();
+  return jsonFetch<AgentChatResponse>(
     "/v1/agent/chat",
     {
       method: "POST",
       body: JSON.stringify({
         message,
         ticker: args.ticker,
-        threadId: args.threadId,
+        conversationId,
+        clientMessageId,
+        researchDepth: args.researchDepth ?? "auto",
       }),
     },
     opts,
@@ -476,10 +521,21 @@ export type AgentStreamEvent =
   | { type: "ping"; data: { ts?: number } }
   | { type: "tool"; data: { name: string; arg?: string } }
   | { type: "tool_end"; data: { name: string; ok: boolean } }
-  | { type: "reasoning"; data: { text: string } }
+  | {
+      type: "reasoning";
+      data: { text: string; conversationId?: string; progress?: unknown };
+    }
   | { type: "token"; data: { text: string } }
   | { type: "article"; data: ResearchArticle }
-  | { type: "done"; data: { threadId?: string } }
+  | {
+      type: "done";
+      data: {
+        conversationId: string;
+        threadId: string;
+        clientMessageId: string;
+        status: ResearchConversationStatus;
+      };
+    }
   | { type: "error"; data: { message: string } }
   | { type: string; data: unknown };
 
@@ -494,10 +550,24 @@ function nextSseBoundary(buf: string): { idx: number; sep: number } {
 
 export async function agentChatStream(
   message: string,
-  args: { ticker?: string; threadId?: string },
+  args: {
+    ticker?: string;
+    conversationId?: string;
+    threadId?: string;
+    clientMessageId?: string;
+    researchDepth?: ResearchDepth;
+  },
   onEvent: (event: AgentStreamEvent) => void,
   opts: FetchOpts = {},
-): Promise<{ article: ResearchArticle; threadId?: string }> {
+): Promise<{
+  article: ResearchArticle;
+  conversationId: string;
+  threadId: string;
+  clientMessageId: string;
+  status: ResearchConversationStatus;
+}> {
+  const conversationId = args.conversationId ?? args.threadId;
+  const clientMessageId = args.clientMessageId ?? createResearchClientMessageId();
   const headers = new Headers();
   headers.set("Accept", "text/event-stream");
   headers.set("Content-Type", "application/json");
@@ -514,7 +584,9 @@ export async function agentChatStream(
     body: JSON.stringify({
       message,
       ticker: args.ticker,
-      threadId: args.threadId,
+      conversationId,
+      clientMessageId,
+      researchDepth: args.researchDepth ?? "auto",
     }),
     signal: opts.signal,
   });
@@ -531,7 +603,9 @@ export async function agentChatStream(
   const decoder = new TextDecoder("utf-8");
 
   let finalArticle: ResearchArticle | undefined;
-  let finalThreadId: string | undefined;
+  let finalConversationId = conversationId;
+  let finalClientMessageId = clientMessageId;
+  let finalStatus: ResearchConversationStatus | undefined;
   let errored: string | undefined;
   let tokenText = "";
 
@@ -556,12 +630,22 @@ export async function agentChatStream(
     onEvent(evt);
     if (eventName === "article") {
       finalArticle = data as ResearchArticle;
+    } else if (eventName === "reasoning") {
+      const d = data as { conversationId?: string };
+      finalConversationId = d?.conversationId ?? finalConversationId;
     } else if (eventName === "token") {
       const d = data as { text?: string };
       if (typeof d?.text === "string") tokenText += d.text;
     } else if (eventName === "done") {
-      const d = data as { threadId?: string };
-      finalThreadId = d?.threadId;
+      const d = data as {
+        conversationId?: string;
+        threadId?: string;
+        clientMessageId?: string;
+        status?: ResearchConversationStatus;
+      };
+      finalConversationId = d?.conversationId ?? d?.threadId ?? finalConversationId;
+      finalClientMessageId = d?.clientMessageId ?? finalClientMessageId;
+      finalStatus = d?.status;
     } else if (eventName === "error") {
       const d = data as { message?: string };
       errored = d?.message || "stream error";
@@ -610,7 +694,14 @@ export async function agentChatStream(
     };
   }
   if (!finalArticle) throw new ApiError(500, "stream ended without an article");
-  return { article: finalArticle, threadId: finalThreadId };
+  if (!finalConversationId) throw new ApiError(500, "stream ended without a conversation id");
+  return {
+    article: finalArticle,
+    conversationId: finalConversationId,
+    threadId: finalConversationId,
+    clientMessageId: finalClientMessageId,
+    status: finalStatus ?? "conclusive",
+  };
 }
 
 export function secFilings(

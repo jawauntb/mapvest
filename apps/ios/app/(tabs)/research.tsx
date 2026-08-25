@@ -2,6 +2,7 @@ import {
   type AgentThread,
   type ResearchArticle,
   agentChat,
+  createResearchClientMessageId,
   getAgentThread,
   listAgentThreads,
 } from "@/api/client";
@@ -17,6 +18,11 @@ import { SkeletonList } from "@/components/Skeleton";
 import { decodeChatSeed, seedToDraft } from "@/nav/chatAbout";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
+import {
+  clearResearchConversationId,
+  loadResearchConversationId,
+  saveResearchConversationId,
+} from "@/util/researchConversation";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -71,7 +77,7 @@ function deriveThreadTitle(msg: string): string {
  * Tools (Derivation) run server-side; no Factory/Jobs UI.
  */
 export default function ResearchChatScreen() {
-  const { session } = useSession();
+  const { session, user } = useSession();
   const { presentPaywall } = usePaywall();
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string; id?: string; seed?: string }>();
@@ -100,32 +106,55 @@ export default function ResearchChatScreen() {
     async (t: AgentThread) => {
       setErr(null);
       setMode("chat");
-      setThreadId(t.id);
+      const conversationId = t.conversationId ?? t.id;
+      setThreadId(conversationId);
       setTitle(t.title || "Research");
       try {
-        const r = await getAgentThread(t.id, { token: session?.token });
+        const r = await getAgentThread(conversationId, { token: session?.token });
+        const canonicalId = r.thread.conversationId ?? r.thread.id;
+        setThreadId(canonicalId);
+        void saveResearchConversationId("chat", canonicalId, user?.id);
         setTurns(r.thread.messages ?? []);
       } catch {
+        void clearResearchConversationId("chat", user?.id);
+        setThreadId(undefined);
         setTurns([]);
       }
     },
-    [session?.token],
+    [session?.token, user?.id],
   );
 
-  function newChat(prefill?: string) {
-    hapticTap();
-    setMode("chat");
-    setThreadId(undefined);
-    setTurns([]);
-    setTitle("New research");
-    setInput(prefill ?? "");
-    setErr(null);
-    if (prefill) {
-      // Auto-focus so the user lands on the composer with the draft ready
-      // to edit + send. Small delay lets the chat view mount first.
-      setTimeout(() => inputRef.current?.focus(), 120);
-    }
-  }
+  const newChat = useCallback(
+    (prefill?: string) => {
+      hapticTap();
+      void clearResearchConversationId("chat", user?.id);
+      setMode("chat");
+      setThreadId(undefined);
+      setTurns([]);
+      setTitle("New research");
+      setInput(prefill ?? "");
+      setErr(null);
+      if (prefill) {
+        // Auto-focus so the user lands on the composer with the draft ready
+        // to edit + send. Small delay lets the chat view mount first.
+        setTimeout(() => inputRef.current?.focus(), 120);
+      }
+    },
+    [user?.id],
+  );
+
+  useEffect(() => {
+    if (params.intent) return;
+    let active = true;
+    void loadResearchConversationId("chat", user?.id).then((conversationId) => {
+      if (active && conversationId) {
+        void openThread({ id: conversationId, title: "Research", preview: "" });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [params.intent, user?.id, openThread]);
 
   // Sidebar deep-links: ?intent=new | ?intent=thread&id= | ?seed=<b64>
   useEffect(() => {
@@ -149,10 +178,7 @@ export default function ResearchChatScreen() {
     if (params.intent === "thread" && params.id) {
       void openThread({ id: params.id, title: "Research", preview: "" });
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: newChat is a
-    // plain (unmemoized) function recreated every render — this effect must
-    // key off the URL params only, or it would re-fire on every render.
-  }, [params.intent, params.id, params.seed, openThread]);
+  }, [params.intent, params.id, params.seed, openThread, newChat]);
 
   async function onSend() {
     const msg = input.trim();
@@ -174,8 +200,15 @@ export default function ResearchChatScreen() {
     setTurns((t) => [...t, optimistic]);
     setInput("");
     try {
-      const r = await agentChat(msg, { threadId }, { token: session?.token });
-      if (r.threadId) setThreadId(r.threadId);
+      const clientMessageId = createResearchClientMessageId();
+      const r = await agentChat(
+        msg,
+        { conversationId: threadId, clientMessageId },
+        { token: session?.token },
+      );
+      const conversationId = r.conversationId ?? r.threadId;
+      setThreadId(conversationId);
+      void saveResearchConversationId("chat", conversationId, user?.id);
       setTurns((t) => [...t, r.article]);
       if (title === "New research") setTitle(deriveThreadTitle(msg));
       if (r.article.error) {
@@ -218,9 +251,7 @@ export default function ResearchChatScreen() {
             </Pressable>
           }
         />
-        <Text style={styles.hint}>
-          Article-style briefs · not advice
-        </Text>
+        <Text style={styles.hint}>Article-style briefs · not advice</Text>
         <ScreenFade>
           {threadsQ.isLoading ? (
             <SkeletonList rows={5} />
@@ -322,7 +353,7 @@ export default function ResearchChatScreen() {
               <View key={t.id} style={styles.article}>
                 <RichText text={t.content} />
                 {t.interesting.slice(0, 4).map((x, i) => (
-                  <Text key={i} style={styles.bullet}>
+                  <Text key={`${i}-${x}`} style={styles.bullet}>
                     · {x}
                   </Text>
                 ))}

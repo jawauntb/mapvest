@@ -1,10 +1,19 @@
-import { type ResearchArticle, agentChat, agentChatStream } from "@/api/client";
+import {
+  type ResearchArticle,
+  agentChat,
+  agentChatStream,
+  createResearchClientMessageId,
+} from "@/api/client";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { RichText } from "@/components/RichText";
 import { ShareButton } from "@/components/ShareButton";
 import { colors, radii } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
+import {
+  loadResearchConversationId,
+  saveResearchConversationId,
+} from "@/util/researchConversation";
 import { shareBriefText } from "@/util/share";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
@@ -68,7 +77,7 @@ export function ResearchSheet({
   visible: boolean;
   onClose: () => void;
 }) {
-  const { session } = useSession();
+  const { session, user } = useSession();
   const { presentPaywall } = usePaywall();
   const insets = useSafeAreaInsets();
   const keyboardOverlap = useSheetKeyboardOverlap();
@@ -87,6 +96,17 @@ export function ResearchSheet({
   // finalized article lands.
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<ScrollView | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setThreadId(undefined);
+    void loadResearchConversationId(`ticker:${ticker}`, user?.id).then((storedId) => {
+      if (!cancelled && storedId) setThreadId(storedId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, user?.id]);
 
   // Elapsed ticker only — the stage cycler is gone now that we stream real
   // events; the timeline is fed by `agentChatStream`'s onEvent callback.
@@ -123,17 +143,28 @@ export function ResearchSheet({
     ]);
     setInput("");
 
+    const clientMessageId = createResearchClientMessageId();
+    const conversationId =
+      threadId ?? (await loadResearchConversationId(`ticker:${ticker}`, user?.id));
+    if (conversationId) setThreadId(conversationId);
+    let acceptedConversationId = conversationId;
+
     let gotArticle = false;
     try {
       const r = await agentChatStream(
         msg,
-        { ticker, threadId },
+        { ticker, conversationId, clientMessageId },
         (ev) => {
           if (ev.type === "tool") {
             const d = ev.data as { name: string };
             setTimeline((t) => [...t, `Running: ${d.name}`]);
           } else if (ev.type === "reasoning") {
-            const d = ev.data as { text: string };
+            const d = ev.data as { text: string; conversationId?: string };
+            if (d.conversationId) {
+              acceptedConversationId = d.conversationId;
+              setThreadId(d.conversationId);
+              void saveResearchConversationId(`ticker:${ticker}`, d.conversationId, user?.id);
+            }
             if (d?.text) setTimeline((t) => [...t, d.text]);
           } else if (ev.type === "token") {
             const d = ev.data as { text: string };
@@ -145,11 +176,21 @@ export function ResearchSheet({
             setDraft("");
             const tools = art.toolsUsed?.length ? ` · ${art.toolsUsed.slice(0, 3).join(", ")}` : "";
             setStatus(`Brief ready${tools}`);
+          } else if (ev.type === "done") {
+            const d = ev.data as { conversationId?: string; threadId?: string };
+            const canonicalId = d.conversationId ?? d.threadId;
+            if (canonicalId) {
+              acceptedConversationId = canonicalId;
+              setThreadId(canonicalId);
+              void saveResearchConversationId(`ticker:${ticker}`, canonicalId, user?.id);
+            }
           }
         },
         { token: session?.token },
       );
-      if (r.threadId) setThreadId(r.threadId);
+      const canonicalId = r.conversationId ?? r.threadId;
+      setThreadId(canonicalId);
+      void saveResearchConversationId(`ticker:${ticker}`, canonicalId, user?.id);
       if (r.article && !gotArticle) {
         gotArticle = true;
         setTurns((t) => [...t, r.article]);
@@ -171,8 +212,14 @@ export function ResearchSheet({
       // "stream ended without an article".
       if (!gotArticle) {
         try {
-          const r = await agentChat(msg, { ticker, threadId }, { token: session?.token });
-          if (r.threadId) setThreadId(r.threadId);
+          const r = await agentChat(
+            msg,
+            { ticker, conversationId: acceptedConversationId, clientMessageId },
+            { token: session?.token },
+          );
+          const canonicalId = r.conversationId ?? r.threadId;
+          setThreadId(canonicalId);
+          void saveResearchConversationId(`ticker:${ticker}`, canonicalId, user?.id);
           setTurns((t) => [...t, r.article]);
           setDraft("");
           const tools = r.article.toolsUsed?.length

@@ -1,6 +1,7 @@
 import {
   addToWatchlist,
   agentChat,
+  createResearchClientMessageId,
   fetchAnalysis,
   fetchFinancialRatios,
   fetchQuote,
@@ -728,6 +729,13 @@ function AgentOverviewBlock({
   // 30min) we honor the cache and skip the button — feels the same as before.
   const qc = useQueryClient();
   const key = ["agent-overview", ticker, token ?? "anon"];
+  const messageIdentityRef = useRef<{ ticker: string; id: string } | null>(null);
+  const clientMessageId = () => {
+    if (messageIdentityRef.current?.ticker !== ticker) {
+      messageIdentityRef.current = { ticker, id: createResearchClientMessageId() };
+    }
+    return messageIdentityRef.current.id;
+  };
   const hasCache = !!qc.getQueryData(key);
   const [wantBrief, setWantBrief] = useState(hasCache);
   const overviewQ = useQuery({
@@ -738,10 +746,14 @@ function AgentOverviewBlock({
     queryFn: () =>
       agentChat(
         `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
-        { ticker },
+        { ticker, clientMessageId: clientMessageId() },
         { token },
       ),
   });
+
+  useEffect(() => {
+    if (overviewQ.isSuccess) messageIdentityRef.current = null;
+  }, [overviewQ.isSuccess]);
 
   if (!wantBrief) {
     return (
