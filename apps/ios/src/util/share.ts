@@ -21,9 +21,9 @@ import { API_URL } from "@/util/env";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { Share } from "react-native";
+import { MAPVEST_URL } from "./shareLinks";
 
-/** Public site URL — surface in shared text so recipients can click through. */
-export const MAPVEST_URL = "https://mapvest.co";
+export { MAPVEST_URL } from "./shareLinks";
 
 /**
  * Format a date the way our shared cards want it — "Aug 6, 2026". We pass
@@ -43,7 +43,7 @@ export type ShareBriefTextInput = {
   body: string;
   /** Optional ticker — prepends "$AAPL · Mapvest Daily" style header. */
   ticker?: string;
-  /** Optional footer override; defaults to the branded tail with mapvest.co. */
+  /** Optional footer override; defaults to the canonical public Mapvest URL. */
   footer?: string;
 };
 

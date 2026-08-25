@@ -1,5 +1,6 @@
 import { BrandMark } from "@/components/BrandMark";
 import { colors, fonts, radii } from "@/theme/tokens";
+import { MAPVEST_URL } from "@/util/shareLinks";
 import { forwardRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -65,7 +66,9 @@ export const ShareBriefCard = forwardRef<View, ShareBriefCardProps>(function Sha
       </View>
 
       <View style={styles.footerRow}>
-        <Text style={styles.footer}>{footer ?? `mapvest.co · ${dateStr}`}</Text>
+        <Text style={styles.footer}>
+          {footer ?? `${MAPVEST_URL.replace(/^https:\/\//, "")} · ${dateStr}`}
+        </Text>
       </View>
     </View>
   );

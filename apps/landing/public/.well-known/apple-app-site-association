@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "58877MPK38.com.mapvest.app",
+        "paths": ["/app/ticker/*"]
+      }
+    ]
+  }
+}
