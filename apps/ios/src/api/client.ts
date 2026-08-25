@@ -407,10 +407,45 @@ export type ResearchArticle = {
   content: string;
   createdAt: string;
   interesting: string[];
-  ideas: Array<{ title: string; thesis: string; disposition?: string }>;
+  ideas: Array<{
+    title: string;
+    thesis: string;
+    disposition?: string;
+    findings?: string[];
+  }>;
   toolsUsed: string[];
   sources: Array<{ label: string; url?: string }>;
   chartTickers: string[];
+  status?: ResearchConversationStatus;
+  phase?: string;
+  progress?: {
+    completedIterations?: number;
+    maxIterations?: number;
+    completedTasks?: number;
+    totalTasks?: number;
+    evidenceReady?: boolean;
+    essentialClaimsReady?: number;
+    essentialClaimsTotal?: number;
+  };
+  evidence?: Array<{
+    summary: string;
+    source?: string;
+    freshness?: string;
+    artifactRefs?: string[];
+  }>;
+  context?: Array<{ summary: string; reason?: string; source?: string }>;
+  blocker?: string;
+  specialists?: Array<{ role: string; status?: string; analysis?: string }>;
+  memo?: {
+    title?: string;
+    executiveSummary?: string;
+    verdict?: string;
+    rationale?: string;
+    bullCase?: string;
+    baseCase?: string;
+    bearCase?: string;
+  };
+  mode?: string;
   error?: string;
 };
 
@@ -441,6 +476,9 @@ export type AgentThread = {
   title: string;
   preview: string;
   status?: ResearchConversationStatus;
+  phase?: string;
+  memoUrl?: string;
+  sourceUrl?: string;
   messages?: ResearchArticle[];
 };
 
@@ -453,6 +491,9 @@ export type AgentChatResponse = {
   conversation?: ResearchConversationReference;
   article: ResearchArticle;
   userMessage?: ResearchArticle;
+  memoUrl?: string;
+  sourceUrl?: string;
+  pending?: boolean;
 };
 
 export function createResearchClientMessageId(): string {
@@ -473,6 +514,64 @@ export function getAgentThread(id: string, opts: FetchOpts = {}) {
     `/v1/agent/threads/${encodeURIComponent(id)}`,
     { method: "GET" },
     opts,
+  );
+}
+
+const RESEARCH_TERMINAL_STATUSES = new Set<ResearchConversationStatus>([
+  "conclusive",
+  "exhausted",
+  "blocked",
+  "error",
+]);
+
+function waitForResearchPoll(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason ?? new Error("request aborted"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("request aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Follow an already-admitted durable run without POSTing the prompt again. */
+export async function waitForAgentThread(
+  id: string,
+  opts: FetchOpts = {},
+  polling: {
+    maxAttempts?: number;
+    intervalMs?: number;
+    onProgress?: (thread: AgentThread) => void;
+  } = {},
+): Promise<{ thread: AgentThread }> {
+  const maxAttempts = Math.max(1, Math.floor(polling.maxAttempts ?? 30));
+  const intervalMs = Math.max(0, Math.floor(polling.intervalMs ?? 2_000));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const result = await getAgentThread(id, opts);
+      polling.onProgress?.(result.thread);
+      if (!result.thread.status || RESEARCH_TERMINAL_STATUSES.has(result.thread.status)) {
+        return result;
+      }
+    } catch (error) {
+      const retryable = !(error instanceof ApiError) || error.status >= 500;
+      if (!retryable || attempt + 1 >= maxAttempts) throw error;
+    }
+    if (attempt + 1 < maxAttempts) {
+      await waitForResearchPoll(intervalMs, opts.signal);
+    }
+  }
+  throw new ApiError(
+    202,
+    "Research is still running. Tap send to check this same run again.",
+    "research_pending",
   );
 }
 
