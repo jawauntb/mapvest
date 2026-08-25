@@ -1,5 +1,6 @@
 /**
- * Postgres persistence: users, Robinhood MCP, nearby geo tiles, brand→ticker.
+ * Postgres persistence: users, Robinhood MCP, nearby geo tiles, brand→ticker,
+ * and owner-scoped research conversation references.
  * When POSTGRES_URL is unset (local tests), callers fall back to in-memory.
  */
 import { SQL } from "bun";
@@ -90,6 +91,19 @@ export async function initDb(): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS brand_ticker_cache_expires_idx ON brand_ticker_cache (expires_at)`;
     await sql`
+      CREATE TABLE IF NOT EXISTS research_conversations (
+        conversation_id TEXT PRIMARY KEY,
+        owner_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        preview TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS research_conversations_owner_idx
+      ON research_conversations (owner_key, updated_at DESC)`;
+    await sql`
       CREATE TABLE IF NOT EXISTS user_watchlist (
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         ticker TEXT NOT NULL,
@@ -105,7 +119,7 @@ export async function initDb(): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS user_watchlist_user_idx ON user_watchlist (user_id, created_at DESC)`;
     console.log(
-      "[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, usage_events, watchlist)",
+      "[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, research_conversations, usage_events, watchlist)",
     );
   })();
   return initPromise;
