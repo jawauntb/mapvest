@@ -13,9 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#0C0E10"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.mapvest.app",
@@ -26,9 +24,7 @@
         "NSLocationWhenInUseUsageDescription": "Mapvest uses your location to show investable brands near you on the map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Mapvest can notice when you arrive near investable brands, even if the app is closed, so it can tell you about ones you have not caught yet. It does not record a path.",
         "NSLocationAlwaysUsageDescription": "Mapvest can notice when you arrive near investable brands, even if the app is closed, so it can tell you about ones you have not caught yet. It does not record a path.",
-        "UIBackgroundModes": [
-          "location"
-        ],
+        "UIBackgroundModes": ["location"],
         "NSPhotoLibraryUsageDescription": "Mapvest may attach a captured photo to an identification request.",
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -36,9 +32,7 @@
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
       },
       "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.com.mapvest.app.widget"
-        ]
+        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
       }
     },
     "android": {
@@ -93,10 +87,7 @@
             "NSExtensionActivationSupportsText": true
           },
           "iosShareExtensionName": "Share to Mapvest",
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ]
+          "androidIntentFilters": ["text/*", "image/*"]
         }
       ],
       "@bacons/apple-targets",

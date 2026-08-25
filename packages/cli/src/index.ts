@@ -71,7 +71,9 @@ export async function main(
 // Only auto-run when invoked as a script. Guarded so tests can import
 // `main` without triggering process.exit.
 const isDirectRun =
-  typeof Bun !== "undefined" ? Bun.main === import.meta.path : import.meta.url === `file://${process.argv[1]}`;
+  typeof Bun !== "undefined"
+    ? Bun.main === import.meta.path
+    : import.meta.url === `file://${process.argv[1]}`;
 
 if (isDirectRun) {
   const code = await main().catch((err: unknown) => {

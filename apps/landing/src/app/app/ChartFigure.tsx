@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Props = {
   src: string;
@@ -18,11 +18,30 @@ type Props = {
 export function ChartFigure({ src, alt, filename, caption }: Props) {
   const [open, setOpen] = useState(false);
   const [scale, setScale] = useState(1);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  const openLightbox = useCallback(() => {
+    openerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setOpen(true);
+  }, []);
 
   const close = useCallback(() => {
     setOpen(false);
     setScale(1);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+      openerRef.current?.focus();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +61,7 @@ export function ChartFigure({ src, alt, filename, caption }: Props) {
       <div className="app-chart-toolbar">
         <span className="app-muted">Scroll / pinch to zoom · Expand for fullscreen</span>
         <div className="app-chart-toolbar-btns">
-          <button type="button" className="app-btn app-btn-sm" onClick={() => setOpen(true)}>
+          <button type="button" className="app-btn app-btn-sm" onClick={openLightbox}>
             Expand
           </button>
           <a className="app-btn app-btn-sm app-btn-robinhood" href={src} download={safeName}>
@@ -54,7 +73,7 @@ export function ChartFigure({ src, alt, filename, caption }: Props) {
         <button
           type="button"
           className="app-chart-zoom-hit"
-          onClick={() => setOpen(true)}
+          onClick={openLightbox}
           aria-label={`Expand ${alt}`}
         >
           <img className="app-chart-img" alt={alt} src={src} />
@@ -63,17 +82,19 @@ export function ChartFigure({ src, alt, filename, caption }: Props) {
       {caption ? <figcaption className="app-muted">{caption}</figcaption> : null}
 
       {open ? (
-        <div
+        <dialog
+          ref={dialogRef}
           className="app-chart-lightbox"
-          role="dialog"
-          aria-modal="true"
           aria-label={alt}
-          onClick={close}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) close();
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            close();
+          }}
         >
-          <div
-            className="app-chart-lightbox-panel"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="app-chart-lightbox-panel">
             <div className="app-chart-lightbox-bar">
               <button type="button" className="app-btn app-btn-sm" onClick={close}>
                 Close
@@ -111,7 +132,7 @@ export function ChartFigure({ src, alt, filename, caption }: Props) {
               Scroll to pan · + / − to zoom · Esc to close
             </p>
           </div>
-        </div>
+        </dialog>
       ) : null}
     </figure>
   );

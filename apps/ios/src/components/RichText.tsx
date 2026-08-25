@@ -42,6 +42,13 @@ export function RichText({
 
   const clean = stripMdMarks(text);
   const blocks = splitBlocks(clean);
+  const blockOccurrences = new Map<string, number>();
+  const keyedBlocks = blocks.map((block) => {
+    const baseKey = `${block.kind}:${block.text}`;
+    const occurrence = (blockOccurrences.get(baseKey) ?? 0) + 1;
+    blockOccurrences.set(baseKey, occurrence);
+    return { ...block, key: `${baseKey}:${occurrence}` };
+  });
   if (blocks.length === 0) {
     return (
       <Text style={[styles.body, style]} allowFontScaling>
@@ -51,27 +58,23 @@ export function RichText({
   }
   return (
     <View style={styles.wrap}>
-      {blocks.map((b, i) => {
+      {keyedBlocks.map((b, i) => {
         if (b.kind === "h") {
           return (
-            <Text key={i} style={[styles.heading, style]} allowFontScaling>
+            <Text key={b.key} style={[styles.heading, style]} allowFontScaling>
               {renderInline(b.text, openTicker)}
             </Text>
           );
         }
         if (b.kind === "li") {
           return (
-            <Text key={i} style={[styles.bullet, mutedStyle ?? style]} allowFontScaling>
+            <Text key={b.key} style={[styles.bullet, mutedStyle ?? style]} allowFontScaling>
               · {renderInline(b.text, openTicker)}
             </Text>
           );
         }
         return (
-          <Text
-            key={i}
-            style={[styles.body, i === 0 && styles.lede, style]}
-            allowFontScaling
-          >
+          <Text key={b.key} style={[styles.body, i === 0 && styles.lede, style]} allowFontScaling>
             {renderInline(b.text, openTicker)}
           </Text>
         );

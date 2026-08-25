@@ -139,11 +139,11 @@ export function HowItWorksDiagram() {
         </defs>
 
         {/* connectors, drawn first so nodes sit on top */}
-        {nodes.slice(0, -1).map((_, i) => {
+        {nodes.slice(0, -1).map((node, i) => {
           const x1 = leftX(i) + NODE_W;
           const x2 = leftX(i + 1);
           return (
-            <g key={`conn-${i}`}>
+            <g key={`connector-${node.step}`}>
               <line
                 x1={x1}
                 y1={CY}
@@ -197,7 +197,7 @@ export function HowItWorksDiagram() {
               />
               {n.lines.map((line, li) => (
                 <text
-                  key={li}
+                  key={`${n.step}:${line}`}
                   x={cx}
                   y={TOP + 146 + li * 20}
                   textAnchor="middle"

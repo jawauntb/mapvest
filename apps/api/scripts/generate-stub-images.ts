@@ -90,9 +90,12 @@ function buildPng(width: number, height: number, rgb: readonly number[]): Uint8A
 
   const out = new Uint8Array(sig.length + ihdrChunk.length + idatChunk.length + iendChunk.length);
   let p = 0;
-  out.set(sig, p); p += sig.length;
-  out.set(ihdrChunk, p); p += ihdrChunk.length;
-  out.set(idatChunk, p); p += idatChunk.length;
+  out.set(sig, p);
+  p += sig.length;
+  out.set(ihdrChunk, p);
+  p += ihdrChunk.length;
+  out.set(idatChunk, p);
+  p += idatChunk.length;
   out.set(iendChunk, p);
   return out;
 }

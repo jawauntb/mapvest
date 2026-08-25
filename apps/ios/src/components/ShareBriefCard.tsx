@@ -40,35 +40,36 @@ function formatDate(d?: string | Date): string {
   });
 }
 
-export const ShareBriefCard = forwardRef<View, ShareBriefCardProps>(
-  function ShareBriefCard({ headline, body, ticker, generatedAt, footer }, ref) {
-    const dateStr = formatDate(generatedAt);
-    return (
-      <View ref={ref} collapsable={false} style={styles.card}>
-        <View style={styles.header}>
-          <View style={styles.brand}>
-            <BrandMark size={22} />
-            <Text style={styles.wordmark}>Mapvest</Text>
-          </View>
-          <Text style={styles.eyebrow}>
-            {ticker ? `$${ticker.replace(/^\$/, "").toUpperCase()} · ` : ""}
-            Mapvest Daily
-          </Text>
+export const ShareBriefCard = forwardRef<View, ShareBriefCardProps>(function ShareBriefCard(
+  { headline, body, ticker, generatedAt, footer },
+  ref,
+) {
+  const dateStr = formatDate(generatedAt);
+  return (
+    <View ref={ref} collapsable={false} style={styles.card}>
+      <View style={styles.header}>
+        <View style={styles.brand}>
+          <BrandMark size={22} />
+          <Text style={styles.wordmark}>Mapvest</Text>
         </View>
-
-        {/* Body — serif for editorial voice, matches home.tsx briefHeadline */}
-        <View style={styles.copy}>
-          <Text style={styles.headline}>{headline}</Text>
-          <Text style={styles.body}>{body}</Text>
-        </View>
-
-        <View style={styles.footerRow}>
-          <Text style={styles.footer}>{footer ?? `mapvest.co · ${dateStr}`}</Text>
-        </View>
+        <Text style={styles.eyebrow}>
+          {ticker ? `$${ticker.replace(/^\$/, "").toUpperCase()} · ` : ""}
+          Mapvest Daily
+        </Text>
       </View>
-    );
-  },
-);
+
+      {/* Body — serif for editorial voice, matches home.tsx briefHeadline */}
+      <View style={styles.copy}>
+        <Text style={styles.headline}>{headline}</Text>
+        <Text style={styles.body}>{body}</Text>
+      </View>
+
+      <View style={styles.footerRow}>
+        <Text style={styles.footer}>{footer ?? `mapvest.co · ${dateStr}`}</Text>
+      </View>
+    </View>
+  );
+});
 
 const styles = StyleSheet.create({
   card: {

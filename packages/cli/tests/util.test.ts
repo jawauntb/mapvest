@@ -54,7 +54,14 @@ describe("util.printKeyValue / printTable", () => {
   });
   test("printTable emits header + separator + rows", () => {
     const out: string[] = [];
-    printTable(["a", "b"], [["1", "22"], ["3333", "4"]], (s) => out.push(s));
+    printTable(
+      ["a", "b"],
+      [
+        ["1", "22"],
+        ["3333", "4"],
+      ],
+      (s) => out.push(s),
+    );
     expect(out.length).toBe(4);
     expect(out[0]).toContain("a");
     expect(out[0]).toContain("b");

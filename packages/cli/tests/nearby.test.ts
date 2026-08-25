@@ -103,8 +103,8 @@ describe("mapvest nearby", () => {
   });
 
   test("returns 1 on API error", async () => {
-    const restore = mockFetch(async () =>
-      new Response(JSON.stringify({ error: "lat/lng required" }), { status: 400 }),
+    const restore = mockFetch(
+      async () => new Response(JSON.stringify({ error: "lat/lng required" }), { status: 400 }),
     );
     const out: string[] = [];
     const code = await runNearby(["--lat", "1", "--lng", "2"], (s) => out.push(s));

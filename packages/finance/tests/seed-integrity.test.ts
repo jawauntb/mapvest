@@ -63,18 +63,18 @@ describe("seed integrity", () => {
 
   test("spot-check a few new brands land on the expected ticker", () => {
     // Cannabis
-    expect(seedBrands["curaleaf"]?.ticker).toBe("CURLF");
-    expect(seedBrands["trulieve"]?.ticker).toBe("TCNNF");
+    expect(seedBrands.curaleaf?.ticker).toBe("CURLF");
+    expect(seedBrands.trulieve?.ticker).toBe("TCNNF");
     // Gyms + fitness
     expect(seedBrands["planet fitness"]?.ticker).toBe("PLNT");
     expect(seedBrands["xponential fitness"]?.ticker).toBe("XPOF");
     expect(seedBrands["club pilates"]?.ticker).toBe("XPOF");
     // Beauty
-    expect(seedBrands["ulta"]?.ticker).toBe("ULTA");
-    expect(seedBrands["sephora"]?.ticker).toBe("LVMUY");
+    expect(seedBrands.ulta?.ticker).toBe("ULTA");
+    expect(seedBrands.sephora?.ticker).toBe("LVMUY");
     expect(seedBrands["sally beauty"]?.ticker).toBe("SBH");
     // Airlines
-    expect(seedBrands["allegiant"]?.ticker).toBe("ALGT");
+    expect(seedBrands.allegiant?.ticker).toBe("ALGT");
     // Hotels / vacation ownership
     expect(seedBrands["hilton grand vacations"]?.ticker).toBe("HGV");
     expect(seedBrands["marriott vacations"]?.ticker).toBe("VAC");

@@ -4,7 +4,7 @@
  * `./http.ts` rather than the legacy `./client.ts` surface, matching the
  * pattern established for alerts / news / backtest clients.
  */
-import { apiFetch, type FetchOpts } from "./http";
+import { type FetchOpts, apiFetch } from "./http";
 
 export type LocalBriefPlace = {
   neighborhood?: string;
@@ -77,21 +77,12 @@ export function saveLocalBrief(
 }
 
 /** GET /v1/local-brief/saved — every brief this user has stashed. */
-export function listSavedLocalBriefs(
-  opts: FetchOpts = {},
-): Promise<{ items: SavedLocalBrief[] }> {
-  return apiFetch<{ items: SavedLocalBrief[] }>(
-    "/v1/local-brief/saved",
-    { method: "GET" },
-    opts,
-  );
+export function listSavedLocalBriefs(opts: FetchOpts = {}): Promise<{ items: SavedLocalBrief[] }> {
+  return apiFetch<{ items: SavedLocalBrief[] }>("/v1/local-brief/saved", { method: "GET" }, opts);
 }
 
 /** DELETE /v1/local-brief/saved/:id — resolves on 204 (apiFetch returns undefined). */
-export function deleteSavedLocalBrief(
-  id: string,
-  opts: FetchOpts = {},
-): Promise<void> {
+export function deleteSavedLocalBrief(id: string, opts: FetchOpts = {}): Promise<void> {
   return apiFetch<void>(
     `/v1/local-brief/saved/${encodeURIComponent(id)}`,
     { method: "DELETE" },

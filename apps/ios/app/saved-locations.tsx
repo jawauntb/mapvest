@@ -4,9 +4,9 @@
  * delete. Mirrors the swipe-to-delete pattern in home.tsx's WatchRow.
  */
 import {
+  type SavedLocalBrief,
   deleteSavedLocalBrief,
   listSavedLocalBriefs,
-  type SavedLocalBrief,
 } from "@/api/local-brief";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
@@ -20,14 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -185,14 +178,15 @@ function SavedRow({
             <Text style={styles.rowLabel}>{entry.label}</Text>
             {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
             <Text style={styles.rowDate}>
-              Saved {created.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+              Saved{" "}
+              {created.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
             </Text>
           </View>
-          <Ionicons
-            name={open ? "chevron-up" : "chevron-down"}
-            size={18}
-            color={colors.fgMuted}
-          />
+          <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={colors.fgMuted} />
         </View>
         {open ? <Text style={styles.rowBody}>{entry.brief}</Text> : null}
       </Pressable>

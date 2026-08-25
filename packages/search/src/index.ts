@@ -87,7 +87,10 @@ export async function getContents(url: string): Promise<ArticleContents> {
   };
 }
 
-export function toSource(r: SearchResult, confidence: "high" | "medium" | "low" = "medium"): Source {
+export function toSource(
+  r: SearchResult,
+  confidence: "high" | "medium" | "low" = "medium",
+): Source {
   return {
     provider: "exa",
     url: r.url,

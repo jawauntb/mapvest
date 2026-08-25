@@ -28,8 +28,6 @@ type Doc = any;
 
 const doc = yamlParse(readFileSync(openapiPath, "utf8")) as Doc;
 
-const components = doc.components?.schemas ?? {};
-
 /**
  * Resolve a `$ref` like `#/components/schemas/Foo` to the target node.
  */
@@ -171,7 +169,7 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [string, Do
     const segments = rawPath.split("/").filter(Boolean);
 
     // ---- query params ----
-    const query = (op.parameters ?? [])
+    const query: NonNullable<PostmanRequest["request"]["url"]["query"]> = (op.parameters ?? [])
       .filter((p: Doc) => p.in === "query")
       .map((p: Doc) => ({
         key: p.name as string,

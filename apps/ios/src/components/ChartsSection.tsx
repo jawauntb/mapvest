@@ -1,9 +1,5 @@
 import type { QuoteHistoryInterval } from "@/api/client";
-import {
-  type ChartDataEnvelope,
-  fetchChartData,
-  fetchMoneylineData,
-} from "@/api/underlying";
+import { type ChartDataEnvelope, fetchChartData, fetchMoneylineData } from "@/api/underlying";
 import {
   AuctionChart,
   FlowCompassChart,

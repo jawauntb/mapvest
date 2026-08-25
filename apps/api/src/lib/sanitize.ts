@@ -23,8 +23,17 @@ export const MAX_OCR_STRING_LENGTH = 4 * 1024;
  * vector.
  */
 export function stripControlChars(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/[\x00-\x08\x0B-\x1F\x7F-\x9F]/g, "");
+  let cleaned = "";
+  for (const character of s) {
+    const codePoint = character.codePointAt(0);
+    const isControl =
+      codePoint !== undefined &&
+      (codePoint <= 0x08 ||
+        (codePoint >= 0x0b && codePoint <= 0x1f) ||
+        (codePoint >= 0x7f && codePoint <= 0x9f));
+    if (!isControl) cleaned += character;
+  }
+  return cleaned;
 }
 
 /** Strip control chars and cap length. Safe for undefined/null input. */

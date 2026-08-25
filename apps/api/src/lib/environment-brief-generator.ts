@@ -83,10 +83,6 @@ export function _clearEnvironmentBriefCache(): void {
   briefCache.clear();
 }
 
-function yyyymmdd(now: Date): string {
-  return now.toISOString().slice(0, 10);
-}
-
 // The 24h `expiresAt` bounds freshness on its own; embedding the day in the
 // key would leave one never-read, never-evicted entry per sector per day.
 function cacheKey(sector: string): string {

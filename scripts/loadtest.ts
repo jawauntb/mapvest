@@ -29,7 +29,8 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 30_000);
 // many mobile clients). Empirically Railway rewrites X-Forwarded-For at the
 // edge, so on the deployed API the header is ignored and every request lands in
 // the same bucket — that limitation is documented in D11.
-const spoofedIp = (i: number): string => `10.${(i >> 16) & 0xff}.${(i >> 8) & 0xff}.${(i & 0xff) || 1}`;
+const spoofedIp = (i: number): string =>
+  `10.${(i >> 16) & 0xff}.${(i >> 8) & 0xff}.${i & 0xff || 1}`;
 
 // ~10 cache-friendly seed brands (all present in packages/finance/data/brands.json).
 // resolveTicker() hits the seed table for these and never calls out to Exa/LLM,
@@ -143,8 +144,7 @@ function summarize(
   const errs = samples.filter((s) => !s.ok);
   const latencies = samples.map((s) => s.latencyMs).sort((a, b) => a - b);
   const okLatencies = oks.map((s) => s.latencyMs).sort((a, b) => a - b);
-  const mean =
-    latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
+  const mean = latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
   const okMean =
     okLatencies.length > 0 ? okLatencies.reduce((a, b) => a + b, 0) / okLatencies.length : 0;
   const statusCounts: Record<string, number> = {};
@@ -152,9 +152,7 @@ function summarize(
     const k = s.ok ? String(s.status) : s.error ? `err:${s.error}` : `http:${s.status}`;
     statusCounts[k] = (statusCounts[k] ?? 0) + 1;
   }
-  const errorSample = errs
-    .slice(0, 5)
-    .map((e) => (e.error ? `${e.error}` : `HTTP ${e.status}`));
+  const errorSample = errs.slice(0, 5).map((e) => (e.error ? `${e.error}` : `HTTP ${e.status}`));
   return {
     label,
     targetRps,
@@ -196,7 +194,9 @@ function fmtSummary(s: Summary): string {
   lines.push(`completed:   ${s.totalCompleted} (${s.ok} ok / ${s.err} err)`);
   lines.push(`throughput:  ${s.throughputRps.toFixed(2)} rps`);
   lines.push(`error rate:  ${(s.errorRate * 100).toFixed(2)}%`);
-  lines.push(`latency ms:  min=${s.latency.min}  mean=${s.latency.mean}  p50=${s.latency.p50}  p95=${s.latency.p95}  p99=${s.latency.p99}  max=${s.latency.max}`);
+  lines.push(
+    `latency ms:  min=${s.latency.min}  mean=${s.latency.mean}  p50=${s.latency.p50}  p95=${s.latency.p95}  p99=${s.latency.p99}  max=${s.latency.max}`,
+  );
   lines.push(
     `  2xx-only:  n=${s.okLatency.count}  min=${s.okLatency.min}  mean=${s.okLatency.mean}  p50=${s.okLatency.p50}  p95=${s.okLatency.p95}  p99=${s.okLatency.p99}  max=${s.okLatency.max}`,
   );
@@ -211,11 +211,7 @@ function fmtSummary(s: Summary): string {
 // Request driver — paced scheduler + semaphore.
 // -----------------------------------------------------------------------------
 
-async function timedFetch(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Sample> {
+async function timedFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Sample> {
   const controller = new AbortController();
   const to = setTimeout(() => controller.abort(), timeoutMs);
   const started = performance.now();
@@ -352,8 +348,7 @@ async function main(): Promise<void> {
 
   // Exit code signals acceptance: p95 > 2000 ms on resolve OR error rate > 1%
   // on either phase is a Phase 7 fail.
-  const failResolve =
-    resolveSummary.latency.p95 > 2000 || resolveSummary.errorRate > 0.01;
+  const failResolve = resolveSummary.latency.p95 > 2000 || resolveSummary.errorRate > 0.01;
   const failHealth = healthSummary.errorRate > 0.01;
   if (failResolve || failHealth) {
     console.error(

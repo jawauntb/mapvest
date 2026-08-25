@@ -1908,6 +1908,13 @@ blockquote {
 .app-chart-lightbox {
   position: fixed;
   inset: 0;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  color: inherit;
   z-index: 80;
   background: rgba(0, 0, 0, 0.88);
   display: flex;

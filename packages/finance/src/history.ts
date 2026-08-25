@@ -1,14 +1,14 @@
 import {
+  type HistoryInterval,
+  type HistoryPeriod,
+  applyLiveClose,
+  normalizeHistoryInterval,
+} from "./marketData/historyIntervals.js";
+import {
   getHistoricalCloses as routedGetHistoricalCloses,
   getHistoricalClosesWithProvider as routedGetHistoricalClosesWithProvider,
   getQuote as routedGetQuote,
 } from "./marketData/router.js";
-import {
-  applyLiveClose,
-  type HistoryInterval,
-  type HistoryPeriod,
-  normalizeHistoryInterval,
-} from "./marketData/historyIntervals.js";
 export type { HistoryPoint } from "./marketData/types.js";
 export type { HistoryInterval, HistoryPeriod } from "./marketData/historyIntervals.js";
 export {
@@ -50,11 +50,7 @@ export async function getHistoricalClosesWithProvider(
     if (!result?.value) return result;
     return {
       ...result,
-      value: applyLiveClose(
-        result.value,
-        await routedGetQuote(symbol).catch(() => null),
-        resolved,
-      ),
+      value: applyLiveClose(result.value, await routedGetQuote(symbol).catch(() => null), resolved),
     };
   } catch {
     return null;

@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { probeApi } from "@/lib/status";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/status

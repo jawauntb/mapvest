@@ -56,7 +56,7 @@ export function HeroBackdrop() {
 
           {pins.map((p, i) => (
             <g
-              key={i}
+              key={`${p.x}:${p.y}`}
               className={`hero__pin ${i % 2 === 0 ? "hero__pin--jade" : "hero__pin--blue"}`}
               style={{ ["--pin-delay" as string]: `${p.delay}s` }}
               transform={`translate(${p.x} ${p.y})`}

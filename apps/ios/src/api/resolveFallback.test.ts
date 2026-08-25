@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coerceResolve, fallbackResolve, looksLikeTicker, routeParam } from "./resolveFallback.ts";
+import { coerceResolve, fallbackResolve, looksLikeTicker, routeParam } from "./resolveFallback";
 
 describe("looksLikeTicker", () => {
   test("accepts listed symbols", () => {

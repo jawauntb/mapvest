@@ -1,15 +1,14 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import ReactMarkdownImport from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { listDocs, readDoc } from '../../../lib/docs';
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import ReactMarkdownImport from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { listDocs, readDoc } from "../../../lib/docs";
 
 // react-markdown's return type is `ReactElement`, which does not satisfy
 // React 19's `ReactNode` constraint (missing `children` on `ReactPortal`).
 // Cast to a plain function component so the JSX call type-checks; runtime
 // behavior is unchanged.
-// biome-ignore lint/suspicious/noExplicitAny: minimal shim for the fields we use
 const ReactMarkdown = ReactMarkdownImport as unknown as (props: {
   // biome-ignore lint/suspicious/noExplicitAny: pass-through
   remarkPlugins?: any[];
@@ -17,7 +16,7 @@ const ReactMarkdown = ReactMarkdownImport as unknown as (props: {
   // biome-ignore lint/suspicious/noExplicitAny: return type erased for compat
 }) => any;
 
-export const dynamic = 'force-static';
+export const dynamic = "force-static";
 
 type Params = { slug: string };
 
@@ -33,7 +32,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const doc = readDoc(slug);
   if (!doc) {
-    return { title: 'Not found' };
+    return { title: "Not found" };
   }
   return {
     title: doc.title,

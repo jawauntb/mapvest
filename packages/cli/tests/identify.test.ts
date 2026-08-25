@@ -103,14 +103,15 @@ describe("mapvest identify", () => {
   });
 
   test("prints 'no investable brand' when the API returns an empty list", async () => {
-    const restore = mockFetch(async () =>
-      new Response(
-        JSON.stringify({
-          identification: { visibleText: [], detected: [], modelUsed: "gpt-x" },
-          investables: [],
-        }),
-        { status: 200 },
-      ),
+    const restore = mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            identification: { visibleText: [], detected: [], modelUsed: "gpt-x" },
+            investables: [],
+          }),
+          { status: 200 },
+        ),
     );
     const out: string[] = [];
     const code = await runIdentify([imagePath], (s) => out.push(s));
@@ -120,8 +121,9 @@ describe("mapvest identify", () => {
   });
 
   test("returns 1 with a formatted error line on API error", async () => {
-    const restore = mockFetch(async () =>
-      new Response(JSON.stringify({ error: "image too large (max 8MB)" }), { status: 413 }),
+    const restore = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ error: "image too large (max 8MB)" }), { status: 413 }),
     );
     const out: string[] = [];
     const code = await runIdentify([imagePath], (s) => out.push(s));
@@ -140,7 +142,9 @@ describe("mapvest identify", () => {
 
   test("returns 1 when the local file cannot be read", async () => {
     const out: string[] = [];
-    const code = await runIdentify(["/nonexistent/mapvest-cli-does-not-exist.jpg"], (s) => out.push(s));
+    const code = await runIdentify(["/nonexistent/mapvest-cli-does-not-exist.jpg"], (s) =>
+      out.push(s),
+    );
     expect(code).toBe(1);
     expect(out.join("\n")).toContain("cannot read");
   });

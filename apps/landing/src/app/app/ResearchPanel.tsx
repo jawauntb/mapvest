@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ChartFigure } from "./ChartFigure";
 import { FormattedBrief } from "./FormattedBrief";
 import { presentPaywallIfQuota, usePaywall } from "./Paywall";
+import { withOccurrenceKeys } from "./stableListKeys";
 
 /**
  * Progressive research surface — opened from ticker detail, not a top-level tab.
@@ -106,7 +107,7 @@ export function ResearchPanel({
   if (!open) return null;
 
   return (
-    <div className="app-research" role="dialog" aria-label="Research brief">
+    <section className="app-research" aria-label="Research brief">
       <div className="app-research-bar">
         <div>
           <div className="app-research-kicker">Research · ${ticker}</div>
@@ -136,13 +137,11 @@ export function ResearchPanel({
           ),
         )}
         {busy ? (
-          <p className="app-status" role="status" aria-live="polite">
+          <output className="app-status" aria-live="polite">
             {status ?? "Researching…"}
-          </p>
+          </output>
         ) : status ? (
-          <p className="app-status" role="status">
-            {status}
-          </p>
+          <output className="app-status">{status}</output>
         ) : null}
         {busy ? <div className="app-chart-skel" aria-label="Researching…" /> : null}
         {err ? <p className="app-err">{err}</p> : null}
@@ -171,7 +170,7 @@ export function ResearchPanel({
           {busy ? "…" : "Ask"}
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -209,16 +208,21 @@ function Article({
 
       {article.interesting.length > 0 ? (
         <ul className="app-article-bullets">
-          {article.interesting.slice(0, 5).map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
+          {withOccurrenceKeys(article.interesting.slice(0, 5), (item) => item).map(
+            ({ key, value: item }) => (
+              <li key={key}>{item}</li>
+            ),
+          )}
         </ul>
       ) : null}
 
       {article.ideas.length > 0 ? (
         <div className="app-article-ideas">
-          {article.ideas.slice(0, 3).map((idea, i) => (
-            <div key={i} className="app-article-idea">
+          {withOccurrenceKeys(
+            article.ideas.slice(0, 3),
+            (idea) => `${idea.title}:${idea.disposition ?? ""}:${idea.thesis ?? ""}`,
+          ).map(({ key, value: idea }) => (
+            <div key={key} className="app-article-idea">
               <strong>{idea.title}</strong>
               {idea.disposition ? <span className="app-muted"> · {idea.disposition}</span> : null}
               {idea.thesis ? <p className="app-muted">{idea.thesis}</p> : null}
@@ -229,13 +233,22 @@ function Article({
 
       {article.sources.length > 0 ? (
         <div className="app-source-links">
-          {article.sources.slice(0, 6).map((s, i) =>
+          {withOccurrenceKeys(
+            article.sources.slice(0, 6),
+            (source) => `${source.url ?? ""}:${source.label}`,
+          ).map(({ key, value: s }) =>
             s.url ? (
-              <a key={i} className="app-source-chip" href={s.url} target="_blank" rel="noreferrer">
+              <a
+                key={key}
+                className="app-source-chip"
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+              >
                 {s.label}
               </a>
             ) : (
-              <span key={i} className="app-source-chip">
+              <span key={key} className="app-source-chip">
                 {s.label}
               </span>
             ),

@@ -76,8 +76,7 @@ export default function AlertsScreen() {
       if (!session?.token) return;
       void qc.invalidateQueries({ queryKey: ["price-alerts", session.token] });
       checkM.mutate();
-      // biome-ignore lint/correctness/useExhaustiveDependencies: checkM stable
-    }, [qc, session?.token]),
+    }, [checkM.mutate, qc, session?.token]),
   );
 
   const deleteM = useMutation({
@@ -223,18 +222,8 @@ function AlertRow({
       >
         <View style={styles.rowHead}>
           <Text style={styles.rowTicker}>${alert.ticker}</Text>
-          <View
-            style={[
-              styles.badge,
-              isTriggered ? styles.badgeTriggered : styles.badgeActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.badgeText,
-                { color: isTriggered ? colors.warn : colors.accent },
-              ]}
-            >
+          <View style={[styles.badge, isTriggered ? styles.badgeTriggered : styles.badgeActive]}>
+            <Text style={[styles.badgeText, { color: isTriggered ? colors.warn : colors.accent }]}>
               {isTriggered ? "Triggered" : "Active"}
             </Text>
           </View>

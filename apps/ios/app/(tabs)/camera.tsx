@@ -104,16 +104,19 @@ export default function CameraScreen() {
   // made the camera tab appear "broken" after the PhotoAnnotator wiring.
   const detections = useMemo<OverlayDetection[]>(() => coerceDetections(result), [result]);
 
-  function persistCamera(next: Partial<CameraCache>) {
-    const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
-      frozenUri: null,
-      result: null,
-      err: null,
-      queuedNote: null,
-      savedNote: null,
-    };
-    qc.setQueryData<CameraCache>(CAMERA_CACHE_KEY, { ...prev, ...next });
-  }
+  const persistCamera = useCallback(
+    (next: Partial<CameraCache>) => {
+      const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
+        frozenUri: null,
+        result: null,
+        err: null,
+        queuedNote: null,
+        savedNote: null,
+      };
+      qc.setQueryData<CameraCache>(CAMERA_CACHE_KEY, { ...prev, ...next });
+    },
+    [qc],
+  );
 
   const resetToLive = useCallback(() => {
     setFrozenUri(null);
@@ -122,7 +125,7 @@ export default function CameraScreen() {
     setErr(null);
     setResult(null);
     persistCamera({ frozenUri: null, err: null });
-  }, [qc]);
+  }, [persistCamera]);
 
   // Opening Camera always means "take a new picture". Last identify stays
   // in the query cache as a Last snap chip, not as a stuck frozen frame.
@@ -404,9 +407,7 @@ export default function CameraScreen() {
             </View>
           ) : null}
         </View>
-        {entitlementsQ.data &&
-        !entitlementsQ.data.freeForever &&
-        !entitlementsQ.data.subscribed ? (
+        {entitlementsQ.data && !entitlementsQ.data.freeForever && !entitlementsQ.data.subscribed ? (
           <View style={styles.lessonRow}>
             <Pressable
               onPress={() => presentPaywall()}

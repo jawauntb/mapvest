@@ -5,7 +5,7 @@ const nextConfig = {
   // Docs are read from ../../docs at build time via fs; Next needs to know
   // that filesystem access is intended (moved out of `experimental` in
   // Next 15.x).
-  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
+  outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
 };
 
 export default nextConfig;

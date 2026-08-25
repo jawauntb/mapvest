@@ -70,8 +70,8 @@ describe("mapvest quote", () => {
   });
 
   test("returns 1 on 502 error", async () => {
-    const restore = mockFetch(async () =>
-      new Response(JSON.stringify({ error: "quote unavailable" }), { status: 502 }),
+    const restore = mockFetch(
+      async () => new Response(JSON.stringify({ error: "quote unavailable" }), { status: 502 }),
     );
     const out: string[] = [];
     const code = await runQuote(["ZZZZ"], (s) => out.push(s));

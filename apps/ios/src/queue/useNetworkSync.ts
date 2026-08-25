@@ -1,6 +1,6 @@
 import NetInfo from "@react-native-community/netinfo";
-import { useEffect, useRef, useState } from "react";
-import { flushQueue, listQueue, type QueuedPhoto } from "./photoQueue";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type QueuedPhoto, flushQueue, listQueue } from "./photoQueue";
 
 /**
  * Watches connectivity via NetInfo; when the device comes back online it
@@ -15,21 +15,22 @@ export function useNetworkSync(opts: { token?: string | null }): {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState<QueuedPhoto[]>([]);
   const flushing = useRef(false);
+  const token = opts.token;
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setPending(await listQueue());
-  };
+  }, []);
 
-  const flushNow = async () => {
+  const flushNow = useCallback(async () => {
     if (flushing.current) return;
     flushing.current = true;
     try {
-      await flushQueue({ token: opts.token ?? undefined });
+      await flushQueue({ token: token ?? undefined });
       await refresh();
     } finally {
       flushing.current = false;
     }
-  };
+  }, [refresh, token]);
 
   useEffect(() => {
     refresh();
@@ -39,8 +40,7 @@ export function useNetworkSync(opts: { token?: string | null }): {
       if (isOnline) void flushNow();
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.token]);
+  }, [flushNow, refresh]);
 
   return { online, pending, flushNow };
 }

@@ -3,7 +3,7 @@
  * Feature-scoped — deliberately does NOT pass through `./client.ts` so the
  * legacy `fetchAlerts` (Underlying-Analyzer batch scan) can keep its name.
  */
-import { apiFetch, type FetchOpts } from "./http";
+import { type FetchOpts, apiFetch } from "./http";
 
 export type AlertKind = "price_above" | "price_below" | "pct_move";
 
@@ -41,11 +41,7 @@ export function listPriceAlerts(opts: FetchOpts): Promise<{ alerts: PriceAlert[]
 }
 
 export function deletePriceAlert(id: string, opts: FetchOpts): Promise<void> {
-  return apiFetch<void>(
-    `/v1/alerts/${encodeURIComponent(id)}`,
-    { method: "DELETE" },
-    opts,
-  );
+  return apiFetch<void>(`/v1/alerts/${encodeURIComponent(id)}`, { method: "DELETE" }, opts);
 }
 
 export function checkPriceAlerts(opts: FetchOpts): Promise<{ triggered: PriceAlert[] }> {

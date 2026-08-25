@@ -21,9 +21,7 @@ export type ApiStatus = {
 // Live API base URL. Overridable via env for local/staging targeting, but
 // defaults to the production Railway deploy so a fresh clone probes the
 // same host the docs point at.
-const API_BASE =
-  process.env.MAPVEST_API_BASE_URL ||
-  "https://api-production-4b27.up.railway.app";
+const API_BASE = process.env.MAPVEST_API_BASE_URL || "https://api-production-4b27.up.railway.app";
 
 const PROBE_TIMEOUT_MS = 2000;
 

@@ -9,7 +9,7 @@ process.env.IOS_MAPS_TOKEN_SIGNING_KEY =
 
 // Make absolutely sure the mock-places fallback is NOT active — this suite
 // must exercise the real Google Places code path.
-delete process.env.MOCK_PLACES;
+Reflect.deleteProperty(process.env, "MOCK_PLACES");
 
 import type { NearbyResponse } from "@mapvest/core";
 import { app } from "../../src/index.js";

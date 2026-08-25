@@ -46,7 +46,10 @@ export async function runResolve(
       ["parent", b.parent],
       ["sector", b.sector],
       ["public", b.isPublic ? "yes" : "no"],
-      ["ticker", b.ticker ? `${b.ticker.symbol}${b.ticker.exchange ? ` (${b.ticker.exchange})` : ""}` : "—"],
+      [
+        "ticker",
+        b.ticker ? `${b.ticker.symbol}${b.ticker.exchange ? ` (${b.ticker.exchange})` : ""}` : "—",
+      ],
     ],
     print,
   );

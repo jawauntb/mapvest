@@ -13,7 +13,7 @@ describe("resolveEtfExposure fallback path", () => {
   let saved: string | undefined;
   beforeAll(() => {
     saved = process.env.EXA_API_KEY;
-    delete process.env.EXA_API_KEY;
+    Reflect.deleteProperty(process.env, "EXA_API_KEY");
   });
   afterAll(() => {
     if (saved !== undefined) process.env.EXA_API_KEY = saved;

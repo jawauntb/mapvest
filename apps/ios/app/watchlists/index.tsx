@@ -190,10 +190,7 @@ export default function WatchlistsIndexScreen() {
                         <Text style={styles.cancelText}>Cancel</Text>
                       </Pressable>
                       <Pressable
-                        style={[
-                          styles.createBtn,
-                          !newName.trim() && { opacity: 0.5 },
-                        ]}
+                        style={[styles.createBtn, !newName.trim() && { opacity: 0.5 }]}
                         disabled={!newName.trim() || createMut.isPending}
                         onPress={() => createMut.mutate(newName.trim())}
                       >
@@ -284,10 +281,7 @@ export default function WatchlistsIndexScreen() {
                   (!editName.trim() || editName === editing?.name) && { opacity: 0.5 },
                 ]}
                 disabled={
-                  !editing ||
-                  !editName.trim() ||
-                  editName === editing.name ||
-                  renameMut.isPending
+                  !editing || !editName.trim() || editName === editing.name || renameMut.isPending
                 }
                 onPress={() => {
                   if (editing && editName.trim()) {
@@ -438,9 +432,7 @@ function ExpandedTickers({
           <Pressable
             key={e.ticker}
             style={styles.tickerChip}
-            onPress={() =>
-              router.push({ pathname: "/detail/[id]", params: { id: e.ticker } })
-            }
+            onPress={() => router.push({ pathname: "/detail/[id]", params: { id: e.ticker } })}
             accessibilityRole="button"
             accessibilityLabel={`Open ${e.ticker}`}
           >
@@ -516,7 +508,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
     overflow: "hidden",
   },
-  rowHead: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12 },
+  rowHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
   rowHeadMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
   rowIcon: {
     width: 32,

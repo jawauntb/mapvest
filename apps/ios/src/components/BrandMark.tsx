@@ -1,4 +1,4 @@
-import { Image, StyleSheet, type ImageStyle, type StyleProp } from "react-native";
+import { Image, type ImageStyle, type StyleProp, StyleSheet } from "react-native";
 
 /**
  * The real Mapvest mark — black field, teal pin, white tape line.
