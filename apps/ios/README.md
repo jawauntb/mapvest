@@ -57,7 +57,19 @@ shared `finds/{token}` prefix to update both projections.
 
 `src/queue/photoQueue.ts` persists pending captures to AsyncStorage and
 `useNetworkSync` drains the queue whenever `@react-native-community/netinfo`
-reports the device is back online. The camera screen shows the queued count.
+reports the device is back online. Every new item is stamped with a non-secret
+ownership scope: `guest` or the stable authenticated user ID. The bearer token
+is used only for the live upload and is never written to AsyncStorage. The
+camera only counts and uploads items for its current scope, so a guest or one
+account can never drain another account's captures.
+
+The old v1 unscoped queue migrates to a protected `legacy-unscoped` state.
+Those photos fail closed: they are never attributed to, or uploaded by, a
+signed-in account. Camera truthfully shows their count and asks the person to
+retake the photo to requeue it under the current scope. Storage mutations are
+serialized so simultaneous enqueue, flush, and removal cannot overwrite jobs;
+an account switch aborts the stale flush and leaves its remaining jobs for the
+matching account's next session.
 
 ## Build (EAS)
 

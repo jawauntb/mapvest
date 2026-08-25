@@ -52,6 +52,13 @@ Design decisions and the reasoning behind them. Update this file when a decision
 
 **Why**: Real-world camera scans include storefronts, faces, license plates. The default has to protect the user.
 
+**Offline boundary**: The iOS retry queue stores only the local image URI plus a
+non-secret ownership scope (`guest` or stable authenticated user ID); bearer
+tokens exist only for the live upload. A queue flush sees only its exact active
+scope. Legacy v1 entries without a scope migrate to `legacy-unscoped` and fail
+closed rather than being assigned to whoever signs in next; Camera reports them
+as protected and asks the person to retake the photo.
+
 ## D8 — No live financial advice
 
 **Decision**: Every ticker view carries the disclaimer "not investment advice." Realtime quotes are best-effort.

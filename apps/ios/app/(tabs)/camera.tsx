@@ -18,7 +18,7 @@ import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
-import { enqueuePhoto } from "@/queue/photoQueue";
+import { enqueuePhoto, queueScopeForUser } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
@@ -74,7 +74,11 @@ export default function CameraScreen() {
   const { session } = useSession();
   const { presentPaywall } = usePaywall();
   const entitlementsQ = useEntitlements();
-  const { online } = useNetworkSync({ token: session?.token });
+  const queueScope = useMemo(() => queueScopeForUser(session?.userId), [session?.userId]);
+  const { online, pending, legacyCount } = useNetworkSync({
+    token: session?.token,
+    userId: session?.userId,
+  });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
   const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
@@ -269,7 +273,7 @@ export default function CameraScreen() {
     const location = await currentLocation();
     try {
       if (!online) {
-        await enqueuePhoto({ imageUri: args.imageUri, location });
+        await enqueuePhoto({ imageUri: args.imageUri, location, scope: queueScope });
         const note = "Queued — finishing when you're back online.";
         setQueuedNote(note);
         persistCamera({ queuedNote: note });
@@ -300,7 +304,7 @@ export default function CameraScreen() {
           persistCamera({ err: "quota_exceeded" });
           return;
         }
-        await enqueuePhoto({ imageUri: args.imageUri, location });
+        await enqueuePhoto({ imageUri: args.imageUri, location, scope: queueScope });
         const msg = e instanceof Error ? e.message : String(e);
         const failNote =
           "That didn't go through. Your snap is queued and will finish on its own — or retake now.";
@@ -464,6 +468,28 @@ export default function CameraScreen() {
                 <Ionicons name="cloud-offline-outline" size={12} color={colors.fg} />
                 <Text style={styles.status}>
                   Offline — we'll finish this find when you're back.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
+          {pending.length > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="cloud-upload-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {pending.length} {pending.length === 1 ? "snap" : "snaps"} queued for{" "}
+                  {session?.userId ? "this account" : "guest mode"}.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
+          {legacyCount > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="shield-checkmark-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {legacyCount} older {legacyCount === 1 ? "snap is" : "snaps are"} protected and
+                  won't upload. Retake to send {legacyCount === 1 ? "it" : "them"}.
                 </Text>
               </BlurView>
             </View>
