@@ -70,7 +70,7 @@ describe("Find evolution nudge eligibility", () => {
     );
   });
 
-  test("reads the locally stored device token before considering a server fallback", async () => {
+  test("reads preferences only through the locally stored device token", async () => {
     const calls: Array<string | null | undefined> = [];
     const dependencies: FindEvolutionDevicePrefsDependencies = {
       readStoredTokenId: async () => "this-device",
@@ -89,13 +89,27 @@ describe("Find evolution nudge eligibility", () => {
     expect(remote.prefs.find_evolution).toBe(false);
   });
 
-  test("falls back once only when the stored device token is stale", async () => {
+  test("does not fetch an arbitrary account device when this install has no stored token", async () => {
+    let requests = 0;
+    const remote = await getFindEvolutionDevicePrefs(session, {
+      readStoredTokenId: async () => null,
+      readPushPrefs: async () => {
+        requests += 1;
+        return { tokenId: "another-device", prefs: { find_evolution: true } };
+      },
+    });
+
+    expect(requests).toBe(0);
+    expect(remote).toEqual({ tokenId: null, prefs: {} });
+  });
+
+  test("does not fall back to another device when the stored token is stale", async () => {
     const calls: Array<string | null | undefined> = [];
     const dependencies: FindEvolutionDevicePrefsDependencies = {
       readStoredTokenId: async () => "stale-device",
       readPushPrefs: async (_session, tokenId) => {
         calls.push(tokenId);
-        return tokenId
+        return tokenId === "stale-device"
           ? { tokenId: null, prefs: {} }
           : { tokenId: "replacement-device", prefs: { find_evolution: true } };
       },
@@ -103,11 +117,8 @@ describe("Find evolution nudge eligibility", () => {
 
     const remote = await getFindEvolutionDevicePrefs(session, dependencies);
 
-    expect(calls).toEqual(["stale-device", undefined]);
-    expect(remote).toEqual({
-      tokenId: "replacement-device",
-      prefs: { find_evolution: true },
-    });
+    expect(calls).toEqual(["stale-device"]);
+    expect(remote).toEqual({ tokenId: null, prefs: {} });
   });
 });
 

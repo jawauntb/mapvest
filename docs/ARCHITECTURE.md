@@ -67,6 +67,12 @@ permission: only its direct CTA may do so, and Mapvest writes only
 `notifications_enabled` plus `find_evolution` after permission, device
 registration, and server persistence have all succeeded. Failed, denied, and
 Settings recovery states never claim that an alert is enabled.
+On iOS, success additionally requires the OS alert-presentation capability,
+not merely top-level notification authorization. Push preferences are always
+scoped to this install's stored push-token id; a missing or stale id does not
+select another device. Camera result state/cache is scoped to the identity that
+started identify, clears on an auth transition, and uses one bounded vertical
+result scroller so actions and cited evidence remain reachable on compact phones.
 A signed-out **Save** from Camera or Detail carries the ticker and save source
 through magic-link auth, shows a verified-then-saving state, upserts the
 watchlist entry idempotently, and returns to that ticker’s Detail context. The

@@ -3,6 +3,7 @@
  * Native storage, notification permission, and HTTP bindings live in
  * `findEvolutionOptInNative.ts` so this behavior stays directly testable.
  */
+import { type DevicePushPrefsDependencies, getStoredDevicePushPrefs } from "./devicePrefs";
 
 export type NotificationSession = { token: string };
 
@@ -33,13 +34,10 @@ export type FindEvolutionDevicePrefs = {
   tokenId: string | null;
 };
 
-export type FindEvolutionDevicePrefsDependencies = {
-  readStoredTokenId: () => Promise<string | null>;
-  readPushPrefs: (
-    session: NotificationSession,
-    tokenId?: string | null,
-  ) => Promise<FindEvolutionDevicePrefs>;
-};
+export type FindEvolutionDevicePrefsDependencies = DevicePushPrefsDependencies<
+  NotificationSession,
+  FindEvolutionPrefs
+>;
 
 /** A local dismissal belongs to one signed-in account on one device. */
 export function findEvolutionNudgeDismissalKey(userId: string): string {
@@ -66,20 +64,20 @@ export function shouldOfferFindEvolutionNudge(candidate: FindEvolutionNudgeCandi
 }
 
 /**
- * Read preferences for this device's stored token, never an arbitrary token
- * from the user's other devices. A stale stored id is retried once without an
- * id so a reinstalled/rotated device can recover its current server record.
+ * Read preferences for this device's stored token only. A missing or stale
+ * id is intentionally not retried without an id: that API path selects an
+ * arbitrary token from another device on the same account.
  */
 export async function getFindEvolutionDevicePrefs(
   session: NotificationSession,
   dependencies: FindEvolutionDevicePrefsDependencies,
 ): Promise<FindEvolutionDevicePrefs> {
-  const storedTokenId = await dependencies.readStoredTokenId();
-  let remote = await dependencies.readPushPrefs(session, storedTokenId);
-  if (storedTokenId && remote.tokenId === null) {
-    remote = await dependencies.readPushPrefs(session);
-  }
-  return remote;
+  return (
+    (await getStoredDevicePushPrefs(session, dependencies)) ?? {
+      prefs: {},
+      tokenId: null,
+    }
+  );
 }
 
 export type FindEvolutionOptInResult =

@@ -8,6 +8,7 @@ import {
   enableVisitMonitoring,
   isVisitMonitoringEnabled,
 } from "@/location/visits";
+import { notificationAlertPermissionStatus } from "@/notif/permissionCapability";
 import {
   PUSH_EVENT_LABELS,
   PUSH_EVENT_ORDER,
@@ -273,24 +274,15 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
     retryRef.current = null;
     try {
       const perm = await Notifications.getPermissionsAsync();
-      setPermissionStatus(
-        perm.status === "granted"
-          ? "granted"
-          : perm.status === "denied"
-            ? "denied"
-            : "undetermined",
-      );
+      setPermissionStatus(notificationAlertPermissionStatus(perm, Platform.OS));
       const stored = await getStoredTokenId();
-      let remote = await getPushPrefs({ token: sessionToken }, stored);
-      // A token can be rotated or removed after an app reinstall. If the
-      // stored id is stale, use the server's newest token so the master switch
-      // reflects the account's active device instead of false-off defaults.
-      if (stored && remote.tokenId === null) {
-        remote = await getPushPrefs({ token: sessionToken });
-      }
+      // Without this install's id, the no-id API path would select another
+      // device on the account. A stale id stays unavailable for the same
+      // reason; explicit enablement will register this install again.
+      const remote = stored ? await getPushPrefs({ token: sessionToken }, stored) : null;
       if (!isCurrent()) return;
-      setTokenId(remote.tokenId);
-      setPrefs(remote.prefs);
+      setTokenId(remote?.tokenId ?? null);
+      setPrefs(remote?.tokenId ? remote.prefs : {});
       setPrefsLoadState("ready");
     } catch (e) {
       if (!isCurrent()) return;
@@ -313,13 +305,7 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
       void Notifications.getPermissionsAsync().then((perm) => {
-        setPermissionStatus(
-          perm.status === "granted"
-            ? "granted"
-            : perm.status === "denied"
-              ? "denied"
-              : "undetermined",
-        );
+        setPermissionStatus(notificationAlertPermissionStatus(perm, Platform.OS));
       });
     });
     return () => sub.remove();
@@ -490,8 +476,8 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
           {permissionStatus === "denied" ? (
             <View style={styles.notifActions}>
               <Text style={styles.muted}>
-                iOS permission is currently denied. Mapvest can remember your product setting, but
-                iOS will block delivery until you allow notifications.
+                iOS alert notifications are disabled. Mapvest cannot deliver alerts until you allow
+                alerts in iOS Settings.
               </Text>
               <Pressable
                 style={styles.btn}
@@ -564,16 +550,11 @@ function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
     (async () => {
       try {
         const stored = await getStoredTokenId();
-        let remote = await getPushPrefs({ token: sessionToken }, stored);
-        // A token can be rotated or removed after an app reinstall. If the
-        // stored id is stale, use the server's newest token as a read-only
-        // fallback so the gate does not disappear permanently.
-        if (stored && remote.tokenId === null) {
-          remote = await getPushPrefs({ token: sessionToken });
-        }
+        // Never infer B4 from a different device's push-token preferences.
+        const remote = stored ? await getPushPrefs({ token: sessionToken }, stored) : null;
         const monitoring = await isVisitMonitoringEnabled();
         if (cancelled) return;
-        setFeltB4(remote.prefs.uncaught_nearby === true);
+        setFeltB4(remote?.tokenId ? remote.prefs.uncaught_nearby === true : false);
         setEnabled(monitoring);
       } catch {
         /* keep the gated-off copy */

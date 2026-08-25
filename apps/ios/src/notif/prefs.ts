@@ -219,11 +219,11 @@ export async function unlinkPushTokenByExpiredSession(
 /**
  * Heartbeat the user's last known coordinates so the push scheduler can
  * decide when a "you moved to a new area" local-brief notification is due.
- * Resolves the device's push token id (stored id first, server lookup as
- * fallback) and no-ops when this device never registered for push.
+ * Uses only this install's stored push-token id and no-ops when it is absent
+ * or stale, rather than writing a preference onto another device.
  */
 export async function heartbeatLocation(lat: number, lng: number, token: string): Promise<void> {
-  const tokenId = (await getStoredTokenId()) ?? (await getPushPrefs({ token })).tokenId;
+  const tokenId = await getStoredTokenId();
   if (!tokenId) return;
   await setPushPref(
     tokenId,

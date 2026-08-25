@@ -34,6 +34,12 @@ in `eas.json`.
   After a signed-in public result with a real captured quote, a one-time
   per-user/device Find evolution offer may appear; only its direct CTA can
   ask iOS for permission and it enables just that event plus master delivery.
+  The result/cache is scoped to the identity that started identify and is
+  cleared on account changes; the bounded, single-scroll result card keeps
+  evidence and every action reachable on compact iPhones.
+- Push preferences are read and written only with this install's stored
+  push-token id. A missing or stale id never falls back to another account
+  device, and iOS enrollment requires alert presentation to be enabled.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
 - `/(tabs)/research` — ChatGPT-like durable research conversations (Derivation unified agent → article briefs).
 - `/watchlists` — watchlist + cockpit/alerts; ★ Save / memos from detail.
