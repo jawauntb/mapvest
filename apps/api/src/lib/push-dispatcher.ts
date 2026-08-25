@@ -10,6 +10,14 @@
  * take down the transaction that produced the event.
  */
 import { safeExecuteWithSpan } from "./logfire.js";
+import {
+  type PushDeliveryDedupe,
+  type PushEventKey,
+  type PushToken,
+  claimPushDelivery,
+  finalizePushDelivery,
+  validatePushDeliveryClaims,
+} from "./push-tokens-store.js";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const BATCH_SIZE = 100;
@@ -31,6 +39,7 @@ export type SendPushResult = {
   successes: number;
   failures: number;
   invalidTokens: string[];
+  successfulTokens: string[];
 };
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -96,7 +105,7 @@ async function postBatch(
  * increments the failure counter and (for known "gone" tokens) surfaces the
  * offending token strings so callers can unregister them.
  */
-export async function sendPush(params: {
+async function sendExpoPush(params: {
   tokens: string[];
   title: string;
   body: string;
@@ -109,7 +118,7 @@ export async function sendPush(params: {
       title: params.title.slice(0, 60),
     });
     if (uniqueTokens.length === 0) {
-      return { successes: 0, failures: 0, invalidTokens: [] };
+      return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
     }
 
     const messages: PushMessage[] = uniqueTokens.map((to) => ({
@@ -124,6 +133,7 @@ export async function sendPush(params: {
     let successes = 0;
     let failures = 0;
     const invalidTokens: string[] = [];
+    const successfulTokens: string[] = [];
 
     for (const batch of chunk(messages, BATCH_SIZE)) {
       let tickets: ExpoTicket[] = [];
@@ -164,6 +174,7 @@ export async function sendPush(params: {
         }
         if (t.status === "ok") {
           successes += 1;
+          if (batch[i]?.to) successfulTokens.push(batch[i]!.to);
         } else {
           failures += 1;
           // DeviceNotRegistered / InvalidCredentials → surface the token so
@@ -179,10 +190,56 @@ export async function sendPush(params: {
     }
 
     span.setAttributes({ successes, failures, invalid_count: invalidTokens.length });
-    return { successes, failures, invalidTokens };
+    return { successes, failures, invalidTokens, successfulTokens };
   }).catch((): SendPushResult => {
-    // safeExecuteWithSpan rethrows, but callers of sendPush should NEVER see
+    // safeExecuteWithSpan rethrows, but the internal Expo sender should NEVER
+    // expose an exception to the claim-aware facade.
     // an exception — swallow here to guarantee fire-and-forget safety.
-    return { successes: 0, failures: 0, invalidTokens: [] };
+    return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
   });
+}
+
+/**
+ * The only notifier-facing delivery API. Candidate selection is followed by
+ * a short server-side lease, a fresh ownership/consent check immediately
+ * before the Expo handoff, and claim-validated durable dedupe afterwards.
+ * Expo may accept a request in the small interval after validation; that
+ * downstream timing cannot be retracted, so account isolation is guaranteed
+ * for server selection/state rather than pretending APNs is cancellable.
+ */
+export async function deliverPush(params: {
+  tokens: PushToken[];
+  dedupe: PushDeliveryDedupe[];
+  eventKey?: PushEventKey;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  leaseMs?: number;
+}): Promise<SendPushResult> {
+  const claims = await claimPushDelivery(
+    params.tokens,
+    params.dedupe,
+    params.eventKey,
+    params.leaseMs,
+  );
+  if (claims.length === 0) {
+    return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
+  }
+
+  const valid = await validatePushDeliveryClaims(claims, params.eventKey);
+  const result =
+    valid.length === 0
+      ? { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] }
+      : await sendExpoPush({
+          tokens: valid.map((claim) => claim.expoToken),
+          title: params.title,
+          body: params.body,
+          data: params.data,
+        });
+  await finalizePushDelivery(
+    claims,
+    new Set(result.successfulTokens),
+    new Set(result.invalidTokens),
+  );
+  return result;
 }

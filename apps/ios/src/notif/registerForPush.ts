@@ -26,9 +26,12 @@ import { Platform } from "react-native";
 
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
+import { runPushOperation } from "./lifecycle";
 
 const PUSH_TOKEN_ID_KEY = "mapvest.pushTokenId.v1";
 const EXPO_PROJECT_ID = "e3902302-dff0-4dee-9974-d74166073356";
+const PUSH_IO_TIMEOUT_MS = 8_000;
+const SECURE_STORE_TIMEOUT_MS = 800;
 
 export type RegisterResult = {
   tokenId: string;
@@ -36,13 +39,40 @@ export type RegisterResult = {
   permissionGranted: boolean;
 };
 
+export type PushIdentity = {
+  expoToken: string;
+  deviceId?: string;
+};
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+let currentIdentity: PushIdentity | null = null;
+
 /**
  * Read the previously-stored server-issued token id, if any. Used by the
  * Settings screen to POST prefs updates against the right token.
  */
 export async function getStoredTokenId(): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY);
+    return await withTimeout(
+      SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY),
+      SECURE_STORE_TIMEOUT_MS,
+      "SecureStore read timed out",
+    );
   } catch {
     return null;
   }
@@ -58,24 +88,47 @@ export async function readStoredTokenIdForSignOut(): Promise<{
   readable: boolean;
 }> {
   try {
-    return { tokenId: await SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY), readable: true };
+    return {
+      tokenId: await withTimeout(
+        SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY),
+        SECURE_STORE_TIMEOUT_MS,
+        "SecureStore read timed out",
+      ),
+      readable: true,
+    };
   } catch {
     return { tokenId: null, readable: false };
   }
 }
 
-async function persistTokenId(id: string): Promise<void> {
+async function persistTokenId(id: string, isCurrent: () => boolean): Promise<boolean> {
+  const write = SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id);
+  // SecureStore has no cancellation primitive. If a timed-out write resolves
+  // after sign-out/account-switch invalidated this operation, remove the late
+  // value so it cannot resurrect the previous account's token id.
+  void write.then(
+    () => {
+      if (!isCurrent()) void SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY).catch(() => undefined);
+    },
+    () => undefined,
+  );
   try {
-    await SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id);
+    await withTimeout(write, SECURE_STORE_TIMEOUT_MS, "SecureStore write timed out");
+    return true;
   } catch {
-    /* SecureStore unavailable — client falls back to fetching prefs each time */
+    return false;
   }
 }
 
 /** Clear the account-scoped server token id after a successful unlink. */
 export async function clearStoredTokenId(): Promise<void> {
+  currentIdentity = null;
   try {
-    await SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY);
+    await withTimeout(
+      SecureStore.deleteItemAsync(PUSH_TOKEN_ID_KEY),
+      SECURE_STORE_TIMEOUT_MS,
+      "SecureStore delete timed out",
+    );
   } catch {
     // Revocation is already complete; a stale local id cannot re-enable a
     // token, and the next registration replaces it.
@@ -87,17 +140,62 @@ export async function clearStoredTokenId(): Promise<void> {
  * status is `granted`. Safe to call multiple times.
  */
 export async function ensurePermissions(): Promise<boolean> {
-  const current = await Notifications.getPermissionsAsync();
+  const current = await withTimeout(
+    Notifications.getPermissionsAsync(),
+    PUSH_IO_TIMEOUT_MS,
+    "Notification permission check timed out",
+  );
   if (current.status === "granted") return true;
   if (current.status === "denied" && !current.canAskAgain) return false;
-  const requested = await Notifications.requestPermissionsAsync({
-    ios: {
-      allowAlert: true,
-      allowBadge: true,
-      allowSound: true,
-    },
-  });
+  const requested = await withTimeout(
+    Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    }),
+    PUSH_IO_TIMEOUT_MS,
+    "Notification permission request timed out",
+  );
   return requested.status === "granted";
+}
+
+/**
+ * Recover the physical identity even when the server-issued id was lost.
+ * This never prompts; it only reads already-granted OS state.
+ */
+export async function getCurrentPushIdentity(): Promise<PushIdentity | null> {
+  if (currentIdentity) return currentIdentity;
+  if (!Device.isDevice) return null;
+  try {
+    const permission = await withTimeout(
+      Notifications.getPermissionsAsync(),
+      PUSH_IO_TIMEOUT_MS,
+      "Notification permission check timed out",
+    );
+    if (permission.status !== "granted") return null;
+    const result = await withTimeout(
+      Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID }),
+      PUSH_IO_TIMEOUT_MS,
+      "Expo token lookup timed out",
+    );
+    if (!result.data) return null;
+    const identity: PushIdentity = { expoToken: result.data };
+    try {
+      identity.deviceId = await withTimeout(
+        getDeviceId(),
+        PUSH_IO_TIMEOUT_MS,
+        "Device id timed out",
+      );
+    } catch {
+      // Expo token remains a sufficient revocation identity.
+    }
+    currentIdentity = identity;
+    return identity;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -108,61 +206,73 @@ export async function registerForPush(
   session: { token: string } | null,
   options: { requestPermission?: boolean } = {},
 ): Promise<RegisterResult | null> {
-  if (!session?.token) return null;
-  if (!Device.isDevice) return null;
+  return runPushOperation(async ({ signal, isCurrent }) => {
+    if (!session?.token || !Device.isDevice) return null;
 
-  let permissionGranted = false;
-  try {
-    const current = await Notifications.getPermissionsAsync();
-    permissionGranted = current.status === "granted";
-    if (!permissionGranted && options.requestPermission) {
-      permissionGranted = await ensurePermissions();
+    let permissionGranted = false;
+    try {
+      const current = await withTimeout(
+        Notifications.getPermissionsAsync(),
+        PUSH_IO_TIMEOUT_MS,
+        "Notification permission check timed out",
+      );
+      permissionGranted = current.status === "granted";
+      if (!permissionGranted && options.requestPermission) {
+        permissionGranted = await ensurePermissions();
+      }
+    } catch {
+      return null;
     }
-  } catch {
-    return null;
-  }
-  if (!permissionGranted) return null;
+    if (!permissionGranted || !isCurrent()) return null;
 
-  let expoToken: string;
-  try {
-    const res = await Notifications.getExpoPushTokenAsync({
-      projectId: EXPO_PROJECT_ID,
-    });
-    expoToken = res.data;
-  } catch {
-    // Token fetch can fail on simulator, permission-denied, or transient
-    // Expo push service issues. Nothing to store — bail out silently.
-    return null;
-  }
-  if (!expoToken) return null;
+    let expoToken: string;
+    try {
+      const res = await withTimeout(
+        Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID }),
+        PUSH_IO_TIMEOUT_MS,
+        "Expo token lookup timed out",
+      );
+      expoToken = res.data;
+    } catch {
+      return null;
+    }
+    if (!expoToken || !isCurrent()) return null;
 
-  try {
     let deviceId: string | undefined;
     try {
-      deviceId = await getDeviceId();
+      deviceId = await withTimeout(getDeviceId(), PUSH_IO_TIMEOUT_MS, "Device id timed out");
     } catch {
       // Server registration remains valid without this advisory identifier.
     }
-    const body = {
-      token: expoToken,
-      platform: Platform.OS === "android" ? "android" : "ios",
-      deviceId,
-    };
-    const res = await fetch(`${API_URL}/v1/push/register`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.token}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    const j = (await res.json()) as { id?: string };
-    if (!j.id) return null;
-    await persistTokenId(j.id);
-    return { tokenId: j.id, expoToken, permissionGranted };
-  } catch {
-    return null;
-  }
+    currentIdentity = { expoToken, ...(deviceId ? { deviceId } : {}) };
+    try {
+      const body = {
+        token: expoToken,
+        platform: Platform.OS === "android" ? "android" : "ios",
+        deviceId,
+      };
+      const res = await withTimeout(
+        fetch(`${API_URL}/v1/push/register`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify(body),
+          signal,
+        }),
+        PUSH_IO_TIMEOUT_MS,
+        "Push registration timed out",
+      );
+      if (!res.ok || !isCurrent()) return null;
+      const j = (await res.json()) as { id?: string };
+      if (!j.id || !isCurrent()) return null;
+      await persistTokenId(j.id, isCurrent);
+      if (!isCurrent()) return null;
+      return { tokenId: j.id, expoToken, permissionGranted };
+    } catch {
+      return null;
+    }
+  });
 }

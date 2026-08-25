@@ -1,8 +1,22 @@
 import { ApiError, getMe } from "@/api/client";
 import type { Session, User } from "@/api/types";
+import { cancelPushOperationsAndWait, runPushRevocation } from "@/notif/lifecycle";
 import { unlinkPushForSignOut } from "@/notif/signOut";
 import * as SecureStore from "expo-secure-store";
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  authFailureNeedsPushCleanup,
+  secureStoreReadNeedsPushCleanup,
+  sessionExpired,
+} from "./sessionPolicy";
 
 const KEY = "mapvest.session.v1";
 const STORE: SecureStore.SecureStoreOptions = {
@@ -11,16 +25,26 @@ const STORE: SecureStore.SecureStoreOptions = {
 };
 const STORE_MS = 800;
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+function readStoredSession(): Promise<{ raw: string | null; timedOut: boolean }> {
   return new Promise((resolve) => {
-    const t = setTimeout(() => resolve(null), ms);
-    p.then((v) => {
-      clearTimeout(t);
-      resolve(v);
-    }).catch(() => {
-      clearTimeout(t);
-      resolve(null);
-    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      resolve({ raw: null, timedOut: true });
+    }, STORE_MS);
+    SecureStore.getItemAsync(KEY, STORE)
+      .then((raw) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ raw, timedOut: false });
+      })
+      .catch(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ raw: null, timedOut: false });
+      });
   });
 }
 
@@ -40,16 +64,45 @@ const Ctx = createContext<SessionCtx | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<Stored | null>(null);
+  const stateRef = useRef<Stored | null>(null);
+  stateRef.current = state;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const raw = await withTimeout(SecureStore.getItemAsync(KEY, STORE), STORE_MS);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as Stored;
-        if (new Date(parsed.session.expiresAt).getTime() < Date.now()) {
-          await SecureStore.deleteItemAsync(KEY, STORE);
+        const loaded = await readStoredSession();
+        if (secureStoreReadNeedsPushCleanup(loaded.timedOut)) {
+          // We cannot prove the session is absent. Revoke the physical push
+          // identity without a bearer and retry on the next boot.
+          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
+          return;
+        }
+        if (!loaded.raw) return;
+        let parsed: Stored;
+        try {
+          parsed = JSON.parse(loaded.raw) as Stored;
+        } catch {
+          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
+          await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
+          return;
+        }
+        if (
+          !parsed?.session ||
+          typeof parsed.session.token !== "string" ||
+          typeof parsed.session.expiresAt !== "string"
+        ) {
+          await runPushRevocation(() => unlinkPushForSignOut()).catch(() => undefined);
+          await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
+          return;
+        }
+        if (sessionExpired(parsed.session.expiresAt)) {
+          const revoked = await runPushRevocation(() => unlinkPushForSignOut(parsed.session))
+            .then(() => true)
+            .catch(() => false);
+          // Keep an expired record when cleanup failed so the next boot (or a
+          // direct sign-in) retries the physical-token revocation.
+          if (revoked) await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
           return;
         }
         if (!cancelled) setState(parsed);
@@ -63,12 +116,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const { user } = await getMe(parsed.session.token);
           if (!cancelled) setState({ session: parsed.session, user });
         } catch (e) {
-          if (
-            e instanceof ApiError &&
-            e.status === 401 &&
-            /unknown user|invalid token/i.test(e.message)
-          ) {
-            await SecureStore.deleteItemAsync(KEY, STORE);
+          if (e instanceof ApiError && authFailureNeedsPushCleanup(e.status)) {
+            const revoked = await runPushRevocation(() => unlinkPushForSignOut(parsed.session))
+              .then(() => true)
+              .catch(() => false);
+            if (revoked) await SecureStore.deleteItemAsync(KEY, STORE).catch(() => undefined);
             if (!cancelled) setState(null);
           }
           // else: keep the cached session/user; retry on next app foreground.
@@ -89,6 +141,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user: state?.user ?? null,
       isAdmin: !!state?.user?.scopes?.includes("admin"),
       async signIn(session, user) {
+        const previous = stateRef.current;
+        if (!previous?.session || previous.session.token !== session.token) {
+          // Direct A→B login is an account switch even when no explicit
+          // sign-out screen ran. Revoke A (or retry a pending boot cleanup)
+          // before B becomes observable.
+          await runPushRevocation(() => unlinkPushForSignOut(previous?.session));
+        } else {
+          await cancelPushOperationsAndWait();
+        }
         const next = { session, user };
         try {
           await SecureStore.setItemAsync(KEY, JSON.stringify(next), STORE);
@@ -99,10 +160,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         // Push unlink must complete while this bearer is still available.
-        // If neither the server nor native Expo can revoke a known token,
-        // this rejects and deliberately leaves the account/session in place
-        // so Settings or Admin can present a retry instead of false safety.
-        if (state?.session) await unlinkPushForSignOut(state.session);
+        // If the server cannot revoke a known token, this rejects and
+        // deliberately leaves the account/session in place so Settings or
+        // Admin can present a retry instead of treating local cleanup as safe.
+        await runPushRevocation(() => unlinkPushForSignOut(stateRef.current?.session));
         try {
           await SecureStore.deleteItemAsync(KEY, STORE);
         } catch {

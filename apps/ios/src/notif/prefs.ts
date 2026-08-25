@@ -8,6 +8,21 @@
 import { API_URL } from "@/util/env";
 import { getStoredTokenId } from "./registerForPush";
 
+const PUSH_NETWORK_TIMEOUT_MS = 8_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUSH_NETWORK_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type PushEventKey =
   | "daily_brief"
   | "local_brief"
@@ -60,7 +75,7 @@ export async function getPushPrefs(
   tokenId: string | null;
 }> {
   const query = tokenId ? `?tokenId=${encodeURIComponent(tokenId)}` : "";
-  const res = await fetch(`${API_URL}/v1/push/prefs${query}`, {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/prefs${query}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -91,7 +106,7 @@ export async function setPushPref(
   patch: Partial<PushPrefs>,
   session: { token: string },
 ): Promise<PushPrefs> {
-  const res = await fetch(`${API_URL}/v1/push/prefs`, {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/prefs`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -121,7 +136,7 @@ export async function setPushPref(
  * the physical Expo token), so it cannot receive its notifications.
  */
 export async function unlinkPushToken(tokenId: string, session: { token: string }): Promise<void> {
-  const res = await fetch(`${API_URL}/v1/push/token/${encodeURIComponent(tokenId)}`, {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/token/${encodeURIComponent(tokenId)}`, {
     method: "DELETE",
     headers: {
       Accept: "application/json",
@@ -138,6 +153,31 @@ export async function unlinkPushToken(tokenId: string, session: { token: string 
     // Keep the status-based message when the API did not return JSON.
   }
   throw new Error(message);
+}
+
+/**
+ * Revocation-only fallback for expired sessions or a lost SecureStore id.
+ * The server accepts only this physical installation identity and returns no
+ * account data, so any 2xx response is safe to treat as an idempotent unlink.
+ */
+export async function unlinkPushTokenByIdentity(
+  identity: { expoToken: string; deviceId?: string },
+  tokenId?: string | null,
+): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/revoke-device`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: identity.expoToken,
+      deviceId: identity.deviceId,
+      tokenId: tokenId ?? undefined,
+    }),
+  });
+  if (res.ok) return;
+  throw new Error(`Could not remove this device from notifications (${res.status})`);
 }
 
 /**

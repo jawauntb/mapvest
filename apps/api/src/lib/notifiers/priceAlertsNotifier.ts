@@ -7,15 +7,14 @@
  * notification enumerating them.
  *
  * Idempotency: `markTriggered` sets `triggered_at` in the DB; once set, the
- * alert is no longer "active" so we never re-push. In-memory dedupe on
- * `price_alerts::YYYYMMDD::${alertId}` provides a belt-and-suspenders layer
- * for the same-process case.
+ * alert is no longer "active" so we never re-push. The central delivery
+ * claim records the aggregate's per-alert keys only after a successful handoff.
  */
 import { getQuote } from "@mapvest/finance";
 import { isAlertTriggered, listActiveAlerts, markTriggered } from "../alerts-store.js";
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import { type PushToken, listTokensForEvent } from "../push-tokens-store.js";
-import { commitSend, shouldSend, ymd } from "./dedupe.js";
+import { ymd } from "./dedupe.js";
 
 const DEDUPE_SLOT = "price_alerts";
 
@@ -60,12 +59,12 @@ export async function runPriceAlertScan(): Promise<{
       );
 
       const triggeredNow: Array<{ ticker: string; kind: string; threshold: number }> = [];
+      const dedupe = [] as Array<{ slot: string; key: string }>;
       for (const alert of active) {
         const q = quotes.get(alert.ticker);
         if (!q) continue;
         if (!isAlertTriggered(alert, q)) continue;
         const key = `${DEDUPE_SLOT}-${today}-${alert.id}`;
-        if (!shouldSend(userTokens, DEDUPE_SLOT, key)) continue;
         const updated = await markTriggered(userId, alert.id);
         if (!updated?.triggeredAt) continue;
         alertsTriggered += 1;
@@ -74,9 +73,7 @@ export async function runPriceAlertScan(): Promise<{
           kind: alert.kind,
           threshold: alert.threshold,
         });
-        // Commit dedupe key so a next-tick rerun in the same day is a no-op.
-        // eslint-disable-next-line no-await-in-loop
-        await commitSend(userTokens, DEDUPE_SLOT, key);
+        dedupe.push({ slot: DEDUPE_SLOT, key });
       }
       if (triggeredNow.length === 0) continue;
 
@@ -92,8 +89,10 @@ export async function runPriceAlertScan(): Promise<{
               .map((a) => `$${a.ticker}`)
               .join(", ") + (triggeredNow.length > 3 ? ` +${triggeredNow.length - 3} more` : "");
 
-      const result = await sendPush({
-        tokens: userTokens.map((t) => t.expoToken),
+      const result = await deliverPush({
+        tokens: userTokens,
+        dedupe,
+        eventKey: "price_alerts",
         title,
         body,
         data: {

@@ -1,12 +1,14 @@
 /**
  * /v1/push — token registration + per-event preferences for opt-in push
- * notifications. All routes require a bearer session.
+ * notifications. Registration/preferences require a bearer session; the
+ * revocation-only device fallback intentionally does not.
  *
  * Contract:
  *   POST   /v1/push/register  { token, platform?, deviceId? }  → { id }
  *   POST   /v1/push/prefs     { tokenId, prefs }               → { prefs }
  *   GET    /v1/push/prefs                                       → { prefs, tokenId }
  *   DELETE /v1/push/token/:id                                   → 204
+ *   POST   /v1/push/revoke-device { token, deviceId?, tokenId? } → 200
  *
  * The client stores the returned `id` in expo-secure-store on first
  * registration; every prefs write includes it explicitly so multi-device
@@ -21,16 +23,52 @@ import {
   listTokensForUser,
   registerPushToken,
   unregisterPushToken,
+  unregisterPushTokenByIdentity,
   updatePrefs,
 } from "../lib/push-tokens-store.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const push = new Hono<AuthEnv>();
-push.use("*", bearerAuth);
 
 // ExponentPushToken[…] or ExpoPushToken[…]. We're permissive on the exact
 // prefix but reject empty/short strings so a fat-finger PUT never lands.
 const EXPO_TOKEN_RE = /^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$/;
+
+/**
+ * Revocation-only recovery path. It is intentionally mounted before the
+ * bearer middleware because an expired/invalid session must still be able to
+ * unlink the physical installation. Possession of an Expo token can cause
+ * only that token's delivery to be revoked; it cannot read or mutate prefs.
+ */
+push.post("/revoke-device", async (c) => {
+  return safeExecuteWithSpan("http.push.revoke_device", async (span) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      token?: unknown;
+      deviceId?: unknown;
+      tokenId?: unknown;
+    };
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token || !EXPO_TOKEN_RE.test(token)) {
+      return c.json({ error: "valid ExponentPushToken required" }, 400);
+    }
+    const deviceId =
+      typeof body.deviceId === "string" && body.deviceId.trim().length > 0
+        ? body.deviceId.trim().slice(0, 128)
+        : undefined;
+    const tokenId = typeof body.tokenId === "string" && body.tokenId ? body.tokenId : undefined;
+    const removed = await unregisterPushTokenByIdentity(token, deviceId, tokenId);
+    span.setAttributes({
+      has_device_id: Boolean(deviceId),
+      has_token_id: Boolean(tokenId),
+      removed,
+    });
+    // Idempotent by design: a boot-time cleanup should not be blocked by an
+    // already-revoked row or a process that never completed registration.
+    return c.json({ revoked: true, matched: removed });
+  });
+});
+
+push.use("*", bearerAuth);
 
 function isValidPref(k: string): k is PushEventKey {
   return (PUSH_EVENT_KEYS as readonly string[]).includes(k);

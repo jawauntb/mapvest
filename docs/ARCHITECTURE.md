@@ -190,10 +190,19 @@ have one active `(token_id, user_id)` claim, or a tombstone after unlinking.
 Every push-delivery, preference-read, preference-write, and token-list query
 joins the claim, so an old or duplicate row is never deliverable.
 
+Startup elects one deterministic legacy row, then mutes every other row. A
+database trigger repeats that mute on transfer, unlink, and every preference
+write that does not match the active claim. This is deliberately enforced in
+Postgres so a mixed-version API that still writes `push_tokens` directly cannot
+re-enable an old account's delivery path.
+`push_delivery_claims` stores the short lease and dedupe ownership used by the
+central dispatcher; expired leases are retryable and never confer account
+ownership.
+
 Registration for the already-claimed account is idempotent and keeps that
 installation's choices. Registration under another account runs in a Postgres
 transaction guarded by a token-specific advisory lock, switches the claim, and
-resets `prefs` to `{ notifications_enabled: false }`. This deliberately never
+resets the product switch and every event opt-in to false. This deliberately never
 carries notification consent, scheduler state, or location from the prior
 account. Existing duplicate database rows are not mass-deleted: the first
 claim elects the most recently seen row and leaves the rest inert, avoiding a
@@ -201,12 +210,25 @@ risky lossy migration.
 
 Explicit iOS sign-out runs before the session is cleared. It attempts the
 authenticated `DELETE /v1/push/token/:id`, Expo native unregistration, and
-notification/response dismissal. Either a server or native revocation lets
-sign-out finish and clears the stored server token id. If both revocations
-fail while a token exists (or SecureStore cannot prove it does not), the app
+notification/response dismissal. A missing/expired bearer or a lost
+SecureStore id uses the revocation-only `POST /v1/push/revoke-device` fallback
+with the current device's Expo token (and advisory device id); that
+endpoint can only mute/unlink that physical token and returns no account data.
+Native unregistration alone is never treated as server revocation. If a token
+exists, or SecureStore/identity lookup cannot prove that it does not, the app
 keeps the account signed in and shows a retryable Settings/Admin error. This
 only removes the current installation's claim; another phone or tablet remains
 registered independently.
+
+Notifiers do not send from a list snapshot. The central delivery facade claims
+each `(token, dedupe slot, key)` for a short lease, re-checks the active claim
+and consent immediately before handing the batch to Expo, and writes durable
+dedupe state only for a still-valid successful claim. Registration, sign-out,
+and direct A→B sign-in share one cancellable client lifecycle queue, so a stale
+registration cannot finish after the next account is visible. A request already
+accepted by Expo/APNs cannot be retracted after that handoff; the lease closes
+the server-side selection/state race without claiming impossible downstream
+timing guarantees.
 
 ## Observability
 

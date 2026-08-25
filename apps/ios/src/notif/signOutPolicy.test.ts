@@ -45,18 +45,55 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["server", "native", "dismiss", "clear"]);
   });
 
-  test("clears the stored id when native Expo unregistration succeeds after server failure", async () => {
+  test("does not treat native Expo unregistration as server revocation", async () => {
     const deps = fixture();
     deps.unlinkServer = async () => {
       deps.calls.push("server");
       throw new Error("server offline");
     };
 
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["server", "native", "dismiss"]);
+  });
+
+  test("uses identity fallback when the stored token id is missing", async () => {
+    const deps = fixture({ tokenId: null, tokenStorageReadable: true });
+    deps.unlinkServer = undefined;
+    deps.unlinkServerByIdentity = async () => {
+      deps.calls.push("identity");
+    };
+
     await expect(revokePushForSignOut(deps)).resolves.toEqual({
-      serverUnlinked: false,
+      serverUnlinked: true,
       nativeUnregistered: true,
     });
-    expect(deps.calls).toEqual(["server", "native", "dismiss", "clear"]);
+    expect(deps.calls).toEqual(["identity", "native", "dismiss", "clear"]);
+  });
+
+  test("falls back to physical identity after an expired bearer returns 401", async () => {
+    const deps = fixture();
+    deps.unlinkServer = async () => {
+      deps.calls.push("server");
+      throw new Error("401");
+    };
+    deps.unlinkServerByIdentity = async () => {
+      deps.calls.push("identity");
+    };
+
+    await expect(revokePushForSignOut(deps)).resolves.toMatchObject({
+      serverUnlinked: true,
+      nativeUnregistered: true,
+    });
+    expect(deps.calls).toEqual(["server", "identity", "native", "dismiss", "clear"]);
+  });
+
+  test("fails closed when SecureStore times out and identity revocation hangs", async () => {
+    const deps = fixture({ tokenId: null, tokenStorageReadable: false });
+    deps.unlinkServer = undefined;
+    deps.unlinkServerByIdentity = () => new Promise<void>(() => undefined);
+
+    await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
+    expect(deps.calls).toEqual(["native", "dismiss"]);
   });
 
   test("a confirmed no-token sign-out succeeds even if native cleanup is unavailable", async () => {

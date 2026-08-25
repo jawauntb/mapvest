@@ -6,9 +6,9 @@
  * Dedupe: `identify_done::${YYYYMMDDHH}::${brand}` — one push per brand per
  * hour, so a burst of similar identifications collapses.
  */
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import { listTokensForUserAndEvent } from "../push-tokens-store.js";
-import { commitSend, shouldSend, ymdh } from "./dedupe.js";
+import { ymdh } from "./dedupe.js";
 
 const DEDUPE_SLOT = "identify_done";
 
@@ -20,14 +20,14 @@ export async function onIdentifyFinished(
   const tokens = await listTokensForUserAndEvent(userId, "identify_done");
   if (tokens.length === 0) return;
   const key = `${ymdh()}-${(brand ?? ticker ?? "unknown").toLowerCase()}`;
-  if (!shouldSend(tokens, DEDUPE_SLOT, key)) return;
-
   const body = ticker
     ? `$${ticker.toUpperCase()} — ${brand ?? ticker.toUpperCase()}`
     : `No public match for ${brand ?? "your photo"} — see its cousins.`;
 
-  await sendPush({
-    tokens: tokens.map((t) => t.expoToken),
+  await deliverPush({
+    tokens,
+    dedupe: [{ slot: DEDUPE_SLOT, key }],
+    eventKey: "identify_done",
     title: "Found it",
     body,
     data: {
@@ -36,5 +36,4 @@ export async function onIdentifyFinished(
       ticker: ticker ?? "",
     },
   });
-  await commitSend(tokens, DEDUPE_SLOT, key);
 }

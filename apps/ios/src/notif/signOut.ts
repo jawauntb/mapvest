@@ -5,8 +5,12 @@
  */
 import * as Notifications from "expo-notifications";
 
-import { unlinkPushToken } from "./prefs";
-import { clearStoredTokenId, readStoredTokenIdForSignOut } from "./registerForPush";
+import { unlinkPushToken, unlinkPushTokenByIdentity } from "./prefs";
+import {
+  clearStoredTokenId,
+  getCurrentPushIdentity,
+  readStoredTokenIdForSignOut,
+} from "./registerForPush";
 import { revokePushForSignOut } from "./signOutPolicy";
 
 type NotificationCleanup = {
@@ -34,14 +38,20 @@ async function dismissNativeNotifications(): Promise<void> {
   ]);
 }
 
-export async function unlinkPushForSignOut(session: { token: string }): Promise<void> {
+export async function unlinkPushForSignOut(session?: { token: string }): Promise<void> {
   const stored = await readStoredTokenIdForSignOut();
+  const identity = await getCurrentPushIdentity();
   await revokePushForSignOut({
     tokenId: stored.tokenId,
     tokenStorageReadable: stored.readable,
-    unlinkServer: stored.tokenId
-      ? () => unlinkPushToken(stored.tokenId!, { token: session.token })
+    unlinkServer:
+      stored.tokenId && session
+        ? () => unlinkPushToken(stored.tokenId!, { token: session.token })
+        : undefined,
+    unlinkServerByIdentity: identity
+      ? () => unlinkPushTokenByIdentity(identity, stored.tokenId)
       : undefined,
+    hasPhysicalIdentity: Boolean(identity),
     unregisterNative: unregisterNativePush,
     dismissNative: dismissNativeNotifications,
     clearStoredTokenId,

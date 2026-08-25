@@ -37,6 +37,11 @@ What exists today, precisely:
   notifier, including weekly rivalries, honors it. An Expo token has exactly
   one active account claim; an account switch atomically resets its consent,
   and sign-out unlinks only that installation before clearing its session.
+  Expired/invalid sessions and missing SecureStore ids use the physical
+  Expo-token revocation fallback; native unregistration alone is not treated
+  as server cleanup. Delivery claims are revalidated immediately before the
+  Expo handoff, while the downstream APNs/Expo timing window remains an
+  unavoidable external-system boundary.
 - **Collection structure is latent in the data**: `packages/finance/data/brands.json`
   (1,101 brands with sector/exchange/isPublic), geohash-6 tiling in
   `apps/api/src/lib/geohash.ts` + `nearby_cache`.

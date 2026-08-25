@@ -46,7 +46,7 @@ import {
  *
  * Notifications section is entirely opt-in: master switch requests OS
  * permission on first flip; individual per-event toggles POST to
- * /v1/push/prefs on every change (fire-and-forget).
+ * /v1/push/prefs on every change and exposes a retry state on failure.
  */
 export default function SettingsScreen() {
   const { user, session, signOut } = useSession();
@@ -233,6 +233,7 @@ export default function SettingsScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
+          accessibilityState={{ disabled: signingOut, busy: signingOut }}
         >
           <Ionicons name="log-out-outline" size={15} color={colors.fg} />
           <Text style={styles.btnText}>{signingOut ? "Signing out…" : "Sign out"}</Text>
@@ -481,6 +482,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
               disabled={busy}
               onValueChange={onToggleMaster}
               accessibilityLabel="Enable notifications"
+              accessibilityState={{ disabled: busy, busy }}
             />
           </View>
 
@@ -511,6 +513,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
                   onPress={() => retryRef.current?.()}
                   accessibilityRole="button"
                   accessibilityLabel="Retry notification setting change"
+                  accessibilityState={{ disabled: busy, busy }}
                 >
                   <Text style={styles.btnText}>Retry</Text>
                 </Pressable>
@@ -526,6 +529,10 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
                 disabled={!masterOn || !tokenId || permissionStatus !== "granted" || busy}
                 onValueChange={(v) => setEvent(key, v)}
                 accessibilityLabel={PUSH_EVENT_LABELS[key]}
+                accessibilityState={{
+                  disabled: !masterOn || !tokenId || permissionStatus !== "granted" || busy,
+                  busy,
+                }}
               />
             </View>
           ))}

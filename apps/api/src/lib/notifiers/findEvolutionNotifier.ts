@@ -32,10 +32,9 @@
 import type { Find } from "@mapvest/core";
 import { getQuote } from "@mapvest/finance";
 import { listFinds } from "../finds-store.js";
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import { type PushEventKey, type PushToken, listTokensForEvent } from "../push-tokens-store.js";
 import { cachedPlaceLabel, reverseGeocodePlaceLabel } from "../reverse-geocode.js";
-import { commitSend, shouldSend } from "./dedupe.js";
 
 /** Opt-in pref key for this notifier (member of `PUSH_EVENT_KEYS`). */
 export const FIND_EVOLUTION_EVENT_KEY: PushEventKey = "find_evolution";
@@ -229,7 +228,6 @@ export async function runFindEvolutionScan(): Promise<{
         const slot = evolutionDedupeKey(find.id);
         // Monotonic: only a tier strictly above the highest ever pushed fires.
         if (tier <= highestTierRecorded(userTokens, slot)) continue;
-        if (!shouldSend(userTokens, slot, String(tier))) continue;
 
         // Geocode only for a find that is actually about to push, so the
         // budget is never burned on finds blocked by dedupe or by tier.
@@ -238,8 +236,10 @@ export async function runFindEvolutionScan(): Promise<{
         geocodeBudget = geo.budget;
 
         // eslint-disable-next-line no-await-in-loop
-        await sendPush({
-          tokens: userTokens.map((t) => t.expoToken),
+        const result = await deliverPush({
+          tokens: userTokens,
+          dedupe: [{ slot, key: String(tier), ttlMs: DEDUPE_TTL_MS }],
+          eventKey: FIND_EVOLUTION_EVENT_KEY,
           title: `${find.brand} evolved`,
           body: evolutionBody(find.brand, pct, geo.place),
           data: {
@@ -252,10 +252,10 @@ export async function runFindEvolutionScan(): Promise<{
             ...(geo.place ? { place: geo.place } : {}),
           },
         });
-        // eslint-disable-next-line no-await-in-loop
-        await commitSend(userTokens, slot, String(tier), DEDUPE_TTL_MS);
-        pushedForUser += 1;
-        evolutionsPushed += 1;
+        if (result.successes > 0) {
+          pushedForUser += 1;
+          evolutionsPushed += 1;
+        }
       }
     } catch {
       // Per-user error must not sink other users.
