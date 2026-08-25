@@ -268,11 +268,14 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
             : "undetermined",
       );
       const stored = await getStoredTokenId();
-      const remote = await getPushPrefs({ token: sessionToken }, stored);
+      let remote = await getPushPrefs({ token: sessionToken }, stored);
+      // A token can be rotated or removed after an app reinstall. If the
+      // stored id is stale, use the server's newest token so the master switch
+      // reflects the account's active device instead of false-off defaults.
+      if (stored && remote.tokenId === null) {
+        remote = await getPushPrefs({ token: sessionToken });
+      }
       if (!isCurrent()) return;
-      // The API echoes the requested id only when it still belongs to this
-      // account. Falling back to its newest token is only for older installs
-      // that predate local storage.
       setTokenId(remote.tokenId);
       setPrefs(remote.prefs);
       setPrefsLoadState("ready");

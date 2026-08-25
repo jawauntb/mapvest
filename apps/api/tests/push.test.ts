@@ -135,5 +135,21 @@ describe("push prefs route", () => {
       tokenId: tablet.id,
       prefs: { notifications_enabled: false },
     });
+
+    const staleRead = await app.fetch(
+      new Request("http://localhost/v1/push/prefs?tokenId=push_stale", {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(staleRead.status).toBe(200);
+    expect(await staleRead.json()).toEqual({ prefs: {}, tokenId: null });
+
+    const fallbackRead = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(fallbackRead.status).toBe(200);
+    expect(await fallbackRead.json()).toMatchObject({ tokenId: tablet.id });
   });
 });
