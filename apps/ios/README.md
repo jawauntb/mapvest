@@ -28,8 +28,9 @@ in `eas.json`.
 - `/auth` — passwordless magic-link email sign-in.
 - `/(tabs)/map` — `react-native-maps` w/ Google provider. Pins colored by
   publicness (green = public ticker, orange = has comps/ETFs, red/gray = other).
-- `/(tabs)/camera` — full-frame capture → `POST /v1/identify`. Result card
-  taps through to the detail sheet.
+- `/(tabs)/camera` — full-frame capture → `POST /v1/identify`. The primary
+  match has an explicit detail CTA; every additional match stays available in
+  the card. A zero-match response offers Refine and Retake recovery actions.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
 - `/(tabs)/research` — ChatGPT-like durable research conversations (Derivation unified agent → article briefs).
 - `/watchlists` — watchlist + cockpit/alerts; ★ Save / memos from detail.

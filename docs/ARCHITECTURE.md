@@ -51,6 +51,12 @@ annotator is optional: snap identifies immediately, **Refine** (circle +
 hint) re-runs it, and roi / hint / location now reach the API. The result
 card leads with a meaning line (“you can own this” / closest public cousin),
 then price, a confidence badge, source chips, and “Added to your finds.”
+It gives the primary match one explicit detail CTA while listing every
+additional match; zero matches explain how to **Refine** or **Retake**. During
+identify, the camera only marks client-observable work complete (photo ready,
+then request started) and names the public-match lookup as the next step — it
+does not fabricate server-side progress. Result-card motion is disabled when
+the system requests Reduce Motion.
 
 The product is four layers, in this order: **(A) identify** anything around
 you via camera or map (public ticker, or private → public comparable + ETF)

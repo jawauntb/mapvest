@@ -4,9 +4,17 @@ import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ENTITLEMENTS_QUERY_KEY, useEntitlements } from "@/billing/useEntitlements";
 import { captureStill } from "@/camera/captureStill";
+import {
+  type IdentifyProgressStage,
+  identifyProgressCopy,
+  investableLabel,
+  investableTicker,
+  splitInvestableResults,
+} from "@/camera/resultPresentation";
 import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { openChatAbout } from "@/nav/chatAbout";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
@@ -28,11 +36,17 @@ import {
   type LayoutChangeEvent,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type CameraCache = {
@@ -61,6 +75,7 @@ export default function CameraScreen() {
   const { online } = useNetworkSync({ token: session?.token });
   const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
   const [busy, setBusy] = useState(false);
+  const [identifyStage, setIdentifyStage] = useState<IdentifyProgressStage>("preparing");
   // Never restore a frozen frame on mount — Camera means take a new picture.
   const [frozenUri, setFrozenUri] = useState<string | null>(null);
   const [result, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
@@ -191,6 +206,7 @@ export default function CameraScreen() {
     }
     hapticTap();
     setBusy(true);
+    setIdentifyStage("preparing");
     setErr(null);
     setResult(null);
     setQueuedNote(null);
@@ -230,6 +246,7 @@ export default function CameraScreen() {
     hint?: string;
   }) {
     setBusy(true);
+    setIdentifyStage("preparing");
     setErr(null);
     setResult(null);
     setQueuedNote(null);
@@ -251,6 +268,10 @@ export default function CameraScreen() {
         return;
       }
       try {
+        // This is the first point the client knows the identify request has
+        // started. Server-side vision and finance work do not emit progress,
+        // so the UI intentionally keeps the final match step pending.
+        setIdentifyStage("identifying");
         const resp = await identifyPhoto(
           {
             imageUri: args.imageUri,
@@ -301,8 +322,10 @@ export default function CameraScreen() {
     });
   }
 
-  const top = result?.investables[0];
-  const ticker = top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
+  const { primary: top, additional: additionalInvestables } = splitInvestableResults(
+    result?.investables,
+  );
+  const ticker = top ? investableTicker(top) : undefined;
   const accent = sectorColor(top?.brand.sector);
   // `quote` is attached best-effort by /v1/identify (packages/core schema);
   // the local Investable re-declaration doesn't carry the field yet.
@@ -334,9 +357,31 @@ export default function CameraScreen() {
     }
   }
 
-  function openDetail() {
-    if (ticker) router.push(`/detail/${ticker}`);
-    else if (top?.brand.name) router.push(`/detail/${encodeURIComponent(top.brand.name)}`);
+  function openDetail(investable: Investable) {
+    const id = investableTicker(investable) ?? investable.brand.name;
+    router.push(`/detail/${encodeURIComponent(id)}`);
+  }
+
+  function openPrimaryDetail() {
+    if (top) openDetail(top);
+  }
+
+  function openResearch() {
+    if (!top) return;
+    const researchTicker = investableTicker(top);
+    if (researchTicker) {
+      openChatAbout(router, { kind: "ticker", ticker: researchTicker });
+      return;
+    }
+    // A brand without a public match cannot seed ticker research honestly.
+    // Keep the existing detail route available for its comparable context.
+    openDetail(top);
+  }
+
+  function refine() {
+    if (!frozenUri) return;
+    hapticSelect();
+    setPendingUri(frozenUri);
   }
 
   // Only mount while focused so blurred tabs cannot hold the camera session.
@@ -424,7 +469,7 @@ export default function CameraScreen() {
         ) : null}
 
         <View style={styles.center} pointerEvents="none">
-          {busy ? <ActivityIndicator color={colors.fg} size="large" /> : null}
+          {busy ? <IdentifyProgress stage={identifyStage} /> : null}
         </View>
 
         {result || err || queuedNote ? (
@@ -435,11 +480,7 @@ export default function CameraScreen() {
               style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
             >
               {top ? (
-                <Pressable
-                  onPress={openDetail}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${top.brand.name}`}
-                >
+                <>
                   <View style={styles.titleRow}>
                     <Text style={styles.resultTitle} numberOfLines={1}>
                       {top.brand.name}
@@ -464,7 +505,89 @@ export default function CameraScreen() {
                       </Text>
                     </Text>
                   ) : null}
+                </>
+              ) : null}
+              {result && !top ? (
+                <View
+                  accessibilityRole="summary"
+                  accessibilityLabel="No investable brand found. Try refining or retaking this photo."
+                >
+                  <View style={styles.noMatchHeading}>
+                    <Ionicons name="scan-outline" size={18} color={colors.warn} />
+                    <Text style={styles.resultTitle}>No investable brand found</Text>
+                  </View>
+                  <Text style={styles.noMatchCopy}>
+                    Try a tighter, brighter photo of a logo, label, or storefront.
+                  </Text>
+                  <View style={styles.noMatchActions}>
+                    <Pressable
+                      style={styles.dominantBtn}
+                      onPress={refine}
+                      accessibilityRole="button"
+                      accessibilityLabel="Refine this photo by circling what you meant"
+                    >
+                      <Ionicons name="scan-outline" size={16} color={colors.accentInk} />
+                      <Text style={styles.dominantBtnText}>Refine this photo</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.miniBtn}
+                      onPress={retake}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retake photo"
+                    >
+                      <Ionicons name="refresh" size={13} color={colors.accent} />
+                      <Text style={styles.miniBtnText}>Retake</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+              {top ? (
+                <Pressable
+                  style={styles.dominantBtn}
+                  onPress={openPrimaryDetail}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${top.brand.name} details`}
+                >
+                  <Text style={styles.dominantBtnText}>
+                    {ticker ? `View $${ticker}` : "View investment options"}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.accentInk} />
                 </Pressable>
+              ) : null}
+              {additionalInvestables.length > 0 ? (
+                <View style={styles.additionalResults}>
+                  <Text style={styles.additionalResultsLabel}>
+                    Also found ({additionalInvestables.length})
+                  </Text>
+                  <ScrollView
+                    nestedScrollEnabled
+                    style={styles.additionalResultsList}
+                    contentContainerStyle={styles.additionalResultsListContent}
+                    showsVerticalScrollIndicator={additionalInvestables.length > 2}
+                    accessibilityLabel={`${additionalInvestables.length} additional matches`}
+                  >
+                    {additionalInvestables.map((investable, index) => (
+                      <Pressable
+                        key={`${investable.brand.name}-${index}`}
+                        style={styles.additionalResult}
+                        onPress={() => openDetail(investable)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${investable.brand.name}, ${investableLabel(investable)}`}
+                      >
+                        <View style={styles.additionalResultText}>
+                          <Text style={styles.additionalResultTitle} numberOfLines={1}>
+                            {investable.brand.name}
+                          </Text>
+                          <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
+                            {investableLabel(investable)}
+                            {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
               ) : null}
               {top && top.sources.length > 0 ? (
                 <View style={styles.sourceRow}>
@@ -499,9 +622,9 @@ export default function CameraScreen() {
                 {top ? (
                   <Pressable
                     style={styles.miniBtn}
-                    onPress={openDetail}
+                    onPress={openResearch}
                     accessibilityRole="button"
-                    accessibilityLabel="Open research"
+                    accessibilityLabel={`Research ${ticker ?? top.brand.name}`}
                   >
                     <Ionicons name="document-text-outline" size={13} color={colors.accent} />
                     <Text style={styles.miniBtnText}>Research</Text>
@@ -510,10 +633,7 @@ export default function CameraScreen() {
                 {frozenUri ? (
                   <Pressable
                     style={styles.miniBtn}
-                    onPress={() => {
-                      hapticSelect();
-                      setPendingUri(frozenUri);
-                    }}
+                    onPress={refine}
                     accessibilityRole="button"
                     accessibilityLabel="Refine — circle what you meant"
                   >
@@ -605,10 +725,11 @@ export default function CameraScreen() {
 /** Subtle mount entrance for the result card — fade + rise, ~250ms. */
 function CardEntrance({ children }: { children: ReactNode }) {
   const progress = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    progress.value = withTiming(1, { duration: 250 });
-  }, [progress]);
+    progress.value = reduceMotion ? 1 : withTiming(1, { duration: 250 });
+  }, [progress, reduceMotion]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -616,6 +737,52 @@ function CardEntrance({ children }: { children: ReactNode }) {
   }));
 
   return <Animated.View style={animStyle}>{children}</Animated.View>;
+}
+
+function IdentifyProgress({ stage }: { stage: IdentifyProgressStage }) {
+  const copy = identifyProgressCopy(stage);
+
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={`${copy.label}. ${copy.detail}`}
+      accessibilityValue={{ min: 0, max: 3, now: copy.completedSteps }}
+      accessibilityLiveRegion="polite"
+      style={styles.identifyProgress}
+    >
+      <Text style={styles.identifyProgressTitle}>{copy.label}</Text>
+      <Text style={styles.identifyProgressDetail}>{copy.detail}</Text>
+      <View style={styles.identifySteps}>
+        <IdentifyStep label="Photo" status={stage === "preparing" ? "active" : "done"} />
+        <IdentifyStep label="Identify" status={stage === "identifying" ? "active" : "next"} />
+        <IdentifyStep label="Match" status="next" />
+      </View>
+    </View>
+  );
+}
+
+function IdentifyStep({ label, status }: { label: string; status: "active" | "done" | "next" }) {
+  const isDone = status === "done";
+
+  return (
+    <View style={styles.identifyStep}>
+      <View
+        style={[
+          styles.identifyStepDot,
+          status === "active" && styles.identifyStepDotActive,
+          isDone && styles.identifyStepDotDone,
+        ]}
+      >
+        {isDone ? <Ionicons name="checkmark" size={10} color={colors.accentInk} /> : null}
+      </View>
+      <Text
+        style={[styles.identifyStepLabel, status !== "next" && styles.identifyStepLabelCurrent]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -709,6 +876,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  identifyProgress: {
+    width: "82%",
+    maxWidth: 360,
+    padding: 16,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgGlass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    gap: 6,
+  },
+  identifyProgressTitle: { color: colors.fg, ...type.label, fontSize: 15, fontWeight: "800" },
+  identifyProgressDetail: { color: colors.fgMuted, ...type.caption, fontSize: 12 },
+  identifySteps: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
+  identifyStep: { flex: 1, flexDirection: "row", alignItems: "center", gap: 5 },
+  identifyStepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.borderStrong,
+  },
+  identifyStepDotActive: { backgroundColor: colors.warn },
+  identifyStepDotDone: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent,
+  },
+  identifyStepLabel: { color: colors.fgDim, ...type.caption, fontSize: 10 },
+  identifyStepLabelCurrent: { color: colors.fg },
   permRoot: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
   controls: { alignItems: "center", paddingBottom: 24 },
   captureRow: {
@@ -782,6 +977,15 @@ const styles = StyleSheet.create({
   },
   resultTitle: { color: colors.fg, ...type.h3, fontSize: 18, flexShrink: 1 },
   resultSubtitle: { color: colors.fgMuted, fontSize: 13, marginTop: 2 },
+  noMatchHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
+  noMatchCopy: { color: colors.fgMuted, ...type.body, fontSize: 14, marginTop: 8 },
+  noMatchActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
   confidencePill: {
     backgroundColor: colors.bgGlass,
     borderColor: colors.glassBorder,
@@ -803,6 +1007,37 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   sourceChipText: { color: colors.fgMuted, fontSize: 11, fontWeight: "600" },
+  dominantBtn: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dominantBtnText: { color: colors.accentInk, ...type.label, fontSize: 14, fontWeight: "800" },
+  additionalResults: { gap: 6 },
+  additionalResultsLabel: { color: colors.fgMuted, ...type.caption, fontSize: 12 },
+  additionalResultsList: { maxHeight: 148 },
+  additionalResultsListContent: { gap: 6 },
+  additionalResult: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+  },
+  additionalResultText: { flex: 1, minWidth: 0 },
+  additionalResultTitle: { color: colors.fg, ...type.label, fontSize: 13 },
+  additionalResultSubtitle: { color: colors.fgMuted, ...type.caption, fontSize: 11, marginTop: 1 },
   findsNote: { color: colors.fgDim, fontSize: 11, marginTop: 2 },
   cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   miniBtn: {
