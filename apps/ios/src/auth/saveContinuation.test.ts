@@ -28,6 +28,11 @@ describe("save auth continuation", () => {
     expect(
       parseSaveContinuation({ intent: "save", ticker: "not a ticker", source: "camera" }),
     ).toBe(null);
+    expect(parseSaveContinuation({ intent: "save", ticker: ".", source: "camera" })).toBe(null);
+    expect(parseSaveContinuation({ intent: "save", ticker: "-", source: "camera" })).toBe(null);
+    expect(() => authSavePath({ ticker: ".", source: "camera" })).toThrow(
+      "A valid ticker is required",
+    );
     expect(parseSaveContinuation({ intent: "view", ticker: "MCD", source: "detail" })).toBe(null);
     expect(parseSaveContinuation({ intent: "save", ticker: "MCD", source: "map" })).toBe(null);
   });

@@ -60,7 +60,9 @@ the system requests Reduce Motion.
 A signed-out **Save** from Camera or Detail carries the ticker and save source
 through magic-link auth, shows a verified-then-saving state, upserts the
 watchlist entry idempotently, and returns to that ticker’s Detail context. The
-client never accepts an arbitrary post-auth redirect URL.
+client never accepts an arbitrary post-auth redirect URL. If saving fails after
+verification, the code field stays locked and Retry save uses the verified
+session rather than re-running the magic link.
 
 The product is four layers, in this order: **(A) identify** anything around
 you via camera or map (public ticker, or private → public comparable + ETF)

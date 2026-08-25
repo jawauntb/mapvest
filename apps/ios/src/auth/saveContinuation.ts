@@ -11,7 +11,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 const MAX_NAME_LENGTH = 160;
 const MAX_SECTOR_LENGTH = 80;
-const TICKER_RE = /^[A-Z0-9.-]{1,15}$/;
+const TICKER_RE = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;

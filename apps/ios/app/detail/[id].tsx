@@ -33,10 +33,11 @@ import { formatCompact, formatDecimal, formatMoney, formatPct } from "@/util/for
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { investableShareUrl } from "@/util/shareLinks";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -1041,6 +1042,27 @@ function WatchlistActions({
   /** Optimistic override so ★ fills immediately on tap. */
   const [optimisticSaved, setOptimisticSaved] = useState<boolean | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
+  const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
+  const authSaveNavigationRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      authSaveNavigationRef.current = false;
+      setAuthSaveNavigationPending(false);
+    }, []),
+  );
+
+  function continueSaveThroughAuth() {
+    if (authSaveNavigationRef.current) return;
+    authSaveNavigationRef.current = true;
+    setAuthSaveNavigationPending(true);
+    try {
+      router.push(authSavePath({ ticker: sym, name, sector, source: "detail" }) as never);
+    } catch {
+      authSaveNavigationRef.current = false;
+      setAuthSaveNavigationPending(false);
+    }
+  }
 
   const wl = useQuery({
     queryKey: ["watchlist", token],
@@ -1138,15 +1160,16 @@ function WatchlistActions({
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
-            onPress={() =>
-              router.push(authSavePath({ ticker: sym, name, sector, source: "detail" }) as never)
-            }
+            onPress={continueSaveThroughAuth}
+            disabled={authSaveNavigationPending}
             style={({ pressed }) => [
               styles.actionBtn,
               styles.actionBtnActive,
+              authSaveNavigationPending && { opacity: 0.55 },
               pressed && { opacity: 0.7 },
             ]}
             accessibilityRole="button"
+            accessibilityState={{ disabled: authSaveNavigationPending }}
             accessibilityLabel={`Sign in to save ${sym}`}
           >
             <Ionicons name="star-outline" size={15} color={colors.accentInk} />

@@ -99,7 +99,13 @@ export default function AuthScreen() {
           },
           { token: sessionToken },
         );
-        router.replace(saveContinuationDestination(continuation) as never);
+        // Detail pushed Auth on top of this same ticker route. Going back
+        // restores that live screen and avoids Detail → Auth → Detail copies.
+        if (continuation.source === "detail" && router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace(saveContinuationDestination(continuation) as never);
+        }
       } else {
         router.replace("/(tabs)/map");
       }
@@ -122,6 +128,8 @@ export default function AuthScreen() {
     }
   }
 
+  const retryingVerifiedSave = Boolean(verifiedSessionToken.current && continuation);
+
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
@@ -139,7 +147,9 @@ export default function AuthScreen() {
                 ? continuation
                   ? `Sign in to save $${continuation.ticker}. We’ll return to its details when it’s saved.`
                   : "Enter your email — we'll send you a one-time code."
-                : `We sent a code to ${email}. Enter it below.`}
+                : retryingVerifiedSave
+                  ? `You’re signed in. Retry saving $${continuation?.ticker ?? "this ticker"}.`
+                  : `We sent a code to ${email}. Enter it below.`}
             </Text>
 
             <View style={styles.inputWrap}>
@@ -173,13 +183,15 @@ export default function AuthScreen() {
                   placeholder="6-digit code"
                   placeholderTextColor={colors.fgDim}
                   style={styles.input}
-                  onSubmitEditing={submitCode}
+                  editable={!retryingVerifiedSave}
+                  onSubmitEditing={retryingVerifiedSave ? undefined : submitCode}
                   accessibilityLabel="6-digit code"
+                  accessibilityState={{ disabled: retryingVerifiedSave }}
                 />
               )}
             </View>
 
-            {devCode && stage === "code" ? (
+            {devCode && stage === "code" && !retryingVerifiedSave ? (
               <Pressable
                 onPress={() => setCode(devCode)}
                 accessibilityRole="button"
@@ -206,7 +218,7 @@ export default function AuthScreen() {
               }
               onPress={stage === "email" ? sendLink : submitCode}
               busy={busy}
-              disabled={stage === "email" ? !email : !code}
+              disabled={stage === "email" ? !email : retryingVerifiedSave ? false : !code}
               style={{ marginTop: 4 }}
             />
 
