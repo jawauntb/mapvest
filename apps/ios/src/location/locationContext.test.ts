@@ -4,6 +4,7 @@ import {
   deviceOriginContext,
   fallbackContext,
   isRecentDeviceOrigin,
+  loadingContext,
   locationContextDescription,
   locationContextHeading,
   locationContextLabel,
@@ -14,6 +15,7 @@ import {
   sameLocationRegion,
   shouldApplyDeviceFix,
   transitionLocationContext,
+  visibleResultsForLocationContext,
 } from "./locationContext";
 
 const now = Date.parse("2026-08-25T12:00:00.000Z");
@@ -59,10 +61,14 @@ describe("location context precedence", () => {
   });
 
   test("starts loading around an explicit demo viewport when no origin exists", () => {
-    expect(resolveInitialLocationContext({})).toEqual({
-      kind: "loading",
-      region: DEMO_EXPLORE_REGION,
-    });
+    const loading = resolveInitialLocationContext({});
+    expect(loading).toEqual({ kind: "loading", region: DEMO_EXPLORE_REGION });
+    const cachedItems = [{ id: "cached-demo" }];
+    expect(visibleResultsForLocationContext(loading, cachedItems)).toEqual([]);
+    expect(visibleResultsForLocationContext(mapAreaContext(mapRegion, now), cachedItems)).toBe(
+      cachedItems,
+    );
+    expect(visibleResultsForLocationContext(loadingContext(), cachedItems)).toEqual([]);
   });
 });
 

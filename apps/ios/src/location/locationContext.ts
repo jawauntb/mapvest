@@ -145,6 +145,14 @@ export function resolveInitialLocationContext(input: {
   return contextFromPersistedLocation(input.persistedLocation) ?? loadingContext();
 }
 
+/** Keep cached query results hidden until the app has a truthful origin. */
+export function visibleResultsForLocationContext<T>(
+  state: LocationContextState,
+  results: T[],
+): T[] {
+  return state.kind === "loading" ? [] : results;
+}
+
 export function permissionDeniedContext(state: LocationContextState): LocationContextState {
   const previous = previousOrigin(state);
   return { kind: "permission-denied", region: state.region, previous };

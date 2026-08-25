@@ -21,6 +21,7 @@ import {
   resolveInitialLocationContext,
   shouldApplyDeviceFix,
   transitionLocationContext,
+  visibleResultsForLocationContext,
 } from "@/location/locationContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -243,16 +244,20 @@ export default function ListScreen() {
     });
     return decorated.map((x) => x.i);
   }, [q.data, sort, origin]);
+  const visibleItems = useMemo(
+    () => visibleResultsForLocationContext(locationContext, items),
+    [items, locationContext],
+  );
 
   const tickers = useMemo(() => {
     const out: string[] = [];
-    for (const i of items) {
+    for (const i of visibleItems) {
       const t = i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker;
       if (t && !out.includes(t)) out.push(t);
       if (out.length >= 20) break;
     }
     return out;
-  }, [items]);
+  }, [visibleItems]);
 
   const quotesQ = useQuery({
     queryKey: ["list-quotes", tickers.join(",")],
@@ -270,29 +275,29 @@ export default function ListScreen() {
   //   4. "Unknown" — rolled into "Other" by buildSegments if it's small.
   const sectorSegments = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const i of items) {
+    for (const i of visibleItems) {
       const inv = i.investable;
       const raw = inv?.brand.sector ?? i.place.types[0] ?? "Unknown";
       const key = (raw ?? "Unknown").trim() || "Unknown";
       counts[key] = (counts[key] ?? 0) + 1;
     }
     return buildSegments(counts, 6);
-  }, [items]);
+  }, [visibleItems]);
 
   // Build a `list` seed from the currently visible items — capped at 20 so
   // the resulting message doesn't balloon. Only real ticker + name info; we
   // never leak coordinates through the chat prefill.
   const chatSeedItems = useMemo(
     () =>
-      items.slice(0, 20).map((i) => ({
+      visibleItems.slice(0, 20).map((i) => ({
         ticker: i.investable?.brand.ticker?.symbol ?? i.investable?.comparables?.[0]?.ticker,
         name: i.place.name,
         sector: i.investable?.brand.sector,
       })),
-    [items],
+    [visibleItems],
   );
   const resolvingLocation = isLocating || locationContext.kind === "loading";
-  const nearbyLoading = q.isFetching && items.length === 0;
+  const nearbyLoading = q.isFetching && visibleItems.length === 0;
   const nearbyContext = isRecentDeviceOrigin(locationContext);
   const lastKnownContext =
     (locationContext.kind === "device-origin" && !nearbyContext) ||
@@ -319,14 +324,14 @@ export default function ListScreen() {
         </View>
       )}
       <View style={styles.chatPillWrap}>
-        {items.length > 0 ? (
+        {visibleItems.length > 0 ? (
           <ChatAboutButton
             label={`Chat about this ${listScope} list`}
             accessibilityLabel={`Chat about this ${listScope} list`}
             onPress={() =>
               openChatAbout(router, {
                 kind: "list",
-                label: `${items.length} ${listScope} brands`,
+                label: `${visibleItems.length} ${listScope} brands`,
                 items: chatSeedItems,
               })
             }
@@ -382,7 +387,7 @@ export default function ListScreen() {
             title="Could not load nearby brands"
             subtitle={(q.error as Error).message}
           />
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <EmptyState
             icon="location-outline"
             title={
@@ -413,7 +418,7 @@ export default function ListScreen() {
         ) : (
           <FlatList
             style={{ flex: 1 }}
-            data={items}
+            data={visibleItems}
             keyExtractor={(i) => i.place.id}
             renderItem={({ item }) => {
               const t =

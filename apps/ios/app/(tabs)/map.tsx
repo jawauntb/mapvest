@@ -25,6 +25,7 @@ import {
   sameLocationRegion,
   shouldApplyDeviceFix,
   transitionLocationContext,
+  visibleResultsForLocationContext,
 } from "@/location/locationContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, motion, radii } from "@/theme/tokens";
@@ -314,16 +315,20 @@ export default function MapScreen() {
         haversineMeters(a.place.location, center) - haversineMeters(b.place.location, center),
     );
   }, [nearbyQuery.data, region.latitude, region.longitude]);
-  const brandTickers = useMemo(() => brandTickerIndex(items), [items]);
+  const visibleItems = useMemo(
+    () => visibleResultsForLocationContext(locationContext, items),
+    [items, locationContext],
+  );
+  const brandTickers = useMemo(() => brandTickerIndex(visibleItems), [visibleItems]);
 
   const pinTickers = useMemo(() => {
     const out: string[] = [];
-    for (const item of items) {
+    for (const item of visibleItems) {
       const t = resolvePinTicker(item, brandTickers);
       if (t) out.push(t.symbol);
     }
     return [...new Set(out)];
-  }, [items, brandTickers]);
+  }, [visibleItems, brandTickers]);
 
   const quotesQuery = useQuery({
     queryKey: ["map-quotes", pinTickers.join(",")],
@@ -425,12 +430,12 @@ export default function MapScreen() {
    * only shrink the marker count below the existing nearby cap.
    */
   const mapItems = useMemo(
-    () => (showUncaught ? items : items.filter((item) => !isUncaught(item))),
-    [items, showUncaught, isUncaught],
+    () => (showUncaught ? visibleItems : visibleItems.filter((item) => !isUncaught(item))),
+    [visibleItems, showUncaught, isUncaught],
   );
   const uncaughtCount = useMemo(
-    () => items.reduce((n, item) => n + (isUncaught(item) ? 1 : 0), 0),
-    [items, isUncaught],
+    () => visibleItems.reduce((n, item) => n + (isUncaught(item) ? 1 : 0), 0),
+    [visibleItems, isUncaught],
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values intentionally reopen the native marker rasterization window when pin content changes
@@ -446,7 +451,7 @@ export default function MapScreen() {
     // Same for late find quotes: they only change the badge's ring ink, but ink
     // still has to be redrawn into the marker bitmap once.
   }, [
-    items,
+    visibleItems,
     quotesQuery.isFetching,
     quotesQuery.dataUpdatedAt,
     findQuotesQuery.dataUpdatedAt,
@@ -652,12 +657,12 @@ export default function MapScreen() {
       </View>
 
       <NearbySheet
-        items={items}
+        items={visibleItems}
         brandTickers={brandTickers}
         quotes={quotes}
         caughtTickers={caughtTickers}
         locationLoading={locationContext.kind === "loading" || isLocating}
-        nearbyLoading={nearbyQuery.isFetching && items.length === 0}
+        nearbyLoading={nearbyQuery.isFetching && visibleItems.length === 0}
         nearbyError={
           nearbyQuery.isError
             ? (nearbyQuery.error as Error).message || "Try again to load nearby brands."
