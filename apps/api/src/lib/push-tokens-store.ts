@@ -19,9 +19,10 @@
  *     unique (user_id, expo_token)
  *   )
  *
- * The `prefs` blob carries every per-event opt-in as a boolean AND a small
- * amount of scheduler state (last-known lat/lng, last daily-brief send date).
- * Keeping it JSONB keeps schema churn to zero as new event types land.
+ * The `prefs` blob carries every per-event opt-in as a boolean, the persisted
+ * product-level `notifications_enabled` mute, AND a small amount of scheduler
+ * state (last-known lat/lng, last daily-brief send date). Keeping it JSONB
+ * keeps schema churn to zero as new event types land.
  */
 import { dbEnabled, getSql, initDb } from "./db.js";
 
@@ -44,6 +45,8 @@ export const PUSH_EVENT_KEYS = [
 export type PushEventKey = (typeof PUSH_EVENT_KEYS)[number];
 
 export type PushPrefs = Partial<Record<PushEventKey, boolean>> & {
+  /** Product-level notification switch for this device. New tokens default false. */
+  notifications_enabled?: boolean;
   // Scheduler-tracked location (updated by client heartbeat).
   last_lat?: number;
   last_lng?: number;
@@ -63,6 +66,18 @@ export type PushToken = {
   lastSeenAt: string;
   createdAt: string;
 };
+
+/**
+ * Whether Mapvest is allowed to deliver notifications to this token.
+ *
+ * Tokens created before the master switch existed have no value. They are
+ * treated as enabled so an existing, explicitly opted-in event preference is
+ * not silently revoked by the migration. New registrations persist `false`
+ * until the user turns the master switch on in Settings.
+ */
+export function pushNotificationsEnabled(token: Pick<PushToken, "prefs">): boolean {
+  return token.prefs.notifications_enabled !== false;
+}
 
 const memory = new Map<string, PushToken>(); // id -> token
 const memoryByUser = new Map<string, Set<string>>(); // userId -> token ids
@@ -194,7 +209,7 @@ export async function registerPushToken(
       const id = newId();
       await sql`
         INSERT INTO push_tokens (id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at)
-        VALUES (${id}, ${userId}, ${deviceId ?? null}, ${expoToken}, ${platform}, ${"{}"}::jsonb, ${now}, ${now})
+        VALUES (${id}, ${userId}, ${deviceId ?? null}, ${expoToken}, ${platform}, ${JSON.stringify({ notifications_enabled: false })}::jsonb, ${now}, ${now})
       `;
       const tok: PushToken = {
         id,
@@ -202,7 +217,7 @@ export async function registerPushToken(
         deviceId,
         expoToken,
         platform,
-        prefs: {},
+        prefs: { notifications_enabled: false },
         lastSeenAt: now.toISOString(),
         createdAt: now.toISOString(),
       };
@@ -228,7 +243,7 @@ export async function registerPushToken(
     deviceId,
     expoToken,
     platform,
-    prefs: {},
+    prefs: { notifications_enabled: false },
     lastSeenAt: now.toISOString(),
     createdAt: now.toISOString(),
   };
@@ -348,6 +363,7 @@ export async function listTokensForEvent(eventKey: PushEventKey): Promise<PushTo
         SELECT id, user_id, device_id, expo_token, platform, prefs, last_seen_at, created_at
         FROM push_tokens
         WHERE (prefs ->> ${eventKey}) = 'true'
+          AND (prefs ->> 'notifications_enabled') IS DISTINCT FROM 'false'
         ORDER BY last_seen_at DESC
       `) as Row[];
       const out = rows.map(rowToToken);
@@ -363,7 +379,7 @@ export async function listTokensForEvent(eventKey: PushEventKey): Promise<PushTo
   for (const t of memory.values()) {
     if (t.prefs[eventKey] === true) out.push(t);
   }
-  return out;
+  return out.filter(pushNotificationsEnabled);
 }
 
 /** Same as `listTokensForEvent` but filters to a specific user. */
@@ -372,7 +388,7 @@ export async function listTokensForUserAndEvent(
   eventKey: PushEventKey,
 ): Promise<PushToken[]> {
   const all = await listTokensForUser(userId);
-  return all.filter((t) => t.prefs[eventKey] === true);
+  return all.filter((t) => t.prefs[eventKey] === true && pushNotificationsEnabled(t));
 }
 
 /** Test hook. */

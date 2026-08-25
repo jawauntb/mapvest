@@ -2,7 +2,7 @@
  * One-time Expo push token registration.
  *
  * Called from _layout.tsx after a session is ready. Flow:
- *   1. Request permission (idempotent — Expo NoOps if already granted/denied).
+ *   1. Read permission without prompting on launch.
  *   2. Fetch the device's Expo push token via projectId 'e3902302-…'.
  *   3. POST it to /v1/push/register with the current bearer.
  *   4. Store the returned server-issued id in expo-secure-store.
@@ -11,9 +11,10 @@
  * (userId, expoToken) unique) so a user who signs out of one account and back
  * into another lands their token under the new user.
  *
- * If permission is DENIED we still register the token — the spec says to
- * keep prefs disabled by default, so nothing pushes anyway, and if the user
- * later flips a toggle we already have a token to push to.
+ * A launch registration never asks iOS for permission. Settings passes
+ * `requestPermission: true` only after the user explicitly flips the master
+ * switch. If permission is denied there is no token to register until the
+ * user grants it in iOS Settings.
  *
  * On simulator: `Device.isDevice` is false, so we skip the whole thing —
  * simulator Expo tokens don't work anyway.
@@ -78,11 +79,22 @@ export async function ensurePermissions(): Promise<boolean> {
  */
 export async function registerForPush(
   session: { token: string } | null,
+  options: { requestPermission?: boolean } = {},
 ): Promise<RegisterResult | null> {
   if (!session?.token) return null;
   if (!Device.isDevice) return null;
 
-  const permissionGranted = await ensurePermissions();
+  let permissionGranted = false;
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    permissionGranted = current.status === "granted";
+    if (!permissionGranted && options.requestPermission) {
+      permissionGranted = await ensurePermissions();
+    }
+  } catch {
+    return null;
+  }
+  if (!permissionGranted) return null;
 
   let expoToken: string;
   try {
