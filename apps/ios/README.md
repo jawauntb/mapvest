@@ -71,6 +71,22 @@ serialized so simultaneous enqueue, flush, and removal cannot overwrite jobs;
 an account switch aborts the stale flush and leaves its remaining jobs for the
 matching account's next session.
 
+New queue entries first copy their image to Mapvest's private
+`documentDirectory/mapvest-photo-queue/` folder. The queue persists only that
+managed URI and removes it after a confirmed upload or an explicit discard; it
+never deletes the original Camera or library URI. Corrupt, truncated,
+malformed, or unknown-version payloads are **not** treated as an empty queue:
+their exact raw value is retained under a private quarantine key, uploads and
+new captures stop, and Camera provides an accessible, informed discard action.
+That action clears only the active queue; the quarantine copy remains for local
+diagnostics.
+
+**Known follow-up (P2):** `/v1/identify` has no client idempotency key. If the
+server accepts an upload but the app crashes or AsyncStorage fails before its
+queue record can be removed, a later retry can submit it again. The client
+avoids retrying after a successful local removal, but a durable end-to-end
+guarantee needs server-supported identify idempotency.
+
 ## Build (EAS)
 
 Production TestFlight is automatic: green `ci` on `main` runs

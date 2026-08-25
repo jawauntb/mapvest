@@ -1,13 +1,22 @@
 import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type QueueRecovery,
   type QueuedPhoto,
   flushQueue,
   queueScopeForUser,
   queueScopeKey,
   queueStatus,
+  resetUnrecoverableQueue,
   subscribeToQueue,
 } from "./photoQueue";
+
+type ScopedQueueState = {
+  scopeKey: string;
+  pending: QueuedPhoto[];
+  legacyCount: number;
+  recovery: QueueRecovery | null;
+};
 
 /**
  * Watches connectivity via NetInfo; when the device comes back online it
@@ -18,13 +27,19 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
   online: boolean;
   pending: QueuedPhoto[];
   legacyCount: number;
+  recovery: QueueRecovery | null;
   flushNow: () => Promise<void>;
+  resetRecovery: () => Promise<void>;
 } {
   const [online, setOnline] = useState(true);
-  const [pending, setPending] = useState<QueuedPhoto[]>([]);
-  const [legacyCount, setLegacyCount] = useState(0);
   const scope = useMemo(() => queueScopeForUser(opts.userId), [opts.userId]);
   const scopeKey = queueScopeKey(scope);
+  const [queueState, setQueueState] = useState<ScopedQueueState>(() => ({
+    scopeKey,
+    pending: [],
+    legacyCount: 0,
+    recovery: null,
+  }));
   const activeScopeKey = useRef(scopeKey);
   // Update during render so an async completion from the prior account cannot
   // briefly replace this account's pending count before effect cleanup runs.
@@ -37,9 +52,13 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
   const refresh = useCallback(async () => {
     const status = await queueStatus(scope);
     if (activeScopeKey.current !== scopeKey) return;
-    setPending(status.pending);
-    setLegacyCount(status.legacyCount);
+    setQueueState({ scopeKey, ...status });
   }, [scope, scopeKey]);
+
+  const resetRecovery = useCallback(async () => {
+    await resetUnrecoverableQueue();
+    await refresh();
+  }, [refresh]);
 
   const flushNow = useCallback(async () => {
     const existing = flushing.current.get(scopeKey);
@@ -96,5 +115,15 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
     if (online) void flushNow();
   }, [flushNow, online]);
 
-  return { online, pending, legacyCount, flushNow };
+  // The state for A must never paint during B's render, even for one frame
+  // before the async status read completes.
+  const visibleQueue = queueState.scopeKey === scopeKey ? queueState : null;
+  return {
+    online,
+    pending: visibleQueue?.pending ?? [],
+    legacyCount: visibleQueue?.legacyCount ?? 0,
+    recovery: visibleQueue?.recovery ?? null,
+    flushNow,
+    resetRecovery,
+  };
 }

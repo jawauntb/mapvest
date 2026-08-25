@@ -6,9 +6,11 @@ import { identifyPhoto } from "@/api/client";
 import { isQuotaExceeded } from "@/api/errors";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { photoQueueFiles } from "./photoQueueFiles";
 import {
   type FlushQueueOptions,
   type FlushResult,
+  type QueueRecovery,
   type QueueScope,
   type QueueStatus,
   type QueuedPhoto,
@@ -16,9 +18,11 @@ import {
 } from "./photoQueueStore";
 
 export {
+  PHOTO_QUEUE_QUARANTINE_STORAGE_KEY,
   PHOTO_QUEUE_STORAGE_KEY,
   type FlushQueueOptions,
   type FlushResult,
+  type QueueRecovery,
   type QueueScope,
   type QueueStatus,
   type QueuedPhoto,
@@ -28,6 +32,7 @@ export {
 
 const queue = createPhotoQueue({
   storage: AsyncStorage,
+  files: photoQueueFiles,
   upload: (input) =>
     identifyPhoto(
       { imageUri: input.imageUri, location: input.location },
@@ -43,6 +48,11 @@ export function listQueue(scope: QueueScope): Promise<QueuedPhoto[]> {
 
 export function queueStatus(scope: QueueScope): Promise<QueueStatus> {
   return queue.status(scope);
+}
+
+/** Explicitly discard unreadable active queue data; its quarantine copy remains private. */
+export function resetUnrecoverableQueue(): Promise<void> {
+  return queue.resetRecovery();
 }
 
 export function enqueuePhoto(input: {

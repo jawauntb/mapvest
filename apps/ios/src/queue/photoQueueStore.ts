@@ -1,6 +1,7 @@
 import type { IdentifyResponse, LatLng } from "@/api/types";
 
 export const PHOTO_QUEUE_STORAGE_KEY = "mapvest.photoQueue.v1";
+export const PHOTO_QUEUE_QUARANTINE_STORAGE_KEY = "mapvest.photoQueue.quarantine.v1";
 
 export type GuestQueueScope = { kind: "guest" };
 export type AuthenticatedQueueScope = { kind: "authenticated"; userId: string };
@@ -23,16 +24,33 @@ export type QueuedPhoto = QueuePhotoFields & { scope: QueueScope };
 
 type StoredQueuedPhoto = QueuePhotoFields & { scope: StoredQueueScope };
 
+export type QueueRecovery = {
+  kind: "corrupt" | "malformed" | "unsupported-version" | "storage-unavailable";
+  message: string;
+  /** Whether the exact unreadable payload was copied to the private quarantine key. */
+  quarantined: boolean;
+};
+
 export type QueueStatus = {
   /** Only jobs that the active guest/account can upload. */
   pending: QueuedPhoto[];
   /** Old v1 jobs, deliberately excluded from every active scope. */
   legacyCount: number;
+  /** Queue changes are blocked until the person explicitly discards unreadable data. */
+  recovery: QueueRecovery | null;
 };
 
 export type QueueStorage = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+};
+
+/** Keeps queue image bytes in a private, durable app directory. */
+export type QueueFileAdapter = {
+  copy(sourceUri: string, itemId: string): Promise<string>;
+  delete(managedUri: string): Promise<void>;
+  isManagedUri(uri: string): boolean;
 };
 
 export type QueueUpload = (input: {
@@ -44,6 +62,7 @@ export type QueueUpload = (input: {
 
 export type PhotoQueueDependencies = {
   storage: QueueStorage;
+  files: QueueFileAdapter;
   upload: QueueUpload;
   isQuotaExceeded: (error: unknown) => boolean;
   markAuthenticatedFindRefresh?: (token: string) => void;
@@ -64,10 +83,15 @@ export type FlushResult =
   | { id: string; ok: false; error: string };
 
 type QueueFileV1 = { version: 1; items: unknown[] };
-type QueueFileV2 = { version: 2; items: StoredQueuedPhoto[] };
+type QueueFileV3 = { version: 3; items: StoredQueuedPhoto[] };
+type ParsedQueue =
+  | { kind: "ok"; file: QueueFileV3; migrated: boolean }
+  | { kind: "recovery"; raw: string; recoveryKind: QueueRecovery["kind"] };
 
 const GUEST_SCOPE: GuestQueueScope = { kind: "guest" };
 const LEGACY_SCOPE: LegacyQueueScope = { kind: "legacy-unscoped" };
+const RECOVERY_MESSAGE =
+  "Offline queue data needs recovery before another photo can be queued or uploaded.";
 
 /**
  * Queue ownership is deliberately stable and non-secret. Bearer tokens are
@@ -107,14 +131,30 @@ function parseLocation(value: unknown): LatLng | undefined {
 }
 
 function parsePhotoFields(value: unknown): QueuePhotoFields | undefined {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.imageUri !== "string") {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !value.id ||
+    typeof value.imageUri !== "string" ||
+    !value.imageUri ||
+    typeof value.createdAt !== "number" ||
+    !Number.isFinite(value.createdAt) ||
+    typeof value.attempts !== "number" ||
+    !Number.isInteger(value.attempts) ||
+    value.attempts < 0
+  ) {
     return undefined;
   }
-  const createdAt = typeof value.createdAt === "number" ? value.createdAt : 0;
-  const attempts = typeof value.attempts === "number" && value.attempts >= 0 ? value.attempts : 0;
-  const location = parseLocation(value.location);
-  const lastError = typeof value.lastError === "string" ? value.lastError : undefined;
-  return { id: value.id, imageUri: value.imageUri, location, createdAt, attempts, lastError };
+  if (value.location !== undefined && !parseLocation(value.location)) return undefined;
+  if (value.lastError !== undefined && typeof value.lastError !== "string") return undefined;
+  return {
+    id: value.id,
+    imageUri: value.imageUri,
+    location: parseLocation(value.location),
+    createdAt: value.createdAt,
+    attempts: value.attempts,
+    lastError: typeof value.lastError === "string" ? value.lastError : undefined,
+  };
 }
 
 function parseStoredScope(value: unknown): StoredQueueScope | undefined {
@@ -132,41 +172,45 @@ function parseV1Item(value: unknown): StoredQueuedPhoto | undefined {
   return fields ? { ...fields, scope: LEGACY_SCOPE } : undefined;
 }
 
-function parseV2Item(value: unknown): StoredQueuedPhoto | undefined {
+function parseV3Item(value: unknown, files: QueueFileAdapter): StoredQueuedPhoto | undefined {
   const fields = parsePhotoFields(value);
-  if (!fields) return undefined;
-  // A malformed v2 item is treated exactly like v1: never infer ownership.
-  return {
-    ...fields,
-    scope: parseStoredScope(isRecord(value) ? value.scope : undefined) ?? LEGACY_SCOPE,
-  };
+  const scope = parseStoredScope(isRecord(value) ? value.scope : undefined);
+  if (!fields || !scope) return undefined;
+  // Legacy v1 records are never uploaded or deleted. Every usable v3 job must
+  // name a path our file adapter recognizes as queue-owned.
+  if (scope.kind !== "legacy-unscoped" && !files.isManagedUri(fields.imageUri)) return undefined;
+  return { ...fields, scope };
 }
 
-function parseQueue(raw: string | null): { file: QueueFileV2; migrated: boolean } {
-  if (!raw) return { file: { version: 2, items: [] }, migrated: false };
+function parseQueue(raw: string | null, files: QueueFileAdapter): ParsedQueue {
+  if (!raw) return { kind: "ok", file: { version: 3, items: [] }, migrated: false };
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed) || !Array.isArray(parsed.items)) {
-      return { file: { version: 2, items: [] }, migrated: false };
+      return { kind: "recovery", raw, recoveryKind: "malformed" };
     }
     if (parsed.version === 1) {
-      const legacy = (parsed as QueueFileV1).items.flatMap((item) => {
-        const next = parseV1Item(item);
-        return next ? [next] : [];
-      });
-      return { file: { version: 2, items: legacy }, migrated: true };
+      const items: StoredQueuedPhoto[] = [];
+      for (const value of (parsed as QueueFileV1).items) {
+        const item = parseV1Item(value);
+        if (!item) return { kind: "recovery", raw, recoveryKind: "malformed" };
+        items.push(item);
+      }
+      return { kind: "ok", file: { version: 3, items }, migrated: true };
     }
-    if (parsed.version === 2) {
-      const stored = (parsed as { items: unknown[] }).items.flatMap((item) => {
-        const next = parseV2Item(item);
-        return next ? [next] : [];
-      });
-      return { file: { version: 2, items: stored }, migrated: false };
+    if (parsed.version === 3) {
+      const items: StoredQueuedPhoto[] = [];
+      for (const value of parsed.items) {
+        const item = parseV3Item(value, files);
+        if (!item) return { kind: "recovery", raw, recoveryKind: "malformed" };
+        items.push(item);
+      }
+      return { kind: "ok", file: { version: 3, items }, migrated: false };
     }
+    return { kind: "recovery", raw, recoveryKind: "unsupported-version" };
   } catch {
-    // A corrupt queue cannot safely be attributed to any account.
+    return { kind: "recovery", raw, recoveryKind: "corrupt" };
   }
-  return { file: { version: 2, items: [] }, migrated: false };
 }
 
 function belongsToScope(item: StoredQueuedPhoto, scope: QueueScope): item is QueuedPhoto {
@@ -181,10 +225,24 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function recoveryMessage(kind: QueueRecovery["kind"]): string {
+  if (kind === "unsupported-version") {
+    return "This offline queue was created by a newer app version and is protected until you discard it.";
+  }
+  if (kind === "storage-unavailable") {
+    return "Offline queue storage is unavailable, so no photo can be queued safely right now.";
+  }
+  return "Offline queue data is unreadable and is protected until you discard it.";
+}
+
+function recoveryError(recovery: QueueRecovery): Error {
+  return new Error(`${RECOVERY_MESSAGE} ${recovery.message}`);
+}
+
 /**
  * Creates the serialized queue used by the React Native adapter and unit
  * tests. Every storage read and write shares one critical section, while
- * network uploads run outside it so new captures are never blocked.
+ * network uploads and durable file copies run outside it.
  */
 export function createPhotoQueue(deps: PhotoQueueDependencies) {
   let storageTail: Promise<void> = Promise.resolve();
@@ -212,25 +270,95 @@ export function createPhotoQueue(deps: PhotoQueueDependencies) {
     }
   }
 
-  async function load(): Promise<{ file: QueueFileV2; migrated: boolean }> {
-    return parseQueue(await deps.storage.getItem(PHOTO_QUEUE_STORAGE_KEY));
+  async function load(): Promise<ParsedQueue> {
+    return parseQueue(await deps.storage.getItem(PHOTO_QUEUE_STORAGE_KEY), deps.files);
   }
 
-  async function persist(file: QueueFileV2): Promise<void> {
+  async function persist(file: QueueFileV3): Promise<void> {
     await deps.storage.setItem(PHOTO_QUEUE_STORAGE_KEY, JSON.stringify(file));
+  }
+
+  async function quarantine(loaded: Extract<ParsedQueue, { kind: "recovery" }>): Promise<void> {
+    // Keep the raw source key untouched. This copy is intentionally exact so
+    // diagnostics can distinguish a corrupt record from an empty queue.
+    await deps.storage.setItem(PHOTO_QUEUE_QUARANTINE_STORAGE_KEY, loaded.raw);
   }
 
   async function status(scope: QueueScope): Promise<QueueStatus> {
     const activeScope = cloneScope(scope);
     return serialized(async () => {
-      const loaded = await load();
-      if (loaded.migrated) await persist(loaded.file);
-      return {
-        pending: loaded.file.items.filter((item) => belongsToScope(item, activeScope)),
-        legacyCount: loaded.file.items.filter((item) => item.scope.kind === "legacy-unscoped")
-          .length,
-      };
+      try {
+        const loaded = await load();
+        if (loaded.kind === "recovery") {
+          let quarantined = false;
+          try {
+            await quarantine(loaded);
+            quarantined = true;
+          } catch {
+            // The original raw value remains in place; never replace it with
+            // an empty queue when a recovery copy cannot be written.
+          }
+          return {
+            pending: [],
+            legacyCount: 0,
+            recovery: {
+              kind: loaded.recoveryKind,
+              message: recoveryMessage(loaded.recoveryKind),
+              quarantined,
+            },
+          };
+        }
+        if (loaded.migrated) await persist(loaded.file);
+        return {
+          pending: loaded.file.items.filter((item) => belongsToScope(item, activeScope)),
+          legacyCount: loaded.file.items.filter((item) => item.scope.kind === "legacy-unscoped")
+            .length,
+          recovery: null,
+        };
+      } catch {
+        return {
+          pending: [],
+          legacyCount: 0,
+          recovery: {
+            kind: "storage-unavailable",
+            message: recoveryMessage("storage-unavailable"),
+            quarantined: false,
+          },
+        };
+      }
     });
+  }
+
+  async function writableFile(): Promise<QueueFileV3> {
+    const loaded = await load();
+    if (loaded.kind === "recovery") {
+      await quarantine(loaded);
+      throw recoveryError({
+        kind: loaded.recoveryKind,
+        message: recoveryMessage(loaded.recoveryKind),
+        quarantined: true,
+      });
+    }
+    if (loaded.migrated) await persist(loaded.file);
+    return loaded.file;
+  }
+
+  async function deleteManaged(uri: string): Promise<void> {
+    if (!deps.files.isManagedUri(uri)) {
+      throw new Error("Refusing to delete a photo outside Mapvest's private queue folder");
+    }
+    await deps.files.delete(uri);
+  }
+
+  async function cleanupFailedEnqueue(uri: string, error: unknown): Promise<never> {
+    try {
+      await deleteManaged(uri);
+    } catch (cleanupError) {
+      throw new Error(
+        `${errorMessage(error)} The private queue copy could not be removed: ${errorMessage(cleanupError)}`,
+      );
+    }
+    throw error;
   }
 
   async function enqueue(input: {
@@ -239,52 +367,90 @@ export function createPhotoQueue(deps: PhotoQueueDependencies) {
     scope: QueueScope;
   }): Promise<QueuedPhoto> {
     const scope = cloneScope(input.scope);
-    const item = await serialized(async () => {
-      const loaded = await load();
-      const next: QueuedPhoto = {
-        id: createId(),
-        imageUri: input.imageUri,
-        location: input.location,
-        createdAt: now(),
-        attempts: 0,
-        scope,
-      };
-      loaded.file.items.push(next);
-      await persist(loaded.file);
-      return next;
+    // Fail before creating a durable copy when recovery is required.
+    await serialized(writableFile);
+
+    const id = createId();
+    const imageUri = await deps.files.copy(input.imageUri, id);
+    if (!deps.files.isManagedUri(imageUri)) {
+      throw new Error("Offline photo copy did not land in Mapvest's private queue folder");
+    }
+
+    try {
+      const item = await serialized(async () => {
+        const file = await writableFile();
+        const next: QueuedPhoto = {
+          id,
+          imageUri,
+          location: input.location,
+          createdAt: now(),
+          attempts: 0,
+          scope,
+        };
+        file.items.push(next);
+        await persist(file);
+        return next;
+      });
+      notify();
+      return item;
+    } catch (error) {
+      return cleanupFailedEnqueue(imageUri, error);
+    }
+  }
+
+  async function removeRecord(id: string, scope: QueueScope): Promise<QueuedPhoto | undefined> {
+    const activeScope = cloneScope(scope);
+    let removed: QueuedPhoto | undefined;
+    await serialized(async () => {
+      const file = await writableFile();
+      const items = file.items.filter((item) => {
+        const shouldRemove = item.id === id && belongsToScope(item, activeScope);
+        if (shouldRemove) removed = item;
+        return !shouldRemove;
+      });
+      if (removed) await persist({ version: 3, items });
     });
-    notify();
-    return item;
+    return removed;
   }
 
   async function remove(id: string, scope: QueueScope): Promise<void> {
-    const activeScope = cloneScope(scope);
-    let changed = false;
-    await serialized(async () => {
-      const loaded = await load();
-      const items = loaded.file.items.filter((item) => {
-        const shouldRemove = item.id === id && belongsToScope(item, activeScope);
-        changed ||= shouldRemove;
-        return !shouldRemove;
-      });
-      if (changed || loaded.migrated) await persist({ version: 2, items });
-    });
-    if (changed) notify();
+    const removed = await removeRecord(id, scope);
+    if (!removed) return;
+    try {
+      await deleteManaged(removed.imageUri);
+    } finally {
+      notify();
+    }
   }
 
   async function markAttempt(id: string, scope: QueueScope, error?: string): Promise<void> {
     const activeScope = cloneScope(scope);
     let changed = false;
     await serialized(async () => {
-      const loaded = await load();
-      const items = loaded.file.items.map((item) => {
+      const file = await writableFile();
+      const items = file.items.map((item) => {
         if (item.id !== id || !belongsToScope(item, activeScope)) return item;
         changed = true;
         return { ...item, attempts: item.attempts + 1, lastError: error };
       });
-      if (changed || loaded.migrated) await persist({ version: 2, items });
+      if (changed) await persist({ version: 3, items });
     });
     if (changed) notify();
+  }
+
+  async function resetRecovery(): Promise<void> {
+    let reset = false;
+    await serialized(async () => {
+      const loaded = await load();
+      if (loaded.kind === "ok") return;
+      // Retain the exact quarantine payload for diagnostics. The person has
+      // explicitly chosen to discard it from uploads by clearing only the
+      // active queue key.
+      await quarantine(loaded);
+      await deps.storage.removeItem(PHOTO_QUEUE_STORAGE_KEY);
+      reset = true;
+    });
+    if (reset) notify();
   }
 
   async function doFlush(options: FlushQueueOptions): Promise<FlushResult[]> {
@@ -294,9 +460,10 @@ export function createPhotoQueue(deps: PhotoQueueDependencies) {
     const requestToken = scope.kind === "authenticated" ? token : undefined;
     if (scope.kind === "authenticated" && !requestToken) return [];
 
-    const items = (await status(scope)).pending;
+    const queueStatus = await status(scope);
+    if (queueStatus.recovery) return [];
     const results: FlushResult[] = [];
-    for (const item of items) {
+    for (const item of queueStatus.pending) {
       if (!canContinue(options)) break;
       try {
         const response = await deps.upload({
@@ -305,12 +472,19 @@ export function createPhotoQueue(deps: PhotoQueueDependencies) {
           token: requestToken,
           signal: options.signal,
         });
-        // The upload can finish after an account switch. Removing this already
-        // completed item's old-scope record is safe; the current scope never
-        // receives its UI update, and no token is persisted.
-        await remove(item.id, scope);
         if (scope.kind === "authenticated" && requestToken && response.investables.length > 0) {
           deps.markAuthenticatedFindRefresh?.(requestToken);
+        }
+        const removed = await removeRecord(item.id, scope);
+        if (removed) {
+          try {
+            await deleteManaged(removed.imageUri);
+          } catch (cleanupError) {
+            // The queue record is gone, so this will not re-upload. Report the
+            // cleanup miss for diagnostics without pretending the photo queued.
+            console.warn("[photo-queue] completed copy cleanup failed:", cleanupError);
+          }
+          notify();
         }
         results.push({ id: item.id, ok: true, response });
       } catch (error) {
@@ -345,6 +519,7 @@ export function createPhotoQueue(deps: PhotoQueueDependencies) {
     flush,
     markAttempt,
     remove,
+    resetRecovery,
     status,
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
