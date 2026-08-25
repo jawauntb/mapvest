@@ -1,7 +1,7 @@
 /**
  * Your universe — the full finds journal. Every camera identify lands here,
  * grouped day by day. Home shows the 8 newest as a strip; this screen is the
- * whole record. Shares the ["finds", token] cache with Home.
+ * whole record. Uses a distinct 200-row finds cache from Home's 100-row view.
  */
 import {
   type DexRarity,
@@ -34,6 +34,8 @@ import { ScreenFade } from "@/components/ScreenFade";
 import { ShareButton } from "@/components/ShareButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { UniverseShareCard } from "@/components/UniverseShareCard";
+import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
+import { findsQueryKey } from "@/finds/queryKeys";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
@@ -41,8 +43,8 @@ import { shareBriefImage } from "@/util/share";
 import { canStartShareAttempt, isShareCardReady } from "@/util/shareReadiness";
 import { universeShareCopy } from "@/util/universeShare";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -101,10 +103,18 @@ const RARITY_COLORS: Record<DexRarity, string> = {
 
 export default function UniverseScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { session } = useSession();
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!session?.token) return;
+      return refreshFindSurfacesOnFocus(qc, session.token);
+    }, [qc, session?.token]),
+  );
+
   const findsQ = useQuery({
-    queryKey: ["finds", session?.token],
+    queryKey: findsQueryKey(session?.token, 200),
     queryFn: () => listFinds({ token: session?.token }, 200),
     enabled: !!session?.token,
     staleTime: 60_000,

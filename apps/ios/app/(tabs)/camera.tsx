@@ -16,6 +16,7 @@ import { CameraDetectionOverlay, type OverlayDetection } from "@/components/Came
 import { EvidenceSection } from "@/components/EvidenceSection";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
 import { enqueuePhoto } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
@@ -291,6 +292,7 @@ export default function CameraScreen() {
         setResult(resp);
         persistCamera({ result: resp, err: null });
         void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
+        if (session?.token && resp.investables.length > 0) markFindRefreshPending(session.token);
         if (resp.investables.length > 0) hapticSuccess();
       } catch (e) {
         if (presentPaywallIfQuota(e, presentPaywall)) {

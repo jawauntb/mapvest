@@ -44,6 +44,15 @@ in `eas.json`.
   `EXPO_PUBLIC_UNDERLYING_API_URL`. Below it: Research, Save/memo, comps,
   ETFs, SEC, news, agent brief.
 
+Home and Your universe refresh their signed-in finds, progression, summary,
+dex, and quests data only after that session successfully identifies at least
+one investable in Camera. The first refresh runs on focus and one cancellable
+follow-up covers the short window in which the identify endpoint records a find
+after its response has returned; blurring preserves that pending work for the
+next eligible focus. Find observers use limit-aware cache keys (100 rows for
+Home/Map and 200 for Your universe/Orbit), while focus invalidation uses the
+shared `finds/{token}` prefix to update both projections.
+
 ## Offline photo queue
 
 `src/queue/photoQueue.ts` persists pending captures to AsyncStorage and
