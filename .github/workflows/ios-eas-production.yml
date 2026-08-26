@@ -26,13 +26,66 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  eas-ios:
-    name: eas build + auto-submit (ios production)
-    runs-on: ubuntu-latest
+  signing_preflight:
+    name: local production signing preflight
+    runs-on: macos-15
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main')
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # SDK 54's pinned EAS image uses Xcode 26.0. GitHub currently provides
+      # 26.0.1 at this stable path, avoiding its moving default generation.
+      - name: Match EAS Xcode toolchain
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.0.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install monorepo dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install iOS dependencies
+        working-directory: apps/ios
+        run: npm install --no-workspaces
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 22.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # This uses the production certificate and profiles without reserving a
+      # remote build number. Capability/profile drift therefore fails here,
+      # before the cloud build and App Store submission are created.
+      - name: Build and sign production locally
+        working-directory: apps/ios
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: >
+          eas build
+          --platform ios
+          --profile production-preflight
+          --local
+          --non-interactive
+          --output "$RUNNER_TEMP/mapvest-signing-preflight.ipa"
+
+  eas-ios:
+    name: eas build + auto-submit (ios production)
+    needs: signing_preflight
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
@@ -58,7 +111,7 @@ jobs:
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 22.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       # Wait so a PRE_INSTALL / compile failure turns this check red.

@@ -33,7 +33,11 @@
         "googleMapsApiKey": "$IOS_GOOGLE_MAPS_API_KEY"
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"]
+        "com.apple.security.application-groups": ["group.com.mapvest.app.widget"],
+        "com.apple.developer.associated-domains": [
+          "applinks:mapvest.app",
+          "applinks:www.mapvest.app"
+        ]
       }
     },
     "android": {
@@ -87,6 +91,7 @@
             "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true
           },
+          "iosAppGroupIdentifier": "group.com.mapvest.app.widget",
           "iosShareExtensionName": "Share to Mapvest",
           "androidIntentFilters": ["text/*", "image/*"]
         }
