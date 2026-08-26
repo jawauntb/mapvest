@@ -52,9 +52,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Animated, {
+  Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -1025,18 +1028,44 @@ function IdentifyProgress({ stage }: { stage: IdentifyProgressStage }) {
 
 function IdentifyStep({ label, status }: { label: string; status: "active" | "done" | "next" }) {
   const isDone = status === "done";
+  const isActive = status === "active";
+  const reduceMotion = useReducedMotion();
+  // Breathing pulse on the active dot — a static amber dot reads as "stuck"
+  // even while the request is in flight. Same opacity loop as Skeleton.
+  const pulse = useSharedValue(1);
+
+  useEffect(() => {
+    if (isActive && !reduceMotion) {
+      pulse.value = 0.35;
+      pulse.value = withRepeat(
+        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      );
+    } else {
+      cancelAnimation(pulse);
+      pulse.value = 1;
+    }
+    return () => cancelAnimation(pulse);
+  }, [isActive, reduceMotion, pulse]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: pulse.value,
+    transform: [{ scale: 0.85 + pulse.value * 0.3 }],
+  }));
 
   return (
     <View style={styles.identifyStep}>
-      <View
+      <Animated.View
         style={[
           styles.identifyStepDot,
-          status === "active" && styles.identifyStepDotActive,
+          isActive && styles.identifyStepDotActive,
           isDone && styles.identifyStepDotDone,
+          isActive ? pulseStyle : null,
         ]}
       >
         {isDone ? <Ionicons name="checkmark" size={10} color={colors.accentInk} /> : null}
-      </View>
+      </Animated.View>
       <Text
         style={[styles.identifyStepLabel, status !== "next" && styles.identifyStepLabelCurrent]}
       >
