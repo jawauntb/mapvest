@@ -25,6 +25,13 @@ export function investableShareUrl(tickerOrBrand: string): string {
  */
 export function redirectMapvestWebPath(path: string): string {
   try {
+    // React Native's URL polyfill mis-parses absolute URLs with custom
+    // schemes when a base is supplied (`new URL("mapvest://…", base)` comes
+    // back as an https mapvest.app URL), which would defeat the host guard
+    // below. Reject non-https schemes by string before constructing the URL;
+    // scheme-less web paths ("/app/ticker/X") still fall through to the base.
+    const scheme = path.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
+    if (scheme && scheme !== "https") return path;
     const url = new URL(path, MAPVEST_URL);
     if (url.protocol !== "https:" || !MAPVEST_WEB_HOSTS.has(url.hostname.toLowerCase())) {
       return path;

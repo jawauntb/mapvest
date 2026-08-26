@@ -26,6 +26,7 @@ import {
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
 import { BacktestCard } from "@/components/BacktestCard";
+import { DailyBriefCard } from "@/components/DailyBriefCard";
 import { EmptyState } from "@/components/EmptyState";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
@@ -232,6 +233,13 @@ export default function WatchlistDetailScreen() {
               </View>
 
               {session?.token ? <BacktestCard tickers={tickers} token={session.token} /> : null}
+
+              {/* Per-list Mapvest Daily. Mounted only on this page, so the
+                  list's brief is generated lazily — nothing is fetched for a
+                  list until the user actually opens it. */}
+              {session?.token && tickers.length > 0 ? (
+                <DailyBriefCard token={session.token} tickers={tickers} listId={listId} />
+              ) : null}
 
               <Text style={styles.sectionTitle}>Tickers</Text>
               <Text style={styles.count}>{entries.length} in this list</Text>

@@ -312,6 +312,12 @@ export async function generateWatchlistBrief(params: {
   userId: string;
   entries: WatchEntry[];
   now?: Date;
+  /**
+   * When false, generation never fires the daily-brief push. Used for
+   * on-demand per-list briefs (a user browsing a non-default list) — only
+   * the default list's brief may notify. Defaults to true.
+   */
+  notify?: boolean;
 }): Promise<DailyBrief> {
   const now = params.now ?? new Date();
   pruneExpired();
@@ -350,8 +356,10 @@ export async function generateWatchlistBrief(params: {
   // Fire-and-forget push. Opted-in tokens receive the brief; dedupe key
   // ensures a same-day cache-hit path doesn't re-notify. Never blocks the
   // primary response — a push failure must never break the brief endpoint.
-  onDailyBriefGenerated(params.userId, brief).catch(() => {
-    /* silent — see push-dispatcher for logging */
-  });
+  if (params.notify !== false) {
+    onDailyBriefGenerated(params.userId, brief).catch(() => {
+      /* silent — see push-dispatcher for logging */
+    });
+  }
   return brief;
 }

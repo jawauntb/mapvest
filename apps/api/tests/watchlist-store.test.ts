@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   attachWatchMemo,
+  createWatchList,
+  deleteWatchList,
+  ensureDefaultList,
   listWatchEntries,
+  listWatchLists,
   removeWatchEntry,
+  setDefaultWatchList,
   upsertWatchEntry,
 } from "../src/lib/watchlist-store.js";
 
@@ -62,5 +67,54 @@ describe("watchlist-store (in-memory)", () => {
     expect(await removeWatchEntry(uid, "JPM")).toBe(true);
     const items = await listWatchEntries(uid);
     expect(items.some((e) => e.ticker === "JPM")).toBe(false);
+  });
+
+  test("setDefaultWatchList promotes a list and demotes the old default", async () => {
+    const uid = `${userId}_default`;
+    const original = await ensureDefaultList(uid);
+    const nypc = await createWatchList(uid, "nypc");
+    expect(nypc.isDefault).toBe(false);
+
+    const promoted = await setDefaultWatchList(uid, nypc.id);
+    expect(promoted?.id).toBe(nypc.id);
+    expect(promoted?.isDefault).toBe(true);
+
+    const lists = await listWatchLists(uid);
+    const defaults = lists.filter((l) => l.isDefault);
+    expect(defaults.length).toBe(1);
+    expect(defaults[0]?.id).toBe(nypc.id);
+    expect(lists.find((l) => l.id === original.id)?.isDefault).toBe(false);
+    // Default-first ordering follows the reassignment.
+    expect(lists[0]?.id).toBe(nypc.id);
+  });
+
+  test("setDefaultWatchList returns null for an unknown list", async () => {
+    const uid = `${userId}_default_missing`;
+    await ensureDefaultList(uid);
+    expect(await setDefaultWatchList(uid, "wl_nope")).toBeNull();
+  });
+
+  test("default fallback in listWatchEntries follows the reassigned default", async () => {
+    const uid = `${userId}_default_entries`;
+    const original = await ensureDefaultList(uid);
+    await upsertWatchEntry(uid, { ticker: "AAPL", source: "manual", listId: original.id });
+    const nypc = await createWatchList(uid, "nypc");
+    await upsertWatchEntry(uid, { ticker: "MSG", source: "manual", listId: nypc.id });
+
+    // Before: no-listId read resolves to the original default.
+    let items = await listWatchEntries(uid);
+    expect(items.map((e) => e.ticker)).toEqual(["AAPL"]);
+
+    await setDefaultWatchList(uid, nypc.id);
+
+    // After: the same no-listId read now resolves to nypc.
+    items = await listWatchEntries(uid);
+    expect(items.map((e) => e.ticker)).toEqual(["MSG"]);
+
+    // The old default is deletable now; the new default is protected.
+    expect((await deleteWatchList(uid, original.id)).ok).toBe(true);
+    const res = await deleteWatchList(uid, nypc.id);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("default");
   });
 });

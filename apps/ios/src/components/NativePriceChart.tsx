@@ -93,7 +93,12 @@ function ChartBody({
 
   const first = data[0];
   const last = data[data.length - 1];
-  const shown = (scrubIndex !== null ? data[scrubIndex] : last) ?? last;
+  // Clamp the scrub index against the CURRENT data array. `data` is live
+  // react-query state — a refetch landing mid-gesture can shrink it, and an
+  // unclamped stale index would push the scrub bar past chartWidth where
+  // `overflow: "hidden"` makes it vanish under the user's finger.
+  const activeIndex = scrubIndex === null ? null : Math.min(scrubIndex, data.length - 1);
+  const shown = (activeIndex !== null ? data[activeIndex] : last) ?? last;
   if (
     !first ||
     !last ||
@@ -135,6 +140,11 @@ function ChartBody({
         onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
+        // Once a scrub starts, keep the responder: without this the parent
+        // ScrollView claims the touch on a few px of vertical jitter, fires
+        // onResponderTerminate, and the scrub bar disappears mid-gesture with
+        // the finger still down. Page scrolls still work from outside the chart.
+        onResponderTerminationRequest={() => false}
         onResponderGrant={(e) => onScrub(e.nativeEvent.locationX)}
         onResponderMove={(e) => onScrub(e.nativeEvent.locationX)}
         onResponderRelease={() => setScrubIndex(null)}
@@ -151,10 +161,21 @@ function ChartBody({
             strokeWidth={2.5}
           />
         ) : null}
-        {scrubIndex !== null && chartWidth > 0 ? (
+        {activeIndex !== null && chartWidth > 2 && data.length > 1 ? (
           <View
             pointerEvents="none"
-            style={[styles.scrubLine, { left: (scrubIndex / (data.length - 1)) * chartWidth - 1 }]}
+            style={[
+              styles.scrubLine,
+              {
+                // Keep the full 2px bar inside the clipped chart even at the
+                // extremes (a second finger outside the view clamps t to 0/1,
+                // which used to leave only ~1px visible).
+                left: Math.min(
+                  Math.max((activeIndex / (data.length - 1)) * chartWidth - 1, 0),
+                  chartWidth - 2,
+                ),
+              },
+            ]}
           />
         ) : null}
       </View>

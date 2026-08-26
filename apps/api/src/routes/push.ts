@@ -43,6 +43,7 @@ import {
   unregisterPushTokenByIdentity,
   updatePrefs,
 } from "../lib/push-tokens-store.js";
+import { evaluateMovementForToken } from "../lib/scheduler.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const push = new Hono<AuthEnv>();
@@ -248,6 +249,18 @@ push.post("/prefs", async (c) => {
       token_id: tokenId,
       keys_written: Object.keys(patch).join(","),
     });
+    // A heartbeat carrying coordinates is a movement signal: evaluate the
+    // ">2km since anchor" rule for this device right now instead of waiting
+    // up to an hour for the scheduler tick, so "you moved — new companies
+    // nearby" lands on arrival. Fire-and-forget; the hourly tick remains the
+    // safety net and the evaluator is a no-op unless the scheduler is enabled
+    // and the device opted in.
+    if (typeof patch.last_lat === "number" && typeof patch.last_lng === "number") {
+      span.setAttribute("movement_eval", true);
+      evaluateMovementForToken(updated).catch(() => {
+        /* silent — notifier spans record their own failures */
+      });
+    }
     return c.json({ prefs: updated.prefs });
   });
 });

@@ -236,6 +236,15 @@ universe."
 - [x] **Budget discipline is a hard rule**: max one push per arrival, max two
       per device per day, threshold-gated, silent otherwise. A mediocre daily ping
       trains users to swipe away the great ones.
+- [x] Arrival latency: a location heartbeat (`POST /v1/push/prefs` with
+      `last_lat`/`last_lng`) now evaluates the >2km move inline
+      (`evaluateMovementForToken`), so the push lands on arrival instead of
+      waiting for the hourly tick — which remains as the safety net. The
+      movement anchor only advances on a real decision (pushed / nothing
+      worth pushing / budget spent); `nearby_failed` / `delivery_failed`
+      leave it put so a transient outage doesn't silently burn the arrival.
+      Heartbeat fixes older than 6h are ignored so a stale coordinate never
+      counts as "arrived".
 - [~] Push opens the map with the uncaught pin highlighted.
       (The push carries `ticker`/`lat`/`lng` and a tap now routes through
       `notif/router.ts` to that company's detail page. The map screen takes
