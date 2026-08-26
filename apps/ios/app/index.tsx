@@ -1,10 +1,22 @@
 import { useSession } from "@/auth/session";
 import { Redirect } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 export default function Gate() {
   const { ready, session } = useSession();
-  // Session hydrate is capped at 800ms. Never block a cold install forever
-  // (that looked like the TestFlight black screen on Brian's phone).
-  if (!ready) return <Redirect href="/(tabs)/home" />;
+  // Keep boot distinct from a confirmed guest session. Cleanup-required boot
+  // state is rendered by SessionProvider, so this route never flashes guest
+  // content while SecureStore or push revocation is unresolved.
+  if (!ready) {
+    return (
+      <View style={styles.root}>
+        <ActivityIndicator color="#ffffff" accessibilityLabel="Loading session" />
+      </View>
+    );
+  }
   return <Redirect href={session ? "/(tabs)/map" : "/(tabs)/home"} />;
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#09090b" },
+});

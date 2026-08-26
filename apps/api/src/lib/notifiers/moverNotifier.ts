@@ -9,10 +9,10 @@
  * day. The Postgres-persisted `last_sent` map means restarts don't refire.
  */
 import { getQuote } from "@mapvest/finance";
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import { type PushToken, listTokensForEvent } from "../push-tokens-store.js";
 import { listWatchEntries } from "../watchlist-store.js";
-import { commitSend, shouldSend, ymd } from "./dedupe.js";
+import { ymd } from "./dedupe.js";
 
 const DEDUPE_SLOT = "watchlist_mover";
 const MOVE_THRESHOLD_PCT = 5;
@@ -37,11 +37,12 @@ async function pushMover(
   changePct: number,
 ): Promise<void> {
   const key = `${ymd()}-${ticker.toUpperCase()}`;
-  if (!shouldSend(userTokens, DEDUPE_SLOT, key)) return;
   const sign = changePct >= 0 ? "+" : "";
   const direction = changePct >= 0 ? "up" : "down";
-  await sendPush({
-    tokens: userTokens.map((t) => t.expoToken),
+  await deliverPush({
+    tokens: userTokens,
+    dedupe: [{ slot: DEDUPE_SLOT, key }],
+    eventKey: "watchlist_mover",
     title: `$${ticker.toUpperCase()} ${sign}${changePct.toFixed(1)}%`,
     body: `$${ticker.toUpperCase()} is ${direction} ${Math.abs(changePct).toFixed(1)}% today — it's on your watchlist.`,
     data: {
@@ -50,7 +51,6 @@ async function pushMover(
       changePct,
     },
   });
-  await commitSend(userTokens, DEDUPE_SLOT, key);
 }
 
 /**

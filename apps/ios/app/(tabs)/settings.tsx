@@ -46,7 +46,7 @@ import {
  *
  * Notifications section is entirely opt-in: master switch requests OS
  * permission on first flip; individual per-event toggles POST to
- * /v1/push/prefs on every change (fire-and-forget).
+ * /v1/push/prefs on every change and exposes a retry state on failure.
  */
 export default function SettingsScreen() {
   const { user, session, signOut } = useSession();
@@ -56,6 +56,7 @@ export default function SettingsScreen() {
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Hooks below must stay unconditional — the tab tree keeps this screen
   // mounted (`unmountOnBlur: false`), so `session` can flip from null to set
@@ -88,7 +89,7 @@ export default function SettingsScreen() {
     onError: (e) => setStatus((e as Error).message || "Clear failed"),
   });
 
-  if (!session) {
+  if (!session || !user) {
     return <GuestHome />;
   }
 
@@ -117,7 +118,7 @@ export default function SettingsScreen() {
 
         <PlanCard />
 
-        <NotificationsSection sessionToken={session.token} />
+        <NotificationsSection sessionToken={session.token} userId={user.id} />
         <VisitMonitoringSection sessionToken={session.token} />
 
         <View style={styles.card}>
@@ -215,16 +216,27 @@ export default function SettingsScreen() {
 
         <Pressable
           style={styles.btn}
+          disabled={signingOut}
           onPress={async () => {
             hapticSelect();
-            await signOut();
-            router.replace("/auth");
+            setSigningOut(true);
+            setStatus(null);
+            try {
+              await signOut();
+              router.replace("/auth");
+            } catch (e) {
+              const detail = e instanceof Error ? e.message : "Could not remove this device.";
+              setStatus(`Still signed in. ${detail} Retry sign out once your connection is back.`);
+            } finally {
+              setSigningOut(false);
+            }
           }}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
+          accessibilityState={{ disabled: signingOut, busy: signingOut }}
         >
           <Ionicons name="log-out-outline" size={15} color={colors.fg} />
-          <Text style={styles.btnText}>Sign out</Text>
+          <Text style={styles.btnText}>{signingOut ? "Signing out…" : "Sign out"}</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -239,7 +251,7 @@ export default function SettingsScreen() {
  * switch is a persisted product-level preference, separate from iOS
  * authorization. It is the only surface that may request OS permission.
  */
-function NotificationsSection({ sessionToken }: { sessionToken: string }) {
+function NotificationsSection({ sessionToken, userId }: { sessionToken: string; userId: string }) {
   const [permissionStatus, setPermissionStatus] = useState<
     "unknown" | "granted" | "denied" | "undetermined"
   >("unknown");
@@ -354,7 +366,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
       // Explicit enablement may register a token, but this call never asks
       // again — permission was just handled by the line above.
       const registration = await registerForPush(
-        { token: sessionToken },
+        { token: sessionToken, userId },
         { requestPermission: false },
       );
       const id = registration?.tokenId ?? tokenId;
@@ -470,6 +482,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
               disabled={busy}
               onValueChange={onToggleMaster}
               accessibilityLabel="Enable notifications"
+              accessibilityState={{ disabled: busy, busy }}
             />
           </View>
 
@@ -500,6 +513,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
                   onPress={() => retryRef.current?.()}
                   accessibilityRole="button"
                   accessibilityLabel="Retry notification setting change"
+                  accessibilityState={{ disabled: busy, busy }}
                 >
                   <Text style={styles.btnText}>Retry</Text>
                 </Pressable>
@@ -515,6 +529,10 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
                 disabled={!masterOn || !tokenId || permissionStatus !== "granted" || busy}
                 onValueChange={(v) => setEvent(key, v)}
                 accessibilityLabel={PUSH_EVENT_LABELS[key]}
+                accessibilityState={{
+                  disabled: !masterOn || !tokenId || permissionStatus !== "granted" || busy,
+                  busy,
+                }}
               />
             </View>
           ))}

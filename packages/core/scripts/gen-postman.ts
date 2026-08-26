@@ -231,7 +231,7 @@ for (const [rawPath, pathItem] of Object.entries(doc.paths ?? {}) as [string, Do
         url,
         ...(body ? { body } : {}),
         description: op.description as string | undefined,
-        ...(op.security
+        ...(op.security && op.security.length > 0
           ? {
               auth: {
                 type: "bearer" as const,

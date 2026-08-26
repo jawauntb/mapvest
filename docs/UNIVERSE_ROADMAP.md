@@ -34,7 +34,20 @@ What exists today, precisely:
   explicit: a signed-in launch never prompts iOS, and Settings is the only
   permission request surface. Each device persists a product-level
   `notifications_enabled` mute independent of OS authorization; every
-  notifier, including weekly rivalries, honors it.
+  notifier, including weekly rivalries, honors it. An Expo token has exactly
+  one active account claim; an account switch atomically resets its consent,
+  and sign-out unlinks only that installation before clearing its session.
+  Expired/invalid sessions may use the physical Expo-token revocation fallback
+  only with the opaque server token id; a valid session that lost the id uses
+  authenticated current-device recovery. `already-revoked` accepts a retry,
+  while `claim-mismatch` fails closed after account transfer with HTTP 409;
+  advisory device IDs may rotate and are not authorization proof; native
+  unregistration alone is not treated as server cleanup. A signed former
+  session may recover with an Expo token for 90 days after expiry, or with its
+  exact opaque registration id without an age limit; a transferred id fails
+  closed rather than mutating the new owner. Delivery handoff uses
+  a reserved advisory connection through Expo, while the downstream APNs/Expo
+  timing window remains an unavoidable external-system boundary.
 - **Collection structure is latent in the data**: `packages/finance/data/brands.json`
   (1,101 brands with sector/exchange/isPublic), geohash-6 tiling in
   `apps/api/src/lib/geohash.ts` + `nearby_cache`.

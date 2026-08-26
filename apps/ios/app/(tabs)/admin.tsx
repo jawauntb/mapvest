@@ -5,11 +5,14 @@ import { colors, elevation, radii, type } from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AdminScreen() {
   const { session, user, isAdmin, signOut } = useSession();
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const q = useQuery({
     queryKey: ["admin-metrics"],
     enabled: !!session?.token && isAdmin,
@@ -40,14 +43,31 @@ export default function AdminScreen() {
             </View>
           ) : null}
 
+          {signOutError ? <Text style={styles.err}>{signOutError}</Text> : null}
+
           <Pressable
             style={styles.signOut}
-            onPress={signOut}
+            onPress={async () => {
+              setSignOutError(null);
+              setSigningOut(true);
+              try {
+                await signOut();
+              } catch (e) {
+                const detail = e instanceof Error ? e.message : "Could not remove this device.";
+                setSignOutError(
+                  `Still signed in. ${detail} Retry sign out once your connection is back.`,
+                );
+              } finally {
+                setSigningOut(false);
+              }
+            }}
+            disabled={signingOut}
             accessibilityRole="button"
             accessibilityLabel="Sign out"
+            accessibilityState={{ disabled: signingOut, busy: signingOut }}
           >
             <Ionicons name="log-out-outline" size={15} color={colors.fg} />
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={styles.signOutText}>{signingOut ? "Signing out…" : "Sign out"}</Text>
           </Pressable>
         </ScrollView>
       </ScreenFade>

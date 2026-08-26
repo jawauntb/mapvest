@@ -27,6 +27,8 @@ tags:
     description: Home-screen widget data (iOS WidgetKit / Android App Widget)
   - name: finance
     description: Ticker / comparable / ETF resolution
+  - name: push
+    description: Device push-token registration and revocation
   - name: auth
     description: Passwordless email sign-in
   - name: billing
@@ -2978,6 +2980,378 @@ components:
       required:
         - alerts
         - tickers
+    PushDeviceRevocationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+        tokenId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        deviceId:
+          type: string
+          maxLength: 128
+      required:
+        - token
+        - tokenId
+    PushCurrentDeviceRevocationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+        deviceId:
+          type: string
+          maxLength: 128
+      required:
+        - token
+    PushExpiredSessionDeviceRevocationRequest:
+      anyOf:
+        - type: object
+          properties:
+            token:
+              type: string
+              pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+            tokenId:
+              type: string
+              minLength: 1
+              maxLength: 128
+            deviceId:
+              type: string
+              maxLength: 128
+          required:
+            - token
+        - type: object
+          properties:
+            token:
+              type: string
+              pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+            tokenId:
+              type: string
+              minLength: 1
+              maxLength: 128
+            deviceId:
+              type: string
+              maxLength: 128
+          required:
+            - tokenId
+    PushDeviceRevocationResponse:
+      anyOf:
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - true
+            matched:
+              type: boolean
+              enum:
+                - true
+            outcome:
+              type: string
+              enum:
+                - revoked
+          required:
+            - revoked
+            - matched
+            - outcome
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - true
+            matched:
+              type: boolean
+              enum:
+                - false
+            outcome:
+              type: string
+              enum:
+                - already-revoked
+          required:
+            - revoked
+            - matched
+            - outcome
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - false
+            matched:
+              type: boolean
+              enum:
+                - false
+            outcome:
+              type: string
+              enum:
+                - claim-mismatch
+          required:
+            - revoked
+            - matched
+            - outcome
+    PushPreferences:
+      type: object
+      properties:
+        notifications_enabled:
+          type: boolean
+        daily_brief:
+          type: boolean
+        local_brief:
+          type: boolean
+        price_alerts:
+          type: boolean
+        memo_finished:
+          type: boolean
+        agent_response:
+          type: boolean
+        identify_done:
+          type: boolean
+        watchlist_mover:
+          type: boolean
+        find_evolution:
+          type: boolean
+        uncaught_nearby:
+          type: boolean
+        last_lat:
+          type: number
+        last_lng:
+          type: number
+        last_location_at:
+          type: string
+        last_sent:
+          type: object
+          additionalProperties:
+            type: string
+    PushPreferencesPatch:
+      type: object
+      properties:
+        notifications_enabled:
+          type: boolean
+        daily_brief:
+          type: boolean
+        local_brief:
+          type: boolean
+        price_alerts:
+          type: boolean
+        memo_finished:
+          type: boolean
+        agent_response:
+          type: boolean
+        identify_done:
+          type: boolean
+        watchlist_mover:
+          type: boolean
+        find_evolution:
+          type: boolean
+        uncaught_nearby:
+          type: boolean
+        last_lat:
+          type: number
+        last_lng:
+          type: number
+        last_location_at:
+          type: string
+    PushRegistrationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+        platform:
+          type: string
+          enum:
+            - ios
+            - android
+        deviceId:
+          type: string
+          maxLength: 128
+      required:
+        - token
+    PushRegistrationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        prefs:
+          type: object
+          properties:
+            notifications_enabled:
+              type: boolean
+            daily_brief:
+              type: boolean
+            local_brief:
+              type: boolean
+            price_alerts:
+              type: boolean
+            memo_finished:
+              type: boolean
+            agent_response:
+              type: boolean
+            identify_done:
+              type: boolean
+            watchlist_mover:
+              type: boolean
+            find_evolution:
+              type: boolean
+            uncaught_nearby:
+              type: boolean
+            last_lat:
+              type: number
+            last_lng:
+              type: number
+            last_location_at:
+              type: string
+            last_sent:
+              type: object
+              additionalProperties:
+                type: string
+      required:
+        - id
+        - prefs
+    PushPreferencesUpdateRequest:
+      type: object
+      properties:
+        tokenId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        prefs:
+          type: object
+          properties:
+            notifications_enabled:
+              type: boolean
+            daily_brief:
+              type: boolean
+            local_brief:
+              type: boolean
+            price_alerts:
+              type: boolean
+            memo_finished:
+              type: boolean
+            agent_response:
+              type: boolean
+            identify_done:
+              type: boolean
+            watchlist_mover:
+              type: boolean
+            find_evolution:
+              type: boolean
+            uncaught_nearby:
+              type: boolean
+            last_lat:
+              type: number
+            last_lng:
+              type: number
+            last_location_at:
+              type: string
+      required:
+        - tokenId
+        - prefs
+    PushPreferencesUpdateResponse:
+      type: object
+      properties:
+        prefs:
+          type: object
+          properties:
+            notifications_enabled:
+              type: boolean
+            daily_brief:
+              type: boolean
+            local_brief:
+              type: boolean
+            price_alerts:
+              type: boolean
+            memo_finished:
+              type: boolean
+            agent_response:
+              type: boolean
+            identify_done:
+              type: boolean
+            watchlist_mover:
+              type: boolean
+            find_evolution:
+              type: boolean
+            uncaught_nearby:
+              type: boolean
+            last_lat:
+              type: number
+            last_lng:
+              type: number
+            last_location_at:
+              type: string
+            last_sent:
+              type: object
+              additionalProperties:
+                type: string
+      required:
+        - prefs
+    PushPreferencesReadQuery:
+      type: object
+      properties:
+        tokenId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    PushPreferencesReadResponse:
+      type: object
+      properties:
+        prefs:
+          type: object
+          properties:
+            notifications_enabled:
+              type: boolean
+            daily_brief:
+              type: boolean
+            local_brief:
+              type: boolean
+            price_alerts:
+              type: boolean
+            memo_finished:
+              type: boolean
+            agent_response:
+              type: boolean
+            identify_done:
+              type: boolean
+            watchlist_mover:
+              type: boolean
+            find_evolution:
+              type: boolean
+            uncaught_nearby:
+              type: boolean
+            last_lat:
+              type: number
+            last_lng:
+              type: number
+            last_location_at:
+              type: string
+            last_sent:
+              type: object
+              additionalProperties:
+                type: string
+        tokenId:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 128
+      required:
+        - prefs
+        - tokenId
+    PushTokenDeleteParams:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+        - id
     AgentChatRequest:
       type: object
       properties:
@@ -7439,6 +7813,309 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/push/register:
+    post:
+      summary: Register or re-claim this device for push notifications
+      description: Registers the physical Expo token to the signed-in account. A token already owned by this account is idempotent; registration under another account transfers ownership and starts the new claim muted, so notification consent never crosses accounts.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushRegistrationRequest"
+      responses:
+        "200":
+          description: Registered device id and its current per-installation preferences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushRegistrationResponse"
+        "400":
+          description: Missing or invalid Expo token, platform, or device id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/push/prefs:
+    post:
+      summary: Merge preferences for one registered device
+      description: Updates only the signed-in user's matching installation. Event opt-ins and the product-level notification switch are per device; unknown patch fields are accepted and ignored for forward-compatible clients.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushPreferencesUpdateRequest"
+      responses:
+        "200":
+          description: Updated per-installation preferences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushPreferencesUpdateResponse"
+        "400":
+          description: Missing or invalid token id or preference patch.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Push token not found for the signed-in user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+    get:
+      summary: Read preferences for the current device
+      description: "Returns the selected signed-in installation's preferences. Omit `tokenId` to read the first current installation; an unknown or other-user id returns an empty preference object with `tokenId: null` rather than exposing another account's device."
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          required: false
+          name: tokenId
+          in: query
+      responses:
+        "200":
+          description: Selected preferences, or an explicit empty result when no matching device exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushPreferencesReadResponse"
+        "400":
+          description: Invalid token id query parameter.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/push/token/{id}:
+    delete:
+      summary: Unregister one signed-in device
+      description: Deletes only the supplied opaque registration id when it belongs to the signed-in user, tombstoning its physical claim and removing future delivery eligibility.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          required: true
+          name: id
+          in: path
+      responses:
+        "204":
+          description: Push device unregistered.
+        "400":
+          description: Invalid token id path parameter.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Push token not found for the signed-in user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+  /v1/push/revoke-device:
+    post:
+      summary: Revoke this device with its opaque push token id
+      description: Public, idempotent sign-out fallback. It requires both the physical Expo token and the opaque id returned by registration, so a stale client cannot revoke a later account owner. `already-revoked` accepts a retry after an earlier unlink; `claim-mismatch` is fail-closed because another active owner now holds this physical token.
+      tags:
+        - push
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token or opaque token id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+  /v1/push/revoke-expired-session-device:
+    post:
+      summary: Revoke a former session's current device during expired-session recovery
+      description: Narrow recovery for a cryptographically valid session JWT. Expo-token-only recovery is limited to the 90 days after expiry; its historical opaque token id may be used without that age limit when iOS cannot obtain an Expo token. It verifies the signature, HS256 algorithm, session purpose, and subject without accepting the JWT for normal authentication; the signed subject plus either identity may only revoke that same user's active claim. It returns no user data and fails closed with `claim-mismatch` if another owner claimed the physical token.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushExpiredSessionDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token or opaque token id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Expired signed session recovery token required; Expo-token-only recovery is limited to 90 days after expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+  /v1/push/revoke-current-device:
+    post:
+      summary: Revoke the signed-in user's current device without a stored token id
+      description: Authenticated recovery for a valid session that lost its local opaque push token id. The current user plus Expo identity can revoke only that user's active claim; expired sessions without the opaque id must use the public fallback and fail closed on `claim-mismatch`.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushCurrentDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
   /v1/agent/chat:
     post:
       summary: Start or continue a durable research conversation

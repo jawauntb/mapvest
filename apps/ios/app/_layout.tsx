@@ -98,7 +98,7 @@ const persistOptions = {
  * SessionProvider so the effect can read the current session token.
  */
 function PushBridge() {
-  const { session } = useSession();
+  const { session, user, authGeneration, isActiveSession } = useSession();
   const router = useRouter();
   const sessionToken = session?.token;
 
@@ -107,8 +107,9 @@ function PushBridge() {
     // Launch may register an already-authorized device, but it must never
     // ask iOS to show the permission prompt. Settings is the only explicit
     // consent surface and opts into prompting there.
-    void registerForPush({ token: sessionToken }, { requestPermission: false });
-  }, [sessionToken]);
+    if (!user?.id) return;
+    void registerForPush({ token: sessionToken, userId: user.id }, { requestPermission: false });
+  }, [sessionToken, user?.id]);
 
   // Relay any fix the WidgetKit extension captured while the app was closed
   // (roadmap §2 B3). It posts to the same /v1/push/prefs heartbeat this
@@ -117,39 +118,44 @@ function PushBridge() {
   // events for control-center pulls that never left the foreground.
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
+    const expectedGeneration = authGeneration;
     if (!session?.token) return;
-    void syncWidgetFixIfFresh();
+    const activeToken = session.token;
+    const isActive = () => isActiveSession(expectedGeneration, activeToken);
+    if (isActive()) void syncWidgetFixIfFresh();
     const sub = AppState.addEventListener("change", (next) => {
       const prev = appState.current;
       appState.current = next;
-      if (next === "active" && prev !== "active") void syncWidgetFixIfFresh();
+      if (next === "active" && prev !== "active" && isActive()) void syncWidgetFixIfFresh();
     });
     return () => sub.remove();
-  }, [session?.token]);
+  }, [authGeneration, isActiveSession, session?.token]);
 
   useEffect(() => {
+    const expectedGeneration = authGeneration;
     let cancelled = false;
+    const routeResponse = (response: Notifications.NotificationResponse) => {
+      if (cancelled || !sessionToken || !isActiveSession(expectedGeneration, sessionToken)) return;
+      const data = response.notification.request.content.data as NotifData | undefined;
+      const path = pathFromNotificationData(data);
+      if (path) router.push(path as never);
+    };
     (async () => {
       try {
         const last = await Notifications.getLastNotificationResponseAsync();
-        if (cancelled || !last) return;
-        const data = last.notification.request.content.data as NotifData | undefined;
-        const path = pathFromNotificationData(data);
-        if (path) router.push(path as never);
+        if (last) routeResponse(last);
       } catch {
         /* not fatal */
       }
     })();
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as NotifData | undefined;
-      const path = pathFromNotificationData(data);
-      if (path) router.push(path as never);
+      routeResponse(response);
     });
     return () => {
       cancelled = true;
       sub.remove();
     };
-  }, [router]);
+  }, [authGeneration, isActiveSession, router, sessionToken]);
 
   return null;
 }

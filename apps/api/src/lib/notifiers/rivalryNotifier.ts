@@ -36,7 +36,7 @@
  */
 import { getHistoricalCloses } from "@mapvest/finance";
 import { awardXp } from "../progress-store.js";
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import {
   type PushToken,
   listTokensForUser,
@@ -51,7 +51,6 @@ import {
   nextMondayUtc,
   recordResult,
 } from "../rivalries-store.js";
-import { commitSend, shouldSend } from "./dedupe.js";
 
 /** XP for a correct pre-registered pick. */
 export const RIVALRY_PICK_XP = 30;
@@ -191,15 +190,15 @@ function makeWeeklyChangeLoader(): (symbol: string) => Promise<number | null> {
  * the same UTC clock the `mondayUtc(...)` week key uses.
  *
  * Ordering inside one rivalry is deliberate: score → record → award XP →
- * commit dedupe → push. The dedupe key is committed BEFORE the push so a
- * failing push costs at most one notification, never a double-counted week.
+ * claim-validated push. The central dispatcher commits the dedupe key only
+ * for a still-owned successful handoff, while the round/XP write remains
+ * idempotent domain state.
  *
  * A user with zero push tokens is skipped entirely: the durable dedupe lives
  * on `prefs.last_sent`, so scoring them would risk re-scoring the same week
  * after a restart. Their rounds resume the first week they register a device.
- * A registered but product-muted device still closes the round and consumes
- * its dedupe key, but receives no delivery; re-enabling later cannot replay a
- * week that was muted when it closed.
+ * A registered but product-muted device still closes the round, but receives
+ * no delivery; the round itself is not replayed when the device is re-enabled.
  */
 export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
   rivalriesScanned: number;
@@ -238,7 +237,6 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
 
       for (const rivalry of rivalries) {
         const slot = rivalryDedupeSlot(rivalry.id);
-        if (!shouldSend(tokens, slot, weekKey)) continue;
 
         // eslint-disable-next-line no-await-in-loop
         const [tickerPct, rivalPct] = await Promise.all([
@@ -274,12 +272,11 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
           if (granted) out.xpGrants += 1;
         }
 
-        // eslint-disable-next-line no-await-in-loop
-        await commitSend(tokens, slot, weekKey, DEDUPE_TTL_MS);
         if (deliveryTokens.length === 0) continue;
         // eslint-disable-next-line no-await-in-loop
-        await sendPush({
-          tokens: deliveryTokens.map((t) => t.expoToken),
+        const result = await deliverPush({
+          tokens: deliveryTokens,
+          dedupe: [{ slot, key: weekKey, ttlMs: DEDUPE_TTL_MS }],
           title: rivalryPushTitle(updated.ticker, updated.rivalTicker),
           body: rivalryPushBody({
             ticker: updated.ticker,
@@ -300,7 +297,7 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
             weekStart: weekKey,
           },
         });
-        out.pushesSent += 1;
+        if (result.successes > 0) out.pushesSent += 1;
       }
     } catch {
       // A single user's failure must not sink the rest of the fan-out.

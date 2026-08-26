@@ -563,6 +563,186 @@ export const AlertsResponse = z.object({
 });
 export type AlertsResponse = z.infer<typeof AlertsResponse>;
 
+// -------- push device ownership --------
+
+const ExpoPushToken = z
+  .string()
+  .trim()
+  .regex(
+    /^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$/,
+    "valid ExponentPushToken required",
+  );
+
+// This can rotate after a reinstall or SecureStore failure. It is retained for
+// client telemetry only; ownership authorization is the opaque token id (or
+// authenticated user) plus the Expo token.
+const PushDeviceId = z.string().trim().max(128);
+const PushTokenId = z.string().trim().min(1).max(128);
+
+export const PushPlatform = z.enum(["ios", "android"]);
+export type PushPlatform = z.infer<typeof PushPlatform>;
+
+export const PushEventKey = z.enum([
+  "daily_brief",
+  "local_brief",
+  "price_alerts",
+  "memo_finished",
+  "agent_response",
+  "identify_done",
+  "watchlist_mover",
+  "find_evolution",
+  "uncaught_nearby",
+]);
+export type PushEventKey = z.infer<typeof PushEventKey>;
+
+/**
+ * Per-installation notification state. `last_sent` is server-owned dedupe
+ * bookkeeping that may appear in reads for an existing installation; clients
+ * cannot change it through `PushPreferencesUpdateRequest`.
+ */
+export const PushPreferences = z
+  .object({
+    notifications_enabled: z.boolean().optional(),
+    daily_brief: z.boolean().optional(),
+    local_brief: z.boolean().optional(),
+    price_alerts: z.boolean().optional(),
+    memo_finished: z.boolean().optional(),
+    agent_response: z.boolean().optional(),
+    identify_done: z.boolean().optional(),
+    watchlist_mover: z.boolean().optional(),
+    find_evolution: z.boolean().optional(),
+    uncaught_nearby: z.boolean().optional(),
+    last_lat: z.number().optional(),
+    last_lng: z.number().optional(),
+    last_location_at: z.string().optional(),
+    last_sent: z.record(z.string()).optional(),
+  })
+  .passthrough();
+export type PushPreferences = z.infer<typeof PushPreferences>;
+
+/**
+ * Product preference patch. Unknown fields remain accepted and ignored by the
+ * server so newer clients can roll out opt-ins without breaking older APIs.
+ */
+export const PushPreferencesPatch = PushPreferences.omit({ last_sent: true }).passthrough();
+export type PushPreferencesPatch = z.infer<typeof PushPreferencesPatch>;
+
+/** Register or re-claim the current installation's physical Expo token. */
+export const PushRegistrationRequest = z.object({
+  token: ExpoPushToken,
+  platform: PushPlatform.optional(),
+  deviceId: PushDeviceId.optional(),
+});
+export type PushRegistrationRequest = z.infer<typeof PushRegistrationRequest>;
+
+export const PushRegistrationResponse = z.object({
+  id: PushTokenId,
+  prefs: PushPreferences,
+});
+export type PushRegistrationResponse = z.infer<typeof PushRegistrationResponse>;
+
+/** Merge a patch into one registered installation's preferences. */
+export const PushPreferencesUpdateRequest = z.object({
+  tokenId: PushTokenId,
+  prefs: PushPreferencesPatch,
+});
+export type PushPreferencesUpdateRequest = z.infer<typeof PushPreferencesUpdateRequest>;
+
+export const PushPreferencesUpdateResponse = z.object({
+  prefs: PushPreferences,
+});
+export type PushPreferencesUpdateResponse = z.infer<typeof PushPreferencesUpdateResponse>;
+
+/** Optional installation selection for a preference read. */
+export const PushPreferencesReadQuery = z.object({
+  tokenId: PushTokenId.optional(),
+});
+export type PushPreferencesReadQuery = z.infer<typeof PushPreferencesReadQuery>;
+
+export const PushPreferencesReadResponse = z.object({
+  prefs: PushPreferences,
+  tokenId: PushTokenId.nullable(),
+});
+export type PushPreferencesReadResponse = z.infer<typeof PushPreferencesReadResponse>;
+
+/** The opaque registration id in `DELETE /v1/push/token/:id`. */
+export const PushTokenDeleteParams = z.object({
+  id: PushTokenId,
+});
+export type PushTokenDeleteParams = z.infer<typeof PushTokenDeleteParams>;
+
+/**
+ * Public, idempotent fallback for an installation that still holds the opaque
+ * server id issued at registration but no longer has a valid bearer session.
+ * Both identities are required so a stale installation cannot revoke a later
+ * account owner of the same physical Expo token.
+ */
+export const PushDeviceRevocationRequest = z.object({
+  token: ExpoPushToken,
+  tokenId: PushTokenId,
+  deviceId: PushDeviceId.optional(),
+});
+export type PushDeviceRevocationRequest = z.infer<typeof PushDeviceRevocationRequest>;
+
+/** Authenticated recovery when the client lost its opaque push token id. */
+export const PushCurrentDeviceRevocationRequest = z.object({
+  token: ExpoPushToken,
+  deviceId: PushDeviceId.optional(),
+});
+export type PushCurrentDeviceRevocationRequest = z.infer<typeof PushCurrentDeviceRevocationRequest>;
+
+/**
+ * Expired-session recovery supports either a live Expo identity (limited to
+ * 90 days after session expiry) or the opaque id retained from registration
+ * when iOS has confirmed it cannot obtain an Expo token (for example after
+ * notification permission is denied). The opaque id identifies one
+ * historical row and is safe for longer-lived cleanup because a transferred
+ * claim fails closed rather than affecting its new owner.
+ */
+export const PushExpiredSessionDeviceRevocationRequest = z.union([
+  z.object({
+    token: ExpoPushToken,
+    tokenId: PushTokenId.optional(),
+    deviceId: PushDeviceId.optional(),
+  }),
+  z.object({
+    token: ExpoPushToken.optional(),
+    tokenId: PushTokenId,
+    deviceId: PushDeviceId.optional(),
+  }),
+]);
+export type PushExpiredSessionDeviceRevocationRequest = z.infer<
+  typeof PushExpiredSessionDeviceRevocationRequest
+>;
+
+export const PushDeviceRevocationOutcome = z.enum(["revoked", "already-revoked", "claim-mismatch"]);
+export type PushDeviceRevocationOutcome = z.infer<typeof PushDeviceRevocationOutcome>;
+
+/**
+ * `already-revoked` accepts an idempotent retry after a completed unlink;
+ * `claim-mismatch` is deliberately fail-closed because another active owner
+ * now holds the physical Expo token. `matched` is retained for old clients
+ * and is true only when this call removed the exact current claim.
+ */
+export const PushDeviceRevocationResponse = z.union([
+  z.object({
+    revoked: z.literal(true),
+    matched: z.literal(true),
+    outcome: z.literal("revoked"),
+  }),
+  z.object({
+    revoked: z.literal(true),
+    matched: z.literal(false),
+    outcome: z.literal("already-revoked"),
+  }),
+  z.object({
+    revoked: z.literal(false),
+    matched: z.literal(false),
+    outcome: z.literal("claim-mismatch"),
+  }),
+]);
+export type PushDeviceRevocationResponse = z.infer<typeof PushDeviceRevocationResponse>;
+
 export const ResearchDepth = z.enum(["auto", "instant", "standard", "deep", "max"]);
 export type ResearchDepth = z.infer<typeof ResearchDepth>;
 

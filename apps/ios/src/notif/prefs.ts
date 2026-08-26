@@ -7,6 +7,26 @@
  */
 import { API_URL } from "@/util/env";
 import { getStoredTokenId } from "./registerForPush";
+import {
+  buildExpiredSessionRevokeRequest,
+  buildPushRevokeRequest,
+  isSuccessfulPushRevocation,
+} from "./revokeOutcome";
+
+const PUSH_NETWORK_TIMEOUT_MS = 8_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUSH_NETWORK_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type PushEventKey =
   | "daily_brief"
@@ -60,7 +80,7 @@ export async function getPushPrefs(
   tokenId: string | null;
 }> {
   const query = tokenId ? `?tokenId=${encodeURIComponent(tokenId)}` : "";
-  const res = await fetch(`${API_URL}/v1/push/prefs${query}`, {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/prefs${query}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -91,7 +111,7 @@ export async function setPushPref(
   patch: Partial<PushPrefs>,
   session: { token: string },
 ): Promise<PushPrefs> {
-  const res = await fetch(`${API_URL}/v1/push/prefs`, {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/prefs`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -112,6 +132,88 @@ export async function setPushPref(
   }
   const body = (await res.json()) as { prefs?: PushPrefs };
   return body.prefs ?? patch;
+}
+
+/**
+ * Remove this installation's server token before clearing its bearer session.
+ * A real 204 delete is authoritative. A 404 is deliberately surfaced so the
+ * caller can use the claimant-identity endpoint and distinguish an
+ * already-revoked row from a stale or mismatched local id.
+ */
+export async function unlinkPushToken(tokenId: string, session: { token: string }): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/v1/push/token/${encodeURIComponent(tokenId)}`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+  });
+  // The current authenticated contract is 204 on a real delete. A typed
+  // idempotent outcome is also accepted for mixed-version deployments; a
+  // 404 deliberately falls through as an error so identity recovery can
+  // distinguish an already-revoked row from a stale/corrupt local id.
+  if (res.status === 204) return;
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
+  }
+
+  let message = `Could not remove this device from notifications (${res.status})`;
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error.trim()) message = body.error;
+  } catch {
+    // Keep the status-based message when the API did not return JSON.
+  }
+  throw new Error(message);
+}
+
+/**
+ * Claimant-bound fallback for expired sessions or a lost SecureStore id.
+ * With an opaque id this uses the public exact-claim endpoint. Without one it
+ * requires a valid bearer and uses the authenticated current-device endpoint;
+ * token-only public requests are never constructed.
+ */
+export async function unlinkPushTokenByIdentity(
+  identity: { expoToken: string; deviceId?: string },
+  tokenId?: string | null,
+  session?: { token: string },
+): Promise<void> {
+  const request = buildPushRevokeRequest(API_URL, identity, tokenId, session);
+  const res = await fetchWithTimeout(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+  });
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
+  }
+  throw new Error(`Could not remove this device from notifications (${res.status})`);
+}
+
+/**
+ * Recovery for a cryptographically valid but expired bearer. This route is
+ * intentionally separate from the public exact-id route: it lets the server
+ * verify the old account before matching the persisted Expo identity, without
+ * allowing an incoming account to revoke another account's claim.
+ */
+export async function unlinkPushTokenByExpiredSession(
+  identity: { expoToken: string; deviceId?: string } | null,
+  session: { token: string },
+  tokenId?: string | null,
+): Promise<void> {
+  const request = buildExpiredSessionRevokeRequest(API_URL, identity, session, tokenId);
+  const res = await fetchWithTimeout(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+  });
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
+  }
+  throw new Error(`Could not remove this device from notifications (${res.status})`);
 }
 
 /**

@@ -16,8 +16,8 @@
  *   - a ticker that was ever pushed to this user is never pushed again.
  * "A mediocre daily ping trains users to swipe away the great ones."
  *
- * Dedupe uses the shared durable `prefs.last_sent` map (see `dedupe.ts`),
- * with USER-SCOPED slots (the shared layer's in-memory ring is process-global):
+ * Dedupe uses the shared durable `prefs.last_sent` map through the central
+ * claim-aware dispatcher, with USER-SCOPED slots:
  *   - `uncaught:{userId}:{TICKER}` → `"1"` once pushed to this user, ever.
  *   - `uncaught_day:{userId}`      → `"{YYYYMMDD}:{count}"`, the day counter.
  * Both survive a process restart, so a redeploy cannot re-spend the budget.
@@ -34,14 +34,14 @@ import { listFinds } from "../finds-store.js";
 import { encodeGeohash } from "../geohash.js";
 import { safeExecuteWithSpan } from "../logfire.js";
 import { distanceM, resolveNearbyItems } from "../nearby-resolve.js";
-import { sendPush } from "../push-dispatcher.js";
+import { deliverPush } from "../push-dispatcher.js";
 import {
   type PushEventKey,
   type PushToken,
   listTokensForUserAndEvent,
 } from "../push-tokens-store.js";
 import { type WatchEntry, listWatchEntries } from "../watchlist-store.js";
-import { commitSend, shouldSend, ymd } from "./dedupe.js";
+import { ymd } from "./dedupe.js";
 
 /** Opt-in pref key for this notifier (member of `PUSH_EVENT_KEYS`). */
 export const UNCAUGHT_NEARBY_EVENT_KEY: PushEventKey = "uncaught_nearby";
@@ -56,11 +56,7 @@ export const MIN_SCORE = 3;
 export const MAX_PUSHES_PER_DAY = 2;
 /** Finds pulled per arrival to build the affinity/tile context. */
 const MAX_FINDS = 200;
-/**
- * In-memory dedupe TTL. The durable `prefs.last_sent` entry is what makes the
- * "once ever" guarantee; this keeps the process-local ring alive long enough
- * that it never expires during a normal uptime window.
- */
+/** Lease/dedupe retention for the once-ever ticker and daily budget claims. */
 const DEDUPE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 /** Stored value of a per-ticker slot once it has been pushed. */
@@ -73,15 +69,14 @@ export const PUSHED_MARKER = "1";
 /**
  * Durable dedupe slot for one ticker FOR ONE USER. Its presence means
  * "pushed to this user, ever". The userId is part of the slot because the
- * shared dedupe layer keeps a process-global in-memory ring keyed by
- * `slot::key` — a user-less slot would let the first user pushed a ticker
- * silently veto that ticker for every other user in the process.
+ * claim-aware dispatcher keys leases by the token and slot, so a user-less
+ * slot would make ownership and observability ambiguous.
  */
 export function uncaughtDedupeSlot(userId: string, ticker: string): string {
   return `uncaught:${userId}:${ticker.trim().toUpperCase()}`;
 }
 
-/** Day-budget slot, user-scoped for the same in-memory-ring reason. */
+/** Day-budget slot, user-scoped so one user's budget cannot affect another. */
 export function uncaughtDaySlot(userId: string): string {
   return `uncaught_day:${userId}`;
 }
@@ -361,7 +356,8 @@ export type UncaughtNearbyResult = {
     | "day_budget"
     | "nearby_failed"
     | "no_candidates"
-    | "below_threshold";
+    | "below_threshold"
+    | "delivery_failed";
 };
 
 /**
@@ -429,7 +425,11 @@ export async function onUserMovedFar(
     }
     const pushedTickers = new Set<string>();
     for (const ticker of seen) {
-      if (!shouldSend(tokens, uncaughtDedupeSlot(userId, ticker), PUSHED_MARKER))
+      if (
+        tokens.some(
+          (token) => token.prefs.last_sent?.[uncaughtDedupeSlot(userId, ticker)] === PUSHED_MARKER,
+        )
+      )
         pushedTickers.add(ticker);
     }
 
@@ -462,8 +462,21 @@ export async function onUserMovedFar(
       winner_reasons: reasons.join(","),
     });
 
-    await sendPush({
-      tokens: tokens.map((t) => t.expoToken),
+    const result = await deliverPush({
+      tokens,
+      dedupe: [
+        {
+          slot: uncaughtDedupeSlot(userId, candidate.ticker),
+          key: PUSHED_MARKER,
+          ttlMs: DEDUPE_TTL_MS,
+        },
+        {
+          slot: uncaughtDaySlot(userId),
+          key: dayBudgetValue(dayKey, spent + 1),
+          ttlMs: DEDUPE_TTL_MS,
+        },
+      ],
+      eventKey: UNCAUGHT_NEARBY_EVENT_KEY,
       title: `Uncaught nearby — ${candidate.brand}`,
       body: uncaughtBody(candidate.brand, candidate.ticker, candidate.distanceM),
       data: {
@@ -473,20 +486,16 @@ export async function onUserMovedFar(
         lng: candidate.lng,
       },
     });
-
-    // Spend both budgets: this ticker forever, and one slot of today's two.
-    await commitSend(
-      tokens,
-      uncaughtDedupeSlot(userId, candidate.ticker),
-      PUSHED_MARKER,
-      DEDUPE_TTL_MS,
-    );
-    await commitSend(
-      tokens,
-      uncaughtDaySlot(userId),
-      dayBudgetValue(dayKey, spent + 1),
-      DEDUPE_TTL_MS,
-    );
+    if (result.successes === 0) {
+      return {
+        eligible: true,
+        candidates: candidates.length,
+        pushed: false,
+        ticker: candidate.ticker,
+        score,
+        reason: "delivery_failed" as const,
+      };
+    }
 
     return {
       eligible: true,

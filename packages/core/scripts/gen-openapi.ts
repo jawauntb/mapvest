@@ -85,6 +85,40 @@ const S = {
   AnalysisSnapshot: component("AnalysisSnapshot", raw.AnalysisSnapshot),
   CockpitResponse: component("CockpitResponse", raw.CockpitResponse),
   AlertsResponse: component("AlertsResponse", raw.AlertsResponse),
+  PushDeviceRevocationRequest: component(
+    "PushDeviceRevocationRequest",
+    raw.PushDeviceRevocationRequest,
+  ),
+  PushCurrentDeviceRevocationRequest: component(
+    "PushCurrentDeviceRevocationRequest",
+    raw.PushCurrentDeviceRevocationRequest,
+  ),
+  PushExpiredSessionDeviceRevocationRequest: component(
+    "PushExpiredSessionDeviceRevocationRequest",
+    raw.PushExpiredSessionDeviceRevocationRequest,
+  ),
+  PushDeviceRevocationResponse: component(
+    "PushDeviceRevocationResponse",
+    raw.PushDeviceRevocationResponse,
+  ),
+  PushPreferences: component("PushPreferences", raw.PushPreferences),
+  PushPreferencesPatch: component("PushPreferencesPatch", raw.PushPreferencesPatch),
+  PushRegistrationRequest: component("PushRegistrationRequest", raw.PushRegistrationRequest),
+  PushRegistrationResponse: component("PushRegistrationResponse", raw.PushRegistrationResponse),
+  PushPreferencesUpdateRequest: component(
+    "PushPreferencesUpdateRequest",
+    raw.PushPreferencesUpdateRequest,
+  ),
+  PushPreferencesUpdateResponse: component(
+    "PushPreferencesUpdateResponse",
+    raw.PushPreferencesUpdateResponse,
+  ),
+  PushPreferencesReadQuery: component("PushPreferencesReadQuery", raw.PushPreferencesReadQuery),
+  PushPreferencesReadResponse: component(
+    "PushPreferencesReadResponse",
+    raw.PushPreferencesReadResponse,
+  ),
+  PushTokenDeleteParams: component("PushTokenDeleteParams", raw.PushTokenDeleteParams),
   AgentChatRequest: component("AgentChatRequest", raw.AgentChatRequest),
   AgentChatResponse: component("AgentChatResponse", raw.AgentChatResponse),
   AgentThreadSummary: component("AgentThreadSummary", raw.AgentThreadSummary),
@@ -1052,6 +1086,180 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/v1/push/register",
+  summary: "Register or re-claim this device for push notifications",
+  description:
+    "Registers the physical Expo token to the signed-in account. A token already owned by this account is idempotent; registration under another account transfers ownership and starts the new claim muted, so notification consent never crosses accounts.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushRegistrationRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Registered device id and its current per-installation preferences.",
+      content: { "application/json": { schema: S.PushRegistrationResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid Expo token, platform, or device id."),
+    401: errorResponses[401],
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/prefs",
+  summary: "Merge preferences for one registered device",
+  description:
+    "Updates only the signed-in user's matching installation. Event opt-ins and the product-level notification switch are per device; unknown patch fields are accepted and ignored for forward-compatible clients.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushPreferencesUpdateRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated per-installation preferences.",
+      content: { "application/json": { schema: S.PushPreferencesUpdateResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid token id or preference patch."),
+    401: errorResponses[401],
+    404: flatErrorResponse("Push token not found for the signed-in user."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/push/prefs",
+  summary: "Read preferences for the current device",
+  description:
+    "Returns the selected signed-in installation's preferences. Omit `tokenId` to read the first current installation; an unknown or other-user id returns an empty preference object with `tokenId: null` rather than exposing another account's device.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: { query: S.PushPreferencesReadQuery },
+  responses: {
+    200: {
+      description:
+        "Selected preferences, or an explicit empty result when no matching device exists.",
+      content: { "application/json": { schema: S.PushPreferencesReadResponse } },
+    },
+    400: flatErrorResponse("Invalid token id query parameter."),
+    401: errorResponses[401],
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/v1/push/token/{id}",
+  summary: "Unregister one signed-in device",
+  description:
+    "Deletes only the supplied opaque registration id when it belongs to the signed-in user, tombstoning its physical claim and removing future delivery eligibility.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: { params: S.PushTokenDeleteParams },
+  responses: {
+    204: { description: "Push device unregistered." },
+    400: flatErrorResponse("Invalid token id path parameter."),
+    401: errorResponses[401],
+    404: flatErrorResponse("Push token not found for the signed-in user."),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/revoke-device",
+  summary: "Revoke this device with its opaque push token id",
+  description:
+    "Public, idempotent sign-out fallback. It requires both the physical Expo token and the opaque id returned by registration, so a stale client cannot revoke a later account owner. `already-revoked` accepts a retry after an earlier unlink; `claim-mismatch` is fail-closed because another active owner now holds this physical token.",
+  tags: ["push"],
+  security: [],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushDeviceRevocationRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Completed idempotent cleanup: `revoked` or `already-revoked`.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid Expo token or opaque token id."),
+    409: {
+      description:
+        "Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/revoke-expired-session-device",
+  summary: "Revoke a former session's current device during expired-session recovery",
+  description:
+    "Narrow recovery for a cryptographically valid session JWT. Expo-token-only recovery is limited to the 90 days after expiry; its historical opaque token id may be used without that age limit when iOS cannot obtain an Expo token. It verifies the signature, HS256 algorithm, session purpose, and subject without accepting the JWT for normal authentication; the signed subject plus either identity may only revoke that same user's active claim. It returns no user data and fails closed with `claim-mismatch` if another owner claimed the physical token.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushExpiredSessionDeviceRevocationRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Completed idempotent cleanup: `revoked` or `already-revoked`.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid Expo token or opaque token id."),
+    401: flatErrorResponse(
+      "Expired signed session recovery token required; Expo-token-only recovery is limited to 90 days after expiry.",
+    ),
+    409: {
+      description:
+        "Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/revoke-current-device",
+  summary: "Revoke the signed-in user's current device without a stored token id",
+  description:
+    "Authenticated recovery for a valid session that lost its local opaque push token id. The current user plus Expo identity can revoke only that user's active claim; expired sessions without the opaque id must use the public fallback and fail closed on `claim-mismatch`.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushCurrentDeviceRevocationRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Completed idempotent cleanup: `revoked` or `already-revoked`.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid Expo token."),
+    401: errorResponses[401],
+    409: {
+      description:
+        "Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.",
+      content: { "application/json": { schema: S.PushDeviceRevocationResponse } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/v1/agent/chat",
   summary: "Start or continue a durable research conversation",
   description:
@@ -1427,6 +1635,7 @@ const document = generator.generateDocument({
     { name: "nearby", description: "Location-driven place lookup" },
     { name: "widget", description: "Home-screen widget data (iOS WidgetKit / Android App Widget)" },
     { name: "finance", description: "Ticker / comparable / ETF resolution" },
+    { name: "push", description: "Device push-token registration and revocation" },
     { name: "auth", description: "Passwordless email sign-in" },
     { name: "billing", description: "Entitlements + $19.99/mo subscription checkout" },
     { name: "admin", description: "Requires the `admin` scope" },
