@@ -28,10 +28,6 @@ function configuredReadServiceToken(): string | undefined {
   );
 }
 
-function forwardedHost(): string | undefined {
-  return process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || undefined;
-}
-
 export class DerivationConfigurationError extends Error {
   constructor(message: string) {
     super(message);
@@ -70,8 +66,11 @@ function requireServiceToken(access: "mutate" | "read"): string {
   return token;
 }
 
-function authorizationHeaders(token: string): Record<string, string> {
-  const host = forwardedHost();
+export function derivationAuthorizationHeaders(
+  token: string,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string> {
+  const host = environment.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || undefined;
   return {
     Authorization: `Bearer ${token}`,
     ...(host
@@ -216,7 +215,7 @@ function unifiedJsonHeaders(access: "mutate" | "read", contentType = false): Hea
   return {
     Accept: "application/json",
     ...(contentType ? { "Content-Type": "application/json" } : {}),
-    ...authorizationHeaders(requireServiceToken(access)),
+    ...derivationAuthorizationHeaders(requireServiceToken(access)),
   };
 }
 
@@ -272,7 +271,7 @@ export async function getDerivationResearchMemo(
     method: "GET",
     headers: {
       Accept: "application/pdf",
-      ...authorizationHeaders(requireServiceToken("read")),
+      ...derivationAuthorizationHeaders(requireServiceToken("read")),
     },
     signal: options.signal ?? AbortSignal.timeout(30_000),
   });
