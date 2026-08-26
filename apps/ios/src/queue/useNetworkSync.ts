@@ -23,7 +23,11 @@ type ScopedQueueState = {
  * drains the offline photo queue. Also exposes the current queue for
  * on-screen indicators.
  */
-export function useNetworkSync(opts: { token?: string | null; userId?: string | null }): {
+export function useNetworkSync(opts: {
+  token?: string | null;
+  userId?: string | null;
+  authGeneration?: number;
+}): {
   online: boolean;
   pending: QueuedPhoto[];
   legacyCount: number;
@@ -34,6 +38,7 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
   const [online, setOnline] = useState(true);
   const scope = useMemo(() => queueScopeForUser(opts.userId), [opts.userId]);
   const scopeKey = queueScopeKey(scope);
+  const authGeneration = opts.authGeneration ?? 0;
   const [queueState, setQueueState] = useState<ScopedQueueState>(() => ({
     scopeKey,
     pending: [],
@@ -41,9 +46,11 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
     recovery: null,
   }));
   const activeScopeKey = useRef(scopeKey);
+  const activeAuthGeneration = useRef(authGeneration);
   // Update during render so an async completion from the prior account cannot
   // briefly replace this account's pending count before effect cleanup runs.
   activeScopeKey.current = scopeKey;
+  activeAuthGeneration.current = authGeneration;
   const flushing = useRef(new Map<string, AbortController>());
   const retryAfterAbort = useRef(new Set<string>());
   const flushNowRef = useRef<(() => Promise<void>) | null>(null);
@@ -51,9 +58,10 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
 
   const refresh = useCallback(async () => {
     const status = await queueStatus(scope);
-    if (activeScopeKey.current !== scopeKey) return;
+    if (activeScopeKey.current !== scopeKey || activeAuthGeneration.current !== authGeneration)
+      return;
     setQueueState({ scopeKey, ...status });
-  }, [scope, scopeKey]);
+  }, [authGeneration, scope, scopeKey]);
 
   const resetRecovery = useCallback(async () => {
     await resetUnrecoverableQueue();
@@ -76,9 +84,14 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
         scope,
         token: token ?? undefined,
         signal: controller.signal,
-        shouldContinue: () => !controller.signal.aborted && activeScopeKey.current === scopeKey,
+        shouldContinue: () =>
+          !controller.signal.aborted &&
+          activeScopeKey.current === scopeKey &&
+          activeAuthGeneration.current === authGeneration,
       });
-      if (activeScopeKey.current === scopeKey) await refresh();
+      if (activeScopeKey.current === scopeKey && activeAuthGeneration.current === authGeneration) {
+        await refresh();
+      }
     } finally {
       if (flushing.current.get(scopeKey) === controller) {
         flushing.current.delete(scopeKey);
@@ -87,17 +100,17 @@ export function useNetworkSync(opts: { token?: string | null; userId?: string | 
         }
       }
     }
-  }, [refresh, scope, scopeKey, token]);
+  }, [authGeneration, refresh, scope, scopeKey, token]);
   flushNowRef.current = flushNow;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const operationGeneration = authGeneration;
+    return () => {
       // Scope transitions and unmounts abort old requests. The queue keeps the
       // old item for a later matching session rather than applying stale UI.
-      flushing.current.get(scopeKey)?.abort();
-    },
-    [scopeKey],
-  );
+      if (operationGeneration === authGeneration) flushing.current.get(scopeKey)?.abort();
+    };
+  }, [authGeneration, scopeKey]);
 
   useEffect(() => subscribeToQueue(() => void refresh()), [refresh]);
 

@@ -12,7 +12,7 @@ import {
   shouldOfferFindEvolutionNudge,
 } from "./findEvolutionOptIn";
 
-const session = { token: "session-token" };
+const session = { token: "session-token", userId: "user-1", authGeneration: 4 };
 
 function dependencies(
   overrides: Partial<FindEvolutionOptInDependencies> = {},
@@ -21,6 +21,7 @@ function dependencies(
     requestPermission: async () => true,
     register: async () => ({ tokenId: "push_123" }),
     persist: async () => ({ ...FIND_EVOLUTION_OPT_IN_PREFS }),
+    readPrefs: async () => ({ ...FIND_EVOLUTION_OPT_IN_PREFS }),
     ...overrides,
   };
 }
@@ -129,6 +130,7 @@ describe("Find evolution enrollment", () => {
     const action = {
       userId: "user-1",
       sessionToken: "session-token",
+      authGeneration: 4,
       candidate: firstCandidate,
     };
 
@@ -153,6 +155,7 @@ describe("Find evolution enrollment", () => {
     const action = {
       userId: "user-1",
       sessionToken: "session-token",
+      authGeneration: 4,
       candidate: firstCandidate,
     };
 
@@ -182,6 +185,10 @@ describe("Find evolution enrollment", () => {
           expect(prefs).toEqual({ notifications_enabled: true, find_evolution: true });
           return { ...prefs };
         },
+        readPrefs: async (tokenId, receivedSession) => {
+          calls.push(`read:${tokenId}:${receivedSession.token}`);
+          return { ...FIND_EVOLUTION_OPT_IN_PREFS };
+        },
       }),
     );
 
@@ -190,6 +197,7 @@ describe("Find evolution enrollment", () => {
       "permission",
       "register:session-token",
       "persist:push_123:session-token",
+      "read:push_123:session-token",
     ]);
   });
 
@@ -219,10 +227,48 @@ describe("Find evolution enrollment", () => {
   test("does not claim success when the server response lacks either requested preference", async () => {
     const result = await enableFindEvolutionOptIn(
       session,
-      dependencies({ persist: async () => ({ notifications_enabled: true }) }),
+      dependencies({
+        persist: async () => ({ notifications_enabled: true }),
+        readPrefs: async () => ({ notifications_enabled: true }),
+      }),
     );
 
     expect(result).toEqual({ status: "persistence-failed" });
+  });
+
+  test("reconciles a lost preferences POST response through this exact token id", async () => {
+    const reads: string[] = [];
+    const result = await enableFindEvolutionOptIn(
+      session,
+      dependencies({
+        persist: async () => {
+          throw new Error("connection dropped after server write");
+        },
+        readPrefs: async (tokenId) => {
+          reads.push(tokenId);
+          return { ...FIND_EVOLUTION_OPT_IN_PREFS };
+        },
+      }),
+    );
+
+    expect(result).toEqual({ status: "enabled" });
+    expect(reads).toEqual(["push_123"]);
+  });
+
+  test("stops enrollment after a same-user session generation changes", async () => {
+    let current = true;
+    const result = await enableFindEvolutionOptIn(
+      session,
+      dependencies({
+        requestPermission: async () => {
+          current = false;
+          return true;
+        },
+        isCurrent: () => current,
+      }),
+    );
+
+    expect(result).toEqual({ status: "cancelled" });
   });
 
   test("serializes rapid enable attempts into one enrollment", async () => {

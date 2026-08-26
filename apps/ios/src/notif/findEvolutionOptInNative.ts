@@ -23,6 +23,12 @@ const liveOptInDependencies: FindEvolutionOptInDependencies = {
   requestPermission: ensurePermissions,
   register: (session) => registerForPush(session, { requestPermission: false }),
   persist: setPushPref,
+  readPrefs: async (tokenId, session) => {
+    const remote = await getPushPrefs(session, tokenId);
+    if (remote.tokenId !== tokenId)
+      throw new Error("This device push token is no longer available");
+    return remote.prefs;
+  },
 };
 
 /** `null` means storage was unavailable; callers should fail closed and hide the nudge. */
@@ -52,6 +58,7 @@ export function getFindEvolutionDevicePrefs(
 
 export function serializeFindEvolutionOptIn(
   session: NotificationSession,
+  isCurrent: () => boolean,
 ): () => Promise<FindEvolutionOptInResult> {
-  return serializeOptIn(session, liveOptInDependencies);
+  return serializeOptIn(session, { ...liveOptInDependencies, isCurrent });
 }

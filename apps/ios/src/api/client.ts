@@ -29,6 +29,8 @@ type FetchOpts = {
   signal?: AbortSignal;
 };
 
+const IDENTIFY_REQUEST_TIMEOUT_MS = 30_000;
+
 async function jsonFetch<T>(path: string, init: RequestInit, opts: FetchOpts = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -142,17 +144,27 @@ export async function identifyPhoto(
   }
   // Let fetch set the multipart boundary itself; do NOT set Content-Type.
 
-  const res = await fetch(`${API_URL}/v1/identify`, {
-    method: "POST",
-    body: form,
-    headers,
-    signal: opts.signal,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw apiErrorFromResponse(res.status, text, res.statusText);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (opts.signal?.aborted) abort();
+  else opts.signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), IDENTIFY_REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_URL}/v1/identify`, {
+      method: "POST",
+      body: form,
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw apiErrorFromResponse(res.status, text, res.statusText);
+    }
+    return (await res.json()) as IdentifyResponse;
+  } finally {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", abort);
   }
-  return (await res.json()) as IdentifyResponse;
 }
 
 export function resolveComparable(

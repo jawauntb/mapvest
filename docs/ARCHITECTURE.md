@@ -62,11 +62,13 @@ then request started) and names the public-match lookup as the next step — it
 does not fabricate server-side progress. Result-card motion is disabled when
 the system requests Reduce Motion.
 A signed-in public result with an attached positive quote can also show one
-static, per-user/device **Find evolution** offer. Capture never requests iOS
-permission: only its direct CTA may do so, and Mapvest writes only
-`notifications_enabled` plus `find_evolution` after permission, device
-registration, and server persistence have all succeeded. Failed, denied, and
-Settings recovery states never claim that an alert is enabled.
+static, per-user/device **Find evolution** offer. The result merely qualifies
+the offer: this device-global preference covers all of the person's finds, not
+the brand that triggered it. Capture never requests iOS permission: only its
+direct CTA may do so, and Mapvest writes only `notifications_enabled` plus
+`find_evolution` after permission, device registration, an exact-token
+preference read, and server persistence have all succeeded. Failed, denied,
+lost-response, and Settings recovery states never claim that an alert is enabled.
 On iOS, success additionally requires the OS alert-presentation capability,
 not merely top-level notification authorization. Push preferences are always
 scoped to this install's stored push-token id; a missing or stale id does not

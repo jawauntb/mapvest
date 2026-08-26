@@ -5,7 +5,7 @@
  */
 import { type DevicePushPrefsDependencies, getStoredDevicePushPrefs } from "./devicePrefs";
 
-export type NotificationSession = { token: string };
+export type NotificationSession = { token: string; userId: string; authGeneration: number };
 
 export type FindEvolutionPrefs = {
   notifications_enabled?: boolean;
@@ -85,11 +85,13 @@ export type FindEvolutionOptInResult =
   | { status: "permission-denied" }
   | { status: "permission-unavailable" }
   | { status: "registration-failed" }
-  | { status: "persistence-failed" };
+  | { status: "persistence-failed" }
+  | { status: "cancelled" };
 
 export type FindEvolutionEnrollmentContext = {
   userId: string;
   sessionToken: string;
+  authGeneration: number;
   candidate: object;
 };
 
@@ -114,10 +116,13 @@ export function resolveFindEvolutionEnrollmentCompletion(
   if (
     !current ||
     current.userId !== action.userId ||
-    current.sessionToken !== action.sessionToken
+    current.sessionToken !== action.sessionToken ||
+    current.authGeneration !== action.authGeneration
   ) {
     return "ignore";
   }
+
+  if (result.status === "cancelled") return "ignore";
 
   if (result.status === "enabled") {
     return current.candidate === action.candidate ? "enabled" : "hidden";
@@ -134,6 +139,10 @@ export type FindEvolutionOptInDependencies = {
     prefs: typeof FIND_EVOLUTION_OPT_IN_PREFS,
     session: NotificationSession,
   ) => Promise<FindEvolutionPrefs>;
+  /** Reads one exact device record to reconcile a lost POST response. */
+  readPrefs: (tokenId: string, session: NotificationSession) => Promise<FindEvolutionPrefs>;
+  /** Stops post-permission enrollment after a same-user session transition. */
+  isCurrent?: () => boolean;
 };
 
 /**
@@ -144,6 +153,8 @@ export async function enableFindEvolutionOptIn(
   session: NotificationSession,
   dependencies: FindEvolutionOptInDependencies,
 ): Promise<FindEvolutionOptInResult> {
+  const isCurrent = dependencies.isCurrent ?? (() => true);
+  if (!isCurrent()) return { status: "cancelled" };
   let granted: boolean;
   try {
     granted = await dependencies.requestPermission();
@@ -151,6 +162,7 @@ export async function enableFindEvolutionOptIn(
     return { status: "permission-unavailable" };
   }
   if (!granted) return { status: "permission-denied" };
+  if (!isCurrent()) return { status: "cancelled" };
 
   let registration: { tokenId: string } | null;
   try {
@@ -159,20 +171,37 @@ export async function enableFindEvolutionOptIn(
     return { status: "registration-failed" };
   }
   if (!registration) return { status: "registration-failed" };
+  if (!isCurrent()) return { status: "cancelled" };
 
+  let saved: FindEvolutionPrefs;
+  let reconciled = false;
   try {
-    const saved = await dependencies.persist(
-      registration.tokenId,
-      FIND_EVOLUTION_OPT_IN_PREFS,
-      session,
-    );
-    if (saved.notifications_enabled !== true || saved.find_evolution !== true) {
+    saved = await dependencies.persist(registration.tokenId, FIND_EVOLUTION_OPT_IN_PREFS, session);
+  } catch {
+    // The server can commit the merge then lose the response. Re-read only
+    // this device's opaque token id rather than selecting another device.
+    try {
+      saved = await dependencies.readPrefs(registration.tokenId, session);
+      reconciled = true;
+    } catch {
       return { status: "persistence-failed" };
     }
-    return { status: "enabled" };
-  } catch {
+  }
+  if (!isCurrent()) return { status: "cancelled" };
+  if (!reconciled) {
+    try {
+      // The GET is also the authoritative confirmation when POST replied but a
+      // proxy/body parser lost part of the response.
+      saved = await dependencies.readPrefs(registration.tokenId, session);
+    } catch {
+      return { status: "persistence-failed" };
+    }
+  }
+  if (!isCurrent()) return { status: "cancelled" };
+  if (saved.notifications_enabled !== true || saved.find_evolution !== true) {
     return { status: "persistence-failed" };
   }
+  return { status: "enabled" };
 }
 
 /**

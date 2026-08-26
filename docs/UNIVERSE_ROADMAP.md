@@ -33,6 +33,8 @@ What exists today, precisely:
   fires a local brief when the user moves >2km. Notification consent is
   explicit: a signed-in launch never prompts iOS; Settings and the Camera's
   direct post-value **Find evolution** CTA are permission request surfaces.
+  That CTA enables its device-global all-finds event; the public result that
+  reveals it is not represented as a brand-specific subscription.
   Each device persists a product-level
   `notifications_enabled` mute independent of OS authorization; every
   notifier, including weekly rivalries, honors it. An Expo token has exactly

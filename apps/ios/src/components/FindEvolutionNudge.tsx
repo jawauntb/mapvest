@@ -20,9 +20,9 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "r
 type NudgeState = "loading" | "hidden" | "ready" | "enabling" | "enabled" | "denied" | "error";
 
 type FindEvolutionNudgeProps = {
-  session?: NotificationSession | null;
+  session?: { token: string } | null;
   userId?: string | null;
-  brand: string;
+  authGeneration: number;
   ticker?: string | null;
   isPublic: boolean;
   /** The full identify response identity; guards against stale async results. */
@@ -38,7 +38,7 @@ type FindEvolutionNudgeProps = {
 export function FindEvolutionNudge({
   session,
   userId,
-  brand,
+  authGeneration,
   ticker,
   isPublic,
   candidate,
@@ -51,13 +51,13 @@ export function FindEvolutionNudge({
   const enabledEnrollmentRef = useRef<FindEvolutionEnrollmentContext | null>(null);
   const sessionToken = session?.token;
   const activeSession = useMemo<NotificationSession | null>(
-    () => (sessionToken ? { token: sessionToken } : null),
-    [sessionToken],
+    () => (sessionToken && userId ? { token: sessionToken, userId, authGeneration } : null),
+    [authGeneration, sessionToken, userId],
   );
   const foundPrice = quote?.price;
-  const candidateKey = `${userId ?? ""}:${sessionToken ?? ""}:${isPublic}:${ticker ?? ""}:${foundPrice ?? ""}`;
+  const candidateKey = `${userId ?? ""}:${sessionToken ?? ""}:${authGeneration}:${isPublic}:${ticker ?? ""}:${foundPrice ?? ""}`;
   const currentContext: FindEvolutionEnrollmentContext | null =
-    userId && sessionToken ? { userId, sessionToken, candidate } : null;
+    userId && sessionToken ? { userId, sessionToken, authGeneration, candidate } : null;
   const currentContextRef = useRef<FindEvolutionEnrollmentContext | null>(currentContext);
   const renderedCandidateRef = useRef(candidate);
   const renderedCandidateKeyRef = useRef(candidateKey);
@@ -74,7 +74,18 @@ export function FindEvolutionNudge({
     dismissed: false,
   });
   const serializedEnable = useMemo(
-    () => (activeSession ? serializeFindEvolutionOptIn(activeSession) : null),
+    () =>
+      activeSession
+        ? serializeFindEvolutionOptIn(activeSession, () => {
+            const current = currentContextRef.current;
+            return Boolean(
+              current &&
+                current.userId === activeSession.userId &&
+                current.sessionToken === activeSession.token &&
+                current.authGeneration === activeSession.authGeneration,
+            );
+          })
+        : null,
     [activeSession],
   );
   const enrollmentMatchesCurrentCandidate = Boolean(
@@ -82,6 +93,7 @@ export function FindEvolutionNudge({
       currentContext &&
       enrollmentInFlight.userId === currentContext.userId &&
       enrollmentInFlight.sessionToken === currentContext.sessionToken &&
+      enrollmentInFlight.authGeneration === currentContext.authGeneration &&
       enrollmentInFlight.candidate === currentContext.candidate,
   );
   // Effects reset state for a new identify response after commit. Hiding for
@@ -105,7 +117,10 @@ export function FindEvolutionNudge({
     const isAlreadyEnabledForCurrentAccount = () => {
       const enabled = enabledEnrollmentRef.current;
       return Boolean(
-        enabled && enabled.userId === userId && enabled.sessionToken === activeSession?.token,
+        enabled &&
+          enabled.userId === userId &&
+          enabled.sessionToken === activeSession?.token &&
+          enabled.authGeneration === activeSession?.authGeneration,
       );
     };
     const setAlreadyEnabledState = () => {
@@ -219,14 +234,15 @@ export function FindEvolutionNudge({
         <View style={styles.heading}>
           <Ionicons name="pulse-outline" size={16} color={colors.accent} />
           <Text accessibilityRole="header" style={styles.title}>
-            Keep {brand} in view
+            Keep all your finds in view
           </Text>
         </View>
       ) : null}
 
       {renderedState === "enabled" ? (
         <Text accessibilityLiveRegion="polite" style={styles.success}>
-          Find evolution notifications are on for this device. Change them anytime in Settings.
+          Find evolution notifications are on for all your finds on this device. Change them anytime
+          in Settings.
         </Text>
       ) : renderedState === "denied" ? (
         <>
@@ -288,8 +304,8 @@ export function FindEvolutionNudge({
       ) : (
         <>
           <Text style={[styles.copy, styles.offerCopy]}>
-            One optional note at each +10%, +25%, +50%, or +100% milestone from this captured price.
-            Collection, not advice.
+            Get an optional note when any of your finds reaches a +10%, +25%, +50%, or +100%
+            milestone from its captured price. Collection, not advice.
           </Text>
           <View style={styles.actions}>
             <Pressable
@@ -301,14 +317,14 @@ export function FindEvolutionNudge({
                 disabled: renderedState === "enabling",
                 busy: renderedState === "enabling",
               }}
-              accessibilityLabel={`Track ${ticker?.trim() || brand} Find evolutions`}
+              accessibilityLabel="Track Find evolutions for all your finds"
             >
               {renderedState === "enabling" ? <ActivityIndicator color={colors.accentInk} /> : null}
               {renderedState !== "enabling" ? (
                 <Ionicons name="pulse-outline" size={15} color={colors.accentInk} />
               ) : null}
               <Text style={styles.primaryButtonText}>
-                {renderedState === "enabling" ? "Turning on…" : "Track evolutions"}
+                {renderedState === "enabling" ? "Turning on…" : "Track all finds"}
               </Text>
             </Pressable>
             <Pressable

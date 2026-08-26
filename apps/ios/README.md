@@ -33,7 +33,8 @@ in `eas.json`.
   the card. A zero-match response offers Refine and Retake recovery actions.
   After a signed-in public result with a real captured quote, a one-time
   per-user/device Find evolution offer may appear; only its direct CTA can
-  ask iOS for permission and it enables just that event plus master delivery.
+  ask iOS for permission and it enables that device's all-finds event plus
+  master delivery. It never implies that just the triggering brand is tracked.
   The result/cache is scoped to the identity that started identify and is
   cleared on account changes; the bounded, single-scroll result card keeps
   evidence and every action reachable on compact iPhones.

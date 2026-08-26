@@ -6,6 +6,7 @@
  * types mirror the server contract in apps/api/src/routes/push.ts.
  */
 import { API_URL } from "@/util/env";
+import { parsePushPrefs, parsePushPrefsRead } from "./prefsResponse";
 import { getStoredTokenId } from "./registerForPush";
 import {
   buildExpiredSessionRevokeRequest,
@@ -97,8 +98,7 @@ export async function getPushPrefs(
     }
     throw new Error(message);
   }
-  const j = (await res.json()) as { prefs?: PushPrefs; tokenId?: string | null };
-  return { prefs: j.prefs ?? {}, tokenId: j.tokenId ?? null };
+  return parsePushPrefsRead(await res.json());
 }
 
 /**
@@ -130,8 +130,11 @@ export async function setPushPref(
     }
     throw new Error(message);
   }
-  const body = (await res.json()) as { prefs?: PushPrefs };
-  return body.prefs ?? patch;
+  const body: unknown = await res.json();
+  if (!body || typeof body !== "object" || Array.isArray(body) || !("prefs" in body)) {
+    throw new Error("Malformed notification preferences response");
+  }
+  return parsePushPrefs(body.prefs);
 }
 
 /**

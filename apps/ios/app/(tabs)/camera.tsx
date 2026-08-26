@@ -23,8 +23,9 @@ import { EvidenceSection } from "@/components/EvidenceSection";
 import { FindEvolutionNudge } from "@/components/FindEvolutionNudge";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
-import { enqueuePhoto } from "@/queue/photoQueue";
+import { enqueuePhoto, queueScopeForUser } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
@@ -69,6 +70,10 @@ type CameraCache = {
 type IdentifyOperation = {
   id: number;
   scope: CameraResultScope;
+  authGeneration: number;
+  sessionToken?: string;
+  queueScope: ReturnType<typeof queueScopeForUser>;
+  controller: AbortController;
 };
 
 /** Capture freezes the frame with the ticker — camera does not stay live. */
@@ -82,19 +87,29 @@ export default function CameraScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string }>();
   const qc = useQueryClient();
-  const { session, user } = useSession();
+  const { session, user, authGeneration, isActiveSession, isAuthGenerationCurrent } = useSession();
   const { presentPaywall } = usePaywall();
   const entitlementsQ = useEntitlements();
-  const { online } = useNetworkSync({ token: session?.token });
+  const queueScope = useMemo(() => queueScopeForUser(session?.userId), [session?.userId]);
+  const { online, pending, legacyCount, recovery, resetRecovery } = useNetworkSync({
+    token: session?.token,
+    userId: session?.userId,
+    authGeneration,
+  });
   const activeScope = cameraResultScope(user?.id);
   const activeScopeRef = useRef(activeScope);
   // Keep this in sync during render, before effects run, so an identify
   // response that settles in the guest→account render gap is still rejected.
   activeScopeRef.current = activeScope;
   const lastScopeRef = useRef(activeScope);
+  const lastAuthGenerationRef = useRef(authGeneration);
   const identifyOperationRef = useRef(0);
+  const identifyAbortRef = useRef<AbortController | null>(null);
+  const activeSessionRef = useRef({ authGeneration, token: session?.token });
+  activeSessionRef.current = { authGeneration, token: session?.token };
   const cached = qc.getQueryData<CameraCache>(cameraResultCacheKey(activeScope));
   const [stateScope, setStateScope] = useState<CameraResultScope>(activeScope);
+  const [stateAuthGeneration, setStateAuthGeneration] = useState(authGeneration);
   const [busy, setBusy] = useState(false);
   const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
   const authSaveNavigationRef = useRef(false);
@@ -105,6 +120,7 @@ export default function CameraScreen() {
   const [errValue, setErr] = useState<string | null>(cached?.err ?? null);
   const [queuedNoteValue, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
   const [savedNoteValue, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
+  const [resettingQueueRecovery, setResettingQueueRecovery] = useState(false);
   const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -113,7 +129,8 @@ export default function CameraScreen() {
   // <PhotoAnnotator> full-screen seeded with the frozen photo; its Scan
   // re-runs identify with roi + hint. Cancel returns to the result card.
   const [pendingUriValue, setPendingUri] = useState<string | null>(null);
-  const stateBelongsToActiveIdentity = stateScope === activeScope;
+  const stateBelongsToActiveIdentity =
+    stateScope === activeScope && stateAuthGeneration === authGeneration;
   // The account transition effect below clears this state after commit. These
   // guards hide it one render earlier, so no guest/A result can flash on B.
   const frozenUri = stateBelongsToActiveIdentity ? frozenUriValue : null;
@@ -172,7 +189,10 @@ export default function CameraScreen() {
 
   const resetToLive = useCallback(() => {
     identifyOperationRef.current += 1;
+    identifyAbortRef.current?.abort();
+    identifyAbortRef.current = null;
     setStateScope(activeScopeRef.current);
+    setStateAuthGeneration(activeSessionRef.current.authGeneration);
     setFrozenUri(null);
     setPendingUri(null);
     setBusy(false);
@@ -183,13 +203,17 @@ export default function CameraScreen() {
 
   useEffect(() => {
     const previousScope = lastScopeRef.current;
-    if (previousScope === activeScope) return;
+    const previousAuthGeneration = lastAuthGenerationRef.current;
+    if (previousScope === activeScope && previousAuthGeneration === authGeneration) return;
     lastScopeRef.current = activeScope;
+    lastAuthGenerationRef.current = authGeneration;
     // The authenticated Camera tab stays mounted, so explicitly invalidate
     // both a late request and the old identity's cached photo/result.
-    qc.removeQueries({ queryKey: cameraResultCacheKey(previousScope), exact: true });
+    if (previousScope !== activeScope) {
+      qc.removeQueries({ queryKey: cameraResultCacheKey(previousScope), exact: true });
+    }
     resetToLive();
-  }, [activeScope, qc, resetToLive]);
+  }, [activeScope, authGeneration, qc, resetToLive]);
 
   // Opening Camera always means "take a new picture". Last identify stays
   // in the query cache as a Last snap chip, not as a stuck frozen frame.
@@ -243,11 +267,19 @@ export default function CameraScreen() {
   }
 
   function startIdentifyOperation(): IdentifyOperation {
+    identifyAbortRef.current?.abort();
+    const controller = new AbortController();
     const operation = {
       id: ++identifyOperationRef.current,
       scope: activeScopeRef.current,
+      authGeneration: authGeneration,
+      sessionToken: session?.token,
+      queueScope,
+      controller,
     };
+    identifyAbortRef.current = controller;
     setStateScope(operation.scope);
+    setStateAuthGeneration(operation.authGeneration);
     setBusy(true);
     setIdentifyStage("preparing");
     setErr(null);
@@ -258,14 +290,23 @@ export default function CameraScreen() {
   }
 
   function isCurrentIdentifyOperation(operation: IdentifyOperation): boolean {
+    const activeSession = activeSessionRef.current;
     return (
       operation.id === identifyOperationRef.current &&
-      canApplyCameraResult(operation.scope, activeScopeRef.current)
+      !operation.controller.signal.aborted &&
+      canApplyCameraResult(operation.scope, activeScopeRef.current) &&
+      operation.authGeneration === activeSession.authGeneration &&
+      isAuthGenerationCurrent(operation.authGeneration) &&
+      (operation.sessionToken
+        ? activeSession.token === operation.sessionToken &&
+          isActiveSession(operation.authGeneration, operation.sessionToken)
+        : activeSession.token === undefined)
     );
   }
 
   function finishIdentifyOperation(operation: IdentifyOperation) {
     if (isCurrentIdentifyOperation(operation)) setBusy(false);
+    if (identifyAbortRef.current === operation.controller) identifyAbortRef.current = null;
   }
 
   async function capture() {
@@ -343,10 +384,27 @@ export default function CameraScreen() {
       finishIdentifyOperation(operation);
       return;
     }
+    const queueCapture = async (): Promise<boolean> => {
+      if (!isCurrentIdentifyOperation(operation)) return false;
+      try {
+        await enqueuePhoto({
+          imageUri: args.imageUri,
+          location,
+          scope: operation.queueScope,
+        });
+        return isCurrentIdentifyOperation(operation);
+      } catch (queueError) {
+        if (!isCurrentIdentifyOperation(operation)) return false;
+        const message = queueError instanceof Error ? queueError.message : String(queueError);
+        const queueFailure = `Couldn't safely queue this snap: ${message}`;
+        setErr(queueFailure);
+        persistCamera({ err: queueFailure, queuedNote: null }, operation.scope);
+        return false;
+      }
+    };
     try {
       if (!online) {
-        await enqueuePhoto({ imageUri: args.imageUri, location });
-        if (!isCurrentIdentifyOperation(operation)) return;
+        if (!(await queueCapture())) return;
         const note = "Queued — finishing when you're back online.";
         setQueuedNote(note);
         persistCamera({ queuedNote: note }, operation.scope);
@@ -364,12 +422,18 @@ export default function CameraScreen() {
             roi: args.roi,
             hint: args.hint,
           },
-          { token: operation.scope === "guest" ? undefined : session?.token },
+          {
+            token: operation.scope === "guest" ? undefined : operation.sessionToken,
+            signal: operation.controller.signal,
+          },
         );
         if (!isCurrentIdentifyOperation(operation)) return;
         setResult(resp);
         persistCamera({ result: resp, err: null }, operation.scope);
         void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
+        if (operation.sessionToken && resp.investables.length > 0) {
+          markFindRefreshPending(operation.sessionToken);
+        }
         if (resp.investables.length > 0) hapticSuccess();
       } catch (e) {
         if (!isCurrentIdentifyOperation(operation)) return;
@@ -378,8 +442,7 @@ export default function CameraScreen() {
           persistCamera({ err: "quota_exceeded" }, operation.scope);
           return;
         }
-        await enqueuePhoto({ imageUri: args.imageUri, location });
-        if (!isCurrentIdentifyOperation(operation)) return;
+        if (!(await queueCapture())) return;
         const msg = e instanceof Error ? e.message : String(e);
         const failNote =
           "That didn't go through. Your snap is queued and will finish on its own — or retake now.";
@@ -395,6 +458,8 @@ export default function CameraScreen() {
   function retake() {
     hapticSelect();
     identifyOperationRef.current += 1;
+    identifyAbortRef.current?.abort();
+    identifyAbortRef.current = null;
     setFrozenUri(null);
     setResult(null);
     setErr(null);
@@ -409,6 +474,26 @@ export default function CameraScreen() {
       queuedNote: null,
       savedNote: null,
     });
+  }
+
+  async function discardUnrecoverableQueue() {
+    if (!recovery?.quarantined || resettingQueueRecovery) return;
+    setResettingQueueRecovery(true);
+    try {
+      await resetRecovery();
+      const note =
+        "Unreadable offline queue discarded. Its private recovery copy stays on this device.";
+      setQueuedNote(note);
+      setErr(null);
+      persistCamera({ queuedNote: note, err: null });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const queueFailure = `Couldn't discard the protected offline queue: ${message}`;
+      setErr(queueFailure);
+      persistCamera({ err: queueFailure });
+    } finally {
+      setResettingQueueRecovery(false);
+    }
   }
 
   const { primary: top, additional: additionalInvestables } = splitInvestableResults(
@@ -551,6 +636,28 @@ export default function CameraScreen() {
               </BlurView>
             </View>
           ) : null}
+          {pending.length > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="cloud-upload-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {pending.length} {pending.length === 1 ? "snap" : "snaps"} queued for{" "}
+                  {session?.userId ? "this account" : "guest mode"}.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
+          {legacyCount > 0 ? (
+            <View style={styles.statusRow}>
+              <BlurView intensity={40} tint="dark" style={styles.statusPill}>
+                <Ionicons name="shield-checkmark-outline" size={12} color={colors.fg} />
+                <Text style={styles.status}>
+                  {legacyCount} older {legacyCount === 1 ? "snap is" : "snaps are"} protected and
+                  won't upload. Retake to send {legacyCount === 1 ? "it" : "them"}.
+                </Text>
+              </BlurView>
+            </View>
+          ) : null}
           {!frozenUri && !result && !busy && !err ? (
             <View style={styles.lessonRow}>
               <BlurView intensity={40} tint="dark" style={styles.statusPill}>
@@ -579,7 +686,7 @@ export default function CameraScreen() {
           {busy ? <IdentifyProgress stage={identifyStage} /> : null}
         </View>
 
-        {result || err || queuedNote ? (
+        {result || err || queuedNote || recovery ? (
           <View style={[styles.resultRegion, { maxHeight: resultRegionMaxHeight }]}>
             <ScrollView
               style={styles.resultScroll}
@@ -656,6 +763,51 @@ export default function CameraScreen() {
                           <Text style={styles.miniBtnText}>Retake</Text>
                         </Pressable>
                       </View>
+                    </View>
+                  ) : null}
+                  {recovery ? (
+                    <View
+                      accessibilityRole="summary"
+                      accessibilityLabel="Offline queue recovery required"
+                    >
+                      <View style={styles.noMatchHeading}>
+                        <Ionicons name="shield-outline" size={18} color={colors.warn} />
+                        <Text style={styles.resultTitle}>Offline queue needs attention</Text>
+                      </View>
+                      <Text style={styles.noMatchCopy}>
+                        Queued photos are blocked and will not upload. {recovery.message}
+                      </Text>
+                      {recovery.quarantined ? (
+                        <>
+                          <Text style={styles.noMatchCopy}>
+                            Discard removes these photos from the active queue. A private recovery
+                            copy stays on this device for diagnostics.
+                          </Text>
+                          <Pressable
+                            style={[
+                              styles.dominantBtn,
+                              resettingQueueRecovery && { opacity: 0.55 },
+                            ]}
+                            onPress={() => void discardUnrecoverableQueue()}
+                            disabled={resettingQueueRecovery}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: resettingQueueRecovery }}
+                            accessibilityLabel="Discard unreadable offline queue"
+                          >
+                            <Ionicons name="trash-outline" size={16} color={colors.accentInk} />
+                            <Text style={styles.dominantBtnText}>
+                              {resettingQueueRecovery
+                                ? "Discarding offline queue…"
+                                : "Discard offline queue"}
+                            </Text>
+                          </Pressable>
+                        </>
+                      ) : (
+                        <Text style={styles.noMatchCopy}>
+                          Restore device storage and reopen Camera before trying again. Nothing was
+                          discarded.
+                        </Text>
+                      )}
                     </View>
                   ) : null}
                   {top ? (
@@ -759,7 +911,7 @@ export default function CameraScreen() {
                     <FindEvolutionNudge
                       session={session}
                       userId={user.id}
-                      brand={top.brand.name}
+                      authGeneration={authGeneration}
                       ticker={top.brand.ticker?.symbol}
                       isPublic={top.brand.isPublic}
                       candidate={result}
