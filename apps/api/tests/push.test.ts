@@ -8,6 +8,7 @@ import { sign } from "hono/jwt";
 import { app } from "../src/index.js";
 import { deliverPush } from "../src/lib/push-dispatcher.js";
 import {
+  _cleanupPushDeliveryHandoffForTest,
   _resetPushTokenMemory,
   claimPushDelivery,
   finalizePushDelivery,
@@ -42,6 +43,20 @@ async function sessionFor(id: string, email: string): Promise<string> {
       email,
       iat: now,
       exp: now + 60 * 60,
+    },
+    process.env.SESSION_SIGNING_KEY!,
+  );
+}
+
+async function expiredSessionFor(id: string, email: string, expiredAgoSec = 1): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign(
+    {
+      purpose: "session",
+      sub: id,
+      email,
+      iat: now - 30 * 24 * 60 * 60 - expiredAgoSec,
+      exp: now - expiredAgoSec,
     },
     process.env.SESSION_SIGNING_KEY!,
   );
@@ -119,7 +134,7 @@ describe("push token account isolation", () => {
     ]);
   });
 
-  test("revocation-only identity route works without a bearer session", async () => {
+  test("revocation-only identity route works without a bearer session after device ID rotation", async () => {
     const uid = userId();
     const physicalToken = expoToken();
     const token = await registerPushToken(uid, physicalToken, "ios", "phone");
@@ -129,17 +144,264 @@ describe("push token account isolation", () => {
       new Request("http://localhost/v1/push/revoke-device", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: physicalToken, deviceId: "phone" }),
+        body: JSON.stringify({
+          token: physicalToken,
+          tokenId: token.id,
+          deviceId: "reinstalled-phone",
+        }),
       }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ revoked: true, matched: true });
+    expect(await response.json()).toEqual({ revoked: true, matched: true, outcome: "revoked" });
     expect(await listTokensForUser(uid)).toEqual([]);
-    expect(await unregisterPushTokenByIdentity(physicalToken, "phone")).toBe(false);
+    const retry = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-device", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, tokenId: token.id, deviceId: "phone" }),
+      }),
+    );
+    expect(await retry.json()).toEqual({
+      revoked: true,
+      matched: false,
+      outcome: "already-revoked",
+    });
+    expect(await unregisterPushTokenByIdentity(physicalToken, token.id, "phone")).toBe(
+      "already-revoked",
+    );
+  });
+
+  test("a stale public token id cannot revoke a later owner, while an authenticated owner can recover after device ID rotation", async () => {
+    const firstUser = userId();
+    const secondUser = userId();
+    const physicalToken = expoToken();
+    const first = await registerPushToken(firstUser, physicalToken, "ios", "phone");
+    const second = await registerPushToken(secondUser, physicalToken, "ios", "phone");
+
+    const missingId = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-device", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, deviceId: "phone" }),
+      }),
+    );
+    expect(missingId.status).toBe(400);
+
+    const stale = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-device", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, tokenId: first.id, deviceId: "phone" }),
+      }),
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({
+      revoked: false,
+      matched: false,
+      outcome: "claim-mismatch",
+    });
+    expect((await listTokensForUser(secondUser)).map((token) => token.id)).toEqual([second.id]);
+
+    const firstBearer = await sessionFor(firstUser, `${firstUser}@mapvest.dev`);
+    const authenticatedMismatch = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-current-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${firstBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, deviceId: "phone" }),
+      }),
+    );
+    expect(authenticatedMismatch.status).toBe(409);
+    expect(await authenticatedMismatch.json()).toEqual({
+      revoked: false,
+      matched: false,
+      outcome: "claim-mismatch",
+    });
+
+    const bearer = await sessionFor(secondUser, `${secondUser}@mapvest.dev`);
+    const authenticated = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-current-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, deviceId: "reinstalled-phone" }),
+      }),
+    );
+    expect(authenticated.status).toBe(200);
+    expect(await authenticated.json()).toEqual({
+      revoked: true,
+      matched: true,
+      outcome: "revoked",
+    });
+    expect(await listTokensForUser(secondUser)).toEqual([]);
+
+    const authenticatedRetry = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-current-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, deviceId: "phone" }),
+      }),
+    );
+    expect(await authenticatedRetry.json()).toEqual({
+      revoked: true,
+      matched: false,
+      outcome: "already-revoked",
+    });
+  });
+
+  test("a recently expired signed session can revoke only its own current claim", async () => {
+    const owner = userId();
+    const ownerEmail = `${owner}@mapvest.dev`;
+    await ensureUser(owner, ownerEmail);
+    const ownerToken = expoToken();
+    const registered = await registerPushToken(owner, ownerToken, "ios", "phone");
+    const expiredBearer = await expiredSessionFor(owner, ownerEmail);
+
+    const protectedRoute = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-current-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${expiredBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: ownerToken, deviceId: "reinstalled-phone" }),
+      }),
+    );
+    expect(protectedRoute.status).toBe(401);
+
+    const recovered = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${expiredBearer}`, "content-type": "application/json" },
+        // Permission denial can leave iOS with its opaque registration id but
+        // no Expo token. The signed former session may revoke only this id.
+        body: JSON.stringify({ tokenId: registered.id, deviceId: "reinstalled-phone" }),
+      }),
+    );
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toEqual({ revoked: true, matched: true, outcome: "revoked" });
+    expect(await listTokensForUser(owner)).toEqual([]);
+
+    const retry = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${expiredBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: registered.id }),
+      }),
+    );
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({
+      revoked: true,
+      matched: false,
+      outcome: "already-revoked",
+    });
+
+    const laterOwner = userId();
+    const transferred = await registerPushToken(laterOwner, ownerToken, "ios", "phone");
+    const staleExpired = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${expiredBearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: registered.id, deviceId: "reinstalled-phone" }),
+      }),
+    );
+    expect(staleExpired.status).toBe(409);
+    expect(await staleExpired.json()).toEqual({
+      revoked: false,
+      matched: false,
+      outcome: "claim-mismatch",
+    });
+    expect((await listTokensForUser(laterOwner)).map((token) => token.id)).toEqual([
+      transferred.id,
+    ]);
+    expect(registered.id).not.toBe(transferred.id);
+  });
+
+  test("an older signed session needs an opaque id and remains mismatch-safe", async () => {
+    const uid = userId();
+    const physicalToken = expoToken();
+    const registered = await registerPushToken(uid, physicalToken, "ios", "phone");
+    const tooOld = await expiredSessionFor(uid, `${uid}@mapvest.dev`, 90 * 24 * 60 * 60 + 1);
+
+    const expoOnly = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tooOld}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken }),
+      }),
+    );
+    expect(expoOnly.status).toBe(401);
+    expect((await listTokensForUser(uid)).map((token) => token.expoToken)).toEqual([physicalToken]);
+
+    const tokenIdRecovery = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tooOld}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: registered.id }),
+      }),
+    );
+    expect(tokenIdRecovery.status).toBe(200);
+    expect(await tokenIdRecovery.json()).toEqual({
+      revoked: true,
+      matched: true,
+      outcome: "revoked",
+    });
+
+    const tokenIdRetry = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tooOld}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: registered.id }),
+      }),
+    );
+    expect(tokenIdRetry.status).toBe(200);
+    expect(await tokenIdRetry.json()).toEqual({
+      revoked: true,
+      matched: false,
+      outcome: "already-revoked",
+    });
+
+    const transferredExpoToken = expoToken();
+    const former = await registerPushToken(uid, transferredExpoToken, "ios", "phone");
+    const laterOwner = userId();
+    const current = await registerPushToken(laterOwner, transferredExpoToken, "ios", "phone");
+    const staleTokenId = await app.fetch(
+      new Request("http://localhost/v1/push/revoke-expired-session-device", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tooOld}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: former.id }),
+      }),
+    );
+    expect(staleTokenId.status).toBe(409);
+    expect(await staleTokenId.json()).toEqual({
+      revoked: false,
+      matched: false,
+      outcome: "claim-mismatch",
+    });
+    expect((await listTokensForUser(laterOwner)).map((token) => token.id)).toEqual([current.id]);
   });
 });
 
 describe("claim-validated push delivery", () => {
+  test("handoff cleanup unlocks every token before pool release and preserves a release-only result", async () => {
+    const individualUnlockFailure = new Error("one per-token unlock failed");
+    const releaseFailure = new Error("pool release failed");
+    const order: string[] = [];
+    const cleanup = await _cleanupPushDeliveryHandoffForTest(["first", "second"], {
+      unlock: async (expoToken) => {
+        order.push(`unlock:${expoToken}`);
+        if (expoToken === "second") throw individualUnlockFailure;
+      },
+      unlockAll: async () => {
+        order.push("unlock-all");
+      },
+      release: async () => {
+        order.push("release");
+        throw releaseFailure;
+      },
+    });
+
+    expect(order).toEqual(["unlock:second", "unlock:first", "unlock-all", "release"]);
+    expect(cleanup.unlockAllSucceeded).toBe(true);
+    expect(cleanup.unlockError).toBe(individualUnlockFailure);
+    expect(cleanup.releaseError).toBe(releaseFailure);
+  });
+
   test("serializes concurrent claims for one token and dedupe key", async () => {
     const uid = userId();
     const token = await registerPushToken(uid, expoToken(), "ios", "phone");

@@ -190,11 +190,13 @@ have one active `(token_id, user_id)` claim, or a tombstone after unlinking.
 Every push-delivery, preference-read, preference-write, and token-list query
 joins the claim, so an old or duplicate row is never deliverable.
 
-Startup elects one deterministic legacy row, then mutes every other row. A
-database trigger repeats that mute on transfer, unlink, and every preference
-write that does not match the active claim. This is deliberately enforced in
-Postgres so a mixed-version API that still writes `push_tokens` directly cannot
-re-enable an old account's delivery path.
+Startup serializes lazy push-schema work with a transaction advisory lock,
+elects one deterministic legacy row, then mutes every other row. `CREATE OR
+REPLACE FUNCTION` plus idempotent trigger installation avoids a `DROP`/`CREATE`
+enforcement gap. The trigger repeats that mute on transfer, unlink, and every
+preference write that does not match the active claim, so a mixed-version API
+that still writes `push_tokens` directly cannot re-enable an old account's
+delivery path.
 `push_delivery_claims` stores the short lease and dedupe ownership used by the
 central dispatcher; expired leases are retryable and never confer account
 ownership.
@@ -212,25 +214,51 @@ Explicit iOS sign-out runs before the session is cleared. The app first writes
 a same-key SecureStore cleanup envelope containing the old owner and an
 immutable push snapshot, then attempts authenticated
 `DELETE /v1/push/token/:id` or claimant-bound `POST /v1/push/revoke-device`.
-When the bearer is cryptographically valid but expired, it uses
-`POST /v1/push/revoke-expired-session-device` with the persisted token id or
-Expo identity; a fresh account's bearer is never substituted for a different
-owner. Native unregistration, Expo auto-registration shutdown, and
-notification/response dismissal are defense-in-depth only, never server
-revocation proof. The cleanup envelope and push snapshot remain until server
-revocation and local deletion are verified, so a force-quit retries an
-idempotent cleanup rather than resurrecting authenticated UI. If any token,
-marker, snapshot, or SecureStore read cannot prove cleanup, the app stays on a
-retryable cleanup screen. This only removes the current installation's claim;
-another phone or tablet remains registered independently.
+An expired bearer may use public `POST /v1/push/revoke-device` only with both
+the Expo token and its opaque server `tokenId`; a valid bearer that lost that
+id may use `POST /v1/push/revoke-current-device`. Both return a typed outcome:
+`revoked` and `already-revoked` are safe completed cleanup, while
+`claim-mismatch` is fail-closed because a different active owner has claimed
+the physical token and is an HTTP 409 rather than a 2xx response, so older
+clients cannot mistake it for completed cleanup. `deviceId` is advisory
+telemetry only: it may rotate after a reinstall or SecureStore loss, while
+the opaque id plus Expo token (or authenticated user plus Expo token) is the
+authorization proof. A cryptographically valid former session may instead call
+`POST /v1/push/revoke-expired-session-device` with its bearer and either an
+Expo token or the opaque registration id when no current Expo identity is
+available. Expo-token-only recovery is limited to 90 days after expiry;
+exact opaque-id recovery has no age limit because it identifies one historical
+row and the route still verifies that row's signed subject owns the current
+claim. That route checks the signature, HS256 algorithm, `purpose: "session"`,
+and `sub` with expiry validation disabled only for this deletion, then can
+revoke only that subject's still-active claim; an old id whose physical token
+now belongs to another owner returns 409. It reads no user state, and a fresh
+account's bearer is never substituted for a different owner.
+
+Native unregistration, Expo auto-registration shutdown, and notification or
+response dismissal are defense-in-depth only, never server revocation proof.
+The cleanup envelope and push snapshot remain until server revocation and
+local deletion are verified, so a force-quit retries idempotently rather than
+resurrecting authenticated UI. New registrations persist their physical claim
+before the server write, so permission loss cannot erase the recovery path. If
+any token, marker, snapshot, or SecureStore read cannot prove cleanup, the app
+stays on a retryable cleanup screen. This only removes the current
+installation's claim; another phone or tablet remains registered
+independently.
 
 Notifiers do not send from a list snapshot. The central delivery facade claims
-each `(token, dedupe slot, key)` for a short lease, re-checks the active claim
-and consent immediately before handing the batch to Expo, and writes durable
-dedupe state only for a still-valid successful claim. Registration, sign-out,
-and direct A→B sign-in share one cancellable client lifecycle queue, so a stale
-registration cannot finish after the next account is visible. A request already
-accepted by Expo/APNs cannot be retracted after that handoff; the lease closes
+one Expo-sized batch (at most 100 tokens) at a time, then holds a reserved
+Postgres session advisory lock for each physical token through the Expo
+handoff. Registration, unlink, preference writes, claiming, and finalization
+take the same sorted advisory keys before row locks, so account changes cannot
+commit between validation and the irreversible handoff and cannot deadlock
+against finalization. The lock is session-level rather than a 45-second row
+transaction; its reserved connection is cleaned with `pg_advisory_unlock_all()`
+and dispatcher concurrency is bounded per process. Each handoff lease is at
+least 90 seconds from advisory-lock acquisition, exceeding Expo's three-attempt
+retry window even after waiting behind a prior handoff, and later batches are
+selected only after the previous batch finishes. A request already
+accepted by Expo/APNs cannot be retracted after that handoff; the gate closes
 the server-side selection/state race without claiming impossible downstream
 timing guarantees.
 

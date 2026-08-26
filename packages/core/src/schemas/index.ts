@@ -563,6 +563,94 @@ export const AlertsResponse = z.object({
 });
 export type AlertsResponse = z.infer<typeof AlertsResponse>;
 
+// -------- push device ownership --------
+
+const ExpoPushToken = z
+  .string()
+  .trim()
+  .regex(
+    /^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$/,
+    "valid ExponentPushToken required",
+  );
+
+// This can rotate after a reinstall or SecureStore failure. It is retained for
+// client telemetry only; ownership authorization is the opaque token id (or
+// authenticated user) plus the Expo token.
+const PushDeviceId = z.string().trim().max(128);
+const PushTokenId = z.string().trim().min(1).max(128);
+
+/**
+ * Public, idempotent fallback for an installation that still holds the opaque
+ * server id issued at registration but no longer has a valid bearer session.
+ * Both identities are required so a stale installation cannot revoke a later
+ * account owner of the same physical Expo token.
+ */
+export const PushDeviceRevocationRequest = z.object({
+  token: ExpoPushToken,
+  tokenId: PushTokenId,
+  deviceId: PushDeviceId.optional(),
+});
+export type PushDeviceRevocationRequest = z.infer<typeof PushDeviceRevocationRequest>;
+
+/** Authenticated recovery when the client lost its opaque push token id. */
+export const PushCurrentDeviceRevocationRequest = z.object({
+  token: ExpoPushToken,
+  deviceId: PushDeviceId.optional(),
+});
+export type PushCurrentDeviceRevocationRequest = z.infer<typeof PushCurrentDeviceRevocationRequest>;
+
+/**
+ * Expired-session recovery supports either a live Expo identity (limited to
+ * 90 days after session expiry) or the opaque id retained from registration
+ * when iOS has confirmed it cannot obtain an Expo token (for example after
+ * notification permission is denied). The opaque id identifies one
+ * historical row and is safe for longer-lived cleanup because a transferred
+ * claim fails closed rather than affecting its new owner.
+ */
+export const PushExpiredSessionDeviceRevocationRequest = z.union([
+  z.object({
+    token: ExpoPushToken,
+    tokenId: PushTokenId.optional(),
+    deviceId: PushDeviceId.optional(),
+  }),
+  z.object({
+    token: ExpoPushToken.optional(),
+    tokenId: PushTokenId,
+    deviceId: PushDeviceId.optional(),
+  }),
+]);
+export type PushExpiredSessionDeviceRevocationRequest = z.infer<
+  typeof PushExpiredSessionDeviceRevocationRequest
+>;
+
+export const PushDeviceRevocationOutcome = z.enum(["revoked", "already-revoked", "claim-mismatch"]);
+export type PushDeviceRevocationOutcome = z.infer<typeof PushDeviceRevocationOutcome>;
+
+/**
+ * `already-revoked` accepts an idempotent retry after a completed unlink;
+ * `claim-mismatch` is deliberately fail-closed because another active owner
+ * now holds the physical Expo token. `matched` is retained for old clients
+ * and is true only when this call removed the exact current claim.
+ */
+export const PushDeviceRevocationResponse = z.union([
+  z.object({
+    revoked: z.literal(true),
+    matched: z.literal(true),
+    outcome: z.literal("revoked"),
+  }),
+  z.object({
+    revoked: z.literal(true),
+    matched: z.literal(false),
+    outcome: z.literal("already-revoked"),
+  }),
+  z.object({
+    revoked: z.literal(false),
+    matched: z.literal(false),
+    outcome: z.literal("claim-mismatch"),
+  }),
+]);
+export type PushDeviceRevocationResponse = z.infer<typeof PushDeviceRevocationResponse>;
+
 export const ResearchDepth = z.enum(["auto", "instant", "standard", "deep", "max"]);
 export type ResearchDepth = z.infer<typeof ResearchDepth>;
 

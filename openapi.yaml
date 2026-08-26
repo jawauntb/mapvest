@@ -27,6 +27,8 @@ tags:
     description: Home-screen widget data (iOS WidgetKit / Android App Widget)
   - name: finance
     description: Ticker / comparable / ETF resolution
+  - name: push
+    description: Device push-token registration and revocation
   - name: auth
     description: Passwordless email sign-in
   - name: billing
@@ -2978,6 +2980,119 @@ components:
       required:
         - alerts
         - tickers
+    PushDeviceRevocationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+        tokenId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        deviceId:
+          type: string
+          maxLength: 128
+      required:
+        - token
+        - tokenId
+    PushCurrentDeviceRevocationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+        deviceId:
+          type: string
+          maxLength: 128
+      required:
+        - token
+    PushExpiredSessionDeviceRevocationRequest:
+      anyOf:
+        - type: object
+          properties:
+            token:
+              type: string
+              pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+            tokenId:
+              type: string
+              minLength: 1
+              maxLength: 128
+            deviceId:
+              type: string
+              maxLength: 128
+          required:
+            - token
+        - type: object
+          properties:
+            token:
+              type: string
+              pattern: ^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$
+            tokenId:
+              type: string
+              minLength: 1
+              maxLength: 128
+            deviceId:
+              type: string
+              maxLength: 128
+          required:
+            - tokenId
+    PushDeviceRevocationResponse:
+      anyOf:
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - true
+            matched:
+              type: boolean
+              enum:
+                - true
+            outcome:
+              type: string
+              enum:
+                - revoked
+          required:
+            - revoked
+            - matched
+            - outcome
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - true
+            matched:
+              type: boolean
+              enum:
+                - false
+            outcome:
+              type: string
+              enum:
+                - already-revoked
+          required:
+            - revoked
+            - matched
+            - outcome
+        - type: object
+          properties:
+            revoked:
+              type: boolean
+              enum:
+                - false
+            matched:
+              type: boolean
+              enum:
+                - false
+            outcome:
+              type: string
+              enum:
+                - claim-mismatch
+          required:
+            - revoked
+            - matched
+            - outcome
     AgentChatRequest:
       type: object
       properties:
@@ -7439,6 +7554,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/push/revoke-device:
+    post:
+      summary: Revoke this device with its opaque push token id
+      description: Public, idempotent sign-out fallback. It requires both the physical Expo token and the opaque id returned by registration, so a stale client cannot revoke a later account owner. `already-revoked` accepts a retry after an earlier unlink; `claim-mismatch` is fail-closed because another active owner now holds this physical token.
+      tags:
+        - push
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token or opaque token id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+  /v1/push/revoke-expired-session-device:
+    post:
+      summary: Revoke a former session's current device during expired-session recovery
+      description: Narrow recovery for a cryptographically valid session JWT. Expo-token-only recovery is limited to the 90 days after expiry; its historical opaque token id may be used without that age limit when iOS cannot obtain an Expo token. It verifies the signature, HS256 algorithm, session purpose, and subject without accepting the JWT for normal authentication; the signed subject plus either identity may only revoke that same user's active claim. It returns no user data and fails closed with `claim-mismatch` if another owner claimed the physical token.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushExpiredSessionDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token or opaque token id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Expired signed session recovery token required; Expo-token-only recovery is limited to 90 days after expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+  /v1/push/revoke-current-device:
+    post:
+      summary: Revoke the signed-in user's current device without a stored token id
+      description: Authenticated recovery for a valid session that lost its local opaque push token id. The current user plus Expo identity can revoke only that user's active claim; expired sessions without the opaque id must use the public fallback and fail closed on `claim-mismatch`.
+      tags:
+        - push
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushCurrentDeviceRevocationRequest"
+      responses:
+        "200":
+          description: "Completed idempotent cleanup: `revoked` or `already-revoked`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
+        "400":
+          description: Missing or invalid Expo token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Fail-closed ownership mismatch. The Expo token now belongs to a different active claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceRevocationResponse"
   /v1/agent/chat:
     post:
       summary: Start or continue a durable research conversation

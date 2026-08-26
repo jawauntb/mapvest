@@ -1340,6 +1340,134 @@
       ]
     },
     {
+      "name": "push",
+      "description": "Device push-token registration and revocation",
+      "item": [
+        {
+          "name": "Revoke this device with its opaque push token id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/revoke-device",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "revoke-device"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"\",\n  \"tokenId\": \"\",\n  \"deviceId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Public, idempotent sign-out fallback. It requires both the physical Expo token and the opaque id returned by registration, so a stale client cannot revoke a later account owner. `already-revoked` accepts a retry after an earlier unlink; `claim-mismatch` is fail-closed because another active owner now holds this physical token."
+          }
+        },
+        {
+          "name": "Revoke a former session's current device during expired-session recovery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/revoke-expired-session-device",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "revoke-expired-session-device"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"\",\n  \"tokenId\": \"\",\n  \"deviceId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Narrow recovery for a cryptographically valid session JWT. Expo-token-only recovery is limited to the 90 days after expiry; its historical opaque token id may be used without that age limit when iOS cannot obtain an Expo token. It verifies the signature, HS256 algorithm, session purpose, and subject without accepting the JWT for normal authentication; the signed subject plus either identity may only revoke that same user's active claim. It returns no user data and fails closed with `claim-mismatch` if another owner claimed the physical token.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Revoke the signed-in user's current device without a stored token id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/revoke-current-device",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "revoke-current-device"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"\",\n  \"deviceId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Authenticated recovery for a valid session that lost its local opaque push token id. The current user plus Expo identity can revoke only that user's active claim; expired sessions without the opaque id must use the public fallback and fail closed on `claim-mismatch`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "auth",
       "description": "Passwordless email sign-in",
       "item": [

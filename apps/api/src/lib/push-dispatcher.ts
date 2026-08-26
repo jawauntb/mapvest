@@ -16,12 +16,60 @@ import {
   type PushToken,
   claimPushDelivery,
   finalizePushDelivery,
-  validatePushDeliveryClaims,
+  withPushDeliveryHandoff,
 } from "./push-tokens-store.js";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const BATCH_SIZE = 100;
 const MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_CONCURRENT_HANDOFFS = 4;
+
+// A handoff reserves one database connection for its session advisory locks.
+// Keep that bounded per process so a push burst cannot consume the pool used
+// by the rest of the API. The bounded batch still preserves delivery order per
+// physical Expo token in the store-level gate.
+let activeHandoffs = 0;
+const handoffWaiters: Array<() => void> = [];
+
+function maxConcurrentHandoffs(): number {
+  const configured = Number.parseInt(process.env.PUSH_MAX_CONCURRENT_HANDOFFS ?? "", 10);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.min(configured, 32)
+    : DEFAULT_MAX_CONCURRENT_HANDOFFS;
+}
+
+async function acquireHandoffSlot(): Promise<() => void> {
+  const max = maxConcurrentHandoffs();
+  // A waiting caller receives a permit directly from `releaseHandoffSlot`.
+  // It must not re-check/increment `activeHandoffs` after wake-up: doing so
+  // lets a newly arriving caller barge in between release and resumption.
+  if (activeHandoffs >= max || handoffWaiters.length > 0) {
+    await new Promise<void>((resolve) => handoffWaiters.push(resolve));
+  } else {
+    activeHandoffs += 1;
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = handoffWaiters.shift();
+    if (next) {
+      // Transfer the existing permit; activeHandoffs stays unchanged.
+      next();
+      return;
+    }
+    activeHandoffs -= 1;
+  };
+}
+
+async function withHandoffSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const release = await acquireHandoffSlot();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 
 export type PushMessage = {
   to: string; // ExponentPushToken[…]
@@ -41,6 +89,17 @@ export type SendPushResult = {
   invalidTokens: string[];
   successfulTokens: string[];
 };
+
+function emptySendResult(): SendPushResult {
+  return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
+}
+
+function mergeSendResults(into: SendPushResult, result: SendPushResult): void {
+  into.successes += result.successes;
+  into.failures += result.failures;
+  into.invalidTokens.push(...result.invalidTokens);
+  into.successfulTokens.push(...result.successfulTokens);
+}
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -118,7 +177,7 @@ async function sendExpoPush(params: {
       title: params.title.slice(0, 60),
     });
     if (uniqueTokens.length === 0) {
-      return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
+      return emptySendResult();
     }
 
     const messages: PushMessage[] = uniqueTokens.map((to) => ({
@@ -195,7 +254,7 @@ async function sendExpoPush(params: {
     // safeExecuteWithSpan rethrows, but the internal Expo sender should NEVER
     // expose an exception to the claim-aware facade.
     // an exception — swallow here to guarantee fire-and-forget safety.
-    return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
+    return emptySendResult();
   });
 }
 
@@ -216,30 +275,32 @@ export async function deliverPush(params: {
   data?: Record<string, unknown>;
   leaseMs?: number;
 }): Promise<SendPushResult> {
-  const claims = await claimPushDelivery(
-    params.tokens,
-    params.dedupe,
-    params.eventKey,
-    params.leaseMs,
-  );
-  if (claims.length === 0) {
-    return { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] };
-  }
+  const result = emptySendResult();
+  // Claim, validate, send, and finalize one Expo-sized batch at a time. A
+  // single batch has a bounded retry budget; later batches are selected fresh
+  // after earlier network work completes rather than letting their leases age.
+  for (const batch of chunk(params.tokens, BATCH_SIZE)) {
+    const batchResult = await withHandoffSlot(async () => {
+      const claims = await claimPushDelivery(batch, params.dedupe, params.eventKey, params.leaseMs);
+      if (claims.length === 0) return emptySendResult();
 
-  const valid = await validatePushDeliveryClaims(claims, params.eventKey);
-  const result =
-    valid.length === 0
-      ? { successes: 0, failures: 0, invalidTokens: [], successfulTokens: [] }
-      : await sendExpoPush({
+      const sent = await withPushDeliveryHandoff(claims, params.eventKey, async (valid) => {
+        if (valid.length === 0) return emptySendResult();
+        return sendExpoPush({
           tokens: valid.map((claim) => claim.expoToken),
           title: params.title,
           body: params.body,
           data: params.data,
         });
-  await finalizePushDelivery(
-    claims,
-    new Set(result.successfulTokens),
-    new Set(result.invalidTokens),
-  );
+      });
+      await finalizePushDelivery(
+        claims,
+        new Set(sent.successfulTokens),
+        new Set(sent.invalidTokens),
+      );
+      return sent;
+    });
+    mergeSendResults(result, batchResult);
+  }
   return result;
 }
