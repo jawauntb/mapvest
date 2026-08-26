@@ -44,6 +44,10 @@ import { listWatchEntries } from "./watchlist-store.js";
 
 const TICK_MS = 60_000; // 1 minute — checks all schedules
 const MOVE_METERS_THRESHOLD = 2_000; // 2 km
+// A heartbeat older than this never counts as "arrived somewhere new" — a
+// device that last reported days ago would otherwise "move" to that stale
+// coordinate on its first tick after an anchor reset.
+const STALE_FIX_MS = 6 * 60 * 60 * 1000; // 6h
 
 // Per-consumer, per-device movement anchors inside the shared `prefs.last_sent` map.
 const LB_LAT = "local_brief_lat";
@@ -98,12 +102,19 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 /**
  * Heartbeat fix for one device, or null when that device has never seen a
- * location. `last_lat` / `last_lng` are written by the client heartbeat.
+ * location or its last report is too old to trust as "where they are now".
+ * `last_lat` / `last_lng` / `last_location_at` are written by the client
+ * heartbeat. A missing timestamp is tolerated (legacy heartbeats) — only a
+ * parseable-but-stale one disqualifies the fix.
  */
-function tokenFix(token: PushToken): { lat: number; lng: number } | null {
-  const { last_lat: lat, last_lng: lng } = token.prefs;
+function tokenFix(token: PushToken, now = Date.now()): { lat: number; lng: number } | null {
+  const { last_lat: lat, last_lng: lng, last_location_at: at } = token.prefs;
   if (typeof lat !== "number" || typeof lng !== "number") return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (typeof at === "string") {
+    const ts = Date.parse(at);
+    if (Number.isFinite(ts) && now - ts > STALE_FIX_MS) return null;
+  }
   return { lat, lng };
 }
 
@@ -144,6 +155,69 @@ async function writeAnchor(
   });
 }
 
+/** Uncaught-nearby outcomes that are real decisions — safe to advance the anchor past. */
+const UNCAUGHT_DECISION_REASONS = new Set([
+  "pushed",
+  "no_tokens",
+  "day_budget",
+  "no_candidates",
+  "below_threshold",
+]);
+
+/**
+ * Local-brief movement branch for one device. No-op unless the device is
+ * opted in, has a fresh fix, and moved past the threshold since its anchor.
+ * The anchor only advances after a successful generate + deliver, so a
+ * transient failure retries on the next evaluation.
+ */
+async function evaluateLocalBriefMove(token: PushToken): Promise<void> {
+  if (token.prefs.notifications_enabled === false || token.prefs.local_brief !== true) return;
+  const fix = tokenFix(token);
+  if (!fix) return;
+  if (!movedFar(readAnchor(token, LB_LAT, LB_LNG), fix)) return;
+  try {
+    const brief = await generateLocalBrief(fix);
+    await onLocalBriefGenerated(token, brief, fix);
+    await writeAnchor(token, LB_LAT, LB_LNG, fix);
+  } catch {
+    /* device isolation — anchor stays put so the next evaluation retries */
+  }
+}
+
+/**
+ * Uncaught-nearby movement branch for one device. The anchor advances only
+ * when `onUserMovedFar` reached a decision (pushed, nothing worth pushing,
+ * budget spent) — an infrastructure failure (`nearby_failed`,
+ * `delivery_failed`) leaves it put so the arrival isn't silently burned.
+ */
+async function evaluateUncaughtNearbyMove(token: PushToken): Promise<void> {
+  if (token.prefs.notifications_enabled === false || token.prefs.uncaught_nearby !== true) {
+    return;
+  }
+  const fix = tokenFix(token);
+  if (!fix || !movedFar(readAnchor(token, UN_LAT, UN_LNG), fix)) return;
+  try {
+    const result = await onUserMovedFar(token, fix);
+    if (UNCAUGHT_DECISION_REASONS.has(result.reason)) {
+      await writeAnchor(token, UN_LAT, UN_LNG, fix);
+    }
+  } catch {
+    /* device isolation */
+  }
+}
+
+/**
+ * Run both movement consumers for one device. Exposed so a location heartbeat
+ * (POST /v1/push/prefs with lat/lng) can evaluate the move immediately instead
+ * of waiting up to an hour for the next scheduler tick. Gated on the same
+ * ENABLE_PUSH_SCHEDULER flag so local dev stays quiet.
+ */
+export async function evaluateMovementForToken(token: PushToken): Promise<void> {
+  if (process.env.ENABLE_PUSH_SCHEDULER !== "1") return;
+  await evaluateLocalBriefMove(token);
+  await evaluateUncaughtNearbyMove(token);
+}
+
 /**
  * Movement tick. Detects ">2km since last anchor" once per opted-in device
  * and delivers only to that device. A heartbeat from one installation never
@@ -163,32 +237,13 @@ async function runMovementTick(): Promise<void> {
     if (briefTokens.length === 0 && uncaughtTokens.length === 0) return;
 
     for (const token of briefTokens) {
-      const fix = tokenFix(token);
-      if (!fix) continue;
-      if (!movedFar(readAnchor(token, LB_LAT, LB_LNG), fix)) continue;
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const brief = await generateLocalBrief(fix);
-        // eslint-disable-next-line no-await-in-loop
-        await onLocalBriefGenerated(token, brief, fix);
-        // eslint-disable-next-line no-await-in-loop
-        await writeAnchor(token, LB_LAT, LB_LNG, fix);
-      } catch {
-        /* device isolation — anchor stays put so the next tick retries */
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await evaluateLocalBriefMove(token);
     }
 
     for (const token of uncaughtTokens) {
-      const fix = tokenFix(token);
-      if (!fix || !movedFar(readAnchor(token, UN_LAT, UN_LNG), fix)) continue;
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        await onUserMovedFar(token, fix);
-        // eslint-disable-next-line no-await-in-loop
-        await writeAnchor(token, UN_LAT, UN_LNG, fix);
-      } catch {
-        /* device isolation */
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await evaluateUncaughtNearbyMove(token);
     }
   });
 }
@@ -299,6 +354,9 @@ export function startPushScheduler(): void {
   timer = setInterval(tick, TICK_MS);
   console.log("[scheduler] push scheduler started (1-minute ticks)");
 }
+
+/** Test hook — staleness/shape rules for a device's heartbeat fix. */
+export const _tokenFix = tokenFix;
 
 /** Test hook. */
 export function _stopPushScheduler(): void {
