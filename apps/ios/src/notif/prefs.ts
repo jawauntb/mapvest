@@ -7,7 +7,11 @@
  */
 import { API_URL } from "@/util/env";
 import { getStoredTokenId } from "./registerForPush";
-import { buildPushRevokeRequest, isSuccessfulPushRevocation } from "./revokeOutcome";
+import {
+  buildExpiredSessionRevokeRequest,
+  buildPushRevokeRequest,
+  isSuccessfulPushRevocation,
+} from "./revokeOutcome";
 
 const PUSH_NETWORK_TIMEOUT_MS = 8_000;
 
@@ -176,6 +180,30 @@ export async function unlinkPushTokenByIdentity(
   session?: { token: string },
 ): Promise<void> {
   const request = buildPushRevokeRequest(API_URL, identity, tokenId, session);
+  const res = await fetchWithTimeout(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+  });
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (isSuccessfulPushRevocation(body)) return;
+  }
+  throw new Error(`Could not remove this device from notifications (${res.status})`);
+}
+
+/**
+ * Recovery for a cryptographically valid but expired bearer. This route is
+ * intentionally separate from the public exact-id route: it lets the server
+ * verify the old account before matching the persisted Expo identity, without
+ * allowing an incoming account to revoke another account's claim.
+ */
+export async function unlinkPushTokenByExpiredSession(
+  identity: { expoToken: string; deviceId?: string } | null,
+  session: { token: string },
+  tokenId?: string | null,
+): Promise<void> {
+  const request = buildExpiredSessionRevokeRequest(API_URL, identity, session, tokenId);
   const res = await fetchWithTimeout(request.url, {
     method: "POST",
     headers: request.headers,

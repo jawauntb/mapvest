@@ -89,7 +89,7 @@ export default function SettingsScreen() {
     onError: (e) => setStatus((e as Error).message || "Clear failed"),
   });
 
-  if (!session) {
+  if (!session || !user) {
     return <GuestHome />;
   }
 
@@ -118,7 +118,7 @@ export default function SettingsScreen() {
 
         <PlanCard />
 
-        <NotificationsSection sessionToken={session.token} />
+        <NotificationsSection sessionToken={session.token} userId={user.id} />
         <VisitMonitoringSection sessionToken={session.token} />
 
         <View style={styles.card}>
@@ -251,7 +251,7 @@ export default function SettingsScreen() {
  * switch is a persisted product-level preference, separate from iOS
  * authorization. It is the only surface that may request OS permission.
  */
-function NotificationsSection({ sessionToken }: { sessionToken: string }) {
+function NotificationsSection({ sessionToken, userId }: { sessionToken: string; userId: string }) {
   const [permissionStatus, setPermissionStatus] = useState<
     "unknown" | "granted" | "denied" | "undetermined"
   >("unknown");
@@ -366,7 +366,7 @@ function NotificationsSection({ sessionToken }: { sessionToken: string }) {
       // Explicit enablement may register a token, but this call never asks
       // again — permission was just handled by the line above.
       const registration = await registerForPush(
-        { token: sessionToken },
+        { token: sessionToken, userId },
         { requestPermission: false },
       );
       const id = registration?.tokenId ?? tokenId;

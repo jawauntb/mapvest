@@ -1,3 +1,4 @@
+import type { CleanupPushSnapshot } from "@/auth/sessionController";
 /**
  * Native adapter for the push sign-out policy. It runs while the bearer
  * session still exists when available; SessionProvider clears that session
@@ -6,10 +7,15 @@
  */
 import * as Notifications from "expo-notifications";
 
-import { unlinkPushToken, unlinkPushTokenByIdentity } from "./prefs";
+import {
+  unlinkPushToken,
+  unlinkPushTokenByExpiredSession,
+  unlinkPushTokenByIdentity,
+} from "./prefs";
 import {
   clearStoredTokenId,
   getCurrentPushIdentity,
+  readPushClaimSnapshot,
   readPushRegistrationEvidence,
   readStoredTokenIdForSignOut,
 } from "./registerForPush";
@@ -62,41 +68,78 @@ async function dismissNativeNotifications(): Promise<void> {
 }
 
 export async function unlinkPushForSignOut(
-  session?: { token: string },
-  options: { authenticatedBearer: boolean } = {
-    authenticatedBearer: Boolean(session),
-  },
+  session?: { token: string; userId?: string },
+  options: {
+    authenticatedBearer: boolean;
+    recoverySession?: boolean;
+    ownerUserId?: string;
+    pushSnapshot?: CleanupPushSnapshot;
+  } = { authenticatedBearer: Boolean(session), recoverySession: false },
 ): Promise<void> {
   // getExpoPushTokenAsync enables Expo's automatic token registration as a
   // side effect. Disable it before identity recovery and again in the policy
   // immediately before native cleanup so sign-out cannot re-arm delivery.
   await disableExpoAutoRegistration();
   const stored = await readStoredTokenIdForSignOut();
-  const identityRead = await getCurrentPushIdentity();
-  const identity = identityRead.identity;
+  const persisted = options.pushSnapshot
+    ? { snapshot: options.pushSnapshot, readable: true }
+    : await readPushClaimSnapshot();
+  // A persisted v2 snapshot (or an old opaque id during expired-session
+  // recovery) is sufficient proof. Avoid getExpoPushTokenAsync here: on iOS it
+  // is permission-gated and also re-enables Expo auto-registration.
+  const identityRead =
+    persisted.snapshot ||
+    (options.recoverySession && (stored.tokenId || persisted.readable === false))
+      ? {
+          identity: null,
+          status: persisted.snapshot ? ("available" as const) : ("unavailable" as const),
+        }
+      : await getCurrentPushIdentity();
+  // Permission-gated OS lookup is only a fallback. A persisted snapshot is
+  // authoritative even when iOS now reports denied/unavailable.
+  const identity = persisted.snapshot
+    ? {
+        expoToken: persisted.snapshot.expoToken,
+        ...(persisted.snapshot.deviceId ? { deviceId: persisted.snapshot.deviceId } : {}),
+      }
+    : identityRead.identity;
+  const tokenId = stored.tokenId ?? persisted.snapshot?.tokenId ?? null;
+  const ownerUserId =
+    persisted.snapshot?.ownerUserId ?? identityRead.ownerUserId ?? options.ownerUserId;
+  const bearerOwnerMatches =
+    Boolean(session) && (!ownerUserId || !session?.userId || ownerUserId === session.userId);
   const evidence = await readPushRegistrationEvidence();
   await revokePushForSignOut({
-    tokenId: stored.tokenId,
-    tokenStorageReadable: stored.readable,
-    registrationEvidenceReadable: evidence.readable,
-    mayBeRegistered: evidence.mayBeRegistered,
-    physicalIdentityStatus: identityRead.status,
+    tokenId,
+    tokenStorageReadable: stored.readable && persisted.readable,
+    registrationEvidenceReadable: evidence.readable && persisted.readable,
+    mayBeRegistered: evidence.mayBeRegistered || Boolean(persisted.snapshot) || !persisted.readable,
+    physicalIdentityStatus: persisted.snapshot ? "available" : identityRead.status,
     unlinkServer:
-      stored.tokenId && session
-        ? () => unlinkPushToken(stored.tokenId!, { token: session.token })
+      tokenId && session && bearerOwnerMatches
+        ? () => unlinkPushToken(tokenId, { token: session.token })
         : undefined,
     // A valid bearer can prove the current account when SecureStore lost its
     // id; an expired/invalid bearer is deliberately not allowed to fall back
     // to token-only public revocation.
     unlinkServerByIdentity:
-      identity && (stored.tokenId || (options.authenticatedBearer && session))
-        ? () =>
-            unlinkPushTokenByIdentity(
-              identity,
-              stored.tokenId,
-              options.authenticatedBearer ? session : undefined,
-            )
-        : undefined,
+      identity &&
+      (tokenId ||
+        (options.authenticatedBearer && session && bearerOwnerMatches) ||
+        (options.recoverySession && session && bearerOwnerMatches))
+        ? () => {
+            if (options.recoverySession && session) {
+              return unlinkPushTokenByExpiredSession(identity, session, tokenId);
+            }
+            if (tokenId) return unlinkPushTokenByIdentity(identity, tokenId);
+            if (options.authenticatedBearer && session) {
+              return unlinkPushTokenByIdentity(identity, undefined, session);
+            }
+            return Promise.reject(new Error("No claimant-bound push proof"));
+          }
+        : options.recoverySession && session && bearerOwnerMatches && tokenId
+          ? () => unlinkPushTokenByExpiredSession(null, session, tokenId)
+          : undefined,
     disableAutoRegistration: disableExpoAutoRegistration,
     unregisterNative: unregisterNativePush,
     dismissNative: dismissNativeNotifications,

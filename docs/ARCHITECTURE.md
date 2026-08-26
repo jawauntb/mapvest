@@ -208,17 +208,21 @@ account. Existing duplicate database rows are not mass-deleted: the first
 claim elects the most recently seen row and leaves the rest inert, avoiding a
 risky lossy migration.
 
-Explicit iOS sign-out runs before the session is cleared. It attempts the
-authenticated `DELETE /v1/push/token/:id`, Expo native unregistration, and
-notification/response dismissal. A missing/expired bearer or a lost
-SecureStore id uses the revocation-only `POST /v1/push/revoke-device` fallback
-with the current device's Expo token (and advisory device id); that
-endpoint can only mute/unlink that physical token and returns no account data.
-Native unregistration alone is never treated as server revocation. If a token
-exists, or SecureStore/identity lookup cannot prove that it does not, the app
-keeps the account signed in and shows a retryable Settings/Admin error. This
-only removes the current installation's claim; another phone or tablet remains
-registered independently.
+Explicit iOS sign-out runs before the session is cleared. The app first writes
+a same-key SecureStore cleanup envelope containing the old owner and an
+immutable push snapshot, then attempts authenticated
+`DELETE /v1/push/token/:id` or claimant-bound `POST /v1/push/revoke-device`.
+When the bearer is cryptographically valid but expired, it uses
+`POST /v1/push/revoke-expired-session-device` with the persisted token id or
+Expo identity; a fresh account's bearer is never substituted for a different
+owner. Native unregistration, Expo auto-registration shutdown, and
+notification/response dismissal are defense-in-depth only, never server
+revocation proof. The cleanup envelope and push snapshot remain until server
+revocation and local deletion are verified, so a force-quit retries an
+idempotent cleanup rather than resurrecting authenticated UI. If any token,
+marker, snapshot, or SecureStore read cannot prove cleanup, the app stays on a
+retryable cleanup screen. This only removes the current installation's claim;
+another phone or tablet remains registered independently.
 
 Notifiers do not send from a list snapshot. The central delivery facade claims
 each `(token, dedupe slot, key)` for a short lease, re-checks the active claim

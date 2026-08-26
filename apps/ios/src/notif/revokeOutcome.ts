@@ -7,6 +7,34 @@ export type PushRevokeOutcome = "revoked" | "already-revoked" | "claim-mismatch"
 
 export type PushRevokeIdentity = { expoToken: string; deviceId?: string };
 
+export function buildExpiredSessionRevokeRequest(
+  apiUrl: string,
+  identity: PushRevokeIdentity | null,
+  session: { token: string },
+  tokenId?: string | null,
+): {
+  url: string;
+  headers: Record<string, string>;
+  body: { token?: string; deviceId?: string; tokenId?: string };
+} {
+  if (!identity && !tokenId) {
+    throw new Error("Expired-session cleanup needs a claimant id or Expo token.");
+  }
+  return {
+    url: `${apiUrl}/v1/push/revoke-expired-session-device`,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: {
+      ...(identity ? { token: identity.expoToken } : {}),
+      ...(identity?.deviceId ? { deviceId: identity.deviceId } : {}),
+      ...(tokenId ? { tokenId } : {}),
+    },
+  };
+}
+
 export function buildPushRevokeRequest(
   apiUrl: string,
   identity: PushRevokeIdentity,

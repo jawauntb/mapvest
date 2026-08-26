@@ -1,6 +1,7 @@
 import { getMe } from "@/api/client";
 import type { Session, User } from "@/api/types";
 import { cancelPushOperationsAndWait, runPushRevocation } from "@/notif/lifecycle";
+import { readPushClaimSnapshot } from "@/notif/registerForPush";
 import { unlinkPushForSignOut } from "@/notif/signOut";
 import * as SecureStore from "expo-secure-store";
 import {
@@ -35,6 +36,7 @@ const sessionStore = createSessionStore(
 );
 
 type SessionCtx = {
+  phase: SessionSnapshot["phase"];
   ready: boolean;
   session: Session | null;
   user: User | null;
@@ -74,6 +76,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         cancelPush: cancelPushOperationsAndWait,
         writeStoredSession: sessionStore.write,
         deleteStoredSession: sessionStore.remove,
+        writeCleanupTombstone: sessionStore.writeCleanupTombstone,
+        clearCleanupTombstone: sessionStore.clearCleanupTombstone,
+        readPushCleanupSnapshot: readPushClaimSnapshot,
       },
       setSnapshot,
     );
@@ -87,6 +92,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SessionCtx>(
     () => ({
+      phase: snapshot.phase,
       ready: snapshot.ready,
       session: snapshot.session,
       user: snapshot.user,
@@ -105,8 +111,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={value}>
-      {snapshot.cleanupRequired ? <CleanupRequiredScreen retry={value.retryCleanup} /> : children}
+      {snapshot.cleanupRequired ? (
+        <CleanupRequiredScreen retry={value.retryCleanup} />
+      ) : !snapshot.ready ? (
+        <SessionTransitionScreen phase={snapshot.phase} />
+      ) : (
+        children
+      )}
     </Ctx.Provider>
+  );
+}
+
+function SessionTransitionScreen({ phase }: { phase: SessionSnapshot["phase"] }) {
+  return (
+    <View
+      style={styles.cleanupRoot}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading Mapvest"
+    >
+      <ActivityIndicator color="#60a5fa" size="large" />
+      <Text style={styles.cleanupTitle}>
+        {phase === "booting" ? "Securing this device…" : "Loading Mapvest…"}
+      </Text>
+      <Text style={styles.cleanupBody}>
+        {phase === "booting"
+          ? "Please wait while we finish the account transition."
+          : "Restoring your session securely."}
+      </Text>
+    </View>
   );
 }
 

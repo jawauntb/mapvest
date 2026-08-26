@@ -98,7 +98,7 @@ const persistOptions = {
  * SessionProvider so the effect can read the current session token.
  */
 function PushBridge() {
-  const { session, authGeneration, isActiveSession } = useSession();
+  const { session, user, authGeneration, isActiveSession } = useSession();
   const router = useRouter();
   const sessionToken = session?.token;
 
@@ -107,8 +107,9 @@ function PushBridge() {
     // Launch may register an already-authorized device, but it must never
     // ask iOS to show the permission prompt. Settings is the only explicit
     // consent surface and opts into prompting there.
-    void registerForPush({ token: sessionToken }, { requestPermission: false });
-  }, [sessionToken]);
+    if (!user?.id) return;
+    void registerForPush({ token: sessionToken, userId: user.id }, { requestPermission: false });
+  }, [sessionToken, user?.id]);
 
   // Relay any fix the WidgetKit extension captured while the app was closed
   // (roadmap §2 B3). It posts to the same /v1/push/prefs heartbeat this

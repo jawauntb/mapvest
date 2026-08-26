@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildPushRevokeRequest, isSuccessfulPushRevocation } from "./revokeOutcome";
+import {
+  buildExpiredSessionRevokeRequest,
+  buildPushRevokeRequest,
+  isSuccessfulPushRevocation,
+} from "./revokeOutcome";
 
 const identity = { expoToken: "ExponentPushToken[test-token]", deviceId: "device-a" };
 
@@ -18,6 +22,25 @@ describe("push revocation endpoint contracts", () => {
     expect(request.url).toBe("https://api.test/v1/push/revoke-current-device");
     expect(request.body).not.toHaveProperty("tokenId");
     expect(request.headers).toMatchObject({ Authorization: "Bearer session-b" });
+  });
+
+  test("uses the expired-session endpoint with an opaque id even when Expo identity is unavailable", () => {
+    const request = buildExpiredSessionRevokeRequest(
+      "https://api.test",
+      null,
+      { token: "expired-session-a" },
+      "claim-a",
+    );
+    expect(request.url).toBe("https://api.test/v1/push/revoke-expired-session-device");
+    expect(request.body).toEqual({ tokenId: "claim-a" });
+    expect(request.headers).toMatchObject({ Authorization: "Bearer expired-session-a" });
+  });
+
+  test("expired-session recovery can carry persisted Expo proof without a token id", () => {
+    const request = buildExpiredSessionRevokeRequest("https://api.test", identity, {
+      token: "expired-session-a",
+    });
+    expect(request.body).toEqual({ token: identity.expoToken, deviceId: identity.deviceId });
   });
 
   test("does not construct a token-only public revoke request", () => {

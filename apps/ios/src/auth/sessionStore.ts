@@ -1,6 +1,8 @@
 import {
+  type CleanupTombstone,
   SessionPersistenceError,
   type StoredSession,
+  type StoredSessionEnvelope,
   type StoredSessionRead,
 } from "./sessionController";
 
@@ -81,26 +83,88 @@ export function createSessionStore(storage: SessionStorage, timeoutMs = 800) {
   }
 
   async function write(stored: StoredSession): Promise<void> {
-    const raw = JSON.stringify(stored);
+    await writeRaw(JSON.stringify(stored), "write");
+  }
+
+  async function writeRaw(raw: string, operation: "write" | "delete"): Promise<void> {
     if (!(await waitForPendingMutation())) {
-      throw new SessionPersistenceError("write");
+      throw new SessionPersistenceError(operation);
     }
     let pendingWrite: Promise<void>;
     try {
       pendingWrite = storage.setItem(raw);
     } catch {
-      throw new SessionPersistenceError("write");
+      throw new SessionPersistenceError(operation);
     }
     trackMutation(pendingWrite);
     try {
       await withTimeout(pendingWrite, timeoutMs, "SecureStore session write timed out");
     } catch {
-      throw new SessionPersistenceError("write");
+      throw new SessionPersistenceError(operation);
     }
     const verify = await read();
     if (!verify.readable || verify.timedOut || verify.raw !== raw) {
+      throw new SessionPersistenceError(operation);
+    }
+  }
+
+  /**
+   * Journal a cleanup request in the same SecureStore value as the bearer.
+   * A force-quit therefore boots into cleanup-only mode instead of treating a
+   * still-present active session as authenticated UI.
+   */
+  async function writeCleanupTombstone(tombstone: CleanupTombstone): Promise<void> {
+    const existing = await read();
+    if (!existing.readable || existing.timedOut) {
       throw new SessionPersistenceError("write");
     }
+    let envelope: StoredSessionEnvelope = { cleanup: tombstone } as StoredSessionEnvelope;
+    if (existing.raw) {
+      try {
+        const parsed: unknown = JSON.parse(existing.raw);
+        if (parsed && typeof parsed === "object") {
+          const candidate = parsed as Partial<StoredSessionEnvelope>;
+          envelope = {
+            ...(candidate.session && candidate.user
+              ? { session: candidate.session, user: candidate.user }
+              : tombstone.session && tombstone.user
+                ? { session: tombstone.session, user: tombstone.user }
+                : {}),
+            cleanup: tombstone,
+          } as StoredSessionEnvelope;
+        }
+      } catch {
+        // Replace malformed active data with a valid cleanup journal when the
+        // request still carries enough session information to retry.
+      }
+    }
+    if (!envelope.session && tombstone.session && tombstone.user) {
+      envelope = { session: tombstone.session, user: tombstone.user, cleanup: tombstone };
+    }
+    await writeRaw(JSON.stringify(envelope), "write");
+  }
+
+  /**
+   * The normal delete removes the whole envelope. This method is intentionally
+   * conservative: a cleanup marker is never stripped while session data
+   * remains in SecureStore.
+   */
+  async function clearCleanupTombstone(): Promise<void> {
+    const current = await read();
+    if (!current.readable || current.timedOut) throw new SessionPersistenceError("delete");
+    if (!current.raw) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(current.raw);
+    } catch {
+      throw new SessionPersistenceError("delete");
+    }
+    if (!parsed || typeof parsed !== "object" || !("cleanup" in parsed)) return;
+    const candidate = parsed as Partial<StoredSessionEnvelope>;
+    if (candidate.session || candidate.user) {
+      throw new SessionPersistenceError("delete");
+    }
+    await remove();
   }
 
   async function remove(): Promise<void> {
@@ -121,5 +185,5 @@ export function createSessionStore(storage: SessionStorage, timeoutMs = 800) {
     }
   }
 
-  return { read, write, remove };
+  return { read, write, remove, writeCleanupTombstone, clearCleanupTombstone };
 }

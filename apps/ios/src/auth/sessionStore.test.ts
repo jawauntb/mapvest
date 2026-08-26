@@ -25,6 +25,41 @@ function deferred<T>() {
 }
 
 describe("session SecureStore adapter", () => {
+  test("cleanup journal is durable in the same key and is not stripped before session deletion", async () => {
+    let raw: string | null = JSON.stringify(stored);
+    const store = createSessionStore(
+      {
+        getItem: async () => raw,
+        setItem: async (next) => {
+          raw = next;
+        },
+        deleteItem: async () => {
+          raw = null;
+        },
+      },
+      50,
+    );
+    const tombstone = {
+      version: 1 as const,
+      kind: "cleanup" as const,
+      reason: "sign-out" as const,
+      ownerUserId: "account-b",
+      session: stored.session,
+      user: stored.user,
+      push: { expoToken: "ExponentPushToken[b]", ownerUserId: "account-b" },
+      authenticatedBearer: true,
+      recoverySession: false,
+    };
+
+    await store.writeCleanupTombstone(tombstone);
+    expect(JSON.parse(raw as string)).toMatchObject({ cleanup: tombstone });
+    await expect(store.clearCleanupTombstone()).rejects.toThrow("sign-out");
+
+    await store.remove();
+    await store.clearCleanupTombstone();
+    expect(raw).toBeNull();
+  });
+
   test("a timed-out write keeps cleanup blocked until its native mutation settles", async () => {
     let raw: string | null = null;
     const pending = deferred<void>();

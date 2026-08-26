@@ -26,6 +26,7 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import type { CleanupPushSnapshot } from "@/auth/sessionController";
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
 import { runPushOperation } from "./lifecycle";
@@ -39,6 +40,7 @@ import { isSuccessfulPushRevocation } from "./revokeOutcome";
 
 const PUSH_TOKEN_ID_KEY = "mapvest.pushTokenId.v1";
 const PUSH_MAYBE_REGISTERED_KEY = "mapvest.pushMayBeRegistered.v1";
+const PUSH_CLAIM_SNAPSHOT_KEY = "mapvest.pushRegistration.v2";
 const EXPO_PROJECT_ID = "e3902302-dff0-4dee-9974-d74166073356";
 const PUSH_IO_TIMEOUT_MS = 8_000;
 const SECURE_STORE_TIMEOUT_MS = 800;
@@ -54,6 +56,11 @@ export type PushIdentity = {
   deviceId?: string;
 };
 
+export type PushClaimSnapshot = CleanupPushSnapshot & {
+  ownerUserId: string;
+  mayExist: true;
+};
+
 export type PushRegistrationEvidence = {
   mayBeRegistered: boolean;
   /** False means the marker store could not be inspected; fail closed. */
@@ -63,6 +70,7 @@ export type PushRegistrationEvidence = {
 export type PushIdentityRead = {
   status: "available" | "confirmed-none" | "unavailable";
   identity: PushIdentity | null;
+  ownerUserId?: string;
 };
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -82,6 +90,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 let currentIdentity: PushIdentity | null = null;
+let currentIdentityOwnerUserId: string | undefined;
 
 const pushTokenIdStorage: PushTokenIdStorage = {
   set: (id) => SecureStore.setItemAsync(PUSH_TOKEN_ID_KEY, id),
@@ -91,6 +100,11 @@ const pushTokenIdStorage: PushTokenIdStorage = {
 const pushEvidenceStorage: PushTokenIdStorage = {
   set: (value) => AsyncStorage.setItem(PUSH_MAYBE_REGISTERED_KEY, value),
   delete: () => AsyncStorage.removeItem(PUSH_MAYBE_REGISTERED_KEY),
+};
+
+const pushClaimSnapshotStorage: PushTokenIdStorage = {
+  set: (value) => SecureStore.setItemAsync(PUSH_CLAIM_SNAPSHOT_KEY, value),
+  delete: () => SecureStore.deleteItemAsync(PUSH_CLAIM_SNAPSHOT_KEY),
 };
 
 /**
@@ -138,6 +152,65 @@ export async function readStoredTokenIdForSignOut(): Promise<{
   }
 }
 
+/**
+ * This record is the cleanup identity of last resort. Unlike a fresh Expo
+ * lookup it remains usable after iOS permission is denied or the OS token API
+ * is unavailable. It is retained until server revocation and local cleanup
+ * have both been verified.
+ */
+export async function readPushClaimSnapshot(): Promise<{
+  snapshot: PushClaimSnapshot | null;
+  readable: boolean;
+}> {
+  try {
+    if (!(await waitForPushTokenIdMutation(pushClaimSnapshotStorage, SECURE_STORE_TIMEOUT_MS))) {
+      return { snapshot: null, readable: false };
+    }
+    const raw = await withTimeout(
+      SecureStore.getItemAsync(PUSH_CLAIM_SNAPSHOT_KEY),
+      SECURE_STORE_TIMEOUT_MS,
+      "push claim snapshot read timed out",
+    );
+    if (raw === null) return { snapshot: null, readable: true };
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") throw new Error("invalid push snapshot");
+    const candidate = parsed as Partial<PushClaimSnapshot>;
+    if (
+      typeof candidate.ownerUserId !== "string" ||
+      typeof candidate.expoToken !== "string" ||
+      !candidate.expoToken ||
+      candidate.mayExist !== true
+    ) {
+      throw new Error("invalid push snapshot");
+    }
+    if (
+      (candidate.deviceId !== undefined && typeof candidate.deviceId !== "string") ||
+      (candidate.tokenId !== undefined && typeof candidate.tokenId !== "string")
+    ) {
+      throw new Error("invalid push snapshot");
+    }
+    return { snapshot: candidate as PushClaimSnapshot, readable: true };
+  } catch {
+    return { snapshot: null, readable: false };
+  }
+}
+
+async function writePushClaimSnapshot(
+  snapshot: PushClaimSnapshot,
+  isCurrent: () => boolean,
+): Promise<boolean> {
+  const raw = JSON.stringify(snapshot);
+  const persisted = await persistPushTokenId(
+    pushClaimSnapshotStorage,
+    raw,
+    isCurrent,
+    SECURE_STORE_TIMEOUT_MS,
+  );
+  if (!persisted) return false;
+  const verify = await readPushClaimSnapshot();
+  return verify.readable && JSON.stringify(verify.snapshot) === raw;
+}
+
 /** A non-secret durable marker that a server row may exist without its id. */
 export async function markPushRegistrationEvidence(): Promise<boolean> {
   return persistPushTokenId(pushEvidenceStorage, "1", () => true, SECURE_STORE_TIMEOUT_MS);
@@ -160,10 +233,30 @@ export async function readPushRegistrationEvidence(): Promise<PushRegistrationEv
 }
 
 async function clearPushRegistrationEvidence(): Promise<void> {
-  try {
-    await deletePersistedPushTokenId(pushEvidenceStorage, SECURE_STORE_TIMEOUT_MS);
-  } catch {
-    // A stale marker is safe: the next sign-out retries idempotent cleanup.
+  await deletePersistedPushTokenId(pushEvidenceStorage, SECURE_STORE_TIMEOUT_MS);
+  const marker = await withTimeout(
+    AsyncStorage.getItem(PUSH_MAYBE_REGISTERED_KEY),
+    SECURE_STORE_TIMEOUT_MS,
+    "push registration evidence verify timed out",
+  );
+  if (marker !== null) throw new Error("push registration evidence was not cleared");
+}
+
+async function clearStoredTokenIdAuthoritatively(): Promise<void> {
+  // Marker first: if this fails, retain every claimant value so a retry or a
+  // reboot still has enough evidence to attempt server revocation.
+  await clearPushRegistrationEvidence();
+  await deletePersistedPushTokenId(pushTokenIdStorage, SECURE_STORE_TIMEOUT_MS);
+  const tokenId = await withTimeout(
+    SecureStore.getItemAsync(PUSH_TOKEN_ID_KEY),
+    SECURE_STORE_TIMEOUT_MS,
+    "push token id verify timed out",
+  );
+  if (tokenId !== null) throw new Error("push token id was not cleared");
+  await deletePersistedPushTokenId(pushClaimSnapshotStorage, SECURE_STORE_TIMEOUT_MS);
+  const snapshot = await readPushClaimSnapshot();
+  if (!snapshot.readable || snapshot.snapshot !== null) {
+    throw new Error("push claim snapshot was not cleared");
   }
 }
 
@@ -195,12 +288,9 @@ async function rollbackRegistration(identity: PushIdentity, tokenId: string): Pr
 
 /** Clear the account-scoped server token id after a successful unlink. */
 export async function clearStoredTokenId(): Promise<void> {
+  await clearStoredTokenIdAuthoritatively();
   currentIdentity = null;
-  // Wait for any timed-out registration write before deleting. Swallowing
-  // this error would let a late native completion resurrect an old claimant
-  // after the server revoke had already allowed the account transition.
-  await deletePersistedPushTokenId(pushTokenIdStorage, SECURE_STORE_TIMEOUT_MS);
-  await clearPushRegistrationEvidence();
+  currentIdentityOwnerUserId = undefined;
 }
 
 /**
@@ -234,7 +324,13 @@ export async function ensurePermissions(): Promise<boolean> {
  * This never prompts; it only reads already-granted OS state.
  */
 export async function getCurrentPushIdentity(): Promise<PushIdentityRead> {
-  if (currentIdentity) return { identity: currentIdentity, status: "available" };
+  if (currentIdentity) {
+    return {
+      identity: currentIdentity,
+      status: "available",
+      ...(currentIdentityOwnerUserId ? { ownerUserId: currentIdentityOwnerUserId } : {}),
+    };
+  }
   if (!Device.isDevice) return { identity: null, status: "confirmed-none" };
   try {
     const permission = await withTimeout(
@@ -279,7 +375,7 @@ export const readCurrentPushIdentity = getCurrentPushIdentity;
  * no push support (e.g. unsupported Android device without Google Play services).
  */
 export async function registerForPush(
-  session: { token: string } | null,
+  session: { token: string; userId: string } | null,
   options: { requestPermission?: boolean } = {},
 ): Promise<RegisterResult | null> {
   return runPushOperation(async ({ signal, isCurrent }) => {
@@ -322,6 +418,17 @@ export async function registerForPush(
     }
     const identity: PushIdentity = { expoToken, ...(deviceId ? { deviceId } : {}) };
     currentIdentity = identity;
+    currentIdentityOwnerUserId = session.userId;
+    const baseSnapshot: PushClaimSnapshot = {
+      ownerUserId: session.userId,
+      expoToken,
+      mayExist: true,
+      ...(deviceId ? { deviceId } : {}),
+    };
+    // Persist claimant identity before the server write. If the app is killed
+    // after POST /register but before the id write, expired-session recovery
+    // still has the Expo/device proof and the owning account id.
+    if (!(await writePushClaimSnapshot(baseSnapshot, isCurrent)) || !isCurrent()) return null;
     if (!(await markPushRegistrationEvidence()) || !isCurrent()) return null;
     try {
       const body = {
@@ -346,6 +453,12 @@ export async function registerForPush(
       if (!res.ok || !isCurrent()) return null;
       const j = (await res.json()) as { id?: string };
       if (!j.id || !isCurrent()) return null;
+      const withTokenId = { ...baseSnapshot, tokenId: j.id };
+      // Once the server has acknowledged the row, preserve this claimant
+      // snapshot even if a newer auth generation cancelled the caller. The
+      // queued revocation needs A's proof; deleting it on a stale completion
+      // would leave only an anonymous marker.
+      if (!(await writePushClaimSnapshot(withTokenId, () => true))) return null;
       const persisted = await persistPushTokenId(
         pushTokenIdStorage,
         j.id,
@@ -356,7 +469,7 @@ export async function registerForPush(
         // The API may already have committed the row even when keychain write
         // timed out. Roll it back with the just-issued claimant id; if that
         // cannot be proven, retain the durable marker and fail closed.
-        if (await rollbackRegistration(identity, j.id)) await clearPushRegistrationEvidence();
+        if (await rollbackRegistration(identity, j.id)) await clearStoredTokenId();
         return null;
       }
       if (!isCurrent()) return null;

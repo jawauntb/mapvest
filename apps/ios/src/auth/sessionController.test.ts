@@ -91,6 +91,9 @@ describe("SessionController async account lifecycle", () => {
     const signIn = f.controller.signIn(b.session, b.user);
     const transitionGeneration = f.controller.getSnapshot().authGeneration;
     expect(f.controller.getSnapshot().phase).toBe("booting");
+    expect(f.controller.getSnapshot().ready).toBe(false);
+    expect(f.controller.getSnapshot().session).toBeNull();
+    expect(f.controller.getSnapshot().user).toBeNull();
     expect(f.controller.isActiveSession(transitionGeneration, "token-a")).toBe(false);
     getMe.resolve({ user: a.user });
     await boot;
@@ -140,6 +143,92 @@ describe("SessionController async account lifecycle", () => {
     expect(f.controller.isActiveSession(generationA, "token-a")).toBe(false);
     await signOut;
     expect(f.controller.isActiveSession(generationA, "token-a")).toBe(false);
+  });
+
+  test("a durable cleanup envelope blocks authenticated UI across a reboot", async () => {
+    const a = { session: session("token-a", "account-a"), user: user("account-a") };
+    let raw: string | null = JSON.stringify(a);
+    let revokeFails = true;
+    let getMeCalls = 0;
+    const makeController = () => {
+      const deps: SessionControllerDeps = {
+        readStoredSession: async () => ({ raw, timedOut: false, readable: true }),
+        getMe: async () => {
+          getMeCalls += 1;
+          return { user: a.user };
+        },
+        revokePush: async () => {
+          if (revokeFails) throw new Error("offline");
+        },
+        cancelPush: async () => {},
+        writeStoredSession: async (next) => {
+          raw = JSON.stringify(next);
+        },
+        deleteStoredSession: async () => {
+          raw = null;
+        },
+        writeCleanupTombstone: async (tombstone) => {
+          raw = JSON.stringify({
+            session: tombstone.session,
+            user: tombstone.user,
+            cleanup: tombstone,
+          });
+        },
+        clearCleanupTombstone: async () => {},
+      };
+      return new SessionController(deps, () => {});
+    };
+
+    const first = makeController();
+    await first.startBoot();
+    expect(first.getSnapshot()).toMatchObject({ phase: "authenticated", ready: true });
+    await expect(first.signOut()).rejects.toBeInstanceOf(SessionCleanupRequiredError);
+    expect(raw).toContain('"kind":"cleanup"');
+    expect(getMeCalls).toBe(1);
+
+    // A force-quit/reboot sees the journal before getMe and never renders A.
+    const rebooted = makeController();
+    await rebooted.startBoot();
+    expect(rebooted.getSnapshot()).toMatchObject({
+      phase: "cleanup-required",
+      ready: true,
+      session: null,
+      cleanupRequired: true,
+    });
+    expect(getMeCalls).toBe(1);
+    await expect(
+      rebooted.signIn(session("token-b", "account-b"), user("account-b")),
+    ).rejects.toBeInstanceOf(SessionCleanupRequiredError);
+
+    revokeFails = false;
+    await rebooted.retryCleanup();
+    expect(rebooted.getSnapshot()).toMatchObject({ phase: "guest", session: null });
+    expect(raw).toBeNull();
+  });
+
+  test("guest sign-in cannot use B bearer for a residual snapshot owned by A", async () => {
+    const f = fixture(null);
+    const revokeArgs: Array<{ token?: string; ownerUserId?: string }> = [];
+    f.deps.readPushCleanupSnapshot = async () => ({
+      readable: true,
+      snapshot: { expoToken: "ExponentPushToken[a]", ownerUserId: "account-a" },
+    });
+    f.deps.revokePush = async (old, options) => {
+      revokeArgs.push({ token: old?.token, ownerUserId: options?.ownerUserId });
+      throw new Error("claimant mismatch");
+    };
+
+    await expect(
+      f.controller.signIn(session("token-b", "account-b"), user("account-b")),
+    ).rejects.toBeInstanceOf(SessionCleanupRequiredError);
+    const observed = revokeArgs[0]!;
+    expect(observed.token).toBeUndefined();
+    expect(observed.ownerUserId).toBe("account-a");
+    expect(f.controller.getSnapshot()).toMatchObject({
+      phase: "cleanup-required",
+      session: null,
+      cleanupRequired: true,
+    });
   });
 
   test("cleanup-required boot state blocks B until revocation and storage cleanup succeed", async () => {
@@ -222,7 +311,9 @@ describe("SessionController async account lifecycle", () => {
       session: null,
       cleanupRequired: false,
     });
-    expect(f.calls).toEqual(["revoke:physical", "write:token-b", "delete"]);
+    // A guest-to-B transition uses B's authenticated bearer for any residual
+    // installation claim before B is persisted; it never revokes anonymously.
+    expect(f.calls).toEqual(["revoke:token-b", "delete", "write:token-b", "delete"]);
   });
 
   test("a SecureStore delete failure keeps sign-out retryable instead of clearing auth", async () => {
