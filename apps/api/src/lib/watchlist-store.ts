@@ -323,6 +323,65 @@ export async function renameWatchList(
 }
 
 /**
+ * Promotes a list to be the user's default. Exactly one list per user is
+ * default at a time, so the previous default is demoted in the same call.
+ * Returns `null` when the list doesn't exist for this user.
+ */
+export async function setDefaultWatchList(
+  userId: string,
+  listId: string,
+): Promise<WatchList | null> {
+  await ensureListsDDL();
+  // Guarantees a default exists so the demote below never leaves zero defaults
+  // even if the promote half fails to match a row.
+  await ensureDefaultList(userId);
+
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = (await sql`
+        UPDATE watchlist_lists
+        SET is_default = true
+        WHERE id = ${listId} AND user_id = ${userId}
+        RETURNING id, user_id, name, is_default, created_at
+      `) as Array<{
+        id: string;
+        user_id: string;
+        name: string;
+        is_default: boolean;
+        created_at: Date | string;
+      }>;
+      if (rows.length === 0) return null;
+      await sql`
+        UPDATE watchlist_lists
+        SET is_default = false
+        WHERE user_id = ${userId} AND id <> ${listId} AND is_default = true
+      `;
+      // Keep the in-process mirror coherent for reads that hit memory.
+      for (const l of memListBucket(userId).values()) {
+        l.isDefault = l.id === listId;
+      }
+      const r = rows[0]!;
+      return {
+        id: r.id,
+        userId: r.user_id,
+        name: r.name,
+        isDefault: true,
+        createdAt: typeof r.created_at === "string" ? r.created_at : r.created_at.toISOString(),
+      };
+    }
+  }
+
+  const bucket = memListBucket(userId);
+  const target = bucket.get(listId);
+  if (!target) return null;
+  for (const l of bucket.values()) {
+    l.isDefault = l.id === listId;
+  }
+  return target;
+}
+
+/**
  * Deletes a list and any tickers within it.
  * Returns `{ ok: false, reason: 'default' }` when caller tries to delete the
  * default list — callers surface this as 400.

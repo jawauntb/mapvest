@@ -13,6 +13,7 @@ import {
   moveWatchEntry,
   removeWatchEntry,
   renameWatchList,
+  setDefaultWatchList,
   upsertWatchEntry,
 } from "../lib/watchlist-store.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
@@ -87,6 +88,31 @@ watchlist.patch("/lists/:id", async (c) => {
     if (!name) return c.json({ error: "name required" }, 400);
     const user = c.get("user");
     const list = await renameWatchList(user.id, id, name);
+    if (!list) return c.json({ error: "list not found" }, 404);
+    span.setAttributes({ user_id: user.id, list_id: list.id });
+    return c.json({
+      list: {
+        id: list.id,
+        name: list.name,
+        isDefault: list.isDefault,
+        createdAt: list.createdAt,
+      },
+    });
+  });
+});
+
+/**
+ * POST /v1/watchlist/lists/:id/default → { list }
+ * Promotes the list to be the user's default. The previous default is demoted
+ * in the same call — exactly one list per user is default at a time. The
+ * daily brief (route + 7am scheduler) always follows the default list, so
+ * reassigning it repoints "Mapvest Daily" too.
+ */
+watchlist.post("/lists/:id/default", async (c) => {
+  return safeExecuteWithSpan("http.watchlist.lists.set_default", async (span) => {
+    const id = c.req.param("id");
+    const user = c.get("user");
+    const list = await setDefaultWatchList(user.id, id);
     if (!list) return c.json({ error: "list not found" }, 404);
     span.setAttributes({ user_id: user.id, list_id: list.id });
     return c.json({
@@ -224,23 +250,33 @@ watchlist.get("/", async (c) => {
 });
 
 /**
- * GET /v1/watchlist/brief → { headline, body, generatedAt }
+ * GET /v1/watchlist/brief[?listId=<id>] → { headline, body, generatedAt }
  *
- * FT-style daily column on the user's watchlist. Cached per-user-per-day so
- * repeat opens on the same UTC day are free. On any LLM outage we still
- * return 200 with the OUTAGE_BRIEF so clients don't need error-path UI.
+ * FT-style daily column on a watchlist. When `listId` is omitted the user's
+ * default list is used. Cached per-user-per-day-per-ticker-set so repeat
+ * opens on the same UTC day are free. On any LLM outage we still return 200
+ * with the OUTAGE_BRIEF so clients don't need error-path UI.
  */
 watchlist.get("/brief", async (c) => {
   return safeExecuteWithSpan("http.watchlist.brief", async (span) => {
     const user = c.get("user");
-    const entries = await listWatchEntries(user.id);
+    const listIdParam = c.req.query("listId");
+    // Only the default list's brief may fire the daily-brief push — a user
+    // browsing another list's brief shouldn't trigger "Your morning read".
+    const isDefaultList = !listIdParam || listIdParam === (await ensureDefaultList(user.id)).id;
+    const entries = await listWatchEntries(user.id, listIdParam || undefined);
     span.setAttributes({
       user_id: user.id,
+      list_id: listIdParam ?? "default",
       items_count: entries.length,
       empty: entries.length === 0,
     });
     try {
-      const brief = await generateWatchlistBrief({ userId: user.id, entries });
+      const brief = await generateWatchlistBrief({
+        userId: user.id,
+        entries,
+        notify: isDefaultList,
+      });
       span.setAttribute("fallback", false);
       return c.json(brief);
     } catch (err) {
