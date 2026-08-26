@@ -2,11 +2,8 @@
  * Server-only Derivation Research Console boundary.
  *
  * The unified conversation API uses the mutate-capable service credential and
- * adds forwarded-host attestation only when calling the production proxy path.
+ * adds proxy-shaped headers only when an explicit proxy host is configured.
  */
-
-const DEFAULT_DERIVATION_FORWARDED_HOST = "derivation-research-jawaun.jtbx.workers.dev";
-const PRODUCTION_RAILWAY_HOST = "derivation-research-console-production.up.railway.app";
 
 function configuredOrigin(): string | undefined {
   const value =
@@ -29,14 +26,6 @@ function configuredReadServiceToken(): string | undefined {
     process.env.RESEARCH_CONSOLE_SERVICE_TOKEN_MUTATE?.trim() ||
     undefined
   );
-}
-
-function forwardedHost(origin: URL): string | undefined {
-  const configured = process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim();
-  if (configured) return configured;
-  return origin.hostname === PRODUCTION_RAILWAY_HOST
-    ? DEFAULT_DERIVATION_FORWARDED_HOST
-    : undefined;
 }
 
 export class DerivationConfigurationError extends Error {
@@ -77,9 +66,11 @@ function requireServiceToken(access: "mutate" | "read"): string {
   return token;
 }
 
-function authorizationHeaders(token: string): Record<string, string> {
-  const origin = new URL(getDerivationOrigin());
-  const host = forwardedHost(origin);
+export function derivationAuthorizationHeaders(
+  token: string,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string> {
+  const host = environment.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || undefined;
   return {
     Authorization: `Bearer ${token}`,
     ...(host
@@ -224,7 +215,7 @@ function unifiedJsonHeaders(access: "mutate" | "read", contentType = false): Hea
   return {
     Accept: "application/json",
     ...(contentType ? { "Content-Type": "application/json" } : {}),
-    ...authorizationHeaders(requireServiceToken(access)),
+    ...derivationAuthorizationHeaders(requireServiceToken(access)),
   };
 }
 
@@ -280,7 +271,7 @@ export async function getDerivationResearchMemo(
     method: "GET",
     headers: {
       Accept: "application/pdf",
-      ...authorizationHeaders(requireServiceToken("read")),
+      ...derivationAuthorizationHeaders(requireServiceToken("read")),
     },
     signal: options.signal ?? AbortSignal.timeout(30_000),
   });

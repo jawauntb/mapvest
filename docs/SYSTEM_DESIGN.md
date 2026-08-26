@@ -173,7 +173,7 @@ env var (`OPTION_DERIVATION_URL`), never from a filesystem path.
 
 Completed display projections keep progress, evidence, context, tool activity, ideas, specialist findings, memo summaries, and failures in the existing chat. `GET /v1/agent/threads/{id}/memo` proxies a finished PDF without exposing the Console service token. A signed-in request carrying its existing device ID claims that device's anonymous research references into the user scope; quota counters remain separate as described in D12.
 
-Blocked or exhausted conversations are surfaced as such; Mapvest does not replace them with a tools-free model response. Local direct Console calls omit proxy-shaped headers, while the canonical Railway deployment (or an explicitly configured `RESEARCH_CONSOLE_FORWARDED_HOST`) retains the front-door attestation.
+Blocked or exhausted conversations are surfaced as such; Mapvest does not replace them with a tools-free model response. Direct Console calls, including Railway-to-Railway production traffic, omit proxy-shaped headers. Mapvest sends forwarded-host attestation only when `RESEARCH_CONSOLE_FORWARDED_HOST` explicitly names the proxy that actually received the browser-facing request; this prevents a retired front door from being silently fabricated after Console routing changes.
 
 ## D14 — Global rate limit keys by session, not shared NAT IP
 

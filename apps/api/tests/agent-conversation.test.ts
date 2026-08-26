@@ -22,6 +22,7 @@ import { __resetRateLimit } from "../src/middleware/rateLimit.js";
 
 const DEVICE_A = "device-agent-conversation-a";
 const DEVICE_B = "device-agent-conversation-b";
+const originalForwardedHost = process.env.RESEARCH_CONSOLE_FORWARDED_HOST;
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -202,6 +203,7 @@ function installSuccessfulConsole(
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  Reflect.deleteProperty(process.env, "RESEARCH_CONSOLE_FORWARDED_HOST");
   __resetRateLimit();
   __resetMetrics();
   __resetEntitlements();
@@ -211,6 +213,9 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalForwardedHost === undefined) {
+    Reflect.deleteProperty(process.env, "RESEARCH_CONSOLE_FORWARDED_HOST");
+  } else process.env.RESEARCH_CONSOLE_FORWARDED_HOST = originalForwardedHost;
 });
 
 describe("unified research conversation routes", () => {
@@ -542,6 +547,61 @@ describe("unified research conversation routes", () => {
     expect(calls[0]?.url).toContain("/api/explore");
     const quota = await app.fetch(request("/entitlements"));
     expect(await quota.json()).toMatchObject({ remaining: 50 });
+  });
+
+  test("maps plain and nested Console 403s to a safe gateway response without burning quota", async () => {
+    const upstreamFailures = [
+      { label: "plain", body: { error: "REQUEST_HOST_INVALID" } },
+      { label: "nested", body: { error: { code: "REQUEST_HOST_INVALID" } } },
+    ];
+
+    for (const [index, failure] of upstreamFailures.entries()) {
+      globalThis.fetch = (async () => Response.json(failure.body, { status: 403 })) as typeof fetch;
+
+      const deviceId = `${DEVICE_A}-${index}`;
+      const res = await app.fetch(
+        request(
+          "/agent/chat",
+          {
+            message: `Research the ${failure.label} upstream failure`,
+            clientMessageId: `host-invalid-${failure.label}`,
+          },
+          deviceId,
+        ),
+      );
+
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({
+        error: "Research service is temporarily unavailable",
+        code: "REQUEST_HOST_INVALID",
+      });
+
+      const quota = await app.fetch(request("/entitlements", undefined, deviceId));
+      expect(quota.status).toBe(200);
+      expect(await quota.json()).toMatchObject({ remaining: 50 });
+    }
+  });
+
+  test("maps an upstream 404 to a safe gateway response", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({ error: "CONVERSATION_NOT_FOUND" }, { status: 404 })) as typeof fetch;
+
+    const res = await app.fetch(
+      request(
+        "/agent/chat",
+        {
+          message: "Research through a missing Console endpoint",
+          clientMessageId: "missing-console-endpoint",
+        },
+        DEVICE_A,
+      ),
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({
+      error: "Research service is temporarily unavailable",
+      code: "CONVERSATION_NOT_FOUND",
+    });
   });
 
   test("uses summary for lightweight recovery and display for the full owned thread", async () => {

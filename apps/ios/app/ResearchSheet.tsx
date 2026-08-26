@@ -7,6 +7,7 @@ import {
   getAgentThread,
   waitForAgentThread,
 } from "@/api/client";
+import { formatResearchError } from "@/api/errors";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { RichText } from "@/components/RichText";
@@ -106,6 +107,7 @@ export function ResearchSheet({
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreBlocked, setRestoreBlocked] = useState(false);
+  const [restoreRequest, setRestoreRequest] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [memoUrl, setMemoUrl] = useState<string | undefined>();
@@ -129,6 +131,7 @@ export function ResearchSheet({
   >(undefined);
   const sendGenerationRef = useRef(0);
   const sendAbortRef = useRef<AbortController | null>(null);
+  const retryingRestoreRef = useRef(false);
 
   const cancelSendOperation = useCallback(() => {
     sendGenerationRef.current += 1;
@@ -139,13 +142,18 @@ export function ResearchSheet({
   useEffect(() => {
     cancelSendOperation();
     setBusy(false);
-    if (!visible) return;
+    if (!visible) {
+      retryingRestoreRef.current = false;
+      return;
+    }
     let cancelled = false;
     const controller = new AbortController();
     setRestoring(true);
     setRestoreBlocked(false);
     setErr(null);
-    setStatus("Loading saved research…");
+    const isRetry = restoreRequest > 0 && retryingRestoreRef.current;
+    setStatus(isRetry ? "Retrying saved research…" : "Loading saved research…");
+    retryingRestoreRef.current = false;
     setThreadId(undefined);
     setTurns([]);
     setMemoUrl(undefined);
@@ -207,7 +215,10 @@ export function ResearchSheet({
           setRestoreBlocked(true);
           setStatus(null);
           setErr(
-            "Couldn’t load the saved research. Reopen this sheet before continuing; the conversation was preserved.",
+            formatResearchError(
+              error,
+              "Couldn’t load the saved research. Reopen this sheet before continuing; the conversation was preserved.",
+            ),
           );
         }
       } finally {
@@ -220,7 +231,7 @@ export function ResearchSheet({
       cancelSendOperation();
       retryAttemptRef.current = undefined;
     };
-  }, [cancelSendOperation, session?.token, ticker, user?.id, visible]);
+  }, [cancelSendOperation, restoreRequest, session?.token, ticker, user?.id, visible]);
 
   // Elapsed ticker only — the stage cycler is gone now that we stream real
   // events; the timeline is fed by `agentChatStream`'s onEvent callback.
@@ -292,7 +303,12 @@ export function ResearchSheet({
       );
       setDraft("");
       if (article.error) {
-        setErr(article.error);
+        setErr(
+          formatResearchError(
+            article.error,
+            "Research stopped before it could finish the brief. Try again.",
+          ),
+        );
         setStatus(null);
         return;
       }
@@ -327,7 +343,12 @@ export function ResearchSheet({
       if (!article) throw new Error("Research finished without a displayable brief.");
       gotArticle = true;
       if (article.error) {
-        setErr("Research stopped before it could finish the brief.");
+        setErr(
+          formatResearchError(
+            article.error,
+            "Research stopped before it could finish the brief. Try again.",
+          ),
+        );
         setStatus(null);
       } else {
         const tools = article.toolsUsed?.length
@@ -449,7 +470,7 @@ export function ResearchSheet({
         setErr("This saved research is no longer available. Send again to start a new one.");
         setStatus(null);
       } else {
-        setErr((error as Error).message);
+        setErr(formatResearchError(error));
         setStatus(null);
       }
     } finally {
@@ -464,6 +485,7 @@ export function ResearchSheet({
   const closeSheet = () => {
     cancelSendOperation();
     retryAttemptRef.current = undefined;
+    retryingRestoreRef.current = false;
     setBusy(false);
     onClose();
   };
@@ -526,7 +548,7 @@ export function ResearchSheet({
               </Text>
             ) : (
               <View key={t.id} style={styles.article}>
-                <RichText text={t.content} />
+                {t.content.trim() !== t.error?.trim() ? <RichText text={t.content} /> : null}
                 {researchProgressLabel(t) ? (
                   <Text style={styles.meta}>Progress · {researchProgressLabel(t)}</Text>
                 ) : null}
@@ -599,8 +621,19 @@ export function ResearchSheet({
                     ) : null}
                   </View>
                 ) : null}
-                {t.blocker ? <Text style={styles.inlineError}>Blocked · {t.blocker}</Text> : null}
-                {t.error ? <Text style={styles.inlineError}>{t.error}</Text> : null}
+                {t.blocker ? (
+                  <Text accessibilityRole="alert" style={styles.inlineError}>
+                    Blocked · {formatResearchError(t.blocker, "Research is blocked. Try again.")}
+                  </Text>
+                ) : null}
+                {t.error ? (
+                  <Text accessibilityRole="alert" style={styles.inlineError}>
+                    {formatResearchError(
+                      t.error,
+                      "Research stopped before it could finish the brief. Try again.",
+                    )}
+                  </Text>
+                ) : null}
                 {t.toolsUsed.length ? (
                   <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
                 ) : null}
@@ -639,7 +672,7 @@ export function ResearchSheet({
                     onPress={() => {
                       hapticTap();
                       void shareResearchMemo(memoUrl, session?.token).catch((error) => {
-                        setErr(error instanceof Error ? error.message : "Memo download failed.");
+                        setErr(formatResearchError(error, "Memo download failed."));
                       });
                     }}
                     style={styles.memoLink}
@@ -714,7 +747,26 @@ export function ResearchSheet({
               ) : null}
             </Pressable>
           ) : null}
-          {err ? <Text style={styles.err}>{err}</Text> : null}
+          {err ? (
+            <View style={styles.errorRow}>
+              <Text accessibilityRole="alert" style={styles.err}>
+                {err}
+              </Text>
+              {restoreBlocked ? (
+                <Pressable
+                  onPress={() => {
+                    retryingRestoreRef.current = true;
+                    setRestoreRequest((request) => request + 1);
+                  }}
+                  style={styles.retryButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading saved research"
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
         </ScrollView>
 
         <View
@@ -890,7 +942,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  errorRow: { gap: 8, marginTop: 8 },
   err: { color: colors.danger, marginTop: 8 },
+  retryButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  retryButtonText: { color: colors.accent, fontSize: 12, fontWeight: "600" },
   composer: {
     flexDirection: "row",
     gap: 8,
