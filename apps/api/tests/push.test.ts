@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  PushPreferencesReadResponse,
+  PushPreferencesUpdateResponse,
+  PushRegistrationResponse,
+} from "@mapvest/core";
 
 process.env.NODE_ENV = "test";
 process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
@@ -374,6 +379,90 @@ describe("push token account isolation", () => {
       outcome: "claim-mismatch",
     });
     expect((await listTokensForUser(laterOwner)).map((token) => token.id)).toEqual([current.id]);
+  });
+});
+
+describe("push route contract", () => {
+  test("documents and validates registration, preferences, and token deletion", async () => {
+    const uid = userId();
+    const bearer = await sessionFor(uid, `${uid}@mapvest.dev`);
+    const physicalToken = expoToken();
+
+    const invalidRegistration = await app.fetch(
+      new Request("http://localhost/v1/push/register", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, platform: "web" }),
+      }),
+    );
+    expect(invalidRegistration.status).toBe(400);
+
+    const registration = await app.fetch(
+      new Request("http://localhost/v1/push/register", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ token: physicalToken, platform: "android", deviceId: "phone" }),
+      }),
+    );
+    expect(registration.status).toBe(200);
+    const registered = PushRegistrationResponse.parse(await registration.json());
+    expect(registered.prefs.notifications_enabled).toBe(false);
+
+    const invalidPatch = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ tokenId: registered.id, prefs: { daily_brief: "yes" } }),
+      }),
+    );
+    expect(invalidPatch.status).toBe(400);
+
+    const updated = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          tokenId: registered.id,
+          prefs: { notifications_enabled: true, daily_brief: true, future_opt_in: true },
+        }),
+      }),
+    );
+    expect(updated.status).toBe(200);
+    expect(PushPreferencesUpdateResponse.parse(await updated.json()).prefs).toMatchObject({
+      notifications_enabled: true,
+      daily_brief: true,
+    });
+
+    const read = await app.fetch(
+      new Request(`http://localhost/v1/push/prefs?tokenId=${encodeURIComponent(registered.id)}`, {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(read.status).toBe(200);
+    expect(PushPreferencesReadResponse.parse(await read.json()).tokenId).toBe(registered.id);
+
+    const invalidQuery = await app.fetch(
+      new Request("http://localhost/v1/push/prefs?tokenId=%20", {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(invalidQuery.status).toBe(400);
+
+    const removed = await app.fetch(
+      new Request(`http://localhost/v1/push/token/${encodeURIComponent(registered.id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(removed.status).toBe(204);
+
+    const missing = await app.fetch(
+      new Request(`http://localhost/v1/push/token/${encodeURIComponent(registered.id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(missing.status).toBe(404);
   });
 });
 

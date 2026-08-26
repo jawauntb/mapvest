@@ -101,6 +101,24 @@ const S = {
     "PushDeviceRevocationResponse",
     raw.PushDeviceRevocationResponse,
   ),
+  PushPreferences: component("PushPreferences", raw.PushPreferences),
+  PushPreferencesPatch: component("PushPreferencesPatch", raw.PushPreferencesPatch),
+  PushRegistrationRequest: component("PushRegistrationRequest", raw.PushRegistrationRequest),
+  PushRegistrationResponse: component("PushRegistrationResponse", raw.PushRegistrationResponse),
+  PushPreferencesUpdateRequest: component(
+    "PushPreferencesUpdateRequest",
+    raw.PushPreferencesUpdateRequest,
+  ),
+  PushPreferencesUpdateResponse: component(
+    "PushPreferencesUpdateResponse",
+    raw.PushPreferencesUpdateResponse,
+  ),
+  PushPreferencesReadQuery: component("PushPreferencesReadQuery", raw.PushPreferencesReadQuery),
+  PushPreferencesReadResponse: component(
+    "PushPreferencesReadResponse",
+    raw.PushPreferencesReadResponse,
+  ),
+  PushTokenDeleteParams: component("PushTokenDeleteParams", raw.PushTokenDeleteParams),
   AgentChatRequest: component("AgentChatRequest", raw.AgentChatRequest),
   AgentChatResponse: component("AgentChatResponse", raw.AgentChatResponse),
   AgentThreadSummary: component("AgentThreadSummary", raw.AgentThreadSummary),
@@ -1063,6 +1081,92 @@ registry.registerPath({
       content: { "application/json": { schema: S.AlertsResponse } },
     },
     ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/register",
+  summary: "Register or re-claim this device for push notifications",
+  description:
+    "Registers the physical Expo token to the signed-in account. A token already owned by this account is idempotent; registration under another account transfers ownership and starts the new claim muted, so notification consent never crosses accounts.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushRegistrationRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Registered device id and its current per-installation preferences.",
+      content: { "application/json": { schema: S.PushRegistrationResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid Expo token, platform, or device id."),
+    401: errorResponses[401],
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/push/prefs",
+  summary: "Merge preferences for one registered device",
+  description:
+    "Updates only the signed-in user's matching installation. Event opt-ins and the product-level notification switch are per device; unknown patch fields are accepted and ignored for forward-compatible clients.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PushPreferencesUpdateRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated per-installation preferences.",
+      content: { "application/json": { schema: S.PushPreferencesUpdateResponse } },
+    },
+    400: flatErrorResponse("Missing or invalid token id or preference patch."),
+    401: errorResponses[401],
+    404: flatErrorResponse("Push token not found for the signed-in user."),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/push/prefs",
+  summary: "Read preferences for the current device",
+  description:
+    "Returns the selected signed-in installation's preferences. Omit `tokenId` to read the first current installation; an unknown or other-user id returns an empty preference object with `tokenId: null` rather than exposing another account's device.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: { query: S.PushPreferencesReadQuery },
+  responses: {
+    200: {
+      description:
+        "Selected preferences, or an explicit empty result when no matching device exists.",
+      content: { "application/json": { schema: S.PushPreferencesReadResponse } },
+    },
+    400: flatErrorResponse("Invalid token id query parameter."),
+    401: errorResponses[401],
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/v1/push/token/{id}",
+  summary: "Unregister one signed-in device",
+  description:
+    "Deletes only the supplied opaque registration id when it belongs to the signed-in user, tombstoning its physical claim and removing future delivery eligibility.",
+  tags: ["push"],
+  security: [{ bearerAuth: [] }],
+  request: { params: S.PushTokenDeleteParams },
+  responses: {
+    204: { description: "Push device unregistered." },
+    400: flatErrorResponse("Invalid token id path parameter."),
+    401: errorResponses[401],
+    404: flatErrorResponse("Push token not found for the signed-in user."),
   },
 });
 

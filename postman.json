@@ -1344,6 +1344,159 @@
       "description": "Device push-token registration and revocation",
       "item": [
         {
+          "name": "Register or re-claim this device for push notifications",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"\",\n  \"platform\": \"ios\",\n  \"deviceId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Registers the physical Expo token to the signed-in account. A token already owned by this account is idempotent; registration under another account transfers ownership and starts the new claim muted, so notification consent never crosses accounts.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Read preferences for the current device",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/prefs?tokenId=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "prefs"
+              ],
+              "query": [
+                {
+                  "key": "tokenId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Returns the selected signed-in installation's preferences. Omit `tokenId` to read the first current installation; an unknown or other-user id returns an empty preference object with `tokenId: null` rather than exposing another account's device.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Merge preferences for one registered device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/prefs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "prefs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenId\": \"\",\n  \"prefs\": {\n    \"notifications_enabled\": false,\n    \"daily_brief\": false,\n    \"local_brief\": false,\n    \"price_alerts\": false,\n    \"memo_finished\": false,\n    \"agent_response\": false,\n    \"identify_done\": false,\n    \"watchlist_mover\": false,\n    \"find_evolution\": false,\n    \"uncaught_nearby\": false,\n    \"last_lat\": 0,\n    \"last_lng\": 0,\n    \"last_location_at\": \"\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Updates only the signed-in user's matching installation. Event opt-ins and the product-level notification switch are per device; unknown patch fields are accepted and ignored for forward-compatible clients.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unregister one signed-in device",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/push/token/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "push",
+                "token",
+                "{id}"
+              ]
+            },
+            "description": "Deletes only the supplied opaque registration id when it belongs to the signed-in user, tombstoning its physical claim and removing future delivery eligibility.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Revoke this device with its opaque push token id",
           "request": {
             "method": "POST",

@@ -579,6 +579,98 @@ const ExpoPushToken = z
 const PushDeviceId = z.string().trim().max(128);
 const PushTokenId = z.string().trim().min(1).max(128);
 
+export const PushPlatform = z.enum(["ios", "android"]);
+export type PushPlatform = z.infer<typeof PushPlatform>;
+
+export const PushEventKey = z.enum([
+  "daily_brief",
+  "local_brief",
+  "price_alerts",
+  "memo_finished",
+  "agent_response",
+  "identify_done",
+  "watchlist_mover",
+  "find_evolution",
+  "uncaught_nearby",
+]);
+export type PushEventKey = z.infer<typeof PushEventKey>;
+
+/**
+ * Per-installation notification state. `last_sent` is server-owned dedupe
+ * bookkeeping that may appear in reads for an existing installation; clients
+ * cannot change it through `PushPreferencesUpdateRequest`.
+ */
+export const PushPreferences = z
+  .object({
+    notifications_enabled: z.boolean().optional(),
+    daily_brief: z.boolean().optional(),
+    local_brief: z.boolean().optional(),
+    price_alerts: z.boolean().optional(),
+    memo_finished: z.boolean().optional(),
+    agent_response: z.boolean().optional(),
+    identify_done: z.boolean().optional(),
+    watchlist_mover: z.boolean().optional(),
+    find_evolution: z.boolean().optional(),
+    uncaught_nearby: z.boolean().optional(),
+    last_lat: z.number().optional(),
+    last_lng: z.number().optional(),
+    last_location_at: z.string().optional(),
+    last_sent: z.record(z.string()).optional(),
+  })
+  .passthrough();
+export type PushPreferences = z.infer<typeof PushPreferences>;
+
+/**
+ * Product preference patch. Unknown fields remain accepted and ignored by the
+ * server so newer clients can roll out opt-ins without breaking older APIs.
+ */
+export const PushPreferencesPatch = PushPreferences.omit({ last_sent: true }).passthrough();
+export type PushPreferencesPatch = z.infer<typeof PushPreferencesPatch>;
+
+/** Register or re-claim the current installation's physical Expo token. */
+export const PushRegistrationRequest = z.object({
+  token: ExpoPushToken,
+  platform: PushPlatform.optional(),
+  deviceId: PushDeviceId.optional(),
+});
+export type PushRegistrationRequest = z.infer<typeof PushRegistrationRequest>;
+
+export const PushRegistrationResponse = z.object({
+  id: PushTokenId,
+  prefs: PushPreferences,
+});
+export type PushRegistrationResponse = z.infer<typeof PushRegistrationResponse>;
+
+/** Merge a patch into one registered installation's preferences. */
+export const PushPreferencesUpdateRequest = z.object({
+  tokenId: PushTokenId,
+  prefs: PushPreferencesPatch,
+});
+export type PushPreferencesUpdateRequest = z.infer<typeof PushPreferencesUpdateRequest>;
+
+export const PushPreferencesUpdateResponse = z.object({
+  prefs: PushPreferences,
+});
+export type PushPreferencesUpdateResponse = z.infer<typeof PushPreferencesUpdateResponse>;
+
+/** Optional installation selection for a preference read. */
+export const PushPreferencesReadQuery = z.object({
+  tokenId: PushTokenId.optional(),
+});
+export type PushPreferencesReadQuery = z.infer<typeof PushPreferencesReadQuery>;
+
+export const PushPreferencesReadResponse = z.object({
+  prefs: PushPreferences,
+  tokenId: PushTokenId.nullable(),
+});
+export type PushPreferencesReadResponse = z.infer<typeof PushPreferencesReadResponse>;
+
+/** The opaque registration id in `DELETE /v1/push/token/:id`. */
+export const PushTokenDeleteParams = z.object({
+  id: PushTokenId,
+});
+export type PushTokenDeleteParams = z.infer<typeof PushTokenDeleteParams>;
+
 /**
  * Public, idempotent fallback for an installation that still holds the opaque
  * server id issued at registration but no longer has a valid bearer session.

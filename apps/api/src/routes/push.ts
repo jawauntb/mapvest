@@ -22,6 +22,10 @@ import {
   PushDeviceRevocationRequest,
   type PushDeviceRevocationResponse,
   PushExpiredSessionDeviceRevocationRequest,
+  PushPreferencesReadQuery,
+  PushPreferencesUpdateRequest,
+  PushRegistrationRequest,
+  PushTokenDeleteParams,
 } from "@mapvest/core";
 import { Hono } from "hono";
 import { verify } from "hono/jwt";
@@ -43,9 +47,6 @@ import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const push = new Hono<AuthEnv>();
 
-// ExponentPushToken[…] or ExpoPushToken[…]. Registration predates the shared
-// contract; revocation routes use the canonical Zod schemas above.
-const EXPO_TOKEN_RE = /^ExponentPushToken\[[^\]]+\]$|^ExpoPushToken\[[^\]]+\]$/;
 const EXPIRED_SESSION_REVOKE_WINDOW_SEC = 90 * 24 * 60 * 60;
 
 function revocationResponse(outcome: PushDeviceRevocationOutcome): PushDeviceRevocationResponse {
@@ -195,20 +196,12 @@ function isMasterPref(k: string): k is "notifications_enabled" {
 /** POST /v1/push/register  { token, platform?, deviceId? } → { id } */
 push.post("/register", async (c) => {
   return safeExecuteWithSpan("http.push.register", async (span) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      token?: unknown;
-      platform?: unknown;
-      deviceId?: unknown;
-    };
-    const token = typeof body.token === "string" ? body.token.trim() : "";
-    if (!token || !EXPO_TOKEN_RE.test(token)) {
+    const parsed = PushRegistrationRequest.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
       return c.json({ error: "valid ExponentPushToken required" }, 400);
     }
-    const platform = body.platform === "android" ? "android" : ("ios" as "ios" | "android");
-    const deviceId =
-      typeof body.deviceId === "string" && body.deviceId.trim().length > 0
-        ? body.deviceId.trim().slice(0, 128)
-        : undefined;
+    const { token, platform = "ios" } = parsed.data;
+    const deviceId = parsed.data.deviceId || undefined;
 
     const user = c.get("user");
     const tok = await registerPushToken(user.id, token, platform, deviceId);
@@ -226,23 +219,16 @@ push.post("/register", async (c) => {
  * POST /v1/push/prefs  { tokenId, prefs } → { prefs }
  *
  * Merges provided prefs into the stored blob. Unknown keys are ignored so a
- * newer client sending future opt-ins is forward-compatible. Non-boolean
- * values are dropped for the event keys — client bugs must not enable pushes.
+ * newer client sending future opt-ins is forward-compatible. The shared
+ * contract rejects malformed values for known preference keys.
  */
 push.post("/prefs", async (c) => {
   return safeExecuteWithSpan("http.push.prefs.write", async (span) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      tokenId?: unknown;
-      prefs?: unknown;
-    };
-    const tokenId = typeof body.tokenId === "string" ? body.tokenId : "";
-    if (!tokenId) return c.json({ error: "tokenId required" }, 400);
-    const raw = body.prefs;
-    if (!raw || typeof raw !== "object") {
-      return c.json({ error: "prefs object required" }, 400);
-    }
+    const parsed = PushPreferencesUpdateRequest.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "tokenId and prefs object required" }, 400);
+    const { tokenId, prefs: raw } = parsed.data;
     const patch: PushPrefs = {};
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(raw)) {
       if ((isValidPref(k) || isMasterPref(k)) && typeof v === "boolean") {
         patch[k] = v;
       }
@@ -269,13 +255,15 @@ push.post("/prefs", async (c) => {
 /** GET /v1/push/prefs[?tokenId=…] → { prefs, tokenId } */
 push.get("/prefs", async (c) => {
   return safeExecuteWithSpan("http.push.prefs.read", async (span) => {
+    const parsed = PushPreferencesReadQuery.safeParse({ tokenId: c.req.query("tokenId") });
+    if (!parsed.success) return c.json({ error: "valid tokenId required" }, 400);
     const user = c.get("user");
     const tokens = await listTokensForUser(user.id);
     span.setAttributes({ user_id: user.id, token_count: tokens.length });
     if (tokens.length === 0) {
       return c.json({ prefs: {}, tokenId: null });
     }
-    const requestedId = c.req.query("tokenId");
+    const requestedId = parsed.data.tokenId;
     const selected = requestedId ? tokens.find((token) => token.id === requestedId) : tokens[0];
     if (!selected) return c.json({ prefs: {}, tokenId: null });
     return c.json({ prefs: selected.prefs, tokenId: selected.id });
@@ -285,7 +273,9 @@ push.get("/prefs", async (c) => {
 /** DELETE /v1/push/token/:id */
 push.delete("/token/:id", async (c) => {
   return safeExecuteWithSpan("http.push.unregister", async (span) => {
-    const id = c.req.param("id");
+    const parsed = PushTokenDeleteParams.safeParse({ id: c.req.param("id") });
+    if (!parsed.success) return c.json({ error: "valid tokenId required" }, 400);
+    const { id } = parsed.data;
     const user = c.get("user");
     const removed = await unregisterPushToken(user.id, id);
     span.setAttributes({ user_id: user.id, token_id: id, removed });
