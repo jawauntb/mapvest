@@ -41,4 +41,14 @@ describe("redirectMapvestWebPath", () => {
       "https://mapvest.app/docs/architecture",
     );
   });
+
+  test("passes custom-scheme URLs through untouched (share-intent handoff)", () => {
+    // RN's URL polyfill would otherwise fold these into the https base and
+    // let them pass the host guard — they must come back verbatim so
+    // +native-intent can route them (or leave them) explicitly.
+    expect(redirectMapvestWebPath("mapvest://dataUrl=mapvestShareKey#media")).toBe(
+      "mapvest://dataUrl=mapvestShareKey#media",
+    );
+    expect(redirectMapvestWebPath("mapvest://app/ticker/NVDA")).toBe("mapvest://app/ticker/NVDA");
+  });
 });

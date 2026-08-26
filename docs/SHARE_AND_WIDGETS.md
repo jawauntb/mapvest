@@ -32,9 +32,19 @@ TestFlight/Play build.
   Accepts images, web URLs/pages, and text; only images run through
   `/v1/identify` today (see below).
 - **Receiving flow**:
-  - `apps/ios/app/_layout.tsx` mounts `ShareIntentProvider` after first
-    paint (`DeferredShareIntent`) so a hung native init cannot black-screen
-    launch. `ShareIntentListener` then routes to `/share-intent`.
+  - `apps/ios/app/_layout.tsx` mounts `ShareIntentProvider` from the very
+    first render but starts it `disabled`, flipping the provider's
+    `disabled` option off after first paint (`DeferredShareIntent`) so a
+    hung native init cannot black-screen launch. Do NOT go back to
+    conditionally wrapping `children` in the provider: swapping the element
+    type at that slot 800ms into launch remounted the entire app (query
+    client, session, navigator, MapView) mid share-handoff and crashed
+    "Share to Mapvest" cold-starts. `ShareIntentListener` then routes to
+    `/share-intent`.
+  - `apps/ios/app/+native-intent.tsx` short-circuits the extension's
+    `mapvest://dataUrl=…` wake-up URL straight to `/share-intent` (and
+    `app/+not-found.tsx` catches anything else) so the router never lands
+    on the Unmatched screen mid-share.
   - Build 11–42 shipped **without** the provider (black-screen fix). Those
     IPAs will not show Mapvest in the iOS share sheet. Need a build after
     this wiring, plus the share-extension target from `expo prebuild`.

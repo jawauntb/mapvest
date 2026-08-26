@@ -35,10 +35,15 @@ export default function ShareIntentScreen() {
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const ranFor = useRef<string | null>(null);
 
-  const imageFile = shareIntent?.files?.find((f) => f.mimeType?.startsWith("image/")) ?? null;
+  // Require a usable local path up front — the parser can hand back
+  // `path: null` (e.g. a share the extension couldn't copy), and a null path
+  // would both render a broken preview and dead-lock the ranFor guard below
+  // (null === null on first render → identify never runs, screen just hangs).
+  const imageFile =
+    shareIntent?.files?.find((f) => f.mimeType?.startsWith("image/") && !!f.path) ?? null;
 
   useEffect(() => {
-    if (!imageFile) return;
+    if (!imageFile?.path) return;
     // Guard against re-running on every render for the same shared file.
     if (ranFor.current === imageFile.path) return;
     ranFor.current = imageFile.path;
@@ -81,7 +86,9 @@ export default function ShareIntentScreen() {
     router.canGoBack() ? router.back() : router.replace("/(tabs)/home");
   }
 
-  const top = result?.investables[0];
+  // Defensive chaining: identifyPhoto casts the response without validating,
+  // so a 200 with an unexpected shape must not throw during render.
+  const top = result?.investables?.[0];
   const ticker = top?.brand.ticker?.symbol ?? top?.comparables?.[0]?.ticker ?? undefined;
   const accent = sectorColor(top?.brand.sector);
 
@@ -89,7 +96,13 @@ export default function ShareIntentScreen() {
     const id = ticker ?? top?.brand.name;
     if (!id) return;
     resetShareIntent();
-    router.replace(`/detail/${encodeURIComponent(id)}`);
+    // Dismiss the modal first, then push detail as a normal card. Replacing a
+    // `presentation: "modal"` screen in place with a `card` screen makes
+    // react-native-screens swap stackPresentation on a presenting controller —
+    // the same UIKit hazard the detail route's comment in _layout.tsx warns
+    // about.
+    if (router.canGoBack()) router.back();
+    router.push(`/detail/${encodeURIComponent(id)}`);
   }
 
   async function onSave() {
@@ -114,13 +127,12 @@ export default function ShareIntentScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
+      {/* Static options (presentation, header chrome, title) live on the
+          route declaration in _layout.tsx. Re-declaring `presentation` here
+          made the native stack reconfigure an already-presenting modal —
+          only the dynamic close button belongs in this per-render call. */}
       <Stack.Screen
         options={{
-          title: "Shared to Mapvest",
-          presentation: "modal",
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.bgElevated },
-          headerTintColor: colors.fg,
           headerRight: () => (
             <Pressable
               onPress={() => {

@@ -402,9 +402,16 @@ function FatalRecovery({ report, onRecover }: { report: FatalReport; onRecover: 
 }
 
 /**
- * Mount the share-sheet receiver after first paint. Wrapping at boot was
- * one of the black-screen suspects; delaying keeps Photos → Mapvest without
- * blocking launch.
+ * Activate the share-sheet receiver after first paint. Wrapping at boot was
+ * one of the black-screen suspects; deferring via the provider's `disabled`
+ * option keeps Photos → Mapvest without blocking launch.
+ *
+ * CRITICAL: the provider must be mounted from the very first render. The old
+ * version returned bare `children` for 800ms and then wrapped them — changing
+ * the element type at this slot makes React unmount and remount the ENTIRE
+ * app (query client, session, navigator, MapView) right in the middle of the
+ * share deep-link + modal presentation, which crashed "Share to Mapvest"
+ * cold-starts. `disabled` flips instead, so the tree identity never changes.
  */
 function DeferredShareIntent({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(false);
@@ -412,10 +419,10 @@ function DeferredShareIntent({ children }: { children: ReactNode }) {
     const t = setTimeout(() => setOn(true), 800);
     return () => clearTimeout(t);
   }, []);
-  if (!on) return children;
+  const options = useMemo(() => ({ disabled: !on }), [on]);
   return (
-    <ShareIntentProvider>
-      <ShareIntentListener />
+    <ShareIntentProvider options={options}>
+      {on ? <ShareIntentListener /> : null}
       {children}
     </ShareIntentProvider>
   );
