@@ -61,6 +61,11 @@ function loadTaskManager(): TaskManagerModule | null {
 
 const taskManager = loadTaskManager();
 
+// A permission prompt or native start can outlive the account transition that
+// initiated it. Incrementing this epoch makes an opt-out/sign-out cleanup win
+// over a late enable completion instead of silently re-registering visits.
+let visitLifecycleEpoch = 0;
+
 /**
  * Defined at module top level: iOS relaunches the app into the background to
  * deliver a location event, and the task must already be registered by the
@@ -95,6 +100,7 @@ try {
 export async function enableVisitMonitoring(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   if (!taskManager) return false;
+  const operationEpoch = visitLifecycleEpoch;
   try {
     if (await isVisitMonitoringEnabled()) return true;
 
@@ -103,6 +109,8 @@ export async function enableVisitMonitoring(): Promise<boolean> {
 
     const background = await Location.requestBackgroundPermissionsAsync();
     if (background.status !== "granted") return false;
+
+    if (operationEpoch !== visitLifecycleEpoch) return false;
 
     await Location.startLocationUpdatesAsync(VISIT_TASK_NAME, {
       // ~3km — a heartbeat only needs to know which part of town you're in,
@@ -124,6 +132,12 @@ export async function enableVisitMonitoring(): Promise<boolean> {
         notificationBody: "Watching for investable brands near you.",
       },
     });
+    // A cleanup may have raced the native start. Stop the task before
+    // returning so the eventual completion cannot resurrect monitoring.
+    if (operationEpoch !== visitLifecycleEpoch) {
+      await stopVisitMonitoringNative();
+      return false;
+    }
     return true;
   } catch {
     // Missing background mode, unlinked native module, location services off
@@ -134,6 +148,11 @@ export async function enableVisitMonitoring(): Promise<boolean> {
 
 /** Stops background updates. Safe to call when monitoring was never started. */
 export async function disableVisitMonitoring(): Promise<void> {
+  visitLifecycleEpoch += 1;
+  await stopVisitMonitoringNative();
+}
+
+async function stopVisitMonitoringNative(): Promise<void> {
   if (Platform.OS === "web") return;
   if (!taskManager) return;
   try {

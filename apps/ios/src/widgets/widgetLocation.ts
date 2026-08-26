@@ -6,6 +6,11 @@ import {
   type WidgetLocationSource,
   widgetLocationState,
 } from "./widgetFreshness";
+import type { WidgetCapturedFix, WidgetRegistrationContext } from "./widgetPolicy";
+
+// Keep the historical import path available to the heartbeat adapter while
+// the policy types live in a dependency-free module for unit tests.
+export type { WidgetCapturedFix } from "./widgetPolicy";
 
 /**
  * Home-screen widgets can't get a fresh GPS fix themselves (no foreground
@@ -26,8 +31,10 @@ import {
  */
 
 const ASYNC_STORAGE_KEY = "mapvest.widget.lastLocation.v1";
+const ASYNC_REGISTRATION_KEY = "mapvest.widget.registration.v1";
 const IOS_APP_GROUP = "group.com.mapvest.app.widget";
 const IOS_LOCATION_KEY = "lastLocation";
+const IOS_REGISTRATION_KEY = "widgetRegistration";
 /**
  * Written by the *widget* (not the app) when a timeline refresh captures a
  * Core Location fix — roadmap §2 B3. Must match `widgetFixKey` in
@@ -39,6 +46,7 @@ const IOS_WIDGET_FIX_KEY = "widgetLocationFix";
 interface IosExtensionStorage {
   set(key: string, value: Record<string, string | number>): void;
   get(key: string): string | null;
+  remove?(key: string): void;
 }
 type ExtensionStorageModule = {
   ExtensionStorage: new (appGroup: string) => IosExtensionStorage;
@@ -69,6 +77,142 @@ function getIosStorage(): IosExtensionStorage | null {
 export type StoredWidgetLocation = Omit<WidgetLocation, "capturedAt" | "source"> &
   Partial<Pick<WidgetLocation, "capturedAt" | "source">>;
 
+function newWidgetEpoch(): string {
+  const randomUuid =
+    typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : null;
+  return `${Date.now()}-${randomUuid ?? Math.random().toString(36).slice(2)}`;
+}
+
+function registrationRecord(value: WidgetRegistrationContext): Record<string, string | number> {
+  return {
+    accountId: value.accountId,
+    epoch: value.epoch,
+    registeredAt: value.registeredAt,
+    ...(value.registrationId ? { registrationId: value.registrationId } : {}),
+  };
+}
+
+function parseRegistration(raw: string | null): WidgetRegistrationContext | null {
+  if (!raw) return null;
+  try {
+    const candidate = JSON.parse(raw) as Partial<WidgetRegistrationContext>;
+    if (
+      typeof candidate.accountId !== "string" ||
+      !candidate.accountId ||
+      typeof candidate.epoch !== "string" ||
+      !candidate.epoch ||
+      typeof candidate.registeredAt !== "number" ||
+      !Number.isFinite(candidate.registeredAt) ||
+      (candidate.registrationId !== undefined && typeof candidate.registrationId !== "string")
+    ) {
+      return null;
+    }
+    return candidate as WidgetRegistrationContext;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Binds widget extension captures to the push registration that can relay
+ * them. A repeated launch registration for the same account/token preserves
+ * the epoch so an otherwise harmless foreground sync does not invalidate a
+ * fix already captured during that session.
+ */
+export async function saveWidgetRegistrationContext({
+  accountId,
+  registrationId,
+  registeredAt = Date.now(),
+}: {
+  accountId: string;
+  registrationId?: string;
+  registeredAt?: number;
+}): Promise<WidgetRegistrationContext> {
+  const existing = await readWidgetRegistrationContext();
+  const sameRegistration =
+    existing?.accountId === accountId &&
+    (registrationId === undefined || existing.registrationId === registrationId);
+  const next = sameRegistration
+    ? existing
+    : {
+        accountId,
+        epoch: newWidgetEpoch(),
+        registeredAt,
+        ...(registrationId ? { registrationId } : {}),
+      };
+  if (!next) throw new Error("Unable to create widget registration context");
+
+  await AsyncStorage.setItem(ASYNC_REGISTRATION_KEY, JSON.stringify(next));
+  const storage = getIosStorage();
+  if (storage) {
+    storage.set(IOS_REGISTRATION_KEY, registrationRecord(next));
+  }
+  return next;
+}
+
+export async function readWidgetRegistrationContext(): Promise<WidgetRegistrationContext | null> {
+  try {
+    return parseRegistration(await AsyncStorage.getItem(ASYNC_REGISTRATION_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function clearIosValue(storage: IosExtensionStorage, key: string): void {
+  if (storage.remove) {
+    storage.remove(key);
+  } else {
+    // ExtensionStorage versions before `remove` only expose set/get. An empty
+    // object is intentionally undecodable by the Swift readers and therefore
+    // clears the value's meaning until the next native rebuild.
+    storage.set(key, {});
+  }
+}
+
+async function clearWidgetStorage(
+  keys: string[],
+  appGroupKeys: string[] = [IOS_WIDGET_FIX_KEY, IOS_LOCATION_KEY, IOS_REGISTRATION_KEY],
+): Promise<void> {
+  let failure: unknown;
+  try {
+    await AsyncStorage.multiRemove(keys);
+    const remaining = await AsyncStorage.multiGet(keys);
+    if (remaining.some(([, value]) => value !== null)) {
+      throw new Error("widget AsyncStorage cleanup could not be verified");
+    }
+  } catch (error) {
+    failure = error;
+  }
+
+  try {
+    const storage = getIosStorage();
+    if (storage) {
+      for (const key of appGroupKeys) {
+        clearIosValue(storage, key);
+      }
+      (require("@bacons/apple-targets") as ExtensionStorageModule).ExtensionStorage.reloadWidget();
+    }
+  } catch (error) {
+    failure ??= error;
+  }
+
+  if (failure) throw new Error("Could not clear widget location state");
+}
+
+/** Clear a pending extension fix and registration, retaining public map context. */
+export async function clearWidgetRegistrationContext(): Promise<void> {
+  await clearWidgetStorage([ASYNC_REGISTRATION_KEY], [IOS_WIDGET_FIX_KEY, IOS_REGISTRATION_KEY]);
+}
+
+/**
+ * Confirmed notification opt-out/sign-out cleanup. It removes both the JS
+ * location cache and the App Group values read by WidgetKit, so a guest or a
+ * later account cannot relay or display the previous account's state.
+ */
+export async function clearWidgetLocationState(): Promise<void> {
+  await clearWidgetStorage([ASYNC_STORAGE_KEY, ASYNC_REGISTRATION_KEY]);
+}
+
 export async function saveLastLocationForWidgets(
   loc: LatLng,
   options: { capturedAt?: number; source: WidgetLocationSource },
@@ -97,11 +241,6 @@ export async function saveLastLocationForWidgets(
 }
 
 /** A location fix the *widget extension* captured, with its capture time. */
-export type WidgetCapturedFix = LatLng & {
-  /** Epoch ms, directly comparable to `Date.now()`. */
-  capturedAt: number;
-};
-
 /**
  * Reads the last fix the WidgetKit extension captured on a timeline refresh
  * (roadmap §2 B3). The widget can't POST it itself — no session token, tiny
@@ -127,13 +266,21 @@ export async function readWidgetCapturedFix(): Promise<WidgetCapturedFix | null>
       typeof parsed?.lat !== "number" ||
       typeof parsed?.lng !== "number" ||
       typeof parsed?.capturedAt !== "number" ||
+      typeof parsed?.accountId !== "string" ||
+      typeof parsed?.registrationEpoch !== "string" ||
       !Number.isFinite(parsed.lat) ||
       !Number.isFinite(parsed.lng) ||
       !Number.isFinite(parsed.capturedAt)
     ) {
       return null;
     }
-    return { lat: parsed.lat, lng: parsed.lng, capturedAt: parsed.capturedAt };
+    return {
+      lat: parsed.lat,
+      lng: parsed.lng,
+      capturedAt: parsed.capturedAt,
+      accountId: parsed.accountId,
+      registrationEpoch: parsed.registrationEpoch,
+    };
   } catch {
     /* extension module not linked yet, or malformed payload */
     return null;

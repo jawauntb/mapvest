@@ -7,6 +7,8 @@ import type { CleanupPushSnapshot } from "@/auth/sessionController";
  */
 import * as Notifications from "expo-notifications";
 
+import { disableVisitMonitoring } from "@/location/visits";
+import { clearWidgetLocationState } from "@/widgets/widgetLocation";
 import {
   unlinkPushToken,
   unlinkPushTokenByExpiredSession,
@@ -30,6 +32,16 @@ type NotificationCleanup = {
 
 const cleanup = Notifications as typeof Notifications & NotificationCleanup;
 const AUTO_REGISTRATION_TIMEOUT_MS = 1_000;
+
+/**
+ * Notification opt-out is a confirmed privacy boundary, not just a server
+ * preference. Stop native visits and remove the widget's pending location
+ * before the UI reports delivery disabled.
+ */
+export async function cleanupLocationAfterNotificationOptOut(): Promise<void> {
+  await disableVisitMonitoring();
+  await clearWidgetLocationState();
+}
 
 async function disableExpoAutoRegistration(): Promise<void> {
   const disable = cleanup.setAutoServerRegistrationEnabledAsync;
@@ -145,4 +157,9 @@ export async function unlinkPushForSignOut(
     dismissNative: dismissNativeNotifications,
     clearStoredTokenId,
   });
+
+  // SessionController only deletes the session after this function resolves,
+  // so confirmed cleanup cannot leave a background visit task or a widget fix
+  // that a later account could relay.
+  await cleanupLocationAfterNotificationOptOut();
 }
