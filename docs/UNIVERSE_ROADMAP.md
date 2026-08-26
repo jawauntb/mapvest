@@ -28,14 +28,15 @@ What exists today, precisely:
 - **The only engagement mechanic is a streak**, computed client-side in
   `apps/ios/src/api/finds.ts` (`findStreakDays`), display-only.
 - **Notification infra is real**: `apps/api/src/lib/scheduler.ts` ticks every
-  minute; notifiers in `apps/api/src/lib/notifiers/` with per-user dedupe;
-  `push_tokens.prefs` JSONB carries opt-ins plus `last_lat`/`last_lng` and
-  fires a local brief when the user moves >2km. Notification consent is
+  minute; non-location notifiers fan out to each opted-in account device, while
+  location notifiers have per-device anchors and dedupe. `push_tokens.prefs`
+  JSONB carries opt-ins plus `last_lat`/`last_lng` and fires a local brief only
+  on the device that moves >2km. Notification consent is
   explicit: a signed-in launch never prompts iOS; Settings and the Camera's
   direct post-value **Find evolution** CTA are permission request surfaces.
   That CTA enables its device-global all-finds event; the public result that
-  reveals it is not represented as a brand-specific subscription.
-  Each device persists a product-level
+  reveals it is not represented as a brand-specific subscription. Each device
+  persists a product-level
   `notifications_enabled` mute independent of OS authorization; every
   notifier, including weekly rivalries, honors it. An Expo token has exactly
   one active account claim; an account switch atomically resets its consent,
@@ -226,21 +227,23 @@ arrival-triggered collection gaps: "JPM is 200m away and it's not in your
 universe."
 
 - [x] Notifier on the existing >2km move trigger: heartbeat location → nearby
-      cascade → investables minus `user_finds` minus watchlist = uncaught set.
+      cascade → investables minus `user_finds` minus watchlist = uncaught set,
+      scoped to the exact heartbeat device.
 - [x] Score candidates before pushing: personal affinity (sectors the user
       catches/watchlists, `usage_events`), dex value (fills an empty sector,
       first-in-tile, rarity), timeliness (moved today, earnings this week),
       novelty (never pushed — dedupe store).
 - [x] **Budget discipline is a hard rule**: max one push per arrival, max two
-      per day, threshold-gated, silent otherwise. A mediocre daily ping
+      per device per day, threshold-gated, silent otherwise. A mediocre daily ping
       trains users to swipe away the great ones.
 - [~] Push opens the map with the uncaught pin highlighted.
       (The push carries `ticker`/`lat`/`lng` and a tap now routes through
       `notif/router.ts` to that company's detail page. The map screen takes
       no deep-link params yet, so nothing is highlighted on it.)
 
-**Acceptance**: seeded user in a new tile with a high-scoring uncaught ticker
-gets exactly one push; same tile next hour gets none.
+**Acceptance**: a seeded device in a new tile with a high-scoring uncaught ticker
+gets exactly one push; its sibling device receives none, and the same device/tile
+next hour gets none.
 
 ### B5 — Always-permission visit monitoring (power users)
 

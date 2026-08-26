@@ -1138,7 +1138,7 @@ registry.registerPath({
   path: "/v1/push/prefs",
   summary: "Read preferences for the current device",
   description:
-    "Returns the selected signed-in installation's preferences. Omit `tokenId` to read the first current installation; an unknown or other-user id returns an empty preference object with `tokenId: null` rather than exposing another account's device.",
+    "Returns preferences only for the exact signed-in installation named by `tokenId`. Omit `tokenId`, or provide an unknown or other-user id, to receive an explicit empty result with `tokenId: null`; the API never selects another device as a fallback.",
   tags: ["push"],
   security: [{ bearerAuth: [] }],
   request: { query: S.PushPreferencesReadQuery },

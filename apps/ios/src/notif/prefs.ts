@@ -7,7 +7,7 @@
  */
 import { API_URL } from "@/util/env";
 import { parsePushPrefs, parsePushPrefsRead } from "./prefsResponse";
-import { getStoredTokenId } from "./registerForPush";
+import { getStoredTokenId, registerForPush } from "./registerForPush";
 import {
   buildExpiredSessionRevokeRequest,
   buildPushRevokeRequest,
@@ -48,6 +48,9 @@ export type PushPrefs = Partial<Record<PushEventKey, boolean>> & {
   last_location_at?: string;
 };
 
+/** The authenticated identity needed for non-prompting registration recovery. */
+export type PushSession = { token: string; userId: string };
+
 export const PUSH_EVENT_LABELS: Record<PushEventKey, string> = {
   daily_brief: "Daily brief",
   local_brief: "Local economy brief (when you move to a new area)",
@@ -72,7 +75,7 @@ export const PUSH_EVENT_ORDER: PushEventKey[] = [
   "uncaught_nearby",
 ];
 
-/** GET /v1/push/prefs → { prefs, tokenId } */
+/** GET /v1/push/prefs?tokenId=… → { prefs, tokenId } */
 export async function getPushPrefs(
   session: { token: string },
   tokenId?: string | null,
@@ -99,6 +102,30 @@ export async function getPushPrefs(
     throw new Error(message);
   }
   return parsePushPrefsRead(await res.json());
+}
+
+/**
+ * Read this installation's preferences only. A stale SecureStore id cannot
+ * fall through to an account's other device: when the exact lookup misses, we
+ * re-register the physical Expo token without asking iOS for permission, then
+ * read only the returned opaque id. No token / no existing permission simply
+ * yields the explicit empty-device state.
+ */
+export async function getCurrentDevicePushPrefs(session: PushSession): Promise<{
+  prefs: PushPrefs;
+  tokenId: string | null;
+}> {
+  const stored = await getStoredTokenId();
+  if (stored) {
+    const current = await getPushPrefs(session, stored);
+    if (current.tokenId === stored) return current;
+  }
+
+  const registration = await registerForPush(session, { requestPermission: false });
+  if (!registration) return { prefs: {}, tokenId: null };
+
+  const recovered = await getPushPrefs(session, registration.tokenId);
+  return recovered.tokenId === registration.tokenId ? recovered : { prefs: {}, tokenId: null };
 }
 
 /**
@@ -222,15 +249,33 @@ export async function unlinkPushTokenByExpiredSession(
 /**
  * Heartbeat the user's last known coordinates so the push scheduler can
  * decide when a "you moved to a new area" local-brief notification is due.
- * Uses only this install's stored push-token id and no-ops when it is absent
- * or stale, rather than writing a preference onto another device.
+ * Resolves only this device's stored opaque id, or (when the caller supplies
+ * its user id) recovers by re-registering the physical token without an iOS
+ * permission prompt. It never uses account-level preferences as a fallback.
  */
-export async function heartbeatLocation(lat: number, lng: number, token: string): Promise<void> {
-  const tokenId = await getStoredTokenId();
-  if (!tokenId) return;
+export async function heartbeatLocation(
+  lat: number,
+  lng: number,
+  token: string,
+  userId?: string,
+): Promise<boolean> {
+  const session = userId ? { token, userId } : null;
+  const stored = await getStoredTokenId();
+  let tokenId: string | null = null;
+
+  if (stored) {
+    const current = await getPushPrefs({ token }, stored);
+    if (current.tokenId === stored) tokenId = stored;
+  }
+  if (!tokenId && session) {
+    const recovered = await getCurrentDevicePushPrefs(session);
+    tokenId = recovered.tokenId;
+  }
+  if (!tokenId) return false;
   await setPushPref(
     tokenId,
     { last_lat: lat, last_lng: lng, last_location_at: new Date().toISOString() },
     { token },
   );
+  return true;
 }

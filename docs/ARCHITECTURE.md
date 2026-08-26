@@ -204,6 +204,20 @@ have one active `(token_id, user_id)` claim, or a tombstone after unlinking.
 Every push-delivery, preference-read, preference-write, and token-list query
 joins the claim, so an old or duplicate row is never deliverable.
 
+Preference reads require an exact opaque `tokenId`: omitted or stale ids return
+an explicit empty result and never select a sibling device. iOS first reads its
+local id, then may re-register its physical Expo token without prompting for
+permission to recover a missing id. A location heartbeat likewise writes only
+an exact or recovered current-device token; it otherwise no-ops. `deviceId` is
+never part of authorization.
+
+Location-derived work stays scoped to that same token. The movement scheduler
+uses each device's own heartbeat, anchor, local-brief dedupe, uncaught ticker
+dedupe, and uncaught daily budget; a phone cannot move, spend budget, or cause
+a local push on its sibling tablet. Local-brief request responses do not send
+a redundant push because the requesting device is already displaying the
+brief. Non-location events retain their account-wide opted-in fan-out.
+
 Startup serializes lazy push-schema work with a transaction advisory lock,
 elects one deterministic legacy row, then mutes every other row. `CREATE OR
 REPLACE FUNCTION` plus idempotent trigger installation avoids a `DROP`/`CREATE`

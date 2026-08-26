@@ -14,10 +14,10 @@ import {
   PUSH_EVENT_ORDER,
   type PushEventKey,
   type PushPrefs,
-  getPushPrefs,
+  getCurrentDevicePushPrefs,
   setPushPref,
 } from "@/notif/prefs";
-import { ensurePermissions, getStoredTokenId, registerForPush } from "@/notif/registerForPush";
+import { ensurePermissions, registerForPush } from "@/notif/registerForPush";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -120,7 +120,7 @@ export default function SettingsScreen() {
         <PlanCard />
 
         <NotificationsSection sessionToken={session.token} userId={user.id} />
-        <VisitMonitoringSection sessionToken={session.token} />
+        <VisitMonitoringSection sessionToken={session.token} userId={user.id} />
 
         <View style={styles.card}>
           <View style={styles.cardHead}>
@@ -275,11 +275,7 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
     try {
       const perm = await Notifications.getPermissionsAsync();
       setPermissionStatus(notificationAlertPermissionStatus(perm, Platform.OS));
-      const stored = await getStoredTokenId();
-      // Without this install's id, the no-id API path would select another
-      // device on the account. A stale id stays unavailable for the same
-      // reason; explicit enablement will register this install again.
-      const remote = stored ? await getPushPrefs({ token: sessionToken }, stored) : null;
+      const remote = await getCurrentDevicePushPrefs({ token: sessionToken, userId });
       if (!isCurrent()) return;
       setTokenId(remote?.tokenId ?? null);
       setPrefs(remote?.tokenId ? remote.prefs : {});
@@ -291,7 +287,7 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
       setError(`Notification settings unavailable. ${detail} Check your connection and retry.`);
       retryRef.current = () => void loadPrefs();
     }
-  }, [sessionToken]);
+  }, [sessionToken, userId]);
 
   // Initial load — permission + prefs. Failed reads stay visibly unavailable;
   // they never become a false-off master switch.
@@ -540,7 +536,10 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
  * opted into B4 uncaught-nearby arrivals — never at onboarding. The toggle
  * asks Once and stays silent on denial (see visits.ts).
  */
-function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
+function VisitMonitoringSection({
+  sessionToken,
+  userId,
+}: { sessionToken: string; userId: string }) {
   const [feltB4, setFeltB4] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -549,9 +548,7 @@ function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const stored = await getStoredTokenId();
-        // Never infer B4 from a different device's push-token preferences.
-        const remote = stored ? await getPushPrefs({ token: sessionToken }, stored) : null;
+        const remote = await getCurrentDevicePushPrefs({ token: sessionToken, userId });
         const monitoring = await isVisitMonitoringEnabled();
         if (cancelled) return;
         setFeltB4(remote?.tokenId ? remote.prefs.uncaught_nearby === true : false);
@@ -563,7 +560,7 @@ function VisitMonitoringSection({ sessionToken }: { sessionToken: string }) {
     return () => {
       cancelled = true;
     };
-  }, [sessionToken]);
+  }, [sessionToken, userId]);
 
   const onToggle = async (next: boolean) => {
     setBusy(true);
