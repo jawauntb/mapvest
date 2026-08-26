@@ -140,7 +140,16 @@ in-app reader (Safari is optional).
 A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
 carousel. Mapvest Daily and Local Economy Brief both collapse behind a
-chevron. Leading `$` cashtags stay on map pins and in prose; list rows show
+chevron. Mapvest Daily is list-scoped: `GET /v1/watchlist/brief?listId=`
+writes the column for that list's tickers (omitted → the default list), each
+watchlist detail page mounts its own lazily (the brief for a list is only
+generated when its page is opened), and Home's card follows the selected
+list chip. Any list can be promoted to default (long-press it on the
+Watchlists screen → "Make default"; `POST
+/v1/watchlist/lists/:id/default` demotes the old default in the same call) —
+the 7am daily-brief push, Home's "All" view, and every default-list consumer
+follow the new default immediately, and only the default list's brief may
+fire the "Your morning read" push. Leading `$` cashtags stay on map pins and in prose; list rows show
 the ticker without a prefix. Overlapped map tooltips use a two-tap sequence
 (reveal → open summary). Home search suggests tickers as you type. Detail
 staggers section render so the sheet never hangs on a blank spinner.

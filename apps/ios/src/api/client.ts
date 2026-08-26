@@ -851,8 +851,10 @@ export function listWatchlist(
 
 export function fetchWatchlistBrief(
   opts: FetchOpts,
+  args: { listId?: string } = {},
 ): Promise<{ headline: string; body: string; generatedAt: string }> {
-  return jsonFetch("/v1/watchlist/brief", { method: "GET" }, opts);
+  const qs = args.listId ? `?listId=${encodeURIComponent(args.listId)}` : "";
+  return jsonFetch(`/v1/watchlist/brief${qs}`, { method: "GET" }, opts);
 }
 
 export function addToWatchlist(
@@ -996,6 +998,17 @@ export function renameWatchlist(
   return jsonFetch(
     `/v1/watchlist/lists/${encodeURIComponent(id)}`,
     { method: "PATCH", body: JSON.stringify({ name }) },
+    opts,
+  );
+}
+
+export function setDefaultWatchlist(
+  id: string,
+  opts: FetchOpts,
+): Promise<{ list: WatchlistSummary }> {
+  return jsonFetch(
+    `/v1/watchlist/lists/${encodeURIComponent(id)}/default`,
+    { method: "POST" },
     opts,
   );
 }

@@ -14,6 +14,7 @@ import {
   listWatchlist,
   listWatchlists,
   renameWatchlist,
+  setDefaultWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
@@ -94,6 +95,28 @@ export default function WatchlistsIndexScreen() {
       void qc.invalidateQueries({ queryKey: ["watchlists", session?.token] });
     },
     onError: () => Alert.alert("Couldn't rename", "Please try again."),
+  });
+
+  const defaultMut = useMutation({
+    mutationFn: (id: string) => setDefaultWatchlist(id, { token: session!.token }),
+    onSuccess: () => {
+      setEditing(null);
+      // The default list backs Home's "All" view AND the Mapvest Daily brief,
+      // so invalidate every list-scoped cache: the lists index (star / order),
+      // all watchlist entry queries (Home's "default"-keyed entry included),
+      // and the brief itself so Home re-fetches it for the new default.
+      void qc.invalidateQueries({ queryKey: ["watchlists", session?.token] });
+      void qc.invalidateQueries({ queryKey: ["watchlist", session?.token] });
+      void qc.invalidateQueries({ queryKey: ["watchlist-brief"] });
+      void qc.invalidateQueries({ queryKey: ["watchlist-summary"] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Please try again.";
+      Alert.alert("Couldn't set default", msg);
+    },
   });
 
   const deleteMut = useMutation({
@@ -294,6 +317,24 @@ export default function WatchlistsIndexScreen() {
             </View>
             {editing && !editing.isDefault ? (
               <Pressable
+                style={styles.makeDefaultBtn}
+                disabled={defaultMut.isPending}
+                onPress={() => {
+                  if (!editing) return;
+                  hapticSelect();
+                  defaultMut.mutate(editing.id);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Make ${editing.name} the default watchlist`}
+              >
+                <Ionicons name="star-outline" size={16} color={colors.accent} />
+                <Text style={styles.makeDefaultText}>
+                  {defaultMut.isPending ? "Making default…" : "Make default"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {editing && !editing.isDefault ? (
+              <Pressable
                 style={styles.deleteBtn}
                 onPress={() => {
                   if (!editing) return;
@@ -318,7 +359,8 @@ export default function WatchlistsIndexScreen() {
               </Pressable>
             ) : editing?.isDefault ? (
               <Text style={styles.defaultNote}>
-                The default list can't be deleted. Move tickers into another list first.
+                This is your default list — it powers the home screen and Mapvest Daily. Make
+                another list the default to delete this one.
               </Text>
             ) : null}
           </Pressable>
@@ -585,6 +627,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  makeDefaultBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: 4,
+  },
+  makeDefaultText: { color: colors.accent, fontWeight: "700", fontSize: 13 },
   deleteBtn: {
     flexDirection: "row",
     alignItems: "center",
