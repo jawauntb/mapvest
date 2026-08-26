@@ -105,8 +105,8 @@ function PushBridge() {
   useEffect(() => {
     if (!sessionToken) return;
     // Launch may register an already-authorized device, but it must never
-    // ask iOS to show the permission prompt. Settings is the only explicit
-    // consent surface and opts into prompting there.
+    // ask iOS to show the permission prompt. Settings and Camera's explicit
+    // post-value Find evolution action are the consent surfaces.
     if (!user?.id) return;
     void registerForPush({ token: sessionToken, userId: user.id }, { requestPermission: false });
   }, [sessionToken, user?.id]);

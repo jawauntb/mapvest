@@ -31,6 +31,16 @@ in `eas.json`.
 - `/(tabs)/camera` — full-frame capture → `POST /v1/identify`. The primary
   match has an explicit detail CTA; every additional match stays available in
   the card. A zero-match response offers Refine and Retake recovery actions.
+  After a signed-in public result with a real captured quote, a one-time
+  per-user/device Find evolution offer may appear; only its direct CTA can
+  ask iOS for permission and it enables that device's all-finds event plus
+  master delivery. It never implies that just the triggering brand is tracked.
+  The result/cache is scoped to the identity that started identify and is
+  cleared on account changes; the bounded, single-scroll result card keeps
+  evidence and every action reachable on compact iPhones.
+- Push preferences are read and written only with this install's stored
+  push-token id. A missing or stale id never falls back to another account
+  device, and iOS enrollment requires alert presentation to be enabled.
 - `/(tabs)/list` — sortable by distance, publicness, or sector; live quotes + sector accent dots.
 - `/(tabs)/research` — ChatGPT-like durable research conversations (Derivation unified agent → article briefs).
 - `/watchlists` — watchlist + cockpit/alerts; ★ Save / memos from detail.

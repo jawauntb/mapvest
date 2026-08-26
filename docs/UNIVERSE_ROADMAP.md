@@ -31,8 +31,11 @@ What exists today, precisely:
   minute; notifiers in `apps/api/src/lib/notifiers/` with per-user dedupe;
   `push_tokens.prefs` JSONB carries opt-ins plus `last_lat`/`last_lng` and
   fires a local brief when the user moves >2km. Notification consent is
-  explicit: a signed-in launch never prompts iOS, and Settings is the only
-  permission request surface. Each device persists a product-level
+  explicit: a signed-in launch never prompts iOS; Settings and the Camera's
+  direct post-value **Find evolution** CTA are permission request surfaces.
+  That CTA enables its device-global all-finds event; the public result that
+  reveals it is not represented as a brand-specific subscription.
+  Each device persists a product-level
   `notifications_enabled` mute independent of OS authorization; every
   notifier, including weekly rivalries, honors it. An Expo token has exactly
   one active account claim; an account switch atomically resets its consent,

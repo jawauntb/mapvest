@@ -12,8 +12,15 @@ import {
   investableTicker,
   splitInvestableResults,
 } from "@/camera/resultPresentation";
+import {
+  type CameraResultScope,
+  cameraResultCacheKey,
+  cameraResultScope,
+  canApplyCameraResult,
+} from "@/camera/resultScope";
 import { CameraDetectionOverlay, type OverlayDetection } from "@/components/CameraDetectionOverlay";
 import { EvidenceSection } from "@/components/EvidenceSection";
+import { FindEvolutionNudge } from "@/components/FindEvolutionNudge";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
@@ -42,6 +49,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -59,11 +67,19 @@ type CameraCache = {
   savedNote: string | null;
 };
 
-const CAMERA_CACHE_KEY = ["tab-state", "camera"] as const;
+type IdentifyOperation = {
+  id: number;
+  scope: CameraResultScope;
+  authGeneration: number;
+  sessionToken?: string;
+  queueScope: ReturnType<typeof queueScopeForUser>;
+  controller: AbortController;
+};
 
 /** Capture freezes the frame with the ticker — camera does not stay live. */
 export default function CameraScreen() {
   const focused = useIsFocused();
+  const { height: windowHeight } = useWindowDimensions();
   const [perm, requestPerm] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const readyRef = useRef(false);
@@ -71,26 +87,40 @@ export default function CameraScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ intent?: string }>();
   const qc = useQueryClient();
-  const { session } = useSession();
+  const { session, user, authGeneration, isActiveSession, isAuthGenerationCurrent } = useSession();
   const { presentPaywall } = usePaywall();
   const entitlementsQ = useEntitlements();
   const queueScope = useMemo(() => queueScopeForUser(session?.userId), [session?.userId]);
   const { online, pending, legacyCount, recovery, resetRecovery } = useNetworkSync({
     token: session?.token,
     userId: session?.userId,
+    authGeneration,
   });
-  const cached = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY);
+  const activeScope = cameraResultScope(user?.id);
+  const activeScopeRef = useRef(activeScope);
+  // Keep this in sync during render, before effects run, so an identify
+  // response that settles in the guest→account render gap is still rejected.
+  activeScopeRef.current = activeScope;
+  const lastScopeRef = useRef(activeScope);
+  const lastAuthGenerationRef = useRef(authGeneration);
+  const identifyOperationRef = useRef(0);
+  const identifyAbortRef = useRef<AbortController | null>(null);
+  const activeSessionRef = useRef({ authGeneration, token: session?.token });
+  activeSessionRef.current = { authGeneration, token: session?.token };
+  const cached = qc.getQueryData<CameraCache>(cameraResultCacheKey(activeScope));
+  const [stateScope, setStateScope] = useState<CameraResultScope>(activeScope);
+  const [stateAuthGeneration, setStateAuthGeneration] = useState(authGeneration);
   const [busy, setBusy] = useState(false);
   const [authSaveNavigationPending, setAuthSaveNavigationPending] = useState(false);
   const authSaveNavigationRef = useRef(false);
   const [identifyStage, setIdentifyStage] = useState<IdentifyProgressStage>("preparing");
   // Never restore a frozen frame on mount — Camera means take a new picture.
-  const [frozenUri, setFrozenUri] = useState<string | null>(null);
-  const [result, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
-  const [err, setErr] = useState<string | null>(cached?.err ?? null);
-  const [queuedNote, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
+  const [frozenUriValue, setFrozenUri] = useState<string | null>(null);
+  const [resultValue, setResult] = useState<IdentifyResponse | null>(cached?.result ?? null);
+  const [errValue, setErr] = useState<string | null>(cached?.err ?? null);
+  const [queuedNoteValue, setQueuedNote] = useState<string | null>(cached?.queuedNote ?? null);
+  const [savedNoteValue, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
   const [resettingQueueRecovery, setResettingQueueRecovery] = useState(false);
-  const [savedNote, setSavedNote] = useState<string | null>(cached?.savedNote ?? null);
   const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -98,7 +128,20 @@ export default function CameraScreen() {
   // `pendingUri` gates the optional Refine annotator. When set, we render
   // <PhotoAnnotator> full-screen seeded with the frozen photo; its Scan
   // re-runs identify with roi + hint. Cancel returns to the result card.
-  const [pendingUri, setPendingUri] = useState<string | null>(null);
+  const [pendingUriValue, setPendingUri] = useState<string | null>(null);
+  const stateBelongsToActiveIdentity =
+    stateScope === activeScope && stateAuthGeneration === authGeneration;
+  // The account transition effect below clears this state after commit. These
+  // guards hide it one render earlier, so no guest/A result can flash on B.
+  const frozenUri = stateBelongsToActiveIdentity ? frozenUriValue : null;
+  const result = stateBelongsToActiveIdentity ? resultValue : null;
+  const err = stateBelongsToActiveIdentity ? errValue : null;
+  const queuedNote = stateBelongsToActiveIdentity ? queuedNoteValue : null;
+  const savedNote = stateBelongsToActiveIdentity ? savedNoteValue : null;
+  const pendingUri = stateBelongsToActiveIdentity ? pendingUriValue : null;
+  // Leave room for the fixed capture/retake controls even on an iPhone SE;
+  // the one outer result scroller owns vertical movement for the whole card.
+  const resultRegionMaxHeight = Math.max(260, Math.min(480, Math.round(windowHeight * 0.54)));
 
   function onPreviewLayout(e: LayoutChangeEvent) {
     const { width, height } = e.nativeEvent.layout;
@@ -129,27 +172,48 @@ export default function CameraScreen() {
   const detections = useMemo<OverlayDetection[]>(() => coerceDetections(result), [result]);
 
   const persistCamera = useCallback(
-    (next: Partial<CameraCache>) => {
-      const prev = qc.getQueryData<CameraCache>(CAMERA_CACHE_KEY) ?? {
+    (next: Partial<CameraCache>, scope: CameraResultScope = activeScopeRef.current) => {
+      if (!canApplyCameraResult(scope, activeScopeRef.current)) return;
+      const key = cameraResultCacheKey(scope);
+      const prev = qc.getQueryData<CameraCache>(key) ?? {
         frozenUri: null,
         result: null,
         err: null,
         queuedNote: null,
         savedNote: null,
       };
-      qc.setQueryData<CameraCache>(CAMERA_CACHE_KEY, { ...prev, ...next });
+      qc.setQueryData<CameraCache>(key, { ...prev, ...next });
     },
     [qc],
   );
 
   const resetToLive = useCallback(() => {
+    identifyOperationRef.current += 1;
+    identifyAbortRef.current?.abort();
+    identifyAbortRef.current = null;
+    setStateScope(activeScopeRef.current);
+    setStateAuthGeneration(activeSessionRef.current.authGeneration);
     setFrozenUri(null);
     setPendingUri(null);
     setBusy(false);
     setErr(null);
     setResult(null);
-    persistCamera({ frozenUri: null, err: null });
+    persistCamera({ frozenUri: null, err: null }, activeScopeRef.current);
   }, [persistCamera]);
+
+  useEffect(() => {
+    const previousScope = lastScopeRef.current;
+    const previousAuthGeneration = lastAuthGenerationRef.current;
+    if (previousScope === activeScope && previousAuthGeneration === authGeneration) return;
+    lastScopeRef.current = activeScope;
+    lastAuthGenerationRef.current = authGeneration;
+    // The authenticated Camera tab stays mounted, so explicitly invalidate
+    // both a late request and the old identity's cached photo/result.
+    if (previousScope !== activeScope) {
+      qc.removeQueries({ queryKey: cameraResultCacheKey(previousScope), exact: true });
+    }
+    resetToLive();
+  }, [activeScope, authGeneration, qc, resetToLive]);
 
   // Opening Camera always means "take a new picture". Last identify stays
   // in the query cache as a Last snap chip, not as a stuck frozen frame.
@@ -202,6 +266,49 @@ export default function CameraScreen() {
     }
   }
 
+  function startIdentifyOperation(): IdentifyOperation {
+    identifyAbortRef.current?.abort();
+    const controller = new AbortController();
+    const operation = {
+      id: ++identifyOperationRef.current,
+      scope: activeScopeRef.current,
+      authGeneration: authGeneration,
+      sessionToken: session?.token,
+      queueScope,
+      controller,
+    };
+    identifyAbortRef.current = controller;
+    setStateScope(operation.scope);
+    setStateAuthGeneration(operation.authGeneration);
+    setBusy(true);
+    setIdentifyStage("preparing");
+    setErr(null);
+    setResult(null);
+    setQueuedNote(null);
+    setSavedNote(null);
+    return operation;
+  }
+
+  function isCurrentIdentifyOperation(operation: IdentifyOperation): boolean {
+    const activeSession = activeSessionRef.current;
+    return (
+      operation.id === identifyOperationRef.current &&
+      !operation.controller.signal.aborted &&
+      canApplyCameraResult(operation.scope, activeScopeRef.current) &&
+      operation.authGeneration === activeSession.authGeneration &&
+      isAuthGenerationCurrent(operation.authGeneration) &&
+      (operation.sessionToken
+        ? activeSession.token === operation.sessionToken &&
+          isActiveSession(operation.authGeneration, operation.sessionToken)
+        : activeSession.token === undefined)
+    );
+  }
+
+  function finishIdentifyOperation(operation: IdentifyOperation) {
+    if (isCurrentIdentifyOperation(operation)) setBusy(false);
+    if (identifyAbortRef.current === operation.controller) identifyAbortRef.current = null;
+  }
+
   async function capture() {
     if (busy) return;
     if (!focused) {
@@ -218,33 +325,33 @@ export default function CameraScreen() {
       return;
     }
     hapticTap();
-    setBusy(true);
-    setIdentifyStage("preparing");
-    setErr(null);
-    setResult(null);
-    setQueuedNote(null);
-    setSavedNote(null);
+    const operation = startIdentifyOperation();
     try {
       const photo = await captureStill(cam, { readySince: readySinceRef.current });
-      await runIdentify({ imageUri: photo.uri });
+      await runIdentify({ imageUri: photo.uri }, operation);
     } catch (e) {
+      if (!isCurrentIdentifyOperation(operation)) return;
       const msg = e instanceof Error ? e.message : String(e);
       setErr(msg || "Capture failed");
-      persistCamera({ err: msg });
+      persistCamera({ err: msg }, operation.scope);
     } finally {
-      setBusy(false);
+      finishIdentifyOperation(operation);
     }
   }
 
   async function pickLibrary() {
     if (busy) return;
     hapticTap();
+    const operation = startIdentifyOperation();
     try {
       const uri = await pickFromLibrary();
-      if (!uri) return;
-      await runIdentify({ imageUri: uri });
+      if (!uri || !isCurrentIdentifyOperation(operation)) return;
+      await runIdentify({ imageUri: uri }, operation);
     } catch (e) {
+      if (!isCurrentIdentifyOperation(operation)) return;
       setErr(e instanceof Error ? e.message : "Could not open library");
+    } finally {
+      finishIdentifyOperation(operation);
     }
   }
 
@@ -253,34 +360,45 @@ export default function CameraScreen() {
    * this immediately with just the uri; the Refine annotator re-runs it
    * with roi + hint. Falls back to enqueue on network failure / offline.
    */
-  async function runIdentify(args: {
-    imageUri: string;
-    roi?: { xN: number; yN: number; rN: number };
-    hint?: string;
-  }) {
-    setBusy(true);
-    setIdentifyStage("preparing");
-    setErr(null);
-    setResult(null);
-    setQueuedNote(null);
-    setSavedNote(null);
+  async function runIdentify(
+    args: {
+      imageUri: string;
+      roi?: { xN: number; yN: number; rN: number };
+      hint?: string;
+    },
+    operation: IdentifyOperation = startIdentifyOperation(),
+  ) {
+    if (!isCurrentIdentifyOperation(operation)) return;
     setFrozenUri(args.imageUri);
-    persistCamera({
-      frozenUri: args.imageUri,
-      result: null,
-      err: null,
-      queuedNote: null,
-    });
+    persistCamera(
+      {
+        frozenUri: args.imageUri,
+        result: null,
+        err: null,
+        queuedNote: null,
+      },
+      operation.scope,
+    );
     const location = await currentLocation();
+    if (!isCurrentIdentifyOperation(operation)) {
+      finishIdentifyOperation(operation);
+      return;
+    }
     const queueCapture = async (): Promise<boolean> => {
+      if (!isCurrentIdentifyOperation(operation)) return false;
       try {
-        await enqueuePhoto({ imageUri: args.imageUri, location, scope: queueScope });
-        return true;
+        await enqueuePhoto({
+          imageUri: args.imageUri,
+          location,
+          scope: operation.queueScope,
+        });
+        return isCurrentIdentifyOperation(operation);
       } catch (queueError) {
+        if (!isCurrentIdentifyOperation(operation)) return false;
         const message = queueError instanceof Error ? queueError.message : String(queueError);
         const queueFailure = `Couldn't safely queue this snap: ${message}`;
         setErr(queueFailure);
-        persistCamera({ err: queueFailure, queuedNote: null });
+        persistCamera({ err: queueFailure, queuedNote: null }, operation.scope);
         return false;
       }
     };
@@ -289,7 +407,7 @@ export default function CameraScreen() {
         if (!(await queueCapture())) return;
         const note = "Queued — finishing when you're back online.";
         setQueuedNote(note);
-        persistCamera({ queuedNote: note });
+        persistCamera({ queuedNote: note }, operation.scope);
         return;
       }
       try {
@@ -304,17 +422,24 @@ export default function CameraScreen() {
             roi: args.roi,
             hint: args.hint,
           },
-          { token: session?.token },
+          {
+            token: operation.scope === "guest" ? undefined : operation.sessionToken,
+            signal: operation.controller.signal,
+          },
         );
+        if (!isCurrentIdentifyOperation(operation)) return;
         setResult(resp);
-        persistCamera({ result: resp, err: null });
+        persistCamera({ result: resp, err: null }, operation.scope);
         void qc.invalidateQueries({ queryKey: ENTITLEMENTS_QUERY_KEY });
-        if (session?.token && resp.investables.length > 0) markFindRefreshPending(session.token);
+        if (operation.sessionToken && resp.investables.length > 0) {
+          markFindRefreshPending(operation.sessionToken);
+        }
         if (resp.investables.length > 0) hapticSuccess();
       } catch (e) {
+        if (!isCurrentIdentifyOperation(operation)) return;
         if (presentPaywallIfQuota(e, presentPaywall)) {
           setErr("Free generations used. Subscribe to keep identifying.");
-          persistCamera({ err: "quota_exceeded" });
+          persistCamera({ err: "quota_exceeded" }, operation.scope);
           return;
         }
         if (!(await queueCapture())) return;
@@ -323,15 +448,18 @@ export default function CameraScreen() {
           "That didn't go through. Your snap is queued and will finish on its own — or retake now.";
         setQueuedNote(failNote);
         setErr(msg);
-        persistCamera({ queuedNote: failNote, err: msg });
+        persistCamera({ queuedNote: failNote, err: msg }, operation.scope);
       }
     } finally {
-      setBusy(false);
+      finishIdentifyOperation(operation);
     }
   }
 
   function retake() {
     hapticSelect();
+    identifyOperationRef.current += 1;
+    identifyAbortRef.current?.abort();
+    identifyAbortRef.current = null;
     setFrozenUri(null);
     setResult(null);
     setErr(null);
@@ -380,6 +508,7 @@ export default function CameraScreen() {
 
   async function onSave() {
     if (!ticker || !top) return;
+    const saveScope = activeScopeRef.current;
     if (!session?.token) {
       if (authSaveNavigationRef.current) return;
       authSaveNavigationRef.current = true;
@@ -410,9 +539,11 @@ export default function CameraScreen() {
         },
         { token: session.token },
       );
+      if (!canApplyCameraResult(saveScope, activeScopeRef.current)) return;
       hapticSuccess();
       setSavedNote(`Saved ${ticker}`);
     } catch (e) {
+      if (!canApplyCameraResult(saveScope, activeScopeRef.current)) return;
       setSavedNote(null);
       setErr(e instanceof Error ? e.message : "save failed");
     }
@@ -556,224 +687,244 @@ export default function CameraScreen() {
         </View>
 
         {result || err || queuedNote || recovery ? (
-          <CardEntrance>
-            <BlurView
-              intensity={50}
-              tint="dark"
-              style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
+          <View style={[styles.resultRegion, { maxHeight: resultRegionMaxHeight }]}>
+            <ScrollView
+              style={styles.resultScroll}
+              contentContainerStyle={styles.resultScrollContent}
+              showsVerticalScrollIndicator
+              bounces
+              accessibilityLabel="Identification result. Swipe to review matches, evidence, and actions."
             >
-              {top ? (
-                <>
-                  <View style={styles.titleRow}>
-                    <Text style={styles.resultTitle} numberOfLines={1}>
-                      {top.brand.name}
-                    </Text>
-                    <View style={styles.confidencePill}>
-                      <Text style={styles.confidencePillText}>
-                        {confidenceLabel(top.confidence)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.resultSubtitle}>
-                    {ticker ? ticker : "Private"}
-                    {top.brand.sector ? ` · ${top.brand.sector}` : ""}
-                  </Text>
-                  {meaning ? <Text style={styles.meaning}>{meaning}</Text> : null}
-                  {quote ? (
-                    <Text style={styles.priceLine}>
-                      ${quote.price.toFixed(2)}{" "}
-                      <Text style={{ color: quote.change >= 0 ? colors.accent : colors.danger }}>
-                        {quote.change >= 0 ? "+" : ""}
-                        {quote.changePct.toFixed(1)}% today
-                      </Text>
-                    </Text>
-                  ) : null}
-                </>
-              ) : null}
-              {result && !top ? (
-                <View
-                  accessibilityRole="summary"
-                  accessibilityLabel="No investable brand found. Try refining or retaking this photo."
+              <CardEntrance>
+                <BlurView
+                  intensity={50}
+                  tint="dark"
+                  style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
                 >
-                  <View style={styles.noMatchHeading}>
-                    <Ionicons name="scan-outline" size={18} color={colors.warn} />
-                    <Text style={styles.resultTitle}>No investable brand found</Text>
-                  </View>
-                  <Text style={styles.noMatchCopy}>
-                    Try a tighter, brighter photo of a logo, label, or storefront.
-                  </Text>
-                  <View style={styles.noMatchActions}>
-                    <Pressable
-                      style={styles.dominantBtn}
-                      onPress={refine}
-                      accessibilityRole="button"
-                      accessibilityLabel="Refine this photo by circling what you meant"
-                    >
-                      <Ionicons name="scan-outline" size={16} color={colors.accentInk} />
-                      <Text style={styles.dominantBtnText}>Refine this photo</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.miniBtn}
-                      onPress={retake}
-                      accessibilityRole="button"
-                      accessibilityLabel="Retake photo"
-                    >
-                      <Ionicons name="refresh" size={13} color={colors.accent} />
-                      <Text style={styles.miniBtnText}>Retake</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
-              {recovery ? (
-                <View
-                  accessibilityRole="summary"
-                  accessibilityLabel="Offline queue recovery required"
-                >
-                  <View style={styles.noMatchHeading}>
-                    <Ionicons name="shield-outline" size={18} color={colors.warn} />
-                    <Text style={styles.resultTitle}>Offline queue needs attention</Text>
-                  </View>
-                  <Text style={styles.noMatchCopy}>
-                    Queued photos are blocked and will not upload. {recovery.message}
-                  </Text>
-                  {recovery.quarantined ? (
+                  {top ? (
                     <>
-                      <Text style={styles.noMatchCopy}>
-                        Discard removes these photos from the active queue. A private recovery copy
-                        stays on this device for diagnostics.
-                      </Text>
-                      <Pressable
-                        style={[styles.dominantBtn, resettingQueueRecovery && { opacity: 0.55 }]}
-                        onPress={() => void discardUnrecoverableQueue()}
-                        disabled={resettingQueueRecovery}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: resettingQueueRecovery }}
-                        accessibilityLabel="Discard unreadable offline queue"
-                      >
-                        <Ionicons name="trash-outline" size={16} color={colors.accentInk} />
-                        <Text style={styles.dominantBtnText}>
-                          {resettingQueueRecovery
-                            ? "Discarding offline queue…"
-                            : "Discard offline queue"}
+                      <View style={styles.titleRow}>
+                        <Text style={styles.resultTitle} numberOfLines={1}>
+                          {top.brand.name}
                         </Text>
-                      </Pressable>
-                    </>
-                  ) : (
-                    <Text style={styles.noMatchCopy}>
-                      Restore device storage and reopen Camera before trying again. Nothing was
-                      discarded.
-                    </Text>
-                  )}
-                </View>
-              ) : null}
-              {top ? (
-                <Pressable
-                  style={styles.dominantBtn}
-                  onPress={openPrimaryDetail}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${top.brand.name} details`}
-                >
-                  <Text style={styles.dominantBtnText}>
-                    {ticker ? `View $${ticker}` : "View investment options"}
-                  </Text>
-                  <Ionicons name="arrow-forward" size={16} color={colors.accentInk} />
-                </Pressable>
-              ) : null}
-              {additionalInvestables.length > 0 ? (
-                <View style={styles.additionalResults}>
-                  <Text style={styles.additionalResultsLabel}>
-                    Also found ({additionalInvestables.length})
-                  </Text>
-                  <ScrollView
-                    nestedScrollEnabled
-                    style={styles.additionalResultsList}
-                    contentContainerStyle={styles.additionalResultsListContent}
-                    showsVerticalScrollIndicator={additionalInvestables.length > 2}
-                    accessibilityLabel={`${additionalInvestables.length} additional matches`}
-                  >
-                    {additionalInvestables.map((investable, index) => (
-                      <Pressable
-                        key={`${investable.brand.name}-${index}`}
-                        style={styles.additionalResult}
-                        onPress={() => openDetail(investable)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${investable.brand.name}, ${investableLabel(investable)}`}
-                      >
-                        <View style={styles.additionalResultText}>
-                          <Text style={styles.additionalResultTitle} numberOfLines={1}>
-                            {investable.brand.name}
-                          </Text>
-                          <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
-                            {investableLabel(investable)}
-                            {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
+                        <View style={styles.confidencePill}>
+                          <Text style={styles.confidencePillText}>
+                            {confidenceLabel(top.confidence)}
                           </Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+                      </View>
+                      <Text style={styles.resultSubtitle}>
+                        {ticker ? ticker : "Private"}
+                        {top.brand.sector ? ` · ${top.brand.sector}` : ""}
+                      </Text>
+                      {meaning ? <Text style={styles.meaning}>{meaning}</Text> : null}
+                      {quote ? (
+                        <Text style={styles.priceLine}>
+                          ${quote.price.toFixed(2)}{" "}
+                          <Text
+                            style={{ color: quote.change >= 0 ? colors.accent : colors.danger }}
+                          >
+                            {quote.change >= 0 ? "+" : ""}
+                            {quote.changePct.toFixed(1)}% today
+                          </Text>
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {result && !top ? (
+                    <View
+                      accessibilityRole="summary"
+                      accessibilityLabel="No investable brand found. Try refining or retaking this photo."
+                    >
+                      <View style={styles.noMatchHeading}>
+                        <Ionicons name="scan-outline" size={18} color={colors.warn} />
+                        <Text style={styles.resultTitle}>No investable brand found</Text>
+                      </View>
+                      <Text style={styles.noMatchCopy}>
+                        Try a tighter, brighter photo of a logo, label, or storefront.
+                      </Text>
+                      <View style={styles.noMatchActions}>
+                        <Pressable
+                          style={styles.dominantBtn}
+                          onPress={refine}
+                          accessibilityRole="button"
+                          accessibilityLabel="Refine this photo by circling what you meant"
+                        >
+                          <Ionicons name="scan-outline" size={16} color={colors.accentInk} />
+                          <Text style={styles.dominantBtnText}>Refine this photo</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.miniBtn}
+                          onPress={retake}
+                          accessibilityRole="button"
+                          accessibilityLabel="Retake photo"
+                        >
+                          <Ionicons name="refresh" size={13} color={colors.accent} />
+                          <Text style={styles.miniBtnText}>Retake</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
+                  {recovery ? (
+                    <View
+                      accessibilityRole="summary"
+                      accessibilityLabel="Offline queue recovery required"
+                    >
+                      <View style={styles.noMatchHeading}>
+                        <Ionicons name="shield-outline" size={18} color={colors.warn} />
+                        <Text style={styles.resultTitle}>Offline queue needs attention</Text>
+                      </View>
+                      <Text style={styles.noMatchCopy}>
+                        Queued photos are blocked and will not upload. {recovery.message}
+                      </Text>
+                      {recovery.quarantined ? (
+                        <>
+                          <Text style={styles.noMatchCopy}>
+                            Discard removes these photos from the active queue. A private recovery
+                            copy stays on this device for diagnostics.
+                          </Text>
+                          <Pressable
+                            style={[
+                              styles.dominantBtn,
+                              resettingQueueRecovery && { opacity: 0.55 },
+                            ]}
+                            onPress={() => void discardUnrecoverableQueue()}
+                            disabled={resettingQueueRecovery}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: resettingQueueRecovery }}
+                            accessibilityLabel="Discard unreadable offline queue"
+                          >
+                            <Ionicons name="trash-outline" size={16} color={colors.accentInk} />
+                            <Text style={styles.dominantBtnText}>
+                              {resettingQueueRecovery
+                                ? "Discarding offline queue…"
+                                : "Discard offline queue"}
+                            </Text>
+                          </Pressable>
+                        </>
+                      ) : (
+                        <Text style={styles.noMatchCopy}>
+                          Restore device storage and reopen Camera before trying again. Nothing was
+                          discarded.
+                        </Text>
+                      )}
+                    </View>
+                  ) : null}
+                  {top ? (
+                    <Pressable
+                      style={styles.dominantBtn}
+                      onPress={openPrimaryDetail}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${top.brand.name} details`}
+                    >
+                      <Text style={styles.dominantBtnText}>
+                        {ticker ? `View $${ticker}` : "View investment options"}
+                      </Text>
+                      <Ionicons name="arrow-forward" size={16} color={colors.accentInk} />
+                    </Pressable>
+                  ) : null}
+                  {additionalInvestables.length > 0 ? (
+                    <View style={styles.additionalResults}>
+                      <Text style={styles.additionalResultsLabel}>
+                        Also found ({additionalInvestables.length})
+                      </Text>
+                      <View style={styles.additionalResultsList}>
+                        {additionalInvestables.map((investable, index) => (
+                          <Pressable
+                            key={`${investable.brand.name}-${index}`}
+                            style={styles.additionalResult}
+                            onPress={() => openDetail(investable)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Open ${investable.brand.name}, ${investableLabel(investable)}`}
+                          >
+                            <View style={styles.additionalResultText}>
+                              <Text style={styles.additionalResultTitle} numberOfLines={1}>
+                                {investable.brand.name}
+                              </Text>
+                              <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
+                                {investableLabel(investable)}
+                                {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
+                              </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                  {top ? <EvidenceSection sources={top.sources} /> : null}
+                  <View style={styles.cardActions}>
+                    {ticker ? (
+                      <Pressable
+                        style={[styles.miniBtn, authSaveNavigationPending && { opacity: 0.55 }]}
+                        onPress={() => void onSave()}
+                        disabled={authSaveNavigationPending}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: authSaveNavigationPending }}
+                        accessibilityLabel={`Save ${ticker} to watchlist`}
+                      >
+                        <Ionicons name="star-outline" size={13} color={colors.accent} />
+                        <Text style={styles.miniBtnText}>Save</Text>
                       </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-              ) : null}
-              {top ? <EvidenceSection sources={top.sources} /> : null}
-              <View style={styles.cardActions}>
-                {ticker ? (
-                  <Pressable
-                    style={[styles.miniBtn, authSaveNavigationPending && { opacity: 0.55 }]}
-                    onPress={() => void onSave()}
-                    disabled={authSaveNavigationPending}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: authSaveNavigationPending }}
-                    accessibilityLabel={`Save ${ticker} to watchlist`}
-                  >
-                    <Ionicons name="star-outline" size={13} color={colors.accent} />
-                    <Text style={styles.miniBtnText}>Save</Text>
-                  </Pressable>
-                ) : null}
-                {top ? (
-                  <Pressable
-                    style={styles.miniBtn}
-                    onPress={openResearch}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Research ${ticker ?? top.brand.name}`}
-                  >
-                    <Ionicons name="document-text-outline" size={13} color={colors.accent} />
-                    <Text style={styles.miniBtnText}>Research</Text>
-                  </Pressable>
-                ) : null}
-                {frozenUri ? (
-                  <Pressable
-                    style={styles.miniBtn}
-                    onPress={refine}
-                    accessibilityRole="button"
-                    accessibilityLabel="Refine — circle what you meant"
-                  >
-                    <Ionicons name="scan-outline" size={13} color={colors.accent} />
-                    <Text style={styles.miniBtnText}>Refine</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-              {top ? (
-                session?.token ? (
-                  <Pressable
-                    onPress={() => {
-                      hapticSelect();
-                      router.push("/universe");
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="View your finds"
-                  >
-                    <Text style={styles.findsNote}>Added to your finds · View</Text>
-                  </Pressable>
-                ) : (
-                  <Text style={styles.findsNote}>Sign in to keep your finds.</Text>
-                )
-              ) : null}
-              {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
-              {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
-              {err ? <Text style={styles.err}>{err}</Text> : null}
-            </BlurView>
-          </CardEntrance>
+                    ) : null}
+                    {top ? (
+                      <Pressable
+                        style={styles.miniBtn}
+                        onPress={openResearch}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Research ${ticker ?? top.brand.name}`}
+                      >
+                        <Ionicons name="document-text-outline" size={13} color={colors.accent} />
+                        <Text style={styles.miniBtnText}>Research</Text>
+                      </Pressable>
+                    ) : null}
+                    {frozenUri ? (
+                      <Pressable
+                        style={styles.miniBtn}
+                        onPress={refine}
+                        accessibilityRole="button"
+                        accessibilityLabel="Refine — circle what you meant"
+                      >
+                        <Ionicons name="scan-outline" size={13} color={colors.accent} />
+                        <Text style={styles.miniBtnText}>Refine</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {top ? (
+                    session?.token ? (
+                      <Pressable
+                        onPress={() => {
+                          hapticSelect();
+                          router.push("/universe");
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="View your finds"
+                      >
+                        <Text style={styles.findsNote}>Added to your finds · View</Text>
+                      </Pressable>
+                    ) : (
+                      <Text style={styles.findsNote}>Sign in to keep your finds.</Text>
+                    )
+                  ) : null}
+                  {top && result && session?.token && user?.id ? (
+                    <FindEvolutionNudge
+                      session={session}
+                      userId={user.id}
+                      authGeneration={authGeneration}
+                      ticker={top.brand.ticker?.symbol}
+                      isPublic={top.brand.isPublic}
+                      candidate={result}
+                      quote={quote}
+                    />
+                  ) : null}
+                  {savedNote ? <Text style={styles.queued}>{savedNote}</Text> : null}
+                  {queuedNote ? <Text style={styles.queued}>{queuedNote}</Text> : null}
+                  {err ? <Text style={styles.err}>{err}</Text> : null}
+                </BlurView>
+              </CardEntrance>
+            </ScrollView>
+          </View>
         ) : err ? (
           <BlurView intensity={50} tint="dark" style={styles.resultCard}>
             <Text style={styles.err}>{err}</Text>
@@ -1079,6 +1230,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     gap: 8,
   },
+  resultRegion: { marginBottom: 8, flexShrink: 1 },
+  resultScroll: { flexGrow: 0, flexShrink: 1 },
+  resultScrollContent: { paddingBottom: 4 },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1121,8 +1275,7 @@ const styles = StyleSheet.create({
   dominantBtnText: { color: colors.accentInk, ...type.label, fontSize: 14, fontWeight: "800" },
   additionalResults: { gap: 6 },
   additionalResultsLabel: { color: colors.fgMuted, ...type.caption, fontSize: 12 },
-  additionalResultsList: { maxHeight: 148 },
-  additionalResultsListContent: { gap: 6 },
+  additionalResultsList: { gap: 6 },
   additionalResult: {
     minHeight: 44,
     flexDirection: "row",

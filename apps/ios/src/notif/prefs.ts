@@ -6,6 +6,7 @@
  * types mirror the server contract in apps/api/src/routes/push.ts.
  */
 import { API_URL } from "@/util/env";
+import { parsePushPrefs, parsePushPrefsRead } from "./prefsResponse";
 import { getStoredTokenId } from "./registerForPush";
 import {
   buildExpiredSessionRevokeRequest,
@@ -97,8 +98,7 @@ export async function getPushPrefs(
     }
     throw new Error(message);
   }
-  const j = (await res.json()) as { prefs?: PushPrefs; tokenId?: string | null };
-  return { prefs: j.prefs ?? {}, tokenId: j.tokenId ?? null };
+  return parsePushPrefsRead(await res.json());
 }
 
 /**
@@ -130,8 +130,11 @@ export async function setPushPref(
     }
     throw new Error(message);
   }
-  const body = (await res.json()) as { prefs?: PushPrefs };
-  return body.prefs ?? patch;
+  const body: unknown = await res.json();
+  if (!body || typeof body !== "object" || Array.isArray(body) || !("prefs" in body)) {
+    throw new Error("Malformed notification preferences response");
+  }
+  return parsePushPrefs(body.prefs);
 }
 
 /**
@@ -219,11 +222,11 @@ export async function unlinkPushTokenByExpiredSession(
 /**
  * Heartbeat the user's last known coordinates so the push scheduler can
  * decide when a "you moved to a new area" local-brief notification is due.
- * Resolves the device's push token id (stored id first, server lookup as
- * fallback) and no-ops when this device never registered for push.
+ * Uses only this install's stored push-token id and no-ops when it is absent
+ * or stale, rather than writing a preference onto another device.
  */
 export async function heartbeatLocation(lat: number, lng: number, token: string): Promise<void> {
-  const tokenId = (await getStoredTokenId()) ?? (await getPushPrefs({ token })).tokenId;
+  const tokenId = await getStoredTokenId();
   if (!tokenId) return;
   await setPushPref(
     tokenId,
