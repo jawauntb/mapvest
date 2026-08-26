@@ -22,6 +22,7 @@ import {
   listWatchlists,
   removeFromWatchlist,
   renameWatchlist,
+  setDefaultWatchlist,
 } from "@/api/client";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
@@ -136,6 +137,32 @@ export default function WatchlistDetailScreen() {
     onError: () => Alert.alert("Couldn't rename", "Please try again."),
   });
 
+  const defaultMut = useMutation({
+    mutationFn: () => setDefaultWatchlist(listId, { token: session!.token }),
+    onSuccess: () => {
+      // Same invalidation contract as the Watchlists index screen: the
+      // default list backs Home's "All" view and the Mapvest Daily brief, so
+      // every list-scoped cache needs to refetch, not just this screen's.
+      void qc.invalidateQueries({ queryKey: ["watchlists", session?.token] });
+      void qc.invalidateQueries({ queryKey: ["watchlist", session?.token] });
+      void qc.invalidateQueries({ queryKey: ["watchlist-brief"] });
+      void qc.invalidateQueries({ queryKey: ["watchlist-summary"] });
+    },
+    onError: () => Alert.alert("Couldn't set default", "Please try again."),
+  });
+
+  function confirmMakeDefault() {
+    hapticSelect();
+    Alert.alert(
+      "Make this your default?",
+      `"${displayName}" will power the home screen's watchlist and your daily Mapvest brief instead of your current default.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Make default", onPress: () => defaultMut.mutate() },
+      ],
+    );
+  }
+
   function submitAdd() {
     const sym = addSym.trim().toUpperCase().replace(/^\$/, "");
     if (!/^[A-Z][A-Z0-9.\-]{0,7}$/.test(sym)) {
@@ -169,21 +196,54 @@ export default function WatchlistDetailScreen() {
           </Pressable>
         }
         right={
-          <Pressable
-            onPress={() => {
-              hapticSelect();
-              setRenameValue(displayName);
-              setRenameOpen(true);
-            }}
-            hitSlop={12}
-            style={styles.iconBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Rename list"
-          >
-            <Ionicons name="pencil-outline" size={18} color={colors.fgMuted} />
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {/* Visible entry point to reassign the default from inside the
+                list you're already looking at — the moment "make this one
+                the default" actually comes up. Filled + disabled once this
+                list already is the default, so it doubles as a status badge. */}
+            <Pressable
+              onPress={list?.isDefault ? undefined : confirmMakeDefault}
+              disabled={list?.isDefault || defaultMut.isPending}
+              hitSlop={12}
+              style={styles.iconBtn}
+              accessibilityRole="button"
+              accessibilityLabel={
+                list?.isDefault
+                  ? "This is your default list"
+                  : `Make ${displayName} the default watchlist`
+              }
+            >
+              <Ionicons
+                name={list?.isDefault ? "star" : "star-outline"}
+                size={18}
+                color={list?.isDefault ? colors.accent : colors.fgMuted}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                hapticSelect();
+                setRenameValue(displayName);
+                setRenameOpen(true);
+              }}
+              hitSlop={12}
+              style={styles.iconBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Rename list"
+            >
+              <Ionicons name="pencil-outline" size={18} color={colors.fgMuted} />
+            </Pressable>
+          </View>
         }
       />
+
+      {list?.isDefault ? (
+        <View style={styles.defaultBadgeRow}>
+          <Ionicons name="star" size={12} color={colors.accent} />
+          <Text style={styles.defaultBadgeText}>
+            Default list — powers the home screen and Mapvest Daily
+          </Text>
+        </View>
+      ) : null}
 
       <ScreenFade>
         <FlatList
@@ -477,6 +537,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: { color: colors.fg, ...type.h3, fontSize: 18, maxWidth: 220 },
+  defaultBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  defaultBadgeText: { color: colors.fgDim, fontSize: 11, fontWeight: "600" },
   titleTag: {
     color: colors.accent,
     fontSize: 10,
