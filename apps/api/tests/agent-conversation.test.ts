@@ -203,7 +203,7 @@ function installSuccessfulConsole(
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  process.env.RESEARCH_CONSOLE_FORWARDED_HOST = undefined;
+  Reflect.deleteProperty(process.env, "RESEARCH_CONSOLE_FORWARDED_HOST");
   __resetRateLimit();
   __resetMetrics();
   __resetEntitlements();
@@ -213,8 +213,9 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  if (originalForwardedHost === undefined) process.env.RESEARCH_CONSOLE_FORWARDED_HOST = undefined;
-  else process.env.RESEARCH_CONSOLE_FORWARDED_HOST = originalForwardedHost;
+  if (originalForwardedHost === undefined) {
+    Reflect.deleteProperty(process.env, "RESEARCH_CONSOLE_FORWARDED_HOST");
+  } else process.env.RESEARCH_CONSOLE_FORWARDED_HOST = originalForwardedHost;
 });
 
 describe("unified research conversation routes", () => {
