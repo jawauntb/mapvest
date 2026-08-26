@@ -39,20 +39,33 @@ export type PushSignOutResult = {
   nativeUnregistered: boolean;
 };
 
-// Sign-out must remain a bounded, retryable UI action. The underlying network
-// wrappers also abort at 8s, but this policy gives each cleanup attempt a
-// shorter upper bound so a dead native bridge cannot strand the session.
-const OPERATION_TIMEOUT_MS = 1_000;
+// The network wrappers abort at 8s. Keep the policy deadline just beyond that
+// boundary so it cannot reject a legitimate in-flight server response first.
+// Native APIs get a separate short defense-in-depth bound below.
+const SERVER_OPERATION_TIMEOUT_MS = 8_500;
+const NATIVE_OPERATION_TIMEOUT_MS = 1_000;
 
-async function attempted(operation: (() => Promise<void>) | undefined): Promise<boolean> {
+async function attempted(
+  operation: (() => Promise<void>) | undefined,
+  timeoutMs: number,
+): Promise<boolean> {
   if (!operation) return false;
   try {
-    await Promise.race([
-      operation(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("push cleanup timed out")), OPERATION_TIMEOUT_MS),
-      ),
-    ]);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("push cleanup timed out")), timeoutMs);
+      Promise.resolve()
+        .then(() => operation())
+        .then(
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          (error: unknown) => {
+            clearTimeout(timer);
+            reject(error);
+          },
+        );
+    });
     return true;
   } catch {
     return false;
@@ -77,16 +90,22 @@ export async function revokePushForSignOut(
     Boolean(dependencies.unlinkServerByIdentity);
   let serverUnlinked = false;
   if (dependencies.tokenId && dependencies.unlinkServer) {
-    serverUnlinked = await attempted(dependencies.unlinkServer);
+    serverUnlinked = await attempted(dependencies.unlinkServer, SERVER_OPERATION_TIMEOUT_MS);
   }
   if (!serverUnlinked && dependencies.unlinkServerByIdentity) {
-    serverUnlinked = await attempted(dependencies.unlinkServerByIdentity);
+    serverUnlinked = await attempted(
+      dependencies.unlinkServerByIdentity,
+      SERVER_OPERATION_TIMEOUT_MS,
+    );
   }
   // Expo's native unregister only calls UIApplication's APNs detach method;
   // neither it nor auto-registration shutdown revokes the server claim.
-  await attempted(dependencies.disableAutoRegistration);
-  const nativeUnregistered = await attempted(dependencies.unregisterNative);
-  await attempted(dependencies.dismissNative);
+  await attempted(dependencies.disableAutoRegistration, NATIVE_OPERATION_TIMEOUT_MS);
+  const nativeUnregistered = await attempted(
+    dependencies.unregisterNative,
+    NATIVE_OPERATION_TIMEOUT_MS,
+  );
+  await attempted(dependencies.dismissNative, NATIVE_OPERATION_TIMEOUT_MS);
 
   // Native cleanup cannot mask a missing server proof. If any evidence says a
   // claim may exist, cleanup remains retry-required until the server confirms

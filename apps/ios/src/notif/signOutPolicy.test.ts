@@ -55,6 +55,19 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["server", "disable-auto", "native", "dismiss", "clear"]);
   });
 
+  test("allows a legitimate server revoke to finish beyond the native bound", async () => {
+    const deps = fixture();
+    deps.unlinkServer = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      deps.calls.push("server");
+    };
+
+    await expect(revokePushForSignOut(deps)).resolves.toMatchObject({
+      serverUnlinked: true,
+    });
+    expect(deps.calls).toEqual(["server", "native", "dismiss", "clear"]);
+  });
+
   test("does not treat native Expo unregistration as server revocation", async () => {
     const deps = fixture();
     deps.unlinkServer = async () => {
@@ -111,10 +124,15 @@ describe("push sign-out privacy policy", () => {
     expect(deps.calls).toEqual(["server", "identity", "native", "dismiss", "clear"]);
   });
 
-  test("fails closed when SecureStore times out and identity revocation hangs", async () => {
-    const deps = fixture({ tokenId: null, tokenStorageReadable: false });
+  test("fails closed when SecureStore times out and identity revocation fails", async () => {
+    const deps = fixture({
+      tokenId: null,
+      tokenStorageReadable: false,
+    });
     deps.unlinkServer = undefined;
-    deps.unlinkServerByIdentity = () => new Promise<void>(() => undefined);
+    deps.unlinkServerByIdentity = async () => {
+      throw new Error("identity unavailable");
+    };
 
     await expect(revokePushForSignOut(deps)).rejects.toBeInstanceOf(PushSignOutRevocationError);
     expect(deps.calls).toEqual(["native", "dismiss"]);

@@ -206,6 +206,97 @@ describe("SessionController async account lifecycle", () => {
     expect(raw).toBeNull();
   });
 
+  test("an expired sign-out journal upgrades to the expired-session route on reboot", async () => {
+    const a = { session: session("token-a", "account-a"), user: user("account-a") };
+    let raw: string | null = JSON.stringify(a);
+    let revokeFails = true;
+    const revokeCalls: Array<{
+      token?: string;
+      authenticatedBearer?: boolean;
+      recoverySession?: boolean;
+      ownerUserId?: string;
+    }> = [];
+    const journalModes: Array<{ authenticatedBearer: boolean; recoverySession: boolean }> = [];
+    const makeController = () => {
+      const deps: SessionControllerDeps = {
+        readStoredSession: async () => ({ raw, timedOut: false, readable: true }),
+        getMe: async () => ({ user: a.user }),
+        revokePush: async (old, options) => {
+          revokeCalls.push({
+            token: old?.token,
+            authenticatedBearer: options?.authenticatedBearer,
+            recoverySession: options?.recoverySession,
+            ownerUserId: options?.ownerUserId,
+          });
+          if (revokeFails) throw new Error("offline");
+        },
+        cancelPush: async () => {},
+        writeStoredSession: async (next) => {
+          raw = JSON.stringify(next);
+        },
+        deleteStoredSession: async () => {
+          raw = null;
+        },
+        writeCleanupTombstone: async (tombstone) => {
+          journalModes.push({
+            authenticatedBearer: tombstone.authenticatedBearer,
+            recoverySession: tombstone.recoverySession,
+          });
+          raw = JSON.stringify({
+            session: tombstone.session,
+            user: tombstone.user,
+            cleanup: tombstone,
+          });
+        },
+        clearCleanupTombstone: async () => {},
+        readPushCleanupSnapshot: async () => ({
+          readable: true,
+          snapshot: {
+            expoToken: "ExponentPushToken[a]",
+            ownerUserId: "account-a",
+            mayExist: true,
+          },
+        }),
+      };
+      return new SessionController(deps, () => {});
+    };
+
+    const first = makeController();
+    await first.startBoot();
+    await expect(first.signOut()).rejects.toBeInstanceOf(SessionCleanupRequiredError);
+    expect(revokeCalls[0]).toMatchObject({
+      token: "token-a",
+      authenticatedBearer: true,
+      recoverySession: false,
+      ownerUserId: "account-a",
+    });
+    expect(journalModes[0]).toEqual({ authenticatedBearer: true, recoverySession: false });
+
+    // Simulate the app remaining offline until A's bearer expires. The
+    // immutable snapshot still has no token id, so the recovery route must be
+    // selected from the session expiry rather than from current OS permission.
+    const expiredEnvelope = JSON.parse(raw ?? "null") as {
+      session: Session;
+      cleanup: { session: Session };
+    };
+    expiredEnvelope.session.expiresAt = "2000-01-01T00:00:00.000Z";
+    expiredEnvelope.cleanup.session.expiresAt = "2000-01-01T00:00:00.000Z";
+    raw = JSON.stringify(expiredEnvelope);
+    revokeFails = false;
+
+    const rebooted = makeController();
+    await rebooted.startBoot();
+    expect(revokeCalls.at(-1)).toMatchObject({
+      token: "token-a",
+      authenticatedBearer: false,
+      recoverySession: true,
+      ownerUserId: "account-a",
+    });
+    expect(journalModes.at(-1)).toEqual({ authenticatedBearer: false, recoverySession: true });
+    expect(rebooted.getSnapshot()).toMatchObject({ phase: "guest", cleanupRequired: false });
+    expect(raw).toBeNull();
+  });
+
   test("guest sign-in cannot use B bearer for a residual snapshot owned by A", async () => {
     const f = fixture(null);
     const revokeArgs: Array<{ token?: string; ownerUserId?: string }> = [];
@@ -254,6 +345,33 @@ describe("SessionController async account lifecycle", () => {
     revokeFails = false;
     await f.controller.signIn(session("token-b", "account-b"), user("account-b"));
     expect(f.controller.getSnapshot().session?.token).toBe("token-b");
+  });
+
+  test("a failed cleanup retry restores the retryable cleanup screen", async () => {
+    const f = fixture(null);
+    f.deps.readStoredSession = async () => ({ raw: null, timedOut: true, readable: false });
+    let revokeFails = true;
+    f.deps.revokePush = async () => {
+      if (revokeFails) throw new Error("offline");
+    };
+
+    await f.controller.startBoot();
+    await expect(f.controller.retryCleanup()).rejects.toBeInstanceOf(SessionCleanupRequiredError);
+    expect(f.controller.getSnapshot()).toMatchObject({
+      phase: "cleanup-required",
+      ready: true,
+      cleanupRequired: true,
+      session: null,
+      user: null,
+    });
+
+    revokeFails = false;
+    await f.controller.retryCleanup();
+    expect(f.controller.getSnapshot()).toMatchObject({
+      phase: "guest",
+      ready: true,
+      cleanupRequired: false,
+    });
   });
 
   test("parse failure and a boot-time 401 expose cleanup instead of guest state", async () => {

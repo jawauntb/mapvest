@@ -212,8 +212,16 @@ function cleanupRequestToTombstone(request: CleanupRequest): CleanupTombstone {
   };
 }
 
+function deriveCleanupRecoveryMode(request: CleanupRequest): void {
+  if (!request.session || !sessionExpired(request.session.expiresAt)) return;
+  // An old sign-out journal may outlive its bearer. Keep the same owner and
+  // claimant proof, but switch to the expired-session server route.
+  request.authenticatedBearer = false;
+  request.recoverySession = true;
+}
+
 function tombstoneToCleanupRequest(tombstone: CleanupTombstone): CleanupRequest {
-  return {
+  const request: CleanupRequest = {
     reason: tombstone.reason,
     ...(tombstone.session ? { session: tombstone.session } : {}),
     ...(tombstone.user ? { user: tombstone.user } : {}),
@@ -223,6 +231,8 @@ function tombstoneToCleanupRequest(tombstone: CleanupTombstone): CleanupRequest 
     authenticatedBearer: tombstone.authenticatedBearer,
     recoverySession: tombstone.recoverySession,
   };
+  deriveCleanupRecoveryMode(request);
+  return request;
 }
 
 /**
@@ -483,6 +493,7 @@ export class SessionController {
 
   private async enterCleanup(request: CleanupRequest, generation: number): Promise<boolean> {
     if (!this.isCurrent(generation)) return false;
+    deriveCleanupRecoveryMode(request);
     this.cleanup = request;
     this.currentStored = null;
     await this.attachPushSnapshot(request);
@@ -551,6 +562,21 @@ export class SessionController {
   private async attemptCleanup(generation: number): Promise<boolean> {
     const request = this.cleanup;
     if (!request || !this.isCurrent(generation)) return false;
+    const authenticatedBearerBeforeDerive = request.authenticatedBearer;
+    const recoverySessionBeforeDerive = request.recoverySession;
+    deriveCleanupRecoveryMode(request);
+    if (
+      (request.authenticatedBearer !== authenticatedBearerBeforeDerive ||
+        request.recoverySession !== recoverySessionBeforeDerive) &&
+      this.deps.writeCleanupTombstone
+    ) {
+      try {
+        await this.deps.writeCleanupTombstone(cleanupRequestToTombstone(request));
+      } catch {
+        return false;
+      }
+      if (!this.isCurrent(generation)) return false;
+    }
 
     if (!request.revocationComplete) {
       try {
@@ -589,11 +615,32 @@ export class SessionController {
   }
 
   private async retryCleanupNow(generation: number): Promise<void> {
-    await this.startBoot();
-    if (!this.isCurrent(generation)) throw new SessionTransitionCancelledError();
-    if (!this.cleanup) return;
-    if (!(await this.rejournalCleanup(generation))) throw new SessionCleanupRequiredError();
-    if (!(await this.attemptCleanup(generation))) throw new SessionCleanupRequiredError();
+    try {
+      await this.startBoot();
+      if (!this.isCurrent(generation)) throw new SessionTransitionCancelledError();
+      if (!this.cleanup) return;
+      if (!(await this.rejournalCleanup(generation))) throw new SessionCleanupRequiredError();
+      if (!(await this.attemptCleanup(generation))) throw new SessionCleanupRequiredError();
+    } catch (error) {
+      // beginTransition() intentionally hides the old account immediately.
+      // If cleanup itself fails, restore the retry screen or the user would
+      // be left on a booting blocker with no way to try again.
+      this.restoreCleanupRequired(generation);
+      throw error;
+    }
+  }
+
+  private restoreCleanupRequired(generation: number): void {
+    if (!this.isCurrent(generation) || !this.cleanup) return;
+    this.emit({
+      ...this.snapshot,
+      phase: "cleanup-required",
+      ready: true,
+      session: null,
+      user: null,
+      cleanupRequired: true,
+      cleanupReason: this.cleanup.reason,
+    });
   }
 
   private async signInNow(generation: number, session: Session, user: User): Promise<void> {
@@ -726,6 +773,7 @@ export class SessionController {
   private async rejournalCleanup(generation: number): Promise<boolean> {
     const request = this.cleanup;
     if (!request || !this.isCurrent(generation)) return false;
+    deriveCleanupRecoveryMode(request);
     await this.attachPushSnapshot(request);
     if (!this.isCurrent(generation)) return false;
     if (!this.deps.writeCleanupTombstone) return true;
