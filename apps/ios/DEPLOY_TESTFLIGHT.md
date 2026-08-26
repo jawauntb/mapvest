@@ -27,6 +27,25 @@ path) fails in `PRE_INSTALL_HOOK` before native compilation.
 
 The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then waits on `eas build --auto-submit`. A failed hook or compile fails the Actions check.
 
+Every production release first runs a local macOS EAS build with the
+`production-preflight` profile. It downloads the same managed certificate and
+profiles and performs the release Xcode signing pass, but `autoIncrement` is
+off and no EAS cloud build is reserved. The cloud build and TestFlight
+submission start only after this preflight is green, including when signing
+credentials drift outside git. The production EAS image is pinned to
+`macos-sequoia-15.6-xcode-26.0`; GitHub explicitly selects its available Xcode
+26.0 generation instead of a moving default. Local EAS does not clone every
+cloud-image tool—the gate proves that the current source and production
+credentials can complete a signed archive before spending a cloud build.
+
+If an entitlement or capability changes, declare it in `ios.entitlements` so
+EAS can sync it before Expo prebuild, then regenerate the existing App Store
+provisioning profile. Run `eas credentials -p ios`, choose `production`, log
+into Apple, then use **Build Credentials** to delete only the affected target's
+profile. Choose **All**, reuse the distribution certificate, and generate the
+replacement profile. `--clear-cache` cannot repair a signing profile, and
+unrelated extension profiles should be left intact.
+
 ## 0. One-time prerequisites
 
 1. **Apple Developer account** (paid $99/yr). Team ID is what EAS asks for on
