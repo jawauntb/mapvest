@@ -17,6 +17,10 @@ import {
   getPendingFatal,
   installFatalGuard,
 } from "@/util/fatalGuard";
+import {
+  clearWidgetRegistrationContext,
+  saveWidgetRegistrationContext,
+} from "@/widgets/widgetLocation";
 import { Syne_700Bold, Syne_800ExtraBold } from "@expo-google-fonts/syne";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -28,7 +32,7 @@ import { Stack, useRouter } from "expo-router";
 import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   type AppStateStatus,
@@ -102,14 +106,61 @@ function PushBridge() {
   const router = useRouter();
   const sessionToken = session?.token;
 
+  const prepareWidgetRelay = useCallback(
+    async (
+      expectedGeneration: number,
+      activeToken: string,
+      accountId: string,
+    ): Promise<boolean> => {
+      // A widget fix is only relayable after this exact account has a current
+      // server push registration. This also prevents a pre-registration fix
+      // from being mistaken for the next account's location.
+      // This launch/foreground path never asks iOS for permission; Settings
+      // and Camera's explicit post-value Find evolution action are the
+      // consent surfaces.
+      let registration: Awaited<ReturnType<typeof registerForPush>>;
+      try {
+        registration = await registerForPush(
+          { token: activeToken, userId: accountId },
+          { requestPermission: false },
+        );
+      } catch {
+        registration = null;
+      }
+      if (!isActiveSession(expectedGeneration, activeToken)) return false;
+      if (!registration) {
+        await clearWidgetRegistrationContext().catch(() => {});
+        return false;
+      }
+      try {
+        await saveWidgetRegistrationContext({
+          accountId,
+          registrationId: registration.tokenId,
+        });
+      } catch {
+        await clearWidgetRegistrationContext().catch(() => {});
+        return false;
+      }
+      return isActiveSession(expectedGeneration, activeToken);
+    },
+    [isActiveSession],
+  );
+
   useEffect(() => {
-    if (!sessionToken) return;
-    // Launch may register an already-authorized device, but it must never
-    // ask iOS to show the permission prompt. Settings and Camera's explicit
-    // post-value Find evolution action are the consent surfaces.
-    if (!user?.id) return;
-    void registerForPush({ token: sessionToken, userId: user.id }, { requestPermission: false });
-  }, [sessionToken, user?.id]);
+    if (!sessionToken || !user?.id) return;
+    const expectedGeneration = authGeneration;
+    const activeToken = sessionToken;
+    const accountId = user.id;
+    let cancelled = false;
+    void prepareWidgetRelay(expectedGeneration, activeToken, accountId).then((ready) => {
+      if (!cancelled && ready && isActiveSession(expectedGeneration, activeToken)) {
+        void syncWidgetFixIfFresh();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authGeneration, isActiveSession, prepareWidgetRelay, sessionToken, user?.id]);
 
   // Relay any fix the WidgetKit extension captured while the app was closed
   // (roadmap §2 B3). It posts to the same /v1/push/prefs heartbeat this
@@ -119,17 +170,23 @@ function PushBridge() {
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const expectedGeneration = authGeneration;
-    if (!session?.token) return;
+    if (!session?.token || !user?.id) return;
     const activeToken = session.token;
     const isActive = () => isActiveSession(expectedGeneration, activeToken);
-    if (isActive()) void syncWidgetFixIfFresh();
+    const syncAfterRegistration = () => {
+      if (!isActive()) return;
+      void prepareWidgetRelay(expectedGeneration, activeToken, user.id).then((ready) => {
+        if (ready && isActive()) void syncWidgetFixIfFresh();
+      });
+    };
+    if (appState.current === "active") syncAfterRegistration();
     const sub = AppState.addEventListener("change", (next) => {
       const prev = appState.current;
       appState.current = next;
-      if (next === "active" && prev !== "active" && isActive()) void syncWidgetFixIfFresh();
+      if (next === "active" && prev !== "active") syncAfterRegistration();
     });
     return () => sub.remove();
-  }, [authGeneration, isActiveSession, session?.token]);
+  }, [authGeneration, isActiveSession, prepareWidgetRelay, session?.token, user?.id]);
 
   useEffect(() => {
     const expectedGeneration = authGeneration;

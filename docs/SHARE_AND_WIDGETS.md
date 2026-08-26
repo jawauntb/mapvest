@@ -145,6 +145,20 @@ last-updated context and asks the user to refresh Mapvest. The six-hour
 freshness window is deliberately shared by the TypeScript origin classifier
 and the Swift WidgetKit target.
 
+#### Account and notification lifecycle
+
+WidgetKit location fixes are relayable only after the active account has a
+successful push registration. The app writes an opaque registration epoch to
+the App Group; the extension copies that account/epoch onto each captured fix,
+and the foreground relay rejects missing, mismatched, pre-registration, stale,
+or future fixes. This prevents a guest or a previous account's pending fix from
+being posted into a later account.
+
+Confirmed notification opt-out and sign-out stop visit monitoring and clear
+the AsyncStorage origin plus the App Group `widgetLocationFix`, `lastLocation`,
+and registration context. If cleanup cannot be verified, the session remains
+in its truthful retry state rather than allowing another account to proceed.
+
 ### Map and List context
 
 Map and List share one app-side location context through the React Query

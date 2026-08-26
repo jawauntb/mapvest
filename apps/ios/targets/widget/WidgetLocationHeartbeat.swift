@@ -29,6 +29,11 @@ import Foundation
 /// apps/ios/src/widgets/widgetLocation.ts.
 let widgetFixKey = "widgetLocationFix"
 
+/// Written by the app only after the current account has a successful push
+/// registration. The widget must not persist a relayable fix before that
+/// boundary, because the next account could otherwise inherit it.
+let widgetRegistrationKey = "widgetRegistration"
+
 /// Key holding the most recent origin from either side (app or widget).
 /// `widgetOriginState()` in NearbyModels.swift reads this, and the app writes
 /// it via `saveLastLocationForWidgets`. Both sides include capture time/source.
@@ -40,6 +45,14 @@ struct WidgetLocationFix: Codable {
     let lat: Double
     let lng: Double
     let capturedAt: Double
+    let accountId: String
+    let registrationEpoch: String
+}
+
+struct WidgetRegistrationContext: Codable {
+    let accountId: String
+    let epoch: String
+    let registeredAt: Double
 }
 
 /// One-shot Core Location fix for a widget timeline refresh.
@@ -128,6 +141,13 @@ final class WidgetLocationHeartbeat: NSObject, CLLocationManagerDelegate {
         done?(fix)
     }
 
+    private func registrationContext() -> WidgetRegistrationContext? {
+        guard let defaults = UserDefaults(suiteName: appGroupId),
+              let data = defaults.data(forKey: widgetRegistrationKey)
+        else { return nil }
+        return try? JSONDecoder().decode(WidgetRegistrationContext.self, from: data)
+    }
+
     private func persist(_ fix: WidgetLocationFix) {
         guard let defaults = UserDefaults(suiteName: appGroupId) else { return }
         let encoder = JSONEncoder()
@@ -152,10 +172,19 @@ final class WidgetLocationHeartbeat: NSObject, CLLocationManagerDelegate {
             finish(with: nil)
             return
         }
+        // No successful account-bound push registration means there is no
+        // safe app session to relay this fix into. Still finish the timeline
+        // request, but do not write either the fix or a new widget origin.
+        guard let registration = registrationContext() else {
+            finish(with: nil)
+            return
+        }
         let fix = WidgetLocationFix(
             lat: location.coordinate.latitude,
             lng: location.coordinate.longitude,
-            capturedAt: location.timestamp.timeIntervalSince1970 * 1000
+            capturedAt: location.timestamp.timeIntervalSince1970 * 1000,
+            accountId: registration.accountId,
+            registrationEpoch: registration.epoch
         )
         persist(fix)
         finish(with: fix)
