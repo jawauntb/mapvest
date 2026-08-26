@@ -144,12 +144,17 @@ chevron. Mapvest Daily is list-scoped: `GET /v1/watchlist/brief?listId=`
 writes the column for that list's tickers (omitted → the default list), each
 watchlist detail page mounts its own lazily (the brief for a list is only
 generated when its page is opened), and Home's card follows the selected
-list chip. Any list can be promoted to default (long-press it on the
-Watchlists screen → "Make default"; `POST
-/v1/watchlist/lists/:id/default` demotes the old default in the same call) —
-the 7am daily-brief push, Home's "All" view, and every default-list consumer
-follow the new default immediately, and only the default list's brief may
-fire the "Your morning read" push. Leading `$` cashtags stay on map pins and in prose; list rows show
+list chip. Any list can be promoted to default — tap the ★ in a watchlist
+detail page's header, or tap ••• on any row on the Watchlists screen (a
+long-press shortcut still works too), then "Make default"; `POST
+/v1/watchlist/lists/:id/default` demotes the old default in the same call.
+The Watchlists screen shows a one-time dismissible tip once a second list
+exists, and the currently-default list carries a visible "★ Default list"
+badge on its detail page — discoverability was a launch-week complaint, so
+the affordance and the "why" (it powers Home and Mapvest Daily) are both
+surfaced, not just documented. The 7am daily-brief push, Home's "All" view,
+and every default-list consumer follow the new default immediately, and
+only the default list's brief may fire the "Your morning read" push. Leading `$` cashtags stay on map pins and in prose; list rows show
 the ticker without a prefix. Overlapped map tooltips use a two-tap sequence
 (reveal → open summary). Home search suggests tickers as you type. Detail
 staggers section render so the sheet never hangs on a blank spinner.

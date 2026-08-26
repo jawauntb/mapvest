@@ -1,10 +1,12 @@
 /**
  * Watchlists index — collapsible list of every named list the user owns.
  *
- * Each row shows the list name + ticker count with an expand chevron. Tap
- * the name/row body to open the detail page. Long-press opens a rename /
- * delete action sheet. A "+ New watchlist" pill at the top lets the user
- * create one inline.
+ * Each row shows the list name + ticker count with an expand chevron and a
+ * visible "•••" button (long-press also works, as a shortcut). Both open a
+ * rename / make-default / delete action sheet. A "+ New watchlist" pill at
+ * the top lets the user create one inline. A one-time dismissible tip
+ * explains the default list's purpose once a second list exists — the
+ * moment "make this one the default" first becomes a real question.
  */
 import {
   type WatchEntry,
@@ -25,9 +27,10 @@ import { SkeletonList } from "@/components/Skeleton";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -41,6 +44,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+const DEFAULT_TIP_KEY = "mapvest.watchlistDefaultTip.v1";
+
 export default function WatchlistsIndexScreen() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -50,6 +55,29 @@ export default function WatchlistsIndexScreen() {
   const [newName, setNewName] = useState("");
   const [editing, setEditing] = useState<WatchlistSummary | null>(null);
   const [editName, setEditName] = useState("");
+  const [showDefaultTip, setShowDefaultTip] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(DEFAULT_TIP_KEY);
+        if (!cancelled && seen !== "1") setShowDefaultTip(true);
+      } catch {
+        /* fail closed — no tip is better than a broken screen */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function dismissDefaultTip() {
+    setShowDefaultTip(false);
+    AsyncStorage.setItem(DEFAULT_TIP_KEY, "1").catch(() => {
+      /* worst case it reappears next visit — not worth blocking on */
+    });
+  }
 
   const listsQ = useQuery({
     queryKey: ["watchlists", session?.token],
@@ -188,6 +216,30 @@ export default function WatchlistsIndexScreen() {
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               <View>
+                {showDefaultTip && lists.length >= 2 ? (
+                  <View style={[styles.tipCard, elevation.sm]}>
+                    <Ionicons
+                      name="star-outline"
+                      size={16}
+                      color={colors.accent}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text style={styles.tipText}>
+                      One list is always your <Text style={styles.tipBold}>default</Text> — it
+                      powers the home screen and your Mapvest Daily brief. Tap{" "}
+                      <Text style={styles.tipBold}>•••</Text> on any list to make it the default.
+                    </Text>
+                    <Pressable
+                      onPress={dismissDefaultTip}
+                      hitSlop={10}
+                      style={styles.tipDismiss}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss tip"
+                    >
+                      <Ionicons name="close" size={15} color={colors.fgDim} />
+                    </Pressable>
+                  </View>
+                ) : null}
                 {creating ? (
                   <View style={[styles.newCard, elevation.sm]}>
                     <TextInput
@@ -316,22 +368,27 @@ export default function WatchlistsIndexScreen() {
               </Pressable>
             </View>
             {editing && !editing.isDefault ? (
-              <Pressable
-                style={styles.makeDefaultBtn}
-                disabled={defaultMut.isPending}
-                onPress={() => {
-                  if (!editing) return;
-                  hapticSelect();
-                  defaultMut.mutate(editing.id);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Make ${editing.name} the default watchlist`}
-              >
-                <Ionicons name="star-outline" size={16} color={colors.accent} />
-                <Text style={styles.makeDefaultText}>
-                  {defaultMut.isPending ? "Making default…" : "Make default"}
+              <View style={styles.makeDefaultWrap}>
+                <Text style={styles.makeDefaultHint}>
+                  The default list powers the home screen and your Mapvest Daily brief.
                 </Text>
-              </Pressable>
+                <Pressable
+                  style={styles.makeDefaultBtn}
+                  disabled={defaultMut.isPending}
+                  onPress={() => {
+                    if (!editing) return;
+                    hapticSelect();
+                    defaultMut.mutate(editing.id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Make ${editing.name} the default watchlist`}
+                >
+                  <Ionicons name="star-outline" size={16} color={colors.accent} />
+                  <Text style={styles.makeDefaultText}>
+                    {defaultMut.isPending ? "Making default…" : "Make default"}
+                  </Text>
+                </Pressable>
+              </View>
             ) : null}
             {editing && !editing.isDefault ? (
               <Pressable
@@ -394,7 +451,7 @@ function WatchlistRow({
           onLongPress={onLongPress}
           delayLongPress={350}
           accessibilityRole="button"
-          accessibilityLabel={`Open ${list.name}. Long-press to rename or delete.`}
+          accessibilityLabel={`Open ${list.name}`}
         >
           <View style={styles.rowIcon}>
             <Ionicons
@@ -412,6 +469,18 @@ function WatchlistRow({
               {list.isDefault ? " · Default" : ""}
             </Text>
           </View>
+        </Pressable>
+        {/* Visible entry point to rename / make-default / delete — long-press
+            on the row body still works as a shortcut, but a button you can
+            see is the one people actually find. */}
+        <Pressable
+          onPress={onLongPress}
+          hitSlop={10}
+          style={styles.menuBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`${list.name} options: rename, make default, or delete`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={colors.fgMuted} />
         </Pressable>
         <Pressable
           onPress={onToggle}
@@ -515,6 +584,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
   },
   newPillText: { color: colors.accent, fontWeight: "700", fontSize: 14 },
+  tipCard: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  tipText: { flex: 1, color: colors.fgMuted, fontSize: 12, lineHeight: 17 },
+  tipBold: { color: colors.fg, fontWeight: "700" },
+  tipDismiss: {
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -1,
+  },
   newCard: {
     marginTop: 12,
     marginBottom: 16,
@@ -567,6 +656,13 @@ const styles = StyleSheet.create({
   },
   rowName: { color: colors.fg, fontWeight: "700", fontSize: 15 },
   rowSub: { color: colors.fgDim, fontSize: 12, marginTop: 2 },
+  menuBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+  },
   chevronBtn: {
     width: 34,
     height: 34,
@@ -627,15 +723,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  makeDefaultWrap: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: 4,
+    paddingTop: 8,
+    gap: 4,
+  },
+  makeDefaultHint: { color: colors.fgDim, fontSize: 11, textAlign: "center" },
   makeDefaultBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    marginTop: 4,
+    paddingVertical: 6,
   },
   makeDefaultText: { color: colors.accent, fontWeight: "700", fontSize: 13 },
   deleteBtn: {
