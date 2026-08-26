@@ -14,6 +14,7 @@ import {
   secFilings,
   waitForAgentThread,
 } from "@/api/client";
+import { formatResearchError, shouldRetryQuery } from "@/api/errors";
 import { coerceResolve, looksLikeTicker, routeParam } from "@/api/resolveFallback";
 import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
 import { authSavePath } from "@/auth/saveContinuation";
@@ -756,7 +757,7 @@ function AgentOverviewBlock({
     queryKey: key,
     enabled: !!ticker && wantBrief,
     staleTime: 30 * 60_000,
-    retry: 1,
+    retry: shouldRetryQuery,
     queryFn: async ({ signal }) => {
       const attempt = requestIdentity();
       if (!attempt.conversationId) {
@@ -815,8 +816,8 @@ function AgentOverviewBlock({
         </View>
       ) : overviewQ.isError ? (
         <View style={{ gap: 8 }}>
-          <Text style={styles.errInline}>
-            {(overviewQ.error as Error).message || "Overview failed"}
+          <Text accessibilityRole="alert" style={styles.errInline}>
+            {formatResearchError(overviewQ.error, "Overview failed. Try again.")}
           </Text>
           <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
             <Text style={styles.miniBtnText}>Retry overview</Text>
@@ -828,7 +829,18 @@ function AgentOverviewBlock({
         // content column. Without it, RN can size a column-flex View to its
         // intrinsic content width and let a single long line spill right.
         <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
-          <RichText text={overviewQ.data?.content ?? ""} />
+          {overviewQ.data?.content &&
+          overviewQ.data.content.trim() !== overviewQ.data.error?.trim() ? (
+            <RichText text={overviewQ.data.content} />
+          ) : null}
+          {overviewQ.data?.error ? (
+            <Text accessibilityRole="alert" style={styles.errInline}>
+              {formatResearchError(
+                overviewQ.data.error,
+                "Research stopped before it could finish the brief. Try again.",
+              )}
+            </Text>
+          ) : null}
           {(overviewQ.data?.interesting?.length ?? 0) > 0 ? (
             <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
               {(overviewQ.data?.interesting ?? []).slice(0, 5).map((line) => (

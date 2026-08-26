@@ -35,6 +35,19 @@ their own service project. See `infra/doppler/README.md` for the separation.
 - Auto-deploy on push to `main` via GitHub integration.
 - Manual: `railway up --service api`.
 
+### Research verification
+
+After the API deployment is healthy, open or refresh a pre-existing saved
+research thread from an internal account. The thread should load without a
+research service unavailable message; this read-only check does not admit a new
+generation or spend quota.
+
+If it fails, compare the deployed `DERIVATION_RESEARCH_API_ORIGIN` with the
+Console's current canonical origin. `RESEARCH_CONSOLE_FORWARDED_HOST` must be
+unset for direct Railway-to-Railway traffic and set only when a real trusted
+proxy is in the path. Do not rotate, print, or paste service tokens while
+diagnosing host configuration.
+
 ### Domains
 
 - Landing: `https://mapvest.app` — public site. `www.mapvest.app` is the Railway custom domain on the `landing` service (port 3000). The apex `301`s to `www` at GoDaddy.

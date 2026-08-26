@@ -44,7 +44,7 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `EXPO_TOKEN` | Expo | GitHub Actions `ios-eas-production` only. Create at expo.dev → Access tokens. Never put it in the iOS bundle, Doppler-to-client path, or a commit. |
 | `DERIVATION_RESEARCH_API_ORIGIN` | Railway Derivation Research Console | Server-only origin for `/api/explore` and `/api/autoresearch`; `DERIVATION_URL` remains a compatibility alias |
 | `DERIVATION_RESEARCH_SERVICE_TOKEN` | Derivation Doppler/Railway | Server-only bearer used by Mapvest's research proxy; never expose it to web or iOS |
-| `RESEARCH_CONSOLE_FORWARDED_HOST` | Cloudflare front door host | Optional host attestation for proxy deployments; omit it for direct local Console calls. The canonical production Railway origin uses the existing front-door default. |
+| `RESEARCH_CONSOLE_FORWARDED_HOST` | Optional trusted proxy/front-door host | Set only when Mapvest intentionally reaches Console through that proxy. Omit it for direct local or Railway-to-Railway calls; Mapvest does not infer a front door from the Console origin. |
 | `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` | Derivation Doppler/Railway | Legacy aliases retained during rollout; `_READ` is recovery-only, while `/api/explore` requires the primary or `_MUTATE` credential |
 
 ### Massive market data

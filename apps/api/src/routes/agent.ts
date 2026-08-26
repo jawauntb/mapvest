@@ -333,19 +333,27 @@ function pendingResponse(admission: Admission, error: ResearchConversationPendin
   };
 }
 
-function upstreamErrorStatus(value: number): 400 | 401 | 403 | 404 | 409 | 429 | 502 | 503 {
-  if (
-    value === 400 ||
-    value === 401 ||
-    value === 403 ||
-    value === 404 ||
-    value === 409 ||
-    value === 429 ||
-    value === 503
-  ) {
+function upstreamErrorStatus(value: number): 400 | 409 | 429 | 502 | 503 {
+  if (value === 400 || value === 409 || value === 429 || value === 503) {
     return value;
   }
+  // Console credentials, routing, and host attestation are server-to-server
+  // concerns. They must not look like a caller authorization/not-found error.
   return 502;
+}
+
+function upstreamDiagnosticCode(upstream: Record<string, unknown> | undefined): string | undefined {
+  const nestedError = object(upstream?.error);
+  const candidate =
+    text(nestedError?.code) ?? text(upstream?.code) ?? text(upstream?.error) ?? undefined;
+  return candidate && /^[A-Za-z0-9_.-]{1,128}$/.test(candidate) ? candidate : undefined;
+}
+
+function upstreamErrorMessage(status: number): string {
+  if (status === 400) return "Research service could not process this request";
+  if (status === 409) return "This research conversation cannot accept more work";
+  if (status === 429) return "Research service is busy; please try again shortly";
+  return "Research service is temporarily unavailable";
 }
 
 function errorPayload(error: unknown) {
@@ -372,11 +380,11 @@ function errorPayload(error: unknown) {
   if (error instanceof DerivationUpstreamError) {
     const upstream = object(error.body);
     const conversation = conversationFromPayload(upstream);
-    const code = text(upstream?.error) ?? `research_upstream_${error.status}`;
+    const code = upstreamDiagnosticCode(upstream) ?? `research_upstream_${error.status}`;
     return {
       status: upstreamErrorStatus(error.status),
       body: {
-        error: text(upstream?.briefing) ?? code,
+        error: upstreamErrorMessage(error.status),
         code,
         ...(conversation?.id ? { conversationId: conversation.id } : {}),
         ...(conversation?.status ? { status: conversation.status } : {}),

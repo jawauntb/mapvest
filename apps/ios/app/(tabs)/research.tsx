@@ -8,6 +8,7 @@ import {
   listAgentThreads,
   waitForAgentThread,
 } from "@/api/client";
+import { formatResearchError } from "@/api/errors";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { AppTopBar } from "@/components/AppTopBar";
@@ -205,7 +206,12 @@ export default function ResearchChatScreen() {
           setMemoUrl(undefined);
           setErr("This saved research is no longer available.");
         } else {
-          setErr("Couldn’t load this research right now. Its saved conversation was preserved.");
+          setErr(
+            formatResearchError(
+              error,
+              "Couldn’t load this research right now. Its saved conversation was preserved.",
+            ),
+          );
         }
       } finally {
         if (isCurrent()) {
@@ -378,7 +384,12 @@ export default function ResearchChatScreen() {
       retryAttemptRef.current = undefined;
       if (title === "New research") setTitle(deriveThreadTitle(msg));
       if (article.error) {
-        setErr("Research hit a limit — we wrote a shorter brief instead, or try again.");
+        setErr(
+          formatResearchError(
+            article.error,
+            "Research hit a limit — we wrote a shorter brief instead, or try again.",
+          ),
+        );
         setStatus(null);
       } else {
         const tools = article.toolsUsed?.length
@@ -406,7 +417,7 @@ export default function ResearchChatScreen() {
         retryAttemptRef.current = undefined;
         setErr("This saved research is no longer available. Send again to start a new one.");
       } else {
-        setErr((e as Error).message);
+        setErr(formatResearchError(e));
       }
       setStatus(null);
     } finally {
@@ -541,7 +552,7 @@ export default function ResearchChatScreen() {
               </Text>
             ) : (
               <View key={t.id} style={styles.article}>
-                <RichText text={t.content} />
+                {t.content.trim() !== t.error?.trim() ? <RichText text={t.content} /> : null}
                 {researchProgressLabel(t) ? (
                   <Text style={styles.meta}>Progress · {researchProgressLabel(t)}</Text>
                 ) : null}
@@ -614,8 +625,19 @@ export default function ResearchChatScreen() {
                     ) : null}
                   </View>
                 ) : null}
-                {t.blocker ? <Text style={styles.inlineError}>Blocked · {t.blocker}</Text> : null}
-                {t.error ? <Text style={styles.inlineError}>{t.error}</Text> : null}
+                {t.blocker ? (
+                  <Text accessibilityRole="alert" style={styles.inlineError}>
+                    Blocked · {formatResearchError(t.blocker, "Research is blocked. Try again.")}
+                  </Text>
+                ) : null}
+                {t.error ? (
+                  <Text accessibilityRole="alert" style={styles.inlineError}>
+                    {formatResearchError(
+                      t.error,
+                      "Research stopped before it could finish the brief. Try again.",
+                    )}
+                  </Text>
+                ) : null}
                 {t.chartTickers.slice(0, 3).map((sym) => (
                   <Pressable
                     key={sym}
@@ -666,7 +688,7 @@ export default function ResearchChatScreen() {
                     onPress={() => {
                       hapticTap();
                       void shareResearchMemo(memoUrl, session?.token).catch((error) => {
-                        setErr(error instanceof Error ? error.message : "Memo download failed.");
+                        setErr(formatResearchError(error, "Memo download failed."));
                       });
                     }}
                     style={styles.memoLink}
@@ -688,7 +710,11 @@ export default function ResearchChatScreen() {
           ) : status ? (
             <Text style={styles.statusText}>{status}</Text>
           ) : null}
-          {err ? <Text style={styles.err}>{err}</Text> : null}
+          {err ? (
+            <Text accessibilityRole="alert" style={styles.err}>
+              {err}
+            </Text>
+          ) : null}
         </ScrollView>
 
         <View style={styles.composer}>

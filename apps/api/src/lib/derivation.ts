@@ -2,11 +2,8 @@
  * Server-only Derivation Research Console boundary.
  *
  * The unified conversation API uses the mutate-capable service credential and
- * adds forwarded-host attestation only when calling the production proxy path.
+ * adds proxy-shaped headers only when an explicit proxy host is configured.
  */
-
-const DEFAULT_DERIVATION_FORWARDED_HOST = "derivation-research-jawaun.jtbx.workers.dev";
-const PRODUCTION_RAILWAY_HOST = "derivation-research-console-production.up.railway.app";
 
 function configuredOrigin(): string | undefined {
   const value =
@@ -31,12 +28,8 @@ function configuredReadServiceToken(): string | undefined {
   );
 }
 
-function forwardedHost(origin: URL): string | undefined {
-  const configured = process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim();
-  if (configured) return configured;
-  return origin.hostname === PRODUCTION_RAILWAY_HOST
-    ? DEFAULT_DERIVATION_FORWARDED_HOST
-    : undefined;
+function forwardedHost(): string | undefined {
+  return process.env.RESEARCH_CONSOLE_FORWARDED_HOST?.trim() || undefined;
 }
 
 export class DerivationConfigurationError extends Error {
@@ -78,8 +71,7 @@ function requireServiceToken(access: "mutate" | "read"): string {
 }
 
 function authorizationHeaders(token: string): Record<string, string> {
-  const origin = new URL(getDerivationOrigin());
-  const host = forwardedHost(origin);
+  const host = forwardedHost();
   return {
     Authorization: `Bearer ${token}`,
     ...(host
