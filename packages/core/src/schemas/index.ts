@@ -653,7 +653,10 @@ export const PushPreferencesUpdateResponse = z.object({
 });
 export type PushPreferencesUpdateResponse = z.infer<typeof PushPreferencesUpdateResponse>;
 
-/** Optional installation selection for a preference read. */
+/**
+ * Exact installation selection for a preference read. Omitting the id is an
+ * explicit no-selection result; it never falls back to another device.
+ */
 export const PushPreferencesReadQuery = z.object({
   tokenId: PushTokenId.optional(),
 });

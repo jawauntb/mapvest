@@ -432,46 +432,47 @@ describe("pickWinner", () => {
 describe("dedupe + budget key shapes", () => {
   const tok = (lastSent: Record<string, string>) => ({ prefs: { last_sent: lastSent } });
 
-  const DAY_SLOT = uncaughtDaySlot("u_1");
+  const TOKEN_ID = "push_phone";
+  const DAY_SLOT = uncaughtDaySlot(TOKEN_ID);
 
-  test("the per-ticker slot is uncaught:{userId}:{TICKER}, normalized and user-scoped", () => {
-    expect(uncaughtDedupeSlot("u_1", "JPM")).toBe("uncaught:u_1:JPM");
-    expect(uncaughtDedupeSlot("u_1", " jpm ")).toBe("uncaught:u_1:JPM");
-    // The shared dedupe layer keeps a process-global memory ring, so two users
-    // must never share a slot.
-    expect(uncaughtDedupeSlot("u_1", "JPM")).not.toBe(uncaughtDedupeSlot("u_2", "JPM"));
+  test("the per-ticker slot is uncaught:{tokenId}:{TICKER}, normalized and device-scoped", () => {
+    expect(uncaughtDedupeSlot(TOKEN_ID, "JPM")).toBe("uncaught:push_phone:JPM");
+    expect(uncaughtDedupeSlot(TOKEN_ID, " jpm ")).toBe("uncaught:push_phone:JPM");
+    expect(uncaughtDedupeSlot(TOKEN_ID, "JPM")).not.toBe(uncaughtDedupeSlot("push_tablet", "JPM"));
     expect(PUSHED_MARKER).toBe("1");
   });
 
-  test("the day slot is user-scoped with a {ymd}:{count} value", () => {
-    expect(uncaughtDaySlot("u_1")).toBe("uncaught_day:u_1");
-    expect(uncaughtDaySlot("u_1")).not.toBe(uncaughtDaySlot("u_2"));
+  test("the day slot is device-scoped with a {ymd}:{count} value", () => {
+    expect(uncaughtDaySlot(TOKEN_ID)).toBe("uncaught_day:push_phone");
+    expect(uncaughtDaySlot(TOKEN_ID)).not.toBe(uncaughtDaySlot("push_tablet"));
     expect(dayBudgetValue("20260820", 1)).toBe("20260820:1");
     expect(dayBudgetValue("20260820", MAX_PUSHES_PER_DAY)).toBe("20260820:2");
   });
 
   test("pushesToday counts today's spend and ignores other days", () => {
-    expect(pushesToday([], "20260820", DAY_SLOT)).toBe(0);
-    expect(pushesToday([tok({})], "20260820", DAY_SLOT)).toBe(0);
-    expect(pushesToday([tok({ [DAY_SLOT]: "20260819:2" })], "20260820", DAY_SLOT)).toBe(0);
-    expect(pushesToday([tok({ [DAY_SLOT]: "20260820:1" })], "20260820", DAY_SLOT)).toBe(1);
+    expect(pushesToday(tok({}), "20260820", DAY_SLOT)).toBe(0);
+    expect(pushesToday(tok({ [DAY_SLOT]: "20260819:2" }), "20260820", DAY_SLOT)).toBe(0);
+    expect(pushesToday(tok({ [DAY_SLOT]: "20260820:1" }), "20260820", DAY_SLOT)).toBe(1);
   });
 
-  test("the highest count across a user's devices wins", () => {
-    const tokens = [tok({ [DAY_SLOT]: "20260820:1" }), tok({ [DAY_SLOT]: "20260820:2" })];
-    expect(pushesToday(tokens, "20260820", DAY_SLOT)).toBe(2);
-    expect(pushesToday(tokens, "20260820", DAY_SLOT)).toBeGreaterThanOrEqual(MAX_PUSHES_PER_DAY);
+  test("one device's budget never debits its sibling device", () => {
+    const tabletSlot = uncaughtDaySlot("push_tablet");
+    const phone = tok({ [DAY_SLOT]: "20260820:2" });
+    const tablet = tok({ [tabletSlot]: "20260820:1" });
+    expect(pushesToday(phone, "20260820", DAY_SLOT)).toBe(MAX_PUSHES_PER_DAY);
+    expect(pushesToday(tablet, "20260820", tabletSlot)).toBe(1);
+    expect(pushesToday(tablet, "20260820", DAY_SLOT)).toBe(0);
   });
 
   test("MAX_PUSHES_PER_DAY is two, and a malformed value never grants budget", () => {
     expect(MAX_PUSHES_PER_DAY).toBe(2);
-    expect(pushesToday([tok({ [DAY_SLOT]: "garbage" })], "20260820", DAY_SLOT)).toBe(0);
-    expect(pushesToday([tok({ [DAY_SLOT]: "20260820:" })], "20260820", DAY_SLOT)).toBe(0);
-    expect(pushesToday([tok({ [DAY_SLOT]: "20260820:nope" })], "20260820", DAY_SLOT)).toBe(0);
+    expect(pushesToday(tok({ [DAY_SLOT]: "garbage" }), "20260820", DAY_SLOT)).toBe(0);
+    expect(pushesToday(tok({ [DAY_SLOT]: "20260820:" }), "20260820", DAY_SLOT)).toBe(0);
+    expect(pushesToday(tok({ [DAY_SLOT]: "20260820:nope" }), "20260820", DAY_SLOT)).toBe(0);
   });
 
   test("the per-ticker slot never collides with the day slot", () => {
-    expect(uncaughtDedupeSlot("u_1", "DAY")).not.toBe(uncaughtDaySlot("u_1"));
+    expect(uncaughtDedupeSlot(TOKEN_ID, "DAY")).not.toBe(uncaughtDaySlot(TOKEN_ID));
   });
 });
 

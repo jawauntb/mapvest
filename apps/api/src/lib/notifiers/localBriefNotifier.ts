@@ -1,27 +1,29 @@
 /**
  * Local-economy brief push notifier.
  *
- * Fires when a fresh local brief is generated for a user whose location has
- * changed materially. The scheduler is responsible for detecting the "moved
- * more than 2km" condition — this notifier is dumb: it just pushes.
+ * Fires when a fresh local brief is generated for one device whose location
+ * changed materially. The scheduler owns the "moved more than 2km" decision
+ * and passes the exact delivery token; local-brief pushes never fan out across
+ * an account because a sibling phone did not supply this location.
  *
- * Dedupe: `local_brief::YYYYMMDD` — a single local brief per day per user.
+ * Dedupe: `local_brief:{tokenId}::YYYYMMDD` — a single local brief per day
+ * per device.
  */
 import type { LocalBrief } from "../local-brief-generator.js";
 import { deliverPush } from "../push-dispatcher.js";
-import { listTokensForUserAndEvent } from "../push-tokens-store.js";
+import type { PushToken } from "../push-tokens-store.js";
 import { ymd } from "./dedupe.js";
 
-const DEDUPE_SLOT = "local_brief";
+function localBriefDedupeSlot(tokenId: string): string {
+  return `local_brief:${tokenId}`;
+}
 
 export async function onLocalBriefGenerated(
-  userId: string,
+  token: PushToken,
   brief: LocalBrief,
   location: { lat: number; lng: number },
 ): Promise<void> {
   const key = ymd(new Date(brief.generatedAt));
-  const tokens = await listTokensForUserAndEvent(userId, "local_brief");
-  if (tokens.length === 0) return;
   const placeName = brief.place.neighborhood
     ? `${brief.place.neighborhood}${brief.place.city ? `, ${brief.place.city}` : ""}`
     : brief.place.city
@@ -30,8 +32,8 @@ export async function onLocalBriefGenerated(
   const first = brief.paragraphs[0]?.slice(0, 220) ?? "";
 
   await deliverPush({
-    tokens,
-    dedupe: [{ slot: DEDUPE_SLOT, key }],
+    tokens: [token],
+    dedupe: [{ slot: localBriefDedupeSlot(token.id), key }],
     eventKey: "local_brief",
     title: `Local economy — ${placeName}`,
     body: first || `What's investable in ${placeName} right now.`,

@@ -13,13 +13,14 @@
  *     → 204
  *
  * On any LLM error the generator returns a stub (never 500); the endpoint
- * therefore always responds 200 with a payload the client can render.
+ * therefore always responds 200 with a payload the client can render. It
+ * never sends a notification: location-derived pushes are scheduler-only and
+ * target the exact device token that posted a heartbeat.
  */
 
 import { Hono } from "hono";
 import { OUTAGE_LOCAL_BRIEF, generateLocalBrief } from "../lib/local-brief-generator.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import { onLocalBriefGenerated } from "../lib/notifiers/localBriefNotifier.js";
 import {
   deleteSavedLocalBrief,
   listSavedLocalBriefs,
@@ -67,10 +68,9 @@ localBrief.post("/", async (c) => {
         nearby_count: brief.nearbyCount,
         has_place: Boolean(brief.place.city),
       });
-      // Fire-and-forget push. Opted-in users see a "Local economy — <city>"
-      // notification; dedupe ensures a rapid re-open path doesn't spam. A push
-      // failure MUST NEVER block the primary response.
-      onLocalBriefGenerated(user.id, brief, { lat, lng }).catch(() => {});
+      // The caller is already viewing this brief, so this request never sends
+      // a push. Location-derived notifications are scheduler-only and receive
+      // the exact device token that supplied the heartbeat.
       return c.json(brief);
     } catch (err) {
       // Belt-and-suspenders: the generator already swallows LLM errors, but

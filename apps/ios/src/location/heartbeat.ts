@@ -53,17 +53,20 @@ const MAX_WIDGET_FIX_AGE_MS = 6 * 60 * 60 * 1000;
 
 type LastSent = { lat: number; lng: number; at: number };
 
-async function readSessionToken(): Promise<string | null> {
+async function readSession(): Promise<{ token: string; userId: string } | null> {
   try {
     const raw = await SecureStore.getItemAsync(SESSION_KEY, SESSION_STORE);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { session?: { token?: string; expiresAt?: string } };
+    const parsed = JSON.parse(raw) as {
+      session?: { token?: string; userId?: string; expiresAt?: string };
+    };
     const token = parsed?.session?.token;
-    if (!token) return null;
+    const userId = parsed?.session?.userId;
+    if (!token || !userId) return null;
     const expiresAt = parsed.session?.expiresAt;
     // Don't spend a network round trip on a token the API will reject.
     if (expiresAt && new Date(expiresAt).getTime() < Date.now()) return null;
-    return token;
+    return { token, userId };
   } catch {
     return null;
   }
@@ -105,11 +108,12 @@ function isUsable(coords: LatLng): boolean {
 export async function postHeartbeat(coords: LatLng): Promise<boolean> {
   if (!isUsable(coords)) return false;
   try {
-    const token = await readSessionToken();
-    if (!token) return false;
-    // No-ops when this device never registered a push token, which is the
-    // only place the server stores location.
-    await heartbeatLocation(coords.lat, coords.lng, token);
+    const session = await readSession();
+    if (!session) return false;
+    // No-op unless this device has an exact stored registration or can recover
+    // its own physical Expo token without prompting for permission.
+    const sent = await heartbeatLocation(coords.lat, coords.lng, session.token, session.userId);
+    if (!sent) return false;
     const record: LastSent = { lat: coords.lat, lng: coords.lng, at: Date.now() };
     await AsyncStorage.setItem(LAST_SENT_KEY, JSON.stringify(record)).catch(() => {});
     return true;

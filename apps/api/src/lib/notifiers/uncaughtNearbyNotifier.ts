@@ -2,7 +2,7 @@
  * Uncaught-nearby arrival push (Universe Roadmap §2 B4).
  *
  * The strongest engagement surface in the roadmap and the easiest one to ruin.
- * When a user's heartbeat shows they moved more than 2km (the same trigger the
+ * When a device heartbeat shows it moved more than 2km (the same trigger the
  * local-brief branch of `scheduler.ts` already computes — this file never does
  * its own movement detection), we look at what is investable within a short
  * walk of the new fix, subtract everything already in their universe (finds +
@@ -12,14 +12,14 @@
  *   - only the single highest-scoring candidate is considered,
  *   - it must clear `MIN_SCORE`, otherwise the arrival is silent,
  *   - at most one push per move event,
- *   - at most `MAX_PUSHES_PER_DAY` per user per day,
- *   - a ticker that was ever pushed to this user is never pushed again.
+ *   - at most `MAX_PUSHES_PER_DAY` per device per day,
+ *   - a ticker that was ever pushed to this device is never pushed again.
  * "A mediocre daily ping trains users to swipe away the great ones."
  *
  * Dedupe uses the shared durable `prefs.last_sent` map through the central
- * claim-aware dispatcher, with USER-SCOPED slots:
- *   - `uncaught:{userId}:{TICKER}` → `"1"` once pushed to this user, ever.
- *   - `uncaught_day:{userId}`      → `"{YYYYMMDD}:{count}"`, the day counter.
+ * claim-aware dispatcher, with DEVICE-SCOPED slots:
+ *   - `uncaught:{tokenId}:{TICKER}` → `"1"` once pushed to this device, ever.
+ *   - `uncaught_day:{tokenId}`      → `"{YYYYMMDD}:{count}"`, the day counter.
  * Both survive a process restart, so a redeploy cannot re-spend the budget.
  *
  * Framing (roadmap, non-negotiable): this is a **collection gap, not a buy
@@ -35,11 +35,7 @@ import { encodeGeohash } from "../geohash.js";
 import { safeExecuteWithSpan } from "../logfire.js";
 import { distanceM, resolveNearbyItems } from "../nearby-resolve.js";
 import { deliverPush } from "../push-dispatcher.js";
-import {
-  type PushEventKey,
-  type PushToken,
-  listTokensForUserAndEvent,
-} from "../push-tokens-store.js";
+import type { PushEventKey, PushToken } from "../push-tokens-store.js";
 import { type WatchEntry, listWatchEntries } from "../watchlist-store.js";
 import { ymd } from "./dedupe.js";
 
@@ -52,7 +48,7 @@ export const NEARBY_RADIUS_M = 800;
 export const NEARBY_LIMIT = 12;
 /** Minimum score a candidate must reach to be worth interrupting someone. */
 export const MIN_SCORE = 3;
-/** Hard ceiling on uncaught pushes per user per calendar day (UTC). */
+/** Hard ceiling on uncaught pushes per device per calendar day (UTC). */
 export const MAX_PUSHES_PER_DAY = 2;
 /** Finds pulled per arrival to build the affinity/tile context. */
 const MAX_FINDS = 200;
@@ -67,18 +63,18 @@ export const PUSHED_MARKER = "1";
 // ---------------------------------------------------------------------------
 
 /**
- * Durable dedupe slot for one ticker FOR ONE USER. Its presence means
- * "pushed to this user, ever". The userId is part of the slot because the
+ * Durable dedupe slot for one ticker FOR ONE DEVICE. Its presence means
+ * "pushed to this device, ever". The token id is part of the slot because the
  * claim-aware dispatcher keys leases by the token and slot, so a user-less
  * slot would make ownership and observability ambiguous.
  */
-export function uncaughtDedupeSlot(userId: string, ticker: string): string {
-  return `uncaught:${userId}:${ticker.trim().toUpperCase()}`;
+export function uncaughtDedupeSlot(tokenId: string, ticker: string): string {
+  return `uncaught:${tokenId}:${ticker.trim().toUpperCase()}`;
 }
 
-/** Day-budget slot, user-scoped so one user's budget cannot affect another. */
-export function uncaughtDaySlot(userId: string): string {
-  return `uncaught_day:${userId}`;
+/** Day-budget slot, device-scoped so one device cannot debit another. */
+export function uncaughtDaySlot(tokenId: string): string {
+  return `uncaught_day:${tokenId}`;
 }
 
 /** Stored value of the day-budget slot: the day key and the count spent on it. */
@@ -87,27 +83,22 @@ export function dayBudgetValue(dayKey: string, count: number): string {
 }
 
 /**
- * How many uncaught pushes this user has already spent on `dayKey`, read from
- * the durable slot across their tokens. A value stored for a different day
+ * How many uncaught pushes this device has already spent on `dayKey`, read
+ * from its durable slot. A value stored for a different day
  * reads as zero — the budget resets at the UTC date boundary, it is not aged
  * out by a TTL. Pure over its inputs.
  */
 export function pushesToday(
-  tokens: Array<Pick<PushToken, "prefs">>,
+  token: Pick<PushToken, "prefs">,
   dayKey: string,
   daySlot: string,
 ): number {
-  let max = 0;
-  for (const t of tokens) {
-    const stored = t.prefs.last_sent?.[daySlot];
-    if (typeof stored !== "string") continue;
-    const sep = stored.lastIndexOf(":");
-    if (sep < 0) continue;
-    if (stored.slice(0, sep) !== dayKey) continue;
-    const n = Number.parseInt(stored.slice(sep + 1), 10);
-    if (Number.isFinite(n) && n > max) max = n;
-  }
-  return max;
+  const stored = token.prefs.last_sent?.[daySlot];
+  if (typeof stored !== "string") return 0;
+  const sep = stored.lastIndexOf(":");
+  if (sep < 0 || stored.slice(0, sep) !== dayKey) return 0;
+  const count = Number.parseInt(stored.slice(sep + 1), 10);
+  return Number.isFinite(count) && count > 0 ? count : 0;
 }
 
 /** GICS-canonical sector, falling back to the trimmed input, else undefined. */
@@ -134,7 +125,7 @@ export type UncaughtCandidate = {
   distanceM?: number;
   /** Intraday % change, only when a real quote was attached to the item. */
   changePct?: number;
-  /** True when this ticker already consumed its once-ever push for this user. */
+  /** True when this ticker already consumed its once-ever push for this device. */
   previouslyPushed: boolean;
 };
 
@@ -161,7 +152,7 @@ export type ScoredCandidate = {
  *   +2  fills a sector in which the user has zero finds
  *   +1  first-ever find opportunity in this geohash-6 tile
  *   +1  |intraday changePct| > 3, and only when a real quote was attached
- * -100  already pushed to this user (a veto, not a penalty)
+ * -100  already pushed to this device (a veto, not a penalty)
  *
  * Affinity and empty-sector are deliberately not exclusive: a sector the user
  * watchlists but has never physically caught scores both, and that is the
@@ -344,7 +335,7 @@ export function uncaughtBody(brand: string, ticker: string, meters?: number): st
 // ---------------------------------------------------------------------------
 
 export type UncaughtNearbyResult = {
-  /** True when the user has at least one token opted into this event. */
+  /** True when this device is opted into this event. */
   eligible: boolean;
   candidates: number;
   pushed: boolean;
@@ -361,31 +352,35 @@ export type UncaughtNearbyResult = {
 };
 
 /**
- * Arrival handler. Called by the scheduler for a user whose heartbeat moved
- * past the >2km threshold — this function does not decide *that* a user moved,
+ * Arrival handler. Called by the scheduler for a device whose heartbeat moved
+ * past the >2km threshold — this function does not decide *that* a device moved,
  * only what (if anything) to say about where they landed.
  *
  * The data fan-out (finds, watchlist, nearby cascade) degrades to a silent
  * arrival on failure. A store or dispatcher failure propagates so the span is
- * recorded as an error — the scheduler isolates it per user, exactly as it
+ * recorded as an error — the scheduler isolates it per device, exactly as it
  * already does for the local-brief branch.
  */
 export async function onUserMovedFar(
-  userId: string,
+  token: PushToken,
   fix: { lat: number; lng: number },
 ): Promise<UncaughtNearbyResult> {
   return safeExecuteWithSpan("notifier.uncaught_nearby", async (span) => {
-    span.setAttributes({ user_id: userId });
+    const { userId } = token;
+    span.setAttributes({ user_id: userId, token_id: token.id });
 
-    const tokens = await listTokensForUserAndEvent(userId, UNCAUGHT_NEARBY_EVENT_KEY);
-    if (tokens.length === 0) {
+    if (
+      token.prefs.notifications_enabled === false ||
+      token.prefs[UNCAUGHT_NEARBY_EVENT_KEY] !== true
+    ) {
       return { eligible: false, candidates: 0, pushed: false, reason: "no_tokens" as const };
     }
+    const tokens = [token];
 
     // Day budget first — it is the cheapest gate and it short-circuits the
-    // whole places/ticker fan-out for a user who is already at their cap.
+    // whole places/ticker fan-out for a device that is already at its cap.
     const dayKey = ymd();
-    const spent = pushesToday(tokens, dayKey, uncaughtDaySlot(userId));
+    const spent = pushesToday(token, dayKey, uncaughtDaySlot(token.id));
     span.setAttributes({ day_key: dayKey, pushes_today: spent });
     if (spent >= MAX_PUSHES_PER_DAY) {
       return { eligible: true, candidates: 0, pushed: false, reason: "day_budget" as const };
@@ -425,11 +420,7 @@ export async function onUserMovedFar(
     }
     const pushedTickers = new Set<string>();
     for (const ticker of seen) {
-      if (
-        tokens.some(
-          (token) => token.prefs.last_sent?.[uncaughtDedupeSlot(userId, ticker)] === PUSHED_MARKER,
-        )
-      )
+      if (token.prefs.last_sent?.[uncaughtDedupeSlot(token.id, ticker)] === PUSHED_MARKER)
         pushedTickers.add(ticker);
     }
 
@@ -466,12 +457,12 @@ export async function onUserMovedFar(
       tokens,
       dedupe: [
         {
-          slot: uncaughtDedupeSlot(userId, candidate.ticker),
+          slot: uncaughtDedupeSlot(token.id, candidate.ticker),
           key: PUSHED_MARKER,
           ttlMs: DEDUPE_TTL_MS,
         },
         {
-          slot: uncaughtDaySlot(userId),
+          slot: uncaughtDaySlot(token.id),
           key: dayBudgetValue(dayKey, spent + 1),
           ttlMs: DEDUPE_TTL_MS,
         },

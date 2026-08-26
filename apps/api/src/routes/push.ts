@@ -252,19 +252,27 @@ push.post("/prefs", async (c) => {
   });
 });
 
-/** GET /v1/push/prefs[?tokenId=…] → { prefs, tokenId } */
+/**
+ * GET /v1/push/prefs?tokenId=… → { prefs, tokenId }
+ *
+ * A preferences read is an installation read, never an account-level
+ * convenience lookup. In particular, an omitted or stale id must not select
+ * an arbitrary second phone belonging to the same account: that would let one
+ * installation present or later write another installation's consent.
+ */
 push.get("/prefs", async (c) => {
   return safeExecuteWithSpan("http.push.prefs.read", async (span) => {
     const parsed = PushPreferencesReadQuery.safeParse({ tokenId: c.req.query("tokenId") });
     if (!parsed.success) return c.json({ error: "valid tokenId required" }, 400);
     const user = c.get("user");
-    const tokens = await listTokensForUser(user.id);
-    span.setAttributes({ user_id: user.id, token_count: tokens.length });
-    if (tokens.length === 0) {
+    const requestedId = parsed.data.tokenId;
+    if (!requestedId) {
+      span.setAttributes({ user_id: user.id, selection: "omitted" });
       return c.json({ prefs: {}, tokenId: null });
     }
-    const requestedId = parsed.data.tokenId;
-    const selected = requestedId ? tokens.find((token) => token.id === requestedId) : tokens[0];
+    const tokens = await listTokensForUser(user.id);
+    span.setAttributes({ user_id: user.id, token_count: tokens.length, selection: "exact" });
+    const selected = tokens.find((token) => token.id === requestedId);
     if (!selected) return c.json({ prefs: {}, tokenId: null });
     return c.json({ prefs: selected.prefs, tokenId: selected.id });
   });

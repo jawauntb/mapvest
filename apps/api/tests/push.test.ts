@@ -11,6 +11,7 @@ process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 
 import { sign } from "hono/jwt";
 import { app } from "../src/index.js";
+import { onLocalBriefGenerated } from "../src/lib/notifiers/localBriefNotifier.js";
 import { deliverPush } from "../src/lib/push-dispatcher.js";
 import {
   _cleanupPushDeliveryHandoffForTest,
@@ -701,12 +702,108 @@ describe("push prefs route", () => {
     expect(staleRead.status).toBe(200);
     expect(await staleRead.json()).toEqual({ prefs: {}, tokenId: null });
 
-    const fallbackRead = await app.fetch(
+    const omittedRead = await app.fetch(
       new Request("http://localhost/v1/push/prefs", {
         headers: { Authorization: `Bearer ${bearer}` },
       }),
     );
-    expect(fallbackRead.status).toBe(200);
-    expect(await fallbackRead.json()).toMatchObject({ tokenId: tablet.id });
+    expect(omittedRead.status).toBe(200);
+    expect(await omittedRead.json()).toEqual({ prefs: {}, tokenId: null });
+  });
+
+  test("an omitted or stale preference read never selects a sibling device", async () => {
+    const uid = userId();
+    const bearer = await sessionFor(uid, `${uid}@mapvest.dev`);
+    const phone = await registerPushToken(uid, expoToken(), "ios", "phone");
+    const tablet = await registerPushToken(uid, expoToken(), "ios", "tablet");
+    await updatePrefs(uid, phone.id, { notifications_enabled: true, local_brief: true });
+    await updatePrefs(uid, tablet.id, { notifications_enabled: true, local_brief: false });
+
+    const omitted = await app.fetch(
+      new Request("http://localhost/v1/push/prefs", {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(await omitted.json()).toEqual({ prefs: {}, tokenId: null });
+
+    const stale = await app.fetch(
+      new Request("http://localhost/v1/push/prefs?tokenId=push_missing", {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(await stale.json()).toEqual({ prefs: {}, tokenId: null });
+
+    const exactTablet = await app.fetch(
+      new Request(`http://localhost/v1/push/prefs?tokenId=${tablet.id}`, {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    );
+    expect(await exactTablet.json()).toMatchObject({
+      tokenId: tablet.id,
+      prefs: { local_brief: false },
+    });
+  });
+});
+
+describe("location-derived push delivery", () => {
+  test("the interactive local-brief request never sends a redundant push", async () => {
+    const uid = userId();
+    const bearer = await sessionFor(uid, `${uid}@mapvest.dev`);
+    const token = await registerPushToken(uid, expoToken(), "ios", "phone");
+    await updatePrefs(uid, token.id, { notifications_enabled: true, local_brief: true });
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      // The local-brief generator fails soft when its optional enrichments are
+      // unavailable, so an empty successful body is enough for this route test.
+      return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      const response = await app.fetch(
+        new Request("http://localhost/v1/local-brief", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+          body: JSON.stringify({ lat: 40.7128, lng: -74.006 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(requestedUrls).not.toContain("https://exp.host/--/api/v2/push/send");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("a local brief generated from one device delivers only to that device", async () => {
+    const uid = userId();
+    const phone = await registerPushToken(uid, expoToken(), "ios", "phone");
+    const tablet = await registerPushToken(uid, expoToken(), "ios", "tablet");
+    await updatePrefs(uid, phone.id, { notifications_enabled: true, local_brief: true });
+    await updatePrefs(uid, tablet.id, { notifications_enabled: true, local_brief: true });
+    const originalFetch = globalThis.fetch;
+    const payloads: Array<{ to?: string }> = [];
+    globalThis.fetch = (async (_input, init) => {
+      payloads.push(...(JSON.parse(String(init?.body)) as Array<{ to?: string }>));
+      return new Response(JSON.stringify({ data: [{ status: "ok", id: "ticket" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      await onLocalBriefGenerated(
+        phone,
+        {
+          paragraphs: ["A current reading of this area."],
+          place: { city: "New York", state: "New York" },
+          nearbyCount: 1,
+          generatedAt: "2026-08-25T12:00:00.000Z",
+        },
+        { lat: 40.7128, lng: -74.006 },
+      );
+      expect(payloads.map((payload) => payload.to)).toEqual([phone.expoToken]);
+      expect(payloads.map((payload) => payload.to)).not.toContain(tablet.expoToken);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

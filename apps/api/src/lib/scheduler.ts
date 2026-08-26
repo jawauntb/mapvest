@@ -7,10 +7,11 @@
  * cannot bring down the others.
  *
  * Cadences (per spec):
- *   - Every 60min: the movement tick. One >2km move detection per user, two
- *     consumers: a fresh local brief for users with `local_brief` on, and the
- *     uncaught-nearby arrival push for users with `uncaught_nearby` on. When
- *     we've never seen a location for a user we skip (client must first
+ *   - Every 60min: the movement tick. One >2km move detection per opted-in
+ *     device, with two consumers: a fresh local brief for that device when
+ *     `local_brief` is on, and an uncaught-nearby arrival push for that same
+ *     device when `uncaught_nearby` is on. When a device has never seen a
+ *     location we skip (that device must first
  *     heartbeat a location via POST /v1/push/prefs { last_lat, last_lng }).
  *   - 8am + 4pm server-local time: `runPriceAlertScan()`.
  *   - 7am server-local time: daily-brief fan-out. For each opted-in user we
@@ -44,7 +45,7 @@ import { listWatchEntries } from "./watchlist-store.js";
 const TICK_MS = 60_000; // 1 minute — checks all schedules
 const MOVE_METERS_THRESHOLD = 2_000; // 2 km
 
-// Per-consumer movement anchors inside the shared `prefs.last_sent` map.
+// Per-consumer, per-device movement anchors inside the shared `prefs.last_sent` map.
 const LB_LAT = "local_brief_lat";
 const LB_LNG = "local_brief_lng";
 const UN_LAT = "uncaught_lat";
@@ -96,48 +97,33 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 // ---- Individual schedules ----
 
 /**
- * Newest heartbeat fix across a user's devices, or null when we've never seen
- * one. `last_lat` / `last_lng` are written by the client heartbeat.
+ * Heartbeat fix for one device, or null when that device has never seen a
+ * location. `last_lat` / `last_lng` are written by the client heartbeat.
  */
-function latestFix(userTokens: PushToken[]): { lat: number; lng: number } | null {
-  let lat: number | undefined;
-  let lng: number | undefined;
-  let lastSeenAt = 0;
-  for (const t of userTokens) {
-    const at = t.prefs.last_location_at ? Date.parse(t.prefs.last_location_at) || 0 : 0;
-    if (
-      typeof t.prefs.last_lat === "number" &&
-      typeof t.prefs.last_lng === "number" &&
-      at >= lastSeenAt
-    ) {
-      lat = t.prefs.last_lat;
-      lng = t.prefs.last_lng;
-      lastSeenAt = at;
-    }
-  }
-  if (lat === undefined || lng === undefined) return null;
+function tokenFix(token: PushToken): { lat: number; lng: number } | null {
+  const { last_lat: lat, last_lng: lng } = token.prefs;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return { lat, lng };
 }
 
 /**
- * Previously-anchored location for one consumer, stored per token in
+ * Previously-anchored location for one consumer on one device, stored in
  * `last_sent[latKey] / last_sent[lngKey]` (opportunistically, as strings).
  * Each consumer keeps its own anchor so a failure in one branch never
  * advances — or stalls — the other.
  */
 function readAnchor(
-  userTokens: PushToken[],
+  token: PushToken,
   latKey: string,
   lngKey: string,
 ): { lat: number; lng: number } | null {
-  for (const t of userTokens) {
-    const rawLat = t.prefs.last_sent?.[latKey];
-    const rawLng = t.prefs.last_sent?.[lngKey];
-    if (typeof rawLat !== "string" || typeof rawLng !== "string") continue;
-    const lat = Number(rawLat);
-    const lng = Number(rawLng);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
+  const rawLat = token.prefs.last_sent?.[latKey];
+  const rawLng = token.prefs.last_sent?.[lngKey];
+  if (typeof rawLat !== "string" || typeof rawLng !== "string") return null;
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
   return null;
 }
 
@@ -148,27 +134,21 @@ function movedFar(anchor: { lat: number; lng: number } | null, fix: { lat: numbe
 }
 
 async function writeAnchor(
-  userId: string,
-  userTokens: PushToken[],
+  token: PushToken,
   latKey: string,
   lngKey: string,
   fix: { lat: number; lng: number },
 ): Promise<void> {
-  await Promise.all(
-    userTokens.map((t) =>
-      updatePrefs(userId, t.id, {
-        last_sent: { [latKey]: String(fix.lat), [lngKey]: String(fix.lng) },
-      }).catch(() => null),
-    ),
-  );
+  await updatePrefs(token.userId, token.id, {
+    last_sent: { [latKey]: String(fix.lat), [lngKey]: String(fix.lng) },
+  });
 }
 
 /**
- * Movement tick. Detects ">2km since last anchor" once per user and fans that
- * single signal out to its consumers:
- *   1. local brief (`local_brief` opt-in) — roadmap B1,
- *   2. uncaught-nearby arrival push (`uncaught_nearby` opt-in) — roadmap B4.
- * Neither consumer does its own movement detection.
+ * Movement tick. Detects ">2km since last anchor" once per opted-in device
+ * and delivers only to that device. A heartbeat from one installation never
+ * becomes a location signal, anchor, or budget debit for another installation
+ * in the same account.
  */
 async function runMovementTick(): Promise<void> {
   return safeExecuteWithSpan("scheduler.movement", async (span) => {
@@ -182,52 +162,32 @@ async function runMovementTick(): Promise<void> {
     });
     if (briefTokens.length === 0 && uncaughtTokens.length === 0) return;
 
-    const briefUsers = new Set(briefTokens.map((t) => t.userId));
-    const uncaughtUsers = new Set(uncaughtTokens.map((t) => t.userId));
-
-    // Union by user, tokens deduped by id — one movement decision per user
-    // even when their devices opted into different events.
-    const byUser = new Map<string, PushToken[]>();
-    const seenTokens = new Set<string>();
-    for (const t of [...briefTokens, ...uncaughtTokens]) {
-      if (seenTokens.has(t.id)) continue;
-      seenTokens.add(t.id);
-      const arr = byUser.get(t.userId) ?? [];
-      arr.push(t);
-      byUser.set(t.userId, arr);
+    for (const token of briefTokens) {
+      const fix = tokenFix(token);
+      if (!fix) continue;
+      if (!movedFar(readAnchor(token, LB_LAT, LB_LNG), fix)) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const brief = await generateLocalBrief(fix);
+        // eslint-disable-next-line no-await-in-loop
+        await onLocalBriefGenerated(token, brief, fix);
+        // eslint-disable-next-line no-await-in-loop
+        await writeAnchor(token, LB_LAT, LB_LNG, fix);
+      } catch {
+        /* device isolation — anchor stays put so the next tick retries */
+      }
     }
 
-    for (const [userId, userTokens] of byUser) {
-      const fix = latestFix(userTokens);
-      if (!fix) continue;
-
-      if (briefUsers.has(userId) && movedFar(readAnchor(userTokens, LB_LAT, LB_LNG), fix)) {
-        // Generate the brief; the notifier dedupes per-day so a same-day
-        // repeated location shift only pushes once.
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const brief = await generateLocalBrief(fix);
-          // eslint-disable-next-line no-await-in-loop
-          await onLocalBriefGenerated(userId, brief, fix);
-          // eslint-disable-next-line no-await-in-loop
-          await writeAnchor(userId, userTokens, LB_LAT, LB_LNG, fix);
-        } catch {
-          /* per-user isolation — anchor stays put so the next tick retries */
-        }
-      }
-
-      // B4: same >2km trigger, independent opt-in and independent anchor. The
-      // notifier owns its own scoring, threshold and per-day budget — most
-      // arrivals are silent by design.
-      if (uncaughtUsers.has(userId) && movedFar(readAnchor(userTokens, UN_LAT, UN_LNG), fix)) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await onUserMovedFar(userId, fix);
-          // eslint-disable-next-line no-await-in-loop
-          await writeAnchor(userId, userTokens, UN_LAT, UN_LNG, fix);
-        } catch {
-          /* per-user isolation */
-        }
+    for (const token of uncaughtTokens) {
+      const fix = tokenFix(token);
+      if (!fix || !movedFar(readAnchor(token, UN_LAT, UN_LNG), fix)) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await onUserMovedFar(token, fix);
+        // eslint-disable-next-line no-await-in-loop
+        await writeAnchor(token, UN_LAT, UN_LNG, fix);
+      } catch {
+        /* device isolation */
       }
     }
   });
