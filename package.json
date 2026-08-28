@@ -21,9 +21,16 @@
     "postman": "bun run packages/core/scripts/gen-postman.ts",
     "mapvest": "bun run packages/cli/src/index.ts",
     "demo:video": "bun run --filter @mapvest/demo-video start",
+    "demo:video:plan": "bun run --filter @mapvest/demo-video launch:plan",
+    "demo:video:prepare": "bun run --filter @mapvest/demo-video launch:prepare",
+    "demo:video:music": "bun run --filter @mapvest/demo-video music:generate",
     "demo:video:typecheck": "bun run --filter @mapvest/demo-video typecheck",
-    "demo:video:render:portrait": "bun run --filter @mapvest/demo-video render:portrait",
-    "demo:video:render:square": "bun run --filter @mapvest/demo-video render:square"
+    "demo:video:render": "bun run --filter @mapvest/demo-video render:all",
+    "demo:video:verify": "bun run --filter @mapvest/demo-video render:verify",
+    "demo:video:render:portrait:music": "bun run --filter @mapvest/demo-video render:portrait:music",
+    "demo:video:render:portrait:silent": "bun run --filter @mapvest/demo-video render:portrait:silent",
+    "demo:video:render:square:music": "bun run --filter @mapvest/demo-video render:square:music",
+    "demo:video:render:square:silent": "bun run --filter @mapvest/demo-video render:square:silent"
   },
   "packageManager": "bun@1.3.13",
   "engines": {

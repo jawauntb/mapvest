@@ -1,0 +1,74 @@
+{
+  "preparedAt": "2026-08-28T22:03:30.510Z",
+  "source": "Real signed-in iPhone 16 Pro simulator; raw captures retained outside the repository.",
+  "publicLocation": {
+    "label": "Flatiron District, New York, NY",
+    "latitude": 40.7411,
+    "longitude": -73.9897
+  },
+  "simulatorViewport": {
+    "width": 1206,
+    "height": 2622,
+    "fps": 30
+  },
+  "captureRoutes": {
+    "map": "mapvest://map",
+    "localBrief": "mapvest://home?demoSection=local",
+    "universe": "mapvest://universe",
+    "daily": "mapvest://home?demoSection=daily"
+  },
+  "outputs": [
+    {
+      "scene": "map",
+      "file": "map-nearby.mp4",
+      "sha256": "533f1aa66b07ae717f5d106ca55a4d58c6d6dcca29514355e9db46dd38eb2f60",
+      "codec_name": "h264",
+      "width": 1206,
+      "height": 2622,
+      "pix_fmt": "yuv420p",
+      "r_frame_rate": "30/1",
+      "durationSeconds": 7.2,
+      "sourceKind": "video",
+      "privacyTreatment": "Public Flatiron test location; personal finds hidden before capture."
+    },
+    {
+      "scene": "local-brief",
+      "file": "local-economy-brief.mp4",
+      "sha256": "abab1ba37275c5d3f15269c77972727b90f2228b274662c6c20b24928490447c",
+      "codec_name": "h264",
+      "width": 1206,
+      "height": 2622,
+      "pix_fmt": "yuv420p",
+      "r_frame_rate": "30/1",
+      "durationSeconds": 7.4,
+      "sourceKind": "screenshot",
+      "privacyTreatment": "Dev capture anchor isolates the sourced public-location brief."
+    },
+    {
+      "scene": "universe",
+      "file": "universe.mp4",
+      "sha256": "6a29b46f82e313ca4f264cf9505057d45218cb16084c9ecbbeb488ec6ce5ffbb",
+      "codec_name": "h264",
+      "width": 1206,
+      "height": 2622,
+      "pix_fmt": "yuv420p",
+      "r_frame_rate": "30/1",
+      "durationSeconds": 7.5,
+      "sourceKind": "screenshot",
+      "privacyTreatment": "Pixels below y=1280 are removed before the repository asset is written."
+    },
+    {
+      "scene": "daily",
+      "file": "watchlist-daily.mp4",
+      "sha256": "6acfa3103fb4a524fe62634bef6abe8c9ee77ebc845616308b30f9440f0c0951",
+      "codec_name": "h264",
+      "width": 1206,
+      "height": 2622,
+      "pix_fmt": "yuv420p",
+      "r_frame_rate": "30/1",
+      "durationSeconds": 7.7,
+      "sourceKind": "screenshot",
+      "privacyTreatment": "Dev capture anchor isolates the brief above watchlist names and controls."
+    }
+  ]
+}

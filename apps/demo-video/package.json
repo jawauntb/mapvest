@@ -6,18 +6,28 @@
   "scripts": {
     "start": "remotion studio src/index.ts",
     "typecheck": "tsc --noEmit",
-    "render:portrait": "remotion render src/index.ts MapvestTweetPortrait out/mapvest-tweet-portrait.mp4 --codec=h264 --crf=18",
-    "render:square": "remotion render src/index.ts MapvestTweetSquare out/mapvest-tweet-square.mp4 --codec=h264 --crf=18",
-    "render:smoke": "remotion still src/index.ts MapvestTweetPortrait out/smoke-frame.png --frame=405 --scale=0.25"
+    "launch:plan": "bun scripts/launch-video.ts plan",
+    "launch:prepare": "bun scripts/launch-video.ts prepare",
+    "music:generate": "bun scripts/launch-video.ts music",
+    "render:all": "bun scripts/launch-video.ts render",
+    "render:verify": "bun scripts/launch-video.ts verify",
+    "render:portrait:music": "remotion render src/index.ts MapvestLaunchPortraitMusic out/mapvest-launch-portrait-music.mp4 --codec=h264 --audio-codec=aac --crf=18 --color-space=bt709",
+    "render:portrait:silent": "remotion render src/index.ts MapvestLaunchPortraitSilent out/mapvest-launch-portrait-silent.mp4 --codec=h264 --crf=18 --color-space=bt709 --muted",
+    "render:square:music": "remotion render src/index.ts MapvestLaunchSquareMusic out/mapvest-launch-square-music.mp4 --codec=h264 --audio-codec=aac --crf=18 --color-space=bt709",
+    "render:square:silent": "remotion render src/index.ts MapvestLaunchSquareSilent out/mapvest-launch-square-silent.mp4 --codec=h264 --crf=18 --color-space=bt709 --muted",
+    "render:smoke": "remotion still src/index.ts MapvestLaunchPortraitSilent out/smoke-frame.png --frame=900 --scale=0.25"
   },
   "dependencies": {
+    "@mapvest/core": "workspace:*",
     "@remotion/media": "4.0.518",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "remotion": "4.0.518"
+    "remotion": "4.0.518",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@remotion/cli": "4.0.518",
+    "@types/bun": "^1.4.0",
     "@types/react": "19.1.10",
     "typescript": "^5.6.3"
   }

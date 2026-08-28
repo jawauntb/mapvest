@@ -1,5 +1,5 @@
-import { Video } from "@remotion/media";
-import type { CSSProperties, ReactNode } from "react";
+import { Audio, Video } from "@remotion/media";
+import type { CSSProperties, ComponentType, ReactNode } from "react";
 import {
   AbsoluteFill,
   Img,
@@ -11,9 +11,21 @@ import {
   useVideoConfig,
 } from "remotion";
 import macbookIdentifyCapture from "../public/provenance/macbook-identify.json";
+import {
+  FPS,
+  LAUNCH_MUSIC_ASSET,
+  LAUNCH_STORYBOARD,
+  type LaunchFormat,
+  type LaunchSceneId,
+  type LaunchSoundtrack,
+  TOTAL_DURATION_IN_FRAMES,
+  frameAt,
+  sceneById,
+} from "./storyboard";
 
-type MapvestTweetProps = {
-  format: "portrait" | "square";
+export type MapvestTweetProps = {
+  format: LaunchFormat;
+  soundtrack: LaunchSoundtrack;
 };
 
 const COLORS = {
@@ -28,8 +40,16 @@ const COLORS = {
 };
 
 const FONT_FAMILY = "Avenir Next, Helvetica Neue, Arial, sans-serif";
-const DETAIL_SCENE_FRAMES = 180;
-const RESEARCH_SCENE_FRAMES = 180;
+const hookScene = sceneById("hook");
+const mapScene = sceneById("map");
+const localBriefScene = sceneById("local-brief");
+const cameraScene = sceneById("camera");
+const resultScene = sceneById("result");
+const universeScene = sceneById("universe");
+const detailScene = sceneById("detail");
+const researchScene = sceneById("research");
+const dailyScene = sceneById("daily");
+const ctaScene = sceneById("cta");
 
 const macbookDetected = macbookIdentifyCapture.identification.detected[0]!;
 const macbookInvestable = macbookIdentifyCapture.investables[0]!;
@@ -247,7 +267,7 @@ const CameraViewport = ({ frame }: { frame: number }) => {
       }}
     >
       <Img
-        src={staticFile("macbook-test.png")}
+        src={staticFile(resultScene.asset)}
         style={{
           width: "100%",
           height: "100%",
@@ -335,8 +355,8 @@ const SceneLayout = ({
 
 const HookScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
-  const opacity = sceneOpacity(frame, 90);
-  const wordScale = spring({ frame, fps: 30, config: { damping: 16, stiffness: 110 } });
+  const opacity = sceneOpacity(frame, hookScene.durationInFrames);
+  const wordScale = spring({ frame, fps: FPS, config: { damping: 16, stiffness: 110 } });
 
   return (
     <AbsoluteFill
@@ -370,9 +390,9 @@ const HookScene = ({ portrait }: { portrait: boolean }) => {
           textTransform: "uppercase",
         }}
       >
-        Point at a product.
+        {hookScene.copy.headline}
         <br />
-        <span style={{ color: COLORS.accent }}>Get the stock.</span>
+        <span style={{ color: COLORS.accent }}>{hookScene.copy.accent}</span>
       </div>
       <div
         style={{
@@ -386,8 +406,132 @@ const HookScene = ({ portrait }: { portrait: boolean }) => {
           textTransform: "uppercase",
         }}
       >
-        Camera → market detail → sourced research
+        {hookScene.copy.body}
       </div>
+    </AbsoluteFill>
+  );
+};
+
+const SceneHeadline = ({
+  frame,
+  portrait,
+  headline,
+  accent,
+}: {
+  frame: number;
+  portrait: boolean;
+  headline: string;
+  accent: string;
+}) => (
+  <div
+    style={{
+      ...rise(frame, 8),
+      fontFamily: FONT_FAMILY,
+      fontSize: portrait ? 70 : 58,
+      fontWeight: 850,
+      lineHeight: 1.02,
+      letterSpacing: "-0.045em",
+    }}
+  >
+    {headline}
+    <br />
+    <span style={{ color: COLORS.accent }}>{accent}</span>
+  </div>
+);
+
+const SceneBody = ({
+  frame,
+  portrait,
+  children,
+}: {
+  frame: number;
+  portrait: boolean;
+  children: ReactNode;
+}) => (
+  <div
+    style={{
+      ...rise(frame, 15),
+      maxWidth: 520,
+      color: COLORS.muted,
+      fontFamily: FONT_FAMILY,
+      fontSize: portrait ? 26 : 22,
+      lineHeight: 1.4,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const MapPhone = ({ width }: { width: number }) => (
+  <PhoneFrame width={width}>
+    <Video src={staticFile(mapScene.asset)} muted objectFit="cover" style={fillVideo} />
+  </PhoneFrame>
+);
+
+const MapScene = ({ portrait }: { portrait: boolean }) => {
+  const frame = useCurrentFrame();
+
+  return (
+    <AbsoluteFill style={{ opacity: sceneOpacity(frame, mapScene.durationInFrames) }}>
+      <SceneLayout
+        portrait={portrait}
+        copy={
+          <>
+            <div style={rise(frame, 2)}>
+              <Kicker>{mapScene.copy.kicker}</Kicker>
+            </div>
+            <SceneHeadline
+              frame={frame}
+              portrait={portrait}
+              headline={mapScene.copy.headline}
+              accent={mapScene.copy.accent}
+            />
+            <SceneBody frame={frame} portrait={portrait}>
+              {mapScene.copy.body}
+            </SceneBody>
+          </>
+        }
+        phone={<MapPhone width={portrait ? 570 : 420} />}
+      >
+        <Pill>● LIVE NEARBY MAP</Pill>
+      </SceneLayout>
+    </AbsoluteFill>
+  );
+};
+
+const LocalBriefPhone = ({ width }: { width: number }) => (
+  <PhoneFrame width={width}>
+    <Video src={staticFile(localBriefScene.asset)} muted objectFit="cover" style={fillVideo} />
+  </PhoneFrame>
+);
+
+const LocalBriefScene = ({ portrait }: { portrait: boolean }) => {
+  const frame = useCurrentFrame();
+
+  return (
+    <AbsoluteFill style={{ opacity: sceneOpacity(frame, localBriefScene.durationInFrames) }}>
+      <SceneLayout
+        portrait={portrait}
+        copy={
+          <>
+            <div style={rise(frame, 2)}>
+              <Kicker>{localBriefScene.copy.kicker}</Kicker>
+            </div>
+            <SceneHeadline
+              frame={frame}
+              portrait={portrait}
+              headline={localBriefScene.copy.headline}
+              accent={localBriefScene.copy.accent}
+            />
+            <SceneBody frame={frame} portrait={portrait}>
+              {localBriefScene.copy.body}
+            </SceneBody>
+          </>
+        }
+        phone={<LocalBriefPhone width={portrait ? 570 : 420} />}
+      >
+        <Pill>LOCATION-AWARE · SOURCED</Pill>
+      </SceneLayout>
     </AbsoluteFill>
   );
 };
@@ -400,7 +544,7 @@ const CameraPhone = ({ width }: { width: number }) => {
     <PhoneFrame width={width}>
       <DeviceMedia src="camera-live.png" />
       <Sequence durationInFrames={90}>
-        <Video src={staticFile("camera-flow.mp4")} muted objectFit="cover" style={fillVideo} />
+        <Video src={staticFile(cameraScene.asset)} muted objectFit="cover" style={fillVideo} />
       </Sequence>
       <CameraViewport frame={frame} />
       <TapRipple frame={frame} />
@@ -433,7 +577,7 @@ const CameraPhone = ({ width }: { width: number }) => {
 
 const CameraScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
-  const opacity = sceneOpacity(frame, 198);
+  const opacity = sceneOpacity(frame, cameraScene.durationInFrames);
 
   return (
     <AbsoluteFill style={{ opacity }}>
@@ -442,7 +586,7 @@ const CameraScene = ({ portrait }: { portrait: boolean }) => {
         copy={
           <>
             <div style={rise(frame, 3)}>
-              <Kicker>01 · Camera</Kicker>
+              <Kicker>{cameraScene.copy.kicker}</Kicker>
             </div>
             <div
               style={{
@@ -454,9 +598,9 @@ const CameraScene = ({ portrait }: { portrait: boolean }) => {
                 letterSpacing: "-0.045em",
               }}
             >
-              Point. Tap.
+              {cameraScene.copy.headline}
               <br />
-              <span style={{ color: COLORS.accent }}>Investable.</span>
+              <span style={{ color: COLORS.accent }}>{cameraScene.copy.accent}</span>
             </div>
             <div
               style={{
@@ -468,7 +612,7 @@ const CameraScene = ({ portrait }: { portrait: boolean }) => {
                 lineHeight: 1.38,
               }}
             >
-              A MacBook test photo runs through the real camera flow.
+              {cameraScene.copy.body}
             </div>
           </>
         }
@@ -481,7 +625,7 @@ const CameraScene = ({ portrait }: { portrait: boolean }) => {
 };
 
 const ResultCard = ({ frame, portrait }: { frame: number; portrait: boolean }) => {
-  const pop = spring({ frame: frame - 8, fps: 30, config: { damping: 13, stiffness: 145 } });
+  const pop = spring({ frame: frame - 8, fps: FPS, config: { damping: 13, stiffness: 145 } });
 
   return (
     <div
@@ -569,7 +713,7 @@ const StaticCameraPhone = ({ width }: { width: number }) => (
       }}
     >
       <Img
-        src={staticFile("macbook-test.png")}
+        src={staticFile(resultScene.asset)}
         style={{ width: "100%", height: "100%", objectFit: "cover", filter: "brightness(0.84)" }}
       />
       <div
@@ -586,7 +730,7 @@ const StaticCameraPhone = ({ width }: { width: number }) => (
 
 const ResultScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
-  const opacity = sceneOpacity(frame, 135);
+  const opacity = sceneOpacity(frame, resultScene.durationInFrames);
 
   return (
     <AbsoluteFill style={{ opacity }}>
@@ -595,7 +739,7 @@ const ResultScene = ({ portrait }: { portrait: boolean }) => {
         copy={
           <>
             <div style={rise(frame, 0)}>
-              <Kicker>Production API match</Kicker>
+              <Kicker>{resultScene.copy.kicker}</Kicker>
             </div>
             <ResultCard frame={frame} portrait={portrait} />
             <div
@@ -608,8 +752,7 @@ const ResultScene = ({ portrait }: { portrait: boolean }) => {
                 lineHeight: 1.4,
               }}
             >
-              {macbookDetected.product} returned from the real recognition path with sourced
-              confidence.
+              {macbookDetected.product} · {resultScene.copy.body}
             </div>
           </>
         }
@@ -619,16 +762,113 @@ const ResultScene = ({ portrait }: { portrait: boolean }) => {
   );
 };
 
+const UniversePhone = ({ width }: { width: number }) => (
+  <PhoneFrame width={width}>
+    <Video src={staticFile(universeScene.asset)} muted objectFit="cover" style={fillVideo} />
+    <div
+      style={{
+        position: "absolute",
+        zIndex: 8,
+        top: "48.5%",
+        right: 0,
+        bottom: 0,
+        left: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: width > 500 ? 18 : 13,
+        padding: "0 11%",
+        textAlign: "center",
+        background:
+          "linear-gradient(to bottom, rgba(8,11,13,0.28), rgba(8,11,13,0.96) 18%, #080b0d 52%)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          width: width > 500 ? 70 : 52,
+          height: width > 500 ? 70 : 52,
+          placeItems: "center",
+          border: "1px solid rgba(20,196,166,0.48)",
+          borderRadius: "50%",
+          background: "rgba(20,196,166,0.1)",
+          color: COLORS.accent,
+          fontFamily: FONT_FAMILY,
+          fontSize: width > 500 ? 32 : 24,
+        }}
+      >
+        ◇
+      </div>
+      <div
+        style={{
+          color: COLORS.accent,
+          fontFamily: FONT_FAMILY,
+          fontSize: width > 500 ? 24 : 18,
+          fontWeight: 850,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+        }}
+      >
+        Private by default
+      </div>
+      <div
+        style={{
+          maxWidth: 350,
+          color: COLORS.muted,
+          fontFamily: FONT_FAMILY,
+          fontSize: width > 500 ? 23 : 17,
+          fontWeight: 650,
+          lineHeight: 1.35,
+        }}
+      >
+        Your complete find journal stays yours.
+      </div>
+    </div>
+  </PhoneFrame>
+);
+
+const UniverseScene = ({ portrait }: { portrait: boolean }) => {
+  const frame = useCurrentFrame();
+
+  return (
+    <AbsoluteFill style={{ opacity: sceneOpacity(frame, universeScene.durationInFrames) }}>
+      <SceneLayout
+        portrait={portrait}
+        copy={
+          <>
+            <div style={rise(frame, 2)}>
+              <Kicker>{universeScene.copy.kicker}</Kicker>
+            </div>
+            <SceneHeadline
+              frame={frame}
+              portrait={portrait}
+              headline={universeScene.copy.headline}
+              accent={universeScene.copy.accent}
+            />
+            <SceneBody frame={frame} portrait={portrait}>
+              {universeScene.copy.body}
+            </SceneBody>
+          </>
+        }
+        phone={<UniversePhone width={portrait ? 570 : 420} />}
+      >
+        <Pill>DISCOVERIES · WATCHLISTS · BRIEFS</Pill>
+      </SceneLayout>
+    </AbsoluteFill>
+  );
+};
+
 const DetailPhone = ({ width }: { width: number }) => {
   const frame = useCurrentFrame();
-  const zoom = interpolate(frame, [0, 180], [1.025, 1], clamp);
+  const zoom = interpolate(frame, [0, detailScene.durationInFrames], [1.025, 1], clamp);
 
   return (
     <PhoneFrame width={width}>
       <DeviceMedia src="detail-aapl-loaded.png" />
       <Sequence durationInFrames={102}>
         <Video
-          src={staticFile("market-detail-aapl.mp4")}
+          src={staticFile(detailScene.asset)}
           muted
           objectFit="cover"
           style={{ ...fillVideo, transform: `scale(${zoom})` }}
@@ -640,7 +880,7 @@ const DetailPhone = ({ width }: { width: number }) => {
 
 const DetailScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
-  const opacity = sceneOpacity(frame, DETAIL_SCENE_FRAMES);
+  const opacity = sceneOpacity(frame, detailScene.durationInFrames);
 
   return (
     <AbsoluteFill style={{ opacity }}>
@@ -649,7 +889,7 @@ const DetailScene = ({ portrait }: { portrait: boolean }) => {
         copy={
           <>
             <div style={rise(frame, 2)}>
-              <Kicker>02 · Market detail</Kicker>
+              <Kicker>{detailScene.copy.kicker}</Kicker>
             </div>
             <div
               style={{
@@ -661,9 +901,9 @@ const DetailScene = ({ portrait }: { portrait: boolean }) => {
                 letterSpacing: "-0.045em",
               }}
             >
-              Chart + sources,
+              {detailScene.copy.headline}
               <br />
-              <span style={{ color: COLORS.accent }}>in one place.</span>
+              <span style={{ color: COLORS.accent }}>{detailScene.copy.accent}</span>
             </div>
             <div
               style={{
@@ -675,7 +915,7 @@ const DetailScene = ({ portrait }: { portrait: boolean }) => {
                 lineHeight: 1.4,
               }}
             >
-              Live AAPL detail from the signed-in simulator. Values stay inside the captured UI.
+              {detailScene.copy.body} Values stay inside the captured UI.
             </div>
           </>
         }
@@ -737,7 +977,7 @@ const ResearchPhone = ({ width }: { width: number }) => {
         style={{ ...fillMedia, opacity: interpolate(frame, [10, 25], [0, 1], clamp) }}
       />
       <Sequence from={22} durationInFrames={150}>
-        <Video src={staticFile("research-aapl.mp4")} muted objectFit="cover" style={fillVideo} />
+        <Video src={staticFile(researchScene.asset)} muted objectFit="cover" style={fillVideo} />
       </Sequence>
       <Img
         src={staticFile("research-complete.png")}
@@ -766,7 +1006,7 @@ const ResearchPhone = ({ width }: { width: number }) => {
 
 const ResearchScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
-  const opacity = sceneOpacity(frame, RESEARCH_SCENE_FRAMES);
+  const opacity = sceneOpacity(frame, researchScene.durationInFrames);
   const completion = researchCompletion(frame);
 
   return (
@@ -776,7 +1016,7 @@ const ResearchScene = ({ portrait }: { portrait: boolean }) => {
         copy={
           <>
             <div style={rise(frame, 1)}>
-              <Kicker>03 · Research</Kicker>
+              <Kicker>{researchScene.copy.kicker}</Kicker>
             </div>
             <div
               style={{
@@ -788,9 +1028,9 @@ const ResearchScene = ({ portrait }: { portrait: boolean }) => {
                 letterSpacing: "-0.045em",
               }}
             >
-              Ask a question.
+              {researchScene.copy.headline}
               <br />
-              <span style={{ color: COLORS.accent }}>Get the evidence.</span>
+              <span style={{ color: COLORS.accent }}>{researchScene.copy.accent}</span>
             </div>
             <div
               style={{
@@ -802,7 +1042,7 @@ const ResearchScene = ({ portrait }: { portrait: boolean }) => {
                 lineHeight: 1.38,
               }}
             >
-              “Give me a research brief on $AAPL.”
+              {researchScene.copy.body}
             </div>
           </>
         }
@@ -829,10 +1069,47 @@ const ResearchScene = ({ portrait }: { portrait: boolean }) => {
   );
 };
 
+const DailyPhone = ({ width }: { width: number }) => (
+  <PhoneFrame width={width}>
+    <Video src={staticFile(dailyScene.asset)} muted objectFit="cover" style={fillVideo} />
+  </PhoneFrame>
+);
+
+const DailyScene = ({ portrait }: { portrait: boolean }) => {
+  const frame = useCurrentFrame();
+
+  return (
+    <AbsoluteFill style={{ opacity: sceneOpacity(frame, dailyScene.durationInFrames) }}>
+      <SceneLayout
+        portrait={portrait}
+        copy={
+          <>
+            <div style={rise(frame, 2)}>
+              <Kicker>{dailyScene.copy.kicker}</Kicker>
+            </div>
+            <SceneHeadline
+              frame={frame}
+              portrait={portrait}
+              headline={dailyScene.copy.headline}
+              accent={dailyScene.copy.accent}
+            />
+            <SceneBody frame={frame} portrait={portrait}>
+              {dailyScene.copy.body}
+            </SceneBody>
+          </>
+        }
+        phone={<DailyPhone width={portrait ? 570 : 420} />}
+      >
+        <Pill>WATCHLIST · DAILY CONTEXT</Pill>
+      </SceneLayout>
+    </AbsoluteFill>
+  );
+};
+
 const EndScene = ({ portrait }: { portrait: boolean }) => {
   const frame = useCurrentFrame();
   const opacity = interpolate(frame, [0, 14], [0, 1], clamp);
-  const scale = spring({ frame, fps: 30, config: { damping: 17, stiffness: 95 } });
+  const scale = spring({ frame, fps: FPS, config: { damping: 17, stiffness: 95 } });
 
   return (
     <AbsoluteFill
@@ -847,7 +1124,7 @@ const EndScene = ({ portrait }: { portrait: boolean }) => {
     >
       <div style={{ transform: `scale(${interpolate(scale, [0, 1], [0.9, 1])})` }}>
         <Img
-          src={staticFile("brand/mark.svg")}
+          src={staticFile(ctaScene.asset)}
           style={{ width: portrait ? 150 : 120, height: portrait ? 150 : 120, margin: "0 auto" }}
         />
         <div
@@ -862,13 +1139,24 @@ const EndScene = ({ portrait }: { portrait: boolean }) => {
             textTransform: "uppercase",
           }}
         >
-          The world is your
+          {ctaScene.copy.headline}
           <br />
-          <span style={{ color: COLORS.accent }}>watchlist.</span>
+          <span style={{ color: COLORS.accent }}>{ctaScene.copy.accent}</span>
         </div>
         <div
           style={{
-            marginTop: portrait ? 70 : 48,
+            marginTop: portrait ? 40 : 28,
+            color: COLORS.muted,
+            fontFamily: FONT_FAMILY,
+            fontSize: portrait ? 28 : 23,
+            fontWeight: 650,
+          }}
+        >
+          {ctaScene.copy.body}
+        </div>
+        <div
+          style={{
+            marginTop: portrait ? 36 : 28,
             display: "inline-flex",
             border: "1px solid rgba(20,196,166,0.5)",
             borderRadius: 999,
@@ -886,6 +1174,19 @@ const EndScene = ({ portrait }: { portrait: boolean }) => {
       </div>
     </AbsoluteFill>
   );
+};
+
+const SCENE_COMPONENTS: Record<LaunchSceneId, ComponentType<{ portrait: boolean }>> = {
+  hook: HookScene,
+  map: MapScene,
+  "local-brief": LocalBriefScene,
+  camera: CameraScene,
+  result: ResultScene,
+  universe: UniverseScene,
+  detail: DetailScene,
+  research: ResearchScene,
+  daily: DailyScene,
+  cta: EndScene,
 };
 
 const TimelineProgress = () => {
@@ -916,30 +1217,36 @@ const TimelineProgress = () => {
   );
 };
 
-export const MapvestTweet = ({ format }: MapvestTweetProps) => {
+const musicVolume = (frame: number) =>
+  interpolate(
+    frame,
+    [0, frameAt(1.25), TOTAL_DURATION_IN_FRAMES - frameAt(2), TOTAL_DURATION_IN_FRAMES],
+    [0, 0.78, 0.78, 0],
+    clamp,
+  );
+
+export const MapvestTweet = ({ format, soundtrack }: MapvestTweetProps) => {
   const portrait = format === "portrait";
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.background }}>
       <Background />
-      <Sequence from={0} durationInFrames={90} premountFor={30}>
-        <HookScene portrait={portrait} />
-      </Sequence>
-      <Sequence from={72} durationInFrames={198} premountFor={30}>
-        <CameraScene portrait={portrait} />
-      </Sequence>
-      <Sequence from={255} durationInFrames={135} premountFor={30}>
-        <ResultScene portrait={portrait} />
-      </Sequence>
-      <Sequence from={375} durationInFrames={DETAIL_SCENE_FRAMES} premountFor={30}>
-        <DetailScene portrait={portrait} />
-      </Sequence>
-      <Sequence from={555} durationInFrames={RESEARCH_SCENE_FRAMES} premountFor={30}>
-        <ResearchScene portrait={portrait} />
-      </Sequence>
-      <Sequence from={720} durationInFrames={90} premountFor={30}>
-        <EndScene portrait={portrait} />
-      </Sequence>
+      {soundtrack === "music" ? (
+        <Audio src={staticFile(LAUNCH_MUSIC_ASSET)} volume={musicVolume} />
+      ) : null}
+      {LAUNCH_STORYBOARD.map((scene) => {
+        const SceneComponent = SCENE_COMPONENTS[scene.id];
+        return (
+          <Sequence
+            key={scene.id}
+            from={scene.startFrame}
+            durationInFrames={scene.durationInFrames}
+            premountFor={FPS}
+          >
+            <SceneComponent portrait={portrait} />
+          </Sequence>
+        );
+      })}
       <TimelineProgress />
     </AbsoluteFill>
   );

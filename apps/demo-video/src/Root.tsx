@@ -1,30 +1,22 @@
 import { Composition } from "remotion";
 import { MapvestTweet } from "./MapvestTweet";
-
-export const FPS = 30;
-export const DURATION_IN_FRAMES = 27 * FPS;
+import { COMPOSITION_VARIANTS, FPS, TOTAL_DURATION_IN_FRAMES } from "./storyboard";
 
 export const RemotionRoot = () => {
   return (
     <>
-      <Composition
-        id="MapvestTweetPortrait"
-        component={MapvestTweet}
-        durationInFrames={DURATION_IN_FRAMES}
-        fps={FPS}
-        width={1080}
-        height={1920}
-        defaultProps={{ format: "portrait" as const }}
-      />
-      <Composition
-        id="MapvestTweetSquare"
-        component={MapvestTweet}
-        durationInFrames={DURATION_IN_FRAMES}
-        fps={FPS}
-        width={1080}
-        height={1080}
-        defaultProps={{ format: "square" as const }}
-      />
+      {COMPOSITION_VARIANTS.map(({ id, format, soundtrack, width, height }) => (
+        <Composition
+          key={id}
+          id={id}
+          component={MapvestTweet}
+          durationInFrames={TOTAL_DURATION_IN_FRAMES}
+          fps={FPS}
+          width={width}
+          height={height}
+          defaultProps={{ format, soundtrack }}
+        />
+      ))}
     </>
   );
 };
