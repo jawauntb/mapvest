@@ -4,7 +4,7 @@
   "private": true,
   "description": "Google-Maps/Zillow-style investable-brand explorer.",
   "workspaces": {
-    "packages": ["packages/*", "apps/api", "apps/landing"],
+    "packages": ["packages/*", "apps/api", "apps/landing", "apps/demo-video"],
     "nohoist": []
   },
   "//workspaces-note": "apps/ios is intentionally NOT a workspace member. Expo's Metro resolver breaks against Bun's hoisted .bun/ symlink layout. Local dev: `cd apps/ios && npm install && npx expo start --ios`. See apps/ios/README.md.",
@@ -19,7 +19,11 @@
     "format": "biome format --write .",
     "openapi": "bun run packages/core/scripts/gen-openapi.ts",
     "postman": "bun run packages/core/scripts/gen-postman.ts",
-    "mapvest": "bun run packages/cli/src/index.ts"
+    "mapvest": "bun run packages/cli/src/index.ts",
+    "demo:video": "bun run --filter @mapvest/demo-video start",
+    "demo:video:typecheck": "bun run --filter @mapvest/demo-video typecheck",
+    "demo:video:render:portrait": "bun run --filter @mapvest/demo-video render:portrait",
+    "demo:video:render:square": "bun run --filter @mapvest/demo-video render:square"
   },
   "packageManager": "bun@1.3.13",
   "engines": {

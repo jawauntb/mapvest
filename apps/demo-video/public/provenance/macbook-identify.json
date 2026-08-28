@@ -1,0 +1,46 @@
+{
+  "identification": {
+    "detected": [
+      {
+        "brand": "Apple",
+        "product": "MacBook laptop (ticker: AAPL)",
+        "sector": "Information Technology",
+        "confidence": "high"
+      }
+    ]
+  },
+  "investables": [
+    {
+      "brand": {
+        "name": "Apple",
+        "parent": "Apple Inc",
+        "isPublic": true,
+        "ticker": {
+          "symbol": "AAPL",
+          "exchange": "NASDAQ",
+          "parent": "Apple Inc"
+        }
+      },
+      "confidence": "high",
+      "sources": [
+        {
+          "provider": "manual",
+          "fetchedAt": "2026-08-28T09:01:13.929Z",
+          "confidence": "high"
+        },
+        {
+          "provider": "openrouter",
+          "fetchedAt": "2026-08-28T09:01:13.929Z",
+          "confidence": "high"
+        }
+      ],
+      "quote": {
+        "symbol": "AAPL",
+        "ts": "2026-08-28T08:55:44.525Z",
+        "disclaimer": "freshness depends on Massive subscription, source: Massive",
+        "provider": "massive",
+        "freshness": "unknown"
+      }
+    }
+  ]
+}
