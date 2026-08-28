@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-28T22:04:06.268Z",
+  "model": "lyria-3-pro-preview",
+  "endpoint": "/v1beta/interactions",
+  "store": false,
+  "promptPath": "music/mapvest-launch.prompt.txt",
+  "promptSha256": "1314ffa0c6e0ef8ff54161b85f2a214196984c3cc2356ec933ce4756fc2b217c",
+  "sourceMimeType": "audio/mpeg",
+  "sourceSha256": "d17422d56d52f1a788753174bd14b47db4f2891381efccc2b53f040f379d7e97",
+  "sourceDurationSeconds": 97.071,
+  "outputSha256": "d3848308681a8e92627446d3a3697b6b7c07499ae5ed8979d22cc7f3effa1e55",
+  "outputDurationSeconds": 58.54,
+  "codec": "mp3",
+  "sampleRate": 44100,
+  "channels": 2,
+  "synthId": true,
+  "instrumentalOnlyRequested": true,
+  "estimatedGenerationCostUsd": 0.08
+}

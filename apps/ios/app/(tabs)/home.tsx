@@ -33,6 +33,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  type LayoutChangeEvent,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -44,6 +45,7 @@ import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type SortKey = "added" | "name" | "price" | "changePct";
+type DemoSection = "local" | "daily";
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "added", label: "Added" },
   { key: "name", label: "Name" },
@@ -97,7 +99,20 @@ export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { session } = useSession();
-  const params = useLocalSearchParams<{ focus?: string }>();
+  const params = useLocalSearchParams<{
+    focus?: string;
+    demoSection?: string | string[];
+  }>();
+  const demoSectionParam = Array.isArray(params.demoSection)
+    ? params.demoSection[0]
+    : params.demoSection;
+  const demoSection: DemoSection | undefined =
+    __DEV__ && (demoSectionParam === "local" || demoSectionParam === "daily")
+      ? demoSectionParam
+      : undefined;
+  const listRef = useRef<FlatList<WatchEntry>>(null);
+  const demoSectionOffsetsRef = useRef<Partial<Record<DemoSection, number>>>({});
+  const demoScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<TextInput>(null);
   const [tickerQuery, setTickerQuery] = useState("");
   /** Debounced copy of tickerQuery — drives live quote suggestions. */
@@ -107,6 +122,41 @@ export default function HomeScreen() {
   // `null` = "All lists" (server default-list scoping).
   // Any list id = filter to that one list.
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
+
+  const scrollToDemoSection = useCallback(
+    (section: DemoSection) => {
+      if (!__DEV__ || demoSection !== section) return;
+      const offset = demoSectionOffsetsRef.current[section];
+      if (offset === undefined) return;
+
+      if (demoScrollTimerRef.current) clearTimeout(demoScrollTimerRef.current);
+      demoScrollTimerRef.current = setTimeout(() => {
+        listRef.current?.scrollToOffset({ offset, animated: false });
+        demoScrollTimerRef.current = null;
+      }, 120);
+    },
+    [demoSection],
+  );
+
+  const recordDemoSectionLayout = useCallback(
+    (section: DemoSection, event: LayoutChangeEvent) => {
+      if (!__DEV__) return;
+      demoSectionOffsetsRef.current[section] = event.nativeEvent.layout.y;
+      scrollToDemoSection(section);
+    },
+    [scrollToDemoSection],
+  );
+
+  useEffect(() => {
+    if (demoSection) scrollToDemoSection(demoSection);
+  }, [demoSection, scrollToDemoSection]);
+
+  useEffect(
+    () => () => {
+      if (demoScrollTimerRef.current) clearTimeout(demoScrollTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (params.focus === "search") {
@@ -329,6 +379,7 @@ export default function HomeScreen() {
 
       <ScreenFade>
         <FlatList
+          ref={listRef}
           style={{ flex: 1 }}
           data={wlCollapsed ? [] : items}
           keyExtractor={(e) => e.ticker}
@@ -564,7 +615,10 @@ export default function HomeScreen() {
                 </View>
               ) : null}
 
-              <View style={{ marginTop: 8 }}>
+              <View
+                style={{ marginTop: 8 }}
+                onLayout={(event) => recordDemoSectionLayout("local", event)}
+              >
                 <LocalEconomyBriefCard token={session?.token} />
               </View>
 
@@ -576,11 +630,13 @@ export default function HomeScreen() {
                   {/* Brief follows the visible list: a selected list gets its
                       own brief; "All" tracks the server default list, so it
                       re-keys and refetches when the default is reassigned. */}
-                  <DailyBriefCard
-                    token={session.token}
-                    tickers={rawItems.map((i) => i.ticker)}
-                    listId={selectedListId ?? undefined}
-                  />
+                  <View onLayout={(event) => recordDemoSectionLayout("daily", event)}>
+                    <DailyBriefCard
+                      token={session.token}
+                      tickers={rawItems.map((i) => i.ticker)}
+                      listId={selectedListId ?? undefined}
+                    />
+                  </View>
                   <TopMoversCard
                     items={rawItems}
                     quotes={quotes}

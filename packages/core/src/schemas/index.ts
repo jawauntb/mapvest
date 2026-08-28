@@ -109,6 +109,43 @@ export const PhotoIdentification = z.object({
 });
 export type PhotoIdentification = z.infer<typeof PhotoIdentification>;
 
+// -------- provider integration contracts --------
+
+/**
+ * Internal Google Interactions request used to generate a Lyria soundtrack.
+ * This is a provider boundary, not a Mapvest HTTP endpoint, so it is exported
+ * for runtime validation without being registered in the OpenAPI generator.
+ */
+export const LyriaInteractionRequest = z.object({
+  model: z.string().min(1),
+  input: z.string().min(1),
+  store: z.literal(false),
+});
+export type LyriaInteractionRequest = z.infer<typeof LyriaInteractionRequest>;
+
+export const LyriaInteractionContent = z.object({
+  type: z.string().optional(),
+  data: z.string().min(1).optional(),
+  mime_type: z.string().min(1).optional(),
+  mimeType: z.string().min(1).optional(),
+});
+export type LyriaInteractionContent = z.infer<typeof LyriaInteractionContent>;
+
+export const LyriaInteractionResponse = z.object({
+  steps: z.array(
+    z.object({
+      type: z.string().optional(),
+      content: z.array(LyriaInteractionContent).optional(),
+      model_output: z
+        .object({
+          content: z.array(LyriaInteractionContent).optional(),
+        })
+        .optional(),
+    }),
+  ),
+});
+export type LyriaInteractionResponse = z.infer<typeof LyriaInteractionResponse>;
+
 // -------- API DTOs --------
 
 export const IdentifyRequest = z.object({
