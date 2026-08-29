@@ -114,6 +114,13 @@ jobs:
           eas-version: 22.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Validate external TestFlight distribution workflow
+        working-directory: apps/ios
+        run: >
+          eas workflow:validate
+          .eas/workflows/testflight-external.yml
+          --non-interactive
+
       # Wait so a PRE_INSTALL / compile failure turns this check red.
       # --auto-submit uploads to App Store Connect after the IPA is ready.
       - name: EAS build + submit

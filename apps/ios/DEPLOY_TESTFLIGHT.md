@@ -25,7 +25,39 @@ Do not set `EAS_NO_VCS=1`. The EAS worker keeps the git root as
 VCS-less archive from `apps/ios` (or a worktree pack that drops that nested
 path) fails in `PRE_INSTALL_HOOK` before native compilation.
 
-The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), then waits on `eas build --auto-submit`. A failed hook or compile fails the Actions check.
+The workflow installs `apps/ios` with `npm install --no-workspaces` (iOS is not a Bun workspace; the committed lockfile can lag `package.json`), validates the external-distribution workflow after authenticated EAS setup, then waits on `eas build --auto-submit`. An invalid distribution workflow, failed hook, or compile fails the Actions check.
+
+When App Store Connect finishes receiving that exact upload, the EAS workflow
+at `.eas/workflows/testflight-external.yml` assigns its Apple build ID to the
+external `friend-testers` group and submits it for Beta App Review. The Expo
+project must remain connected to App Store Connect app `6798832989`; verify the
+link without changing it with:
+
+```
+(
+  cd apps/ios
+  eas integrations:asc:status --json
+  eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive
+)
+```
+
+The event trigger is build-specific—never replace it with a generic "latest"
+lookup. If an event run needs repair, copy the Apple build ID from the EAS
+workflow or App Store Connect and run the same job explicitly:
+
+```
+(
+  cd apps/ios
+  eas workflow:run .eas/workflows/testflight-external.yml \
+    --input asc_build_id=APPLE_BUILD_ID \
+    --non-interactive \
+    --wait
+)
+```
+
+External distribution cannot bypass Apple processing or Beta App Review.
+Approved builds become available to the whole `friend-testers` group; each
+tester controls whether TestFlight installs them automatically on their phone.
 
 Every production release first runs a local macOS EAS build with the
 `production-preflight` profile. It downloads the same managed certificate and
@@ -91,18 +123,20 @@ after Apple finishes their processing scan).
 
 Open App Store Connect → your app → TestFlight:
 
-- **Internal Testing Group**: create `mapvest-demo`, add teammates by their
-  Apple ID email. They get an invite + can install via the TestFlight app.
-- **What to Test**: paste the release notes below.
-- Optionally add an **External Testing Group** for public link distribution
-  (requires a Beta App Review; ~24-48h turnaround).
+- Internal groups receive eligible builds through App Store Connect's automatic
+  internal distribution.
+- The populated external group is `friend-testers`; its public link is
+  `https://testflight.apple.com/join/yvYrrxbM`.
+- `.eas/workflows/testflight-external.yml` adds every completed upload to that
+  exact external group, supplies "What to Test", and requests Beta App Review.
+- Keep the app-level TestFlight description, feedback/contact details, export
+  compliance, and review login information complete so Apple can accept the
+  automated review request.
 
 ## 4. Public link
 
-Once a build passes review (external group only), TestFlight gives you a
-`https://testflight.apple.com/join/XXXXXXXX` URL. Paste that into the landing
-page's TestFlight CTA by editing `apps/landing/src/app/page.tsx` and searching
-for `testflight.apple.com/join/PLACEHOLDER`.
+The live `friend-testers` public URL is
+`https://testflight.apple.com/join/yvYrrxbM`; the landing page already uses it.
 
 ## Release notes (paste into TestFlight "What to Test")
 

@@ -99,8 +99,9 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] `eas submit --platform ios`
 - [x] Internal testers group configured
 - [x] `ios-eas-production` after green `ci` on `main` (`workflow_run`)
+- [x] Completed App Store Connect uploads auto-distribute to external `friend-testers`
 
-**Acceptance**: Build appears in App Store Connect → TestFlight; internal group can install.
+**Acceptance**: Build appears in App Store Connect → TestFlight; internal groups can install after processing, and the external `friend-testers` group receives each approved latest build.
 
 ---
 
