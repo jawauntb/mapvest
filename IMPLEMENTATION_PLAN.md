@@ -99,9 +99,12 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = in progress
 - [x] `eas submit --platform ios`
 - [x] Internal testers group configured
 - [x] `ios-eas-production` after green `ci` on `main` (`workflow_run`)
-- [x] Completed App Store Connect uploads auto-distribute to external `friend-testers`
+- [x] GitHub queues releases, rechecks stale CI SHAs before signing and EAS dispatch, and tracks one exact EAS run ID
+- [x] Production passes its exact build UUID to external `friend-testers` with a 60-minute ASC wait
+- [x] Manual recovery targets one processed ASC build and can skip re-review for a prior approved build
+- [x] The runner rejects dirty source and active orphan runs, then confirms cancellation after ambiguous waits
 
-**Acceptance**: Build appears in App Store Connect → TestFlight; internal groups can install after processing, and the external `friend-testers` group receives each approved latest build.
+**Acceptance**: Build appears in App Store Connect → TestFlight; internal groups can install after processing, and the external `friend-testers` group receives that exact build after Apple approval. EAS success proves review submission, not Apple approval or tester-device installation. Same-version review collisions and Apple's six-submission daily limit use the exact-ASC recovery path after the active review clears.
 
 ---
 
