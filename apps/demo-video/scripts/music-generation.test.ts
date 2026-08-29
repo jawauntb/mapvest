@@ -17,6 +17,20 @@ const responseWithAudio = () =>
     { status: 200, headers: { "content-type": "application/json" } },
   );
 
+const responseWithAbortableBody = (signal: AbortSignal, onBodyRead = () => {}) => {
+  const response = new Response(null, { status: 200 });
+  response.json = () =>
+    new Promise<never>((_resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      onBodyRead();
+    });
+  return response;
+};
+
 describe("requestLyria", () => {
   test("validates the outgoing request and incoming provider response", async () => {
     let submittedBody: unknown;
@@ -97,6 +111,89 @@ describe("requestLyria", () => {
       }),
     ).rejects.toThrow("No retry was attempted.");
     expect(requestCount).toBe(1);
+  });
+
+  test("cancels the single request from an external signal without retrying", async () => {
+    const controller = new AbortController();
+    let requestCount = 0;
+    const fetchImpl: LyriaFetch = (_input, init) => {
+      requestCount += 1;
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return reject(new Error("Expected a composed abort signal"));
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    };
+
+    const request = requestLyria({
+      endpoint: "https://example.invalid/interactions",
+      apiKey: "x",
+      model: "lyria-3-pro-preview",
+      prompt: "Instrumental launch soundtrack",
+      timeoutMs: 1_000,
+      signal: controller.signal,
+      fetchImpl,
+    });
+    controller.abort(new Error("simulated SIGTERM"));
+
+    await expect(request).rejects.toThrow("cancelled. No retry was attempted.");
+    expect(requestCount).toBe(1);
+  });
+
+  test("preserves external cancellation while reading the response body", async () => {
+    const controller = new AbortController();
+    let reportBodyReadStarted!: () => void;
+    const bodyReadStarted = new Promise<void>((resolve) => {
+      reportBodyReadStarted = resolve;
+    });
+    const fetchImpl: LyriaFetch = async (_input, init) => {
+      const requestSignal = init?.signal;
+      if (!requestSignal) throw new Error("Expected a composed abort signal");
+      return responseWithAbortableBody(requestSignal, reportBodyReadStarted);
+    };
+
+    const request = requestLyria({
+      endpoint: "https://example.invalid/interactions",
+      apiKey: "x",
+      model: "lyria-3-pro-preview",
+      prompt: "Instrumental launch soundtrack",
+      timeoutMs: 1_000,
+      signal: controller.signal,
+      fetchImpl,
+    });
+    await bodyReadStarted;
+    controller.abort(new Error("simulated SIGTERM during body read"));
+
+    await expect(request).rejects.toThrow("cancelled. No retry was attempted.");
+  });
+
+  test("distinguishes a response-body timeout from invalid provider JSON", async () => {
+    const timeoutFetch: LyriaFetch = async (_input, init) => {
+      const requestSignal = init?.signal;
+      if (!requestSignal) throw new Error("Expected a timeout signal");
+      return responseWithAbortableBody(requestSignal);
+    };
+    await expect(
+      requestLyria({
+        endpoint: "https://example.invalid/interactions",
+        apiKey: "x",
+        model: "lyria-3-pro-preview",
+        prompt: "Instrumental launch soundtrack",
+        timeoutMs: 5,
+        fetchImpl: timeoutFetch,
+      }),
+    ).rejects.toThrow("timed out");
+
+    const invalidJsonFetch: LyriaFetch = async () => new Response("{", { status: 200 });
+    await expect(
+      requestLyria({
+        endpoint: "https://example.invalid/interactions",
+        apiKey: "x",
+        model: "lyria-3-pro-preview",
+        prompt: "Instrumental launch soundtrack",
+        fetchImpl: invalidJsonFetch,
+      }),
+    ).rejects.toThrow("invalid JSON");
   });
 });
 

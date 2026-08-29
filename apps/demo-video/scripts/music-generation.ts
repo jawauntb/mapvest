@@ -21,6 +21,7 @@ type RequestLyriaOptions = {
   model: string;
   prompt: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
   fetchImpl?: LyriaFetch;
 };
 
@@ -33,9 +34,12 @@ export const requestLyria = async ({
   model,
   prompt,
   timeoutMs = LYRIA_REQUEST_TIMEOUT_MS,
+  signal,
   fetchImpl = fetch,
 }: RequestLyriaOptions): Promise<LyriaInteractionResponseType> => {
   const request = LyriaInteractionRequest.parse({ model, input: prompt, store: false });
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
   let response: Response;
   try {
@@ -46,9 +50,12 @@ export const requestLyria = async ({
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: requestSignal,
     });
   } catch (error) {
+    if (signal?.aborted) {
+      throw new Error("Lyria request was cancelled. No retry was attempted.", { cause: error });
+    }
     if (isRequestTimeout(error)) {
       throw new Error(
         `Lyria request timed out after ${Math.ceil(timeoutMs / 1_000)} seconds. No retry was attempted.`,
@@ -66,6 +73,15 @@ export const requestLyria = async ({
   try {
     rawPayload = await response.json();
   } catch (error) {
+    if (signal?.aborted) {
+      throw new Error("Lyria request was cancelled. No retry was attempted.", { cause: error });
+    }
+    if (timeoutSignal.aborted && isRequestTimeout(error)) {
+      throw new Error(
+        `Lyria request timed out after ${Math.ceil(timeoutMs / 1_000)} seconds. No retry was attempted.`,
+        { cause: error },
+      );
+    }
     throw new Error("Lyria returned invalid JSON. No retry was attempted.", { cause: error });
   }
 
