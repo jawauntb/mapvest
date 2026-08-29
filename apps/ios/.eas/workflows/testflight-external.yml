@@ -1,0 +1,25 @@
+name: Distribute external TestFlight builds
+
+on:
+  app_store_connect:
+    build_upload:
+      states:
+        - complete
+  workflow_dispatch:
+    inputs:
+      asc_build_id:
+        type: string
+        required: true
+        description: App Store Connect build ID to distribute.
+
+jobs:
+  distribute_to_testflight:
+    name: Distribute to friend-testers
+    type: testflight
+    params:
+      asc_build_id: ${{ app_store_connect.build_upload.build.id || inputs.asc_build_id }}
+      external_groups:
+        - friend-testers
+      changelog: |
+        Mapvest beta: try Map, Camera, Your Universe, Research, and Mapvest Daily.
+      submit_beta_review: true

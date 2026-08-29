@@ -88,7 +88,7 @@ eas build --platform ios --profile production --auto-submit --non-interactive
 
 ### CI (automatic)
 
-GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`) cuts a production TestFlight after **green `ci` on `main`**, the same `workflow_run` gate as Railway `deploy.yml`. It checks out that merge SHA, waits for EAS (so a `PRE_INSTALL_HOOK` or compile miss is a red check), then `--auto-submit`s to App Store Connect.
+GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`) cuts a production TestFlight after **green `ci` on `main`**, the same `workflow_run` gate as Railway `deploy.yml`. It checks out that merge SHA, validates the external-distribution workflow after authenticated EAS setup, waits for EAS (so an invalid distribution workflow, `PRE_INSTALL_HOOK`, or compile miss is a red check), then `--auto-submit`s to App Store Connect. After App Store Connect reports that exact upload complete, `apps/ios/.eas/workflows/testflight-external.yml` assigns its Apple build ID to the external `friend-testers` group and submits it for Beta App Review.
 
 Every production release first runs the `production-preflight` profile as a
 local macOS EAS build. It uses the same EAS-managed production certificate and
@@ -127,13 +127,15 @@ profile while reusing the distribution certificate. Do not delete unrelated
 share-extension or widget profiles. The local signing preflight is the
 enforcement gate; `--clear-cache` does not refresh signing credentials.
 
-The build appears in App Store Connect → TestFlight → your internal group within ~15 min of upload. Production submits are serialized (`concurrency: ios-eas-production-store`).
+The build appears in App Store Connect → TestFlight → the automatic internal groups after processing. The external `friend-testers` build then advances through Apple's Beta App Review; production submits remain serialized (`concurrency: ios-eas-production-store`). The EAS workflow binds distribution to the upload event's Apple build ID rather than a racy "latest" lookup.
 
 Public join URL (landing CTA): https://testflight.apple.com/join/yvYrrxbM
 
-### Demo group
+### Tester groups
 
-Set up an **internal testing** group `mapvest-demo` and add teammates by Apple ID. They receive a TestFlight invite via email and install through the TestFlight app. Testers can also use the public join link above.
+The populated external group is `friend-testers`, backed by the public link above. Every completed upload is added to it automatically and submitted for review. Apple decides when review is required; testers decide whether TestFlight's Automatic Updates setting installs the approved build on their devices.
+
+The Expo project is connected to App Store Connect app `6798832989`. Verify the connection and workflow schema from `apps/ios` with `eas integrations:asc:status --json` and `eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive`.
 
 ## Landing page → Docs
 
