@@ -79,6 +79,47 @@ The accepted track is original instrumental music with SynthID. Lyria is a paid 
 does not guarantee byte-for-byte regeneration or exclusivity, which is why the accepted artifact
 and its SHA-256 are retained. Silent compositions contain no audio stream at all.
 
+## Audition replacement soundtracks
+
+Use the separate alternatives workflow when the accepted music needs a new direction. It generates
+four fixed Lyria candidates and muxes each one onto explicit portrait and square silent masters. It
+does not change the accepted soundtrack, storyboard, silent masters, or normal render manifest.
+
+Run the request-free preflight before spending the estimated `$0.32` for four sequential requests:
+
+```sh
+cd apps/demo-video
+
+bun run music:alternatives -- \
+  --output-dir /Users/jawaun/mapvest-launch-music-options \
+  --portrait-master /Users/jawaun/mapvest-launch-portrait-silent.mp4 \
+  --square-master /Users/jawaun/mapvest-launch-square-silent.mp4 \
+  --dry-run
+
+doppler run --project shared --config dev_personal -- \
+  bun run music:alternatives -- \
+    --output-dir /Users/jawaun/mapvest-launch-music-options \
+    --portrait-master /Users/jawaun/mapvest-launch-portrait-silent.mp4 \
+    --square-master /Users/jawaun/mapvest-launch-square-silent.mp4
+```
+
+The destination must be a new absolute directory under `/Users/jawaun`. Paid generation is
+macOS-only: the command preflights exclusive publication on that filesystem before the first
+request. Publication is immutable and all-or-nothing. Pre-request failures clean staging; after a
+paid response is persisted, later failures preserve the evidence in a uniquely named `.failed-...`
+sibling quarantine and report its JSON-escaped path. Verify the published set later without a model
+request:
+
+```sh
+bun run music:alternatives:verify -- \
+  --output-dir /Users/jawaun/mapvest-launch-music-options \
+  --portrait-master /Users/jawaun/mapvest-launch-portrait-silent.mp4 \
+  --square-master /Users/jawaun/mapvest-launch-square-silent.mp4
+```
+
+See `apps/demo-video/README.md` for the candidate directions, safety guarantees, exact artifact
+set, and audition order.
+
 ## Reusable master prompt
 
 Copy this into a new Codex task for another project, replacing bracketed values:

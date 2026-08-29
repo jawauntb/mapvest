@@ -9,6 +9,8 @@
     "launch:plan": "bun scripts/launch-video.ts plan",
     "launch:prepare": "bun scripts/launch-video.ts prepare",
     "music:generate": "bun scripts/launch-video.ts music",
+    "music:alternatives": "bun scripts/music-alternatives.ts generate",
+    "music:alternatives:verify": "bun scripts/music-alternatives.ts verify",
     "render:all": "bun scripts/launch-video.ts render",
     "render:verify": "bun scripts/launch-video.ts verify",
     "render:portrait:music": "remotion render src/index.ts MapvestLaunchPortraitMusic out/mapvest-launch-portrait-music.mp4 --codec=h264 --audio-codec=aac --crf=18 --color-space=bt709",
