@@ -1,4 +1,4 @@
-# TestFlight: EAS production iOS build + App Store Connect auto-submit.
+# TestFlight: EAS production iOS build + external distribution.
 #
 # Triggers
 # - Green `ci` on `main` (same gate as Railway `deploy.yml`)
@@ -21,18 +21,65 @@ on:
     branches: [main]
 
 concurrency:
-  # One store submit at a time so Apple/EAS do not overlap.
+  # Queue requests so out-of-order CI completions cannot replace newer work.
+  # release_gate cheaply skips any workflow_run SHA that is no longer main.
   group: ios-eas-production-store
   cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: read
 
 jobs:
+  release_gate:
+    name: resolve freshest eligible release
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.freshness.outputs.should_release }}
+
+    steps:
+      - name: Keep only the current green main SHA
+        id: freshness
+        shell: bash
+        env:
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          should_release=true
+          reason="explicit manual or tag release"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            should_release=false
+            reason="CI was not a successful main run"
+            if [[ "$CI_CONCLUSION" == "success" && "$CI_HEAD_BRANCH" == "main" ]]; then
+              main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+              if [[ "$REQUESTED_SHA" == "$main_sha" ]]; then
+                should_release=true
+                reason="CI SHA is still the current main SHA"
+              else
+                reason="a newer main SHA superseded this CI completion"
+              fi
+            fi
+          fi
+
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          {
+            echo "### TestFlight release gate"
+            echo
+            echo "- Requested SHA: \`$REQUESTED_SHA\`"
+            echo "- Release: \`$should_release\`"
+            echo "- Reason: $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   signing_preflight:
     name: local production signing preflight
+    needs: release_gate
     runs-on: macos-15
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+    if: needs.release_gate.outputs.should_release == 'true'
     timeout-minutes: 45
 
     steps:
@@ -58,7 +105,7 @@ jobs:
 
       - name: Install iOS dependencies
         working-directory: apps/ios
-        run: npm install --no-workspaces
+        run: npm ci --no-workspaces
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -83,51 +130,106 @@ jobs:
           --output "$RUNNER_TEMP/mapvest-signing-preflight.ipa"
 
   eas-ios:
-    name: eas build + auto-submit (ios production)
+    name: eas build + external TestFlight distribution (ios production)
     needs: signing_preflight
+    # Keep the job runner available for the `cancelled()` cleanup step. Every
+    # ordinary release step is explicitly cancellation-sensitive below.
+    if: ${{ always() && needs.signing_preflight.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
+        if: ${{ success() && !cancelled() }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Bun
+        if: ${{ success() && !cancelled() }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install monorepo dependencies
+        if: ${{ success() && !cancelled() }}
         run: bun install --frozen-lockfile
 
       # apps/ios is not a Bun workspace member (Metro vs hoisted .bun/).
       # eas-cli resolves expo-router locally before it uploads the tarball.
       - name: Install iOS dependencies
+        if: ${{ success() && !cancelled() }}
         working-directory: apps/ios
-        run: npm install --no-workspaces
+        run: npm ci --no-workspaces
 
       - name: Setup EAS
+        if: ${{ success() && !cancelled() }}
         uses: expo/expo-github-action@v8
         with:
           eas-version: 22.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Validate external TestFlight distribution workflow
+      - name: Validate TestFlight workflows
+        if: ${{ success() && !cancelled() }}
         working-directory: apps/ios
-        run: >
-          eas workflow:validate
-          .eas/workflows/testflight-external.yml
-          --non-interactive
+        run: |
+          eas workflow:validate .eas/workflows/testflight-production.yml --non-interactive
+          eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive
 
-      # Wait so a PRE_INSTALL / compile failure turns this check red.
-      # --auto-submit uploads to App Store Connect after the IPA is ready.
-      - name: EAS build + submit
+      # The signing preflight can take long enough for main to advance. Repeat
+      # the cheap SHA comparison at the last boundary before EAS gets a build.
+      - name: Recheck freshest eligible release before dispatch
+        if: ${{ success() && !cancelled() }}
+        id: dispatch_freshness
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          should_release=true
+          reason="explicit manual or tag release"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+            if [[ "$REQUESTED_SHA" != "$main_sha" ]]; then
+              should_release=false
+              reason="main advanced during signing preflight"
+            else
+              reason="CI SHA is still the current main SHA after signing preflight"
+            fi
+          fi
+
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Final TestFlight release gate"
+            echo
+            echo "- Requested SHA: \`$REQUESTED_SHA\`"
+            echo "- Release: \`$should_release\`"
+            echo "- Reason: $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The runner refuses dirty source and prior nonterminal production runs,
+      # then records, waits on, and reconciles one exact EAS workflow run ID.
+      - name: Start and track EAS production release workflow
+        if: ${{ success() && !cancelled() && steps.dispatch_freshness.outputs.should_release == 'true' }}
         working-directory: apps/ios
-        run: >
-          eas build
-          --platform ios
-          --profile production
-          --auto-submit
-          --non-interactive
+        env:
+          MAPVEST_EAS_RUN_ID_FILE: ${{ runner.temp }}/mapvest-eas-production-run-id
+        run: bun scripts/testflight-production.ts
+
+      - name: Reconcile EAS release after GitHub cancellation
+        if: ${{ cancelled() }}
+        timeout-minutes: 4
+        working-directory: apps/ios
+        env:
+          MAPVEST_EAS_RUN_ID_FILE: ${{ runner.temp }}/mapvest-eas-production-run-id
+        run: |
+          set -euo pipefail
+          if [[ ! -s "$MAPVEST_EAS_RUN_ID_FILE" ]]; then
+            echo "::warning::No EAS run ID was persisted. The next release's active-run guard must reconcile any ambiguous dispatch."
+            exit 1
+          fi
+          bun scripts/testflight-production.ts \
+            --reconcile-run-id-file "$MAPVEST_EAS_RUN_ID_FILE"

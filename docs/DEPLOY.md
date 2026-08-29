@@ -81,14 +81,59 @@ Bundle id: `com.mapvest.app` (change if the Apple team requires).
 # Preview / internal
 eas build --platform ios --profile preview
 
-# Production TestFlight (local / cloud agent with EXPO_TOKEN)
-cd apps/ios
-eas build --platform ios --profile production --auto-submit --non-interactive
+# Routine production TestFlight release (uses the GitHub queue + preflight)
+gh workflow run ios-eas-production.yml --ref main
 ```
+
+The CLI command only dispatches the GitHub workflow. Select its exact ID from
+`gh run list --workflow ios-eas-production.yml --event workflow_dispatch` and
+wait with `gh run watch GITHUB_RUN_ID --exit-status`, or follow it in Actions.
+
+Directly starting the production EAS workflow bypasses the GitHub signing
+preflight and serialized queue. Use the guarded runner only as break-glass
+recovery from a clean intended checkout after proving GitHub has no release:
+
+```bash
+(
+  set -euo pipefail
+  active_count="$(gh run list --workflow ios-eas-production.yml --limit 100 --json status --jq '[.[] | select(.status != "completed")] | length')"
+  test "$active_count" -eq 0
+  cd apps/ios
+  bun scripts/testflight-production.ts
+)
+```
+
+The direct runner resolves pinned `eas-cli@22.0.0` through `npx`; GitHub uses
+the same CLI version installed by its authenticated EAS setup step.
+Its EAS guard is a snapshot rather than an atomic cross-operator lock: never
+start two direct runners concurrently or dispatch the production workflow from
+the Expo dashboard while GitHub is releasing.
 
 ### CI (automatic)
 
-GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`) cuts a production TestFlight after **green `ci` on `main`**, the same `workflow_run` gate as Railway `deploy.yml`. It checks out that merge SHA, validates the external-distribution workflow after authenticated EAS setup, waits for EAS (so an invalid distribution workflow, `PRE_INSTALL_HOOK`, or compile miss is a red check), then `--auto-submit`s to App Store Connect. After App Store Connect reports that exact upload complete, `apps/ios/.eas/workflows/testflight-external.yml` assigns its Apple build ID to the external `friend-testers` group and submits it for Beta App Review.
+GitHub Action `ios-eas-production` (`.github/workflows/ios-eas-production.yml`) cuts a production TestFlight after **green `ci` on `main`**, the same `workflow_run` gate as Railway `deploy.yml`. Its `queue: max` concurrency serializes up to 100 pending requests; GitHub cancels requests beyond that bound. A cheap gate compares each completed-CI SHA with the current `main` SHA and skips stale out-of-order CI completions before signing. The comparison runs again immediately before EAS dispatch, so a SHA that becomes stale during signing is also skipped. Explicit manual and tag refs remain intentional releases. The job installs iOS dependencies with immutable `npm ci --no-workspaces`, validates both TestFlight workflows, and starts `apps/ios/scripts/testflight-production.ts`.
+
+The runner proves the checkout is clean and queries one server-filtered
+snapshot of prior production EAS runs. It treats only `SUCCESS`, `FAILURE`, and
+`CANCELED` as terminal EAS states, so any active or unknown state blocks a new
+dispatch. If EAS accepts a dispatch but loses the response, the runner polls
+briefly and adopts only the single run absent from that snapshot. It atomically
+persists the returned exact EAS run ID, adds its ID and URL to the GitHub step
+summary, and waits on that ID. Ambiguous status failures cancel and reconcile
+the exact run. Every ordinary release step is cancellation-sensitive; the
+enclosing job stays available only so the signal handler can preserve any
+recoverable ID and a separate `cancelled()` cleanup step can use that ID for up
+to four minutes. If hard termination or the network
+prevents confirmation, the next pre-dispatch guard still refuses to overlap
+the orphan.
+
+The production EAS workflow builds the checked-out source with `build_ios`,
+passes that job's EAS build UUID directly to `distribute_to_testflight`, waits
+up to 60 minutes for App Store Connect processing, adds the exact build to
+external `friend-testers`, and submits it for Beta App Review. An ordinary
+terminal EAS failure remains a failure and is not followed by another
+cancellation. An invalid workflow, `PRE_INSTALL_HOOK`, compile, upload,
+processing timeout, or distribution failure makes the GitHub check red.
 
 Every production release first runs the `production-preflight` profile as a
 local macOS EAS build. It uses the same EAS-managed production certificate and
@@ -106,7 +151,35 @@ Also:
 - **Manual:** Actions → `ios-eas-production` → Run workflow (on `main`)
 - **Tag:** `git tag v0.1.0 && git push origin v0.1.0`
 
-Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. Do not set `EAS_NO_VCS=1`. `eas.json` uses `cli.appVersionSource: remote` so every merge gets a unique `buildNumber` without a sync commit.
+Requires repo secret `EXPO_TOKEN` (Expo access token). Apple signing + ASC submit stay in EAS-managed credentials. Do not set `EAS_NO_VCS=1`. `eas.json` uses `cli.appVersionSource: remote` so every production build gets a unique `buildNumber` without a sync commit.
+
+### App Store Connect recovery
+
+If the build is already processed and ready in App Store Connect but group or
+review submission failed, run the ASC-only recovery workflow with its exact
+build ID. `submit_beta_review` defaults to `true` for normal partial-failure
+repair:
+
+```bash
+cd apps/ios
+eas workflow:run .eas/workflows/testflight-external.yml \
+  --input asc_build_id=PROCESSED_ASC_BUILD_ID \
+  --non-interactive \
+  --wait
+```
+
+This workflow does not build, upload, wait for ASC processing, or select a
+generic latest build. `PROCESSED_ASC_BUILD_ID` is the App Store Connect build
+resource ID, not the visible build number or EAS build ID; resolve it from the
+failed EAS TestFlight job when present or through the App Store Connect API.
+
+Apple allows only one build of each marketing version in Beta App Review at a
+time and up to six TestFlight review submissions in 24 hours. GitHub's release
+queue serializes builds through review submission, but it cannot hold the lock
+until Apple approves them. If a later same-version release fails while another
+build is in review, wait for that review to finish, select the newest processed
+pending build, and run the ASC recovery workflow with
+`submit_beta_review=true`. Do not rebuild or submit superseded pending builds.
 
 ### Capability or entitlement changes
 
@@ -127,15 +200,33 @@ profile while reusing the distribution certificate. Do not delete unrelated
 share-extension or widget profiles. The local signing preflight is the
 enforcement gate; `--clear-cache` does not refresh signing credentials.
 
-The build appears in App Store Connect → TestFlight → the automatic internal groups after processing. The external `friend-testers` build then advances through Apple's Beta App Review; production submits remain serialized (`concurrency: ios-eas-production-store`). The EAS workflow binds distribution to the upload event's Apple build ID rather than a racy "latest" lookup.
+The build appears in App Store Connect → TestFlight → the automatic internal groups after processing. The external `friend-testers` build then advances through Apple's Beta App Review. Routine production workflow success means the group assignment and review request were submitted successfully; it does not mean Apple approved the build or that a tester's phone installed it. TestFlight Automatic Updates can install only after Apple makes that build externally available.
 
 Public join URL (landing CTA): https://testflight.apple.com/join/yvYrrxbM
 
 ### Tester groups
 
-The populated external group is `friend-testers`, backed by the public link above. Every completed upload is added to it automatically and submitted for review. Apple decides when review is required; testers decide whether TestFlight's Automatic Updates setting installs the approved build on their devices.
+The populated external group is `friend-testers`, backed by the public link above. Every successful two-job production release adds its exact build automatically and submits it for review. Apple controls review and availability; testers control whether TestFlight's Automatic Updates setting installs an approved build on their devices.
 
-The Expo project is connected to App Store Connect app `6798832989`. Verify the connection and workflow schema from `apps/ios` with `eas integrations:asc:status --json` and `eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive`.
+The Expo project is connected to App Store Connect app `6798832989`. Verify the connection and both schemas from `apps/ios` with `eas integrations:asc:status --json`, `eas workflow:validate .eas/workflows/testflight-production.yml --non-interactive`, and `eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive`.
+
+### Rollback
+
+Expire the broken build in App Store Connect. To restore group membership for
+a still-valid, unexpired, previously approved build, run the ASC recovery
+workflow with that exact build ID and without requesting another review:
+
+```bash
+cd apps/ios
+eas workflow:run .eas/workflows/testflight-external.yml \
+  --input asc_build_id=VALID_PRIOR_ASC_BUILD_ID \
+  --input submit_beta_review=false \
+  --non-interactive \
+  --wait
+```
+
+If no valid prior build exists, cut a new production release. Do not roll back
+with a generic latest lookup or by re-uploading an arbitrary prior EAS build.
 
 ## Landing page → Docs
 
