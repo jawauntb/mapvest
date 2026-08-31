@@ -41,6 +41,7 @@ import {
   startPortal,
   verifyCode,
 } from "@/lib/mapvest-api";
+import { providerPresentationLabel } from "@/lib/provider-presentation";
 import { TESTFLIGHT_URL } from "@/lib/site";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -917,8 +918,8 @@ function ResearchChatArticle({ article }: { article: ResearchArticle }) {
                 {item.summary}
                 {item.source || item.freshness ? (
                   <span className="app-muted">
-                    {item.source ? ` · ${item.source}` : ""}
-                    {item.freshness ? ` · ${item.freshness}` : ""}
+                    {item.source ? ` · ${providerPresentationLabel(item.source)}` : ""}
+                    {item.freshness ? ` · ${providerPresentationLabel(item.freshness)}` : ""}
                   </span>
                 ) : null}
               </li>
@@ -934,7 +935,12 @@ function ResearchChatArticle({ article }: { article: ResearchArticle }) {
             {article.context.slice(0, 4).map((item) => (
               <li key={`${item.summary}:${item.reason ?? ""}`}>
                 {item.summary}
-                {item.reason ? <span className="app-muted"> · {item.reason}</span> : null}
+                {item.reason || item.source ? (
+                  <span className="app-muted">
+                    {item.reason ? ` · ${item.reason}` : ""}
+                    {item.source ? ` · ${providerPresentationLabel(item.source)}` : ""}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1015,11 +1021,11 @@ function ResearchChatArticle({ article }: { article: ResearchArticle }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                {source.label}
+                {providerPresentationLabel(source.label)}
               </a>
             ) : (
               <span key={source.label} className="app-source-chip">
-                {source.label}
+                {providerPresentationLabel(source.label)}
               </span>
             ),
           )}
@@ -1027,7 +1033,9 @@ function ResearchChatArticle({ article }: { article: ResearchArticle }) {
       ) : null}
 
       {article.toolsUsed.length ? (
-        <p className="app-article-tools">Tools · {article.toolsUsed.slice(0, 8).join(" · ")}</p>
+        <p className="app-article-tools">
+          Tools · {article.toolsUsed.slice(0, 8).map(providerPresentationLabel).join(" · ")}
+        </p>
       ) : null}
     </article>
   );

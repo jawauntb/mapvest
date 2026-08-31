@@ -18,8 +18,8 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
           │                    (OpenRouter)         (ticker / ETF)     (Exa)
           │                              │                   │                │
           │                              ▼                   ▼                ▼
-          │                       OpenRouter          Massive · SEC     Exa Web Search
-          │                       (Gemini 2.5 /       Yahoo fallback
+          │                       OpenRouter          Market data        Exa Web Search
+          │                       (Gemini 2.5 /       SEC · Yahoo
           │                        Claude 5 vision)
           │
           └── landing (Next.js) ── mapvest.app — docs, TestFlight link
@@ -195,7 +195,7 @@ error, per the device `.ips` logs — not a chart/native-view bug):
 - `packages/*` may import from other `packages/*` only if the DAG stays acyclic. `core` is the leaf.
 
 Market data follows the same boundary: `packages/finance/src/marketData` owns
-provider selection, Massive normalization, and the explicit Yahoo fallback.
+provider selection, response normalization, and the explicit Yahoo fallback.
 HTTP routes consume that interface and project stable zod response schemas;
 clients do not know which upstream provider supplied a response.
 

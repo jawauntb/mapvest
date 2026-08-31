@@ -1,4 +1,5 @@
 import type { AuctionDataset } from "@/api/underlying";
+import { providerName } from "@/evidence/presentation";
 import { useState } from "react";
 import { safeFixed, safeUpper } from "./format";
 import { terminal } from "./palette";
@@ -48,7 +49,7 @@ export function AuctionChart({ data }: { data: AuctionDataset }) {
   return (
     <ChartShell
       title={`${data.ticker} auction map`}
-      subtitle={`${safeUpper(data.period)} | PROVIDER ${data.provider ?? "n/a"} | ${safeUpper(data.meta?.location)}`}
+      subtitle={`${safeUpper(data.period)} | PROVIDER ${safeUpper(providerName(data.provider ?? "n/a"))} | ${safeUpper(data.meta?.location)}`}
       footerLeft={`Fair price ${safeFixed(poc)} | high ${safeFixed(vah)} | low ${safeFixed(val)}`}
       footerRight={`${data.ticker} ${data.period}`}
     >

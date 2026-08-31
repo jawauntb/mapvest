@@ -1,4 +1,5 @@
 import type { PerformanceDataset } from "@/api/underlying";
+import { providerName } from "@/evidence/presentation";
 import { hapticSelect } from "@/util/haptics";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -21,7 +22,7 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
         title={`${data.ticker} monthly return grid`}
         subtitle="SEASONALITY"
         footerLeft={`${data.ticker} seasonality map`}
-        footerRight={`source ${data.provider ?? "n/a"}`}
+        footerRight={`source ${providerName(data.provider ?? "n/a")}`}
       >
         <PanelNote
           title="No seasonality table"
@@ -50,7 +51,7 @@ export function PerformanceHeatmap({ data }: { data: PerformanceDataset }) {
       title={`${data.ticker} monthly return grid`}
       subtitle={`ROLLING 10 YEARS | ROTATED FROM ${safeUpper(data.meta?.selected_month)} | MEAN 5Y ${safeFixed(data.meta?.mean_5y, 1)}%`}
       footerLeft={`${data.ticker} seasonality map`}
-      footerRight={`source ${data.provider ?? "n/a"}`}
+      footerRight={`source ${providerName(data.provider ?? "n/a")}`}
     >
       <View style={styles.grid}>
         <View style={styles.row}>

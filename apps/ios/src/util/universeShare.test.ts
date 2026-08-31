@@ -27,8 +27,9 @@ describe("Universe share copy", () => {
     expect(copy.message).toContain("+27.4%");
     expect(copy.message).toContain("3 of 4 finds priced when found");
     expect(copy.message).toContain(
-      "Sources: Massive market data · high confidence · Calculated Aug 25, 2026",
+      "Sources: Market data · high confidence · Calculated Aug 25, 2026",
     );
+    expect(copy.message).not.toMatch(/massive|polygon/i);
     expect(copy.message).toContain("My Mapvest universe");
     expect(copy.message).toContain("https://mapvest.app");
   });
@@ -74,6 +75,24 @@ describe("Universe share copy", () => {
 
     expect(copy.provenance).toContain("medium confidence");
     expect(copy.provenance).not.toContain("high confidence");
+  });
+
+  test("deduplicates legacy provider names behind the neutral market-data label", () => {
+    const copy = universeShareCopy({
+      ...summary,
+      sources: [
+        ...summary.sources,
+        {
+          provider: "polygon" as const,
+          fetchedAt: "2026-08-25T11:58:00.000Z",
+          confidence: "high" as const,
+        },
+      ],
+    });
+
+    expect(copy.provenance).toContain("Sources: Market data · high confidence");
+    expect(copy.provenance).not.toContain("Market data, Market data");
+    expect(copy.provenance).not.toMatch(/massive|polygon/i);
   });
 
   test("does not invent a calculated date when the server date is malformed", () => {

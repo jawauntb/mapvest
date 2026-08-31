@@ -1,5 +1,10 @@
 import type { QuoteHistoryInterval } from "@/api/client";
-import { type ChartDataEnvelope, fetchChartData, fetchMoneylineData } from "@/api/underlying";
+import {
+  type ChartDataEnvelope,
+  fetchChartData,
+  fetchMoneylineData,
+  formatChartError,
+} from "@/api/underlying";
 import {
   AuctionChart,
   FlowCompassChart,
@@ -329,7 +334,7 @@ function ChartLoading() {
 function ChartError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <View style={styles.errorBox}>
-      <Text style={styles.errorText}>{message}</Text>
+      <Text style={styles.errorText}>{formatChartError(message)}</Text>
       <Pressable onPress={onRetry} style={styles.retryBtn} accessibilityRole="button">
         <Text style={styles.retryText}>Retry</Text>
       </Pressable>

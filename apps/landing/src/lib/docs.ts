@@ -1,19 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
- * Docs live in the repo root under /docs, plus we surface a couple of
- * top-level design docs (AGENTS.md, IMPLEMENTATION_PLAN.md) so the landing
- * page can render everything a curious reader might want.
+ * Docs live in the repo root under /docs, plus a few top-level design docs.
+ * Operational docs stay in the repository, but the public site only exposes
+ * the product documentation selected below.
  *
  * All reads happen at build time (server components, generateStaticParams).
  * Every filesystem access is wrapped so a missing file returns null / [] —
  * the docs section must never crash the site build.
  */
 
-// Resolve the repo root by walking up from this file:
-//   apps/landing/src/lib/docs.ts  ->  ../../../..
-const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
+// Resolve the repo root from this module so tests and builds behave the same
+// regardless of their current working directory.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const DOCS_DIR = path.join(REPO_ROOT, "docs");
 
 // Extra top-level markdown files worth exposing at /docs/<slug>.
@@ -25,13 +26,23 @@ const TOP_LEVEL: Record<string, string> = {
 };
 
 /**
- * Slugs the landing page must NEVER surface, even though the file exists in
- * /docs. Kept short + explicit — an allowlist would be nicer long term.
- *
- * - `secrets`         — lists env-var names, oversharing on a marketing site.
- * - `loadtest-*`      — internal proof-of-work; irrelevant to end users.
+ * Operational slugs the landing page must never surface, even though the
+ * source files remain available to contributors in the repository.
+ * Keep this explicit: a passing reference in a future product doc should not
+ * silently remove that route from the public site.
  */
-const HIDDEN_SLUGS = new Set<string>(["secrets"]);
+const HIDDEN_SLUGS = new Set<string>([
+  "agents",
+  "data-sources",
+  "deploy",
+  "implementation-plan",
+  "market-data-migration",
+  "massive-capability-matrix",
+  "readme",
+  "secrets",
+  "system-design",
+  "universe-roadmap",
+]);
 const HIDDEN_PREFIXES = ["loadtest-"];
 
 export type DocMeta = {
@@ -59,6 +70,13 @@ function safeRead(p: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Keep operational docs in-repo without publishing them on the marketing site. */
+export function shouldPublishDoc(slug: string): boolean {
+  const normalized = slug.toLowerCase();
+  if (HIDDEN_SLUGS.has(normalized)) return false;
+  return !HIDDEN_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 /**
@@ -98,9 +116,8 @@ export function listDocs(): DocMeta[] {
       const files = fs.readdirSync(DOCS_DIR).filter((f) => f.toLowerCase().endsWith(".md"));
       for (const f of files) {
         const slug = filenameToSlug(f);
-        if (HIDDEN_SLUGS.has(slug)) continue;
-        if (HIDDEN_PREFIXES.some((p) => slug.startsWith(p))) continue;
         const content = safeRead(path.join(DOCS_DIR, f));
+        if (!shouldPublishDoc(slug)) continue;
         out.push({
           slug,
           title: deriveTitle(content, slug),
@@ -115,9 +132,10 @@ export function listDocs(): DocMeta[] {
   // Top-level extras (AGENTS.md, IMPLEMENTATION_PLAN.md, README.md)
   for (const [slug, filePath] of Object.entries(TOP_LEVEL)) {
     if (!safeExists(filePath)) continue;
+    const content = safeRead(filePath);
+    if (!shouldPublishDoc(slug)) continue;
     // Don't duplicate if /docs already had a same-slug file
     if (out.some((d) => d.slug === slug)) continue;
-    const content = safeRead(filePath);
     out.push({
       slug,
       title: deriveTitle(content, slug),
@@ -144,8 +162,7 @@ export function readDoc(slug: string): Doc | null {
 
   // Hidden slugs — treat as if the doc doesn't exist for the landing page,
   // even if the .md file is present in the repo (agents still use it).
-  if (HIDDEN_SLUGS.has(normalized)) return null;
-  if (HIDDEN_PREFIXES.some((p) => normalized.startsWith(p))) return null;
+  if (!shouldPublishDoc(normalized)) return null;
 
   // Top-level match first
   const topLevelPath = TOP_LEVEL[normalized];

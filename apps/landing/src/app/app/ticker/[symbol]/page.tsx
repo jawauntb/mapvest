@@ -25,6 +25,10 @@ import {
   resolveComparable,
   saveMemoToWatchlist,
 } from "@/lib/mapvest-api";
+import {
+  providerPresentationLabel,
+  sourceHostPresentationLabel,
+} from "@/lib/provider-presentation";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Component, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -93,15 +97,6 @@ async function waitForOverviewResearch(conversationId: string, signal: AbortSign
     }
   }
   throw new Error("Research is still running. Retry to check this same brief.");
-}
-
-function hostLabel(url?: string): string {
-  if (!url) return "source";
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "source";
-  }
 }
 
 class ChartRenderBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -565,7 +560,7 @@ export default function TickerDetail() {
             {typeof quote.change === "number" ? quote.change.toFixed(2) : "—"} (
             {typeof quote.changePct === "number" ? `${quote.changePct.toFixed(2)}%` : "—"})
           </span>
-          <span className="app-quote-disc">{quote.disclaimer}</span>
+          <span className="app-quote-disc">{providerPresentationLabel(quote.disclaimer)}</span>
         </div>
       ) : null}
 
@@ -612,8 +607,10 @@ export default function TickerDetail() {
                   filename={chart.image.filename ?? `${chart.ticker}-auction-1mo.png`}
                   caption={
                     chart.levels
-                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? "yfinance"}`
+                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${providerPresentationLabel(chart.provider ?? "yfinance")}`
                       : chart.provider
+                        ? providerPresentationLabel(chart.provider)
+                        : undefined
                   }
                 />
               </ChartRenderBoundary>
@@ -732,7 +729,7 @@ export default function TickerDetail() {
 
           {ticker ? (
             <section className="app-panel">
-              <h2>Massive financial ratios</h2>
+              <h2>Daily financial ratios</h2>
               {ratiosLoading ? <p className="app-muted">Loading end-of-day ratios…</p> : null}
               {!ratiosLoading && ratiosErr ? <p className="app-err">{ratiosErr}</p> : null}
               {!ratiosLoading && !ratiosErr && !ratios?.ratios.length ? (
@@ -798,7 +795,7 @@ export default function TickerDetail() {
                       <strong>{event.description ?? event.type.replaceAll("_", " ")}</strong>
                       <span className="app-muted">
                         {event.date ?? "date pending"} ·{" "}
-                        {event.provider === "tmx" ? "TMX" : "Massive"}
+                        {providerPresentationLabel(event.provider ?? "massive")}
                         {event.status ? ` · ${event.status}` : ""}
                       </span>
                     </a>
@@ -813,7 +810,8 @@ export default function TickerDetail() {
                     >
                       <strong>{item.title}</strong>
                       <span className="app-muted">
-                        {item.source} · {hostLabel(item.url)}
+                        {providerPresentationLabel(item.source)} ·{" "}
+                        {sourceHostPresentationLabel(item.url)}
                       </span>
                     </a>
                   ))}
@@ -872,7 +870,9 @@ export default function TickerDetail() {
           {memo ? (
             <section className="app-memo">
               <div className="app-memo-header">
-                <span className="app-memo-provider">{memo.provider} · investment brief</span>
+                <span className="app-memo-provider">
+                  {providerPresentationLabel(memo.provider)} · investment brief
+                </span>
                 <button
                   type="button"
                   className={`app-btn ${memoSaved ? "app-btn-active" : ""}`}
@@ -909,7 +909,7 @@ export default function TickerDetail() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              {hostLabel(s.url)}
+                              {sourceHostPresentationLabel(s.url)}
                             </a>
                           ) : null,
                         )}
@@ -944,7 +944,7 @@ export default function TickerDetail() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          {hostLabel(e.source.url)}
+                          {sourceHostPresentationLabel(e.source.url)}
                         </a>
                       </div>
                     ) : null}
@@ -1009,8 +1009,10 @@ export default function TickerDetail() {
                   }
                   caption={
                     chartType === "auction" && chart.levels
-                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ?? ""}`
+                      ? `POC ${chart.levels.poc?.toFixed?.(2) ?? "—"} · VAH ${chart.levels.vah?.toFixed?.(2) ?? "—"} · VAL ${chart.levels.val?.toFixed?.(2) ?? "—"} · ${chart.provider ? providerPresentationLabel(chart.provider) : ""}`
                       : chart.provider
+                        ? providerPresentationLabel(chart.provider)
+                        : undefined
                   }
                 />
               </ChartRenderBoundary>
@@ -1029,12 +1031,13 @@ export default function TickerDetail() {
               <ul className="app-simple-list">
                 {sources.map((s) => (
                   <li key={`${s.label}-${s.provider}-${s.url ?? ""}`}>
-                    <span className="app-ticker">{s.label}</span> · {s.provider}
+                    <span className="app-ticker">{s.label}</span> ·{" "}
+                    {providerPresentationLabel(s.provider)}
                     {s.url ? (
                       <>
                         {" · "}
                         <a href={s.url} target="_blank" rel="noreferrer">
-                          {hostLabel(s.url)}
+                          {sourceHostPresentationLabel(s.url)}
                         </a>
                       </>
                     ) : null}

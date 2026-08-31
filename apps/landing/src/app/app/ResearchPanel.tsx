@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChartImage, type ResearchArticle, agentChat, getChart } from "@/lib/mapvest-api";
+import { providerPresentationLabel } from "@/lib/provider-presentation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChartFigure } from "./ChartFigure";
@@ -88,7 +89,7 @@ export function ResearchPanel({
       setTurns((t) => [...t, r.article]);
       void ensureCharts(r.article.chartTickers.length ? r.article.chartTickers : [ticker]);
       const tools = r.article.toolsUsed?.length
-        ? ` · ${r.article.toolsUsed.slice(0, 3).join(", ")}`
+        ? ` · ${r.article.toolsUsed.slice(0, 3).map(providerPresentationLabel).join(", ")}`
         : "";
       setStatus(`Brief ready${tools}`);
     } catch (e) {
@@ -245,11 +246,11 @@ function Article({
                 target="_blank"
                 rel="noreferrer"
               >
-                {s.label}
+                {providerPresentationLabel(s.label)}
               </a>
             ) : (
               <span key={key} className="app-source-chip">
-                {s.label}
+                {providerPresentationLabel(s.label)}
               </span>
             ),
           )}
@@ -257,7 +258,9 @@ function Article({
       ) : null}
 
       {article.toolsUsed.length > 0 ? (
-        <p className="app-article-tools">Tools · {article.toolsUsed.slice(0, 6).join(" · ")}</p>
+        <p className="app-article-tools">
+          Tools · {article.toolsUsed.slice(0, 6).map(providerPresentationLabel).join(" · ")}
+        </p>
       ) : null}
     </article>
   );

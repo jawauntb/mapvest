@@ -1,6 +1,7 @@
 import { type MarketEvent, fetchMarketEvents } from "@/api/market-events";
 import { type NewsItem, fetchTickerNews } from "@/api/news";
 import { InAppReader } from "@/components/InAppReader";
+import { neutralizeProviderMetadata, providerName } from "@/evidence/presentation";
 import { colors, radii, type as typography } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -107,8 +108,15 @@ export function TickerNewsSection({
               <NewsRow
                 key={`${it.url}-${idx}`}
                 item={it}
+                source={neutralizeProviderMetadata(it.source)}
                 isLast={events.length + idx === total - 1}
-                onOpen={() => open({ url: it.url, title: it.title, source: it.source })}
+                onOpen={() =>
+                  open({
+                    url: it.url,
+                    title: it.title,
+                    source: neutralizeProviderMetadata(it.source),
+                  })
+                }
               />
             ))}
           </View>
@@ -206,10 +214,12 @@ function EventRow({
 
 function NewsRow({
   item,
+  source,
   isLast,
   onOpen,
 }: {
   item: NewsItem;
+  source: string;
   isLast: boolean;
   onOpen: () => void;
 }) {
@@ -222,14 +232,14 @@ function NewsRow({
         pressed && { opacity: 0.7 },
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Read ${item.title} from ${item.source}`}
+      accessibilityLabel={`Read ${item.title} from ${source}`}
     >
       <View style={{ flex: 1, gap: 4 }}>
         <Text style={styles.title} numberOfLines={3}>
           {item.title}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {item.source} · {formatRelative(item.publishedAt)}
+          {source} · {formatRelative(item.publishedAt)}
         </Text>
       </View>
       <Ionicons
@@ -252,7 +262,7 @@ function eventLabel(event: MarketEvent): string {
 }
 
 function providerLabel(provider: MarketEvent["provider"]): string {
-  return provider === "tmx" ? "TMX" : "Massive";
+  return provider === "tmx" ? "TMX" : providerName(provider ?? "massive");
 }
 
 /**

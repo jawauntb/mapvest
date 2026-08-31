@@ -1,4 +1,5 @@
 import type { RegressionDataset, ValuePoint } from "@/api/underlying";
+import { providerName } from "@/evidence/presentation";
 import { useState } from "react";
 import { View } from "react-native";
 import { safeFixed } from "./format";
@@ -70,7 +71,7 @@ export function RegressionChart({ data }: { data: RegressionDataset }) {
       title={`${data.ticker} regression channel`}
       subtitle={`SLOPE ${safeFixed(data.meta?.slope_per_day, 4)}/SESSION | SIGMA ${safeFixed(data.meta?.residual_std)}`}
       footerLeft={`${data.ticker} trend diagnostics`}
-      footerRight={`source ${data.provider ?? "n/a"}`}
+      footerRight={`source ${providerName(data.provider ?? "n/a")}`}
     >
       <Panel height={PRICE_HEIGHT} scrub={{ count: dates.length, onIndex: setScrubIdx }}>
         {(w, h) => {
