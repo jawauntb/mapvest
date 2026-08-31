@@ -88,7 +88,7 @@
     <text x="0" y="12" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#a1a1a1" letter-spacing="1.5">SOURCES</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9" fill="#6b6b6b">
       <text x="0" y="28">&#8226; sec.gov &#8212; HSY 10-K (FY2024)</text>
-      <text x="0" y="42">&#8226; polygon.io &#8212; HSY EOD close 2026-08-04</text>
+      <text x="0" y="42">&#8226; market data &#8212; HSY EOD close 2026-08-04</text>
       <text x="0" y="56">&#8226; etf.com &#8212; PBJ / XLP / VDC / FTXG holdings</text>
       <text x="0" y="70">&#8226; hersheys.com &#8212; investor profile</text>
     </g>

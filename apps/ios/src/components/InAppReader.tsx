@@ -1,4 +1,5 @@
 import { fetchNewsRead } from "@/api/news";
+import { neutralizeProviderMetadata } from "@/evidence/presentation";
 import { colors, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,6 +44,7 @@ export function InAppReader({ url, title, source, visible, onClose }: Props) {
   }, [q.data?.text]);
 
   const headline = q.data?.title?.trim() || title?.trim() || "Article";
+  const displayedSource = source ? neutralizeProviderMetadata(source) : undefined;
 
   function openSafari() {
     hapticSelect();
@@ -70,7 +72,7 @@ export function InAppReader({ url, title, source, visible, onClose }: Props) {
             <Ionicons name="close" size={22} color={colors.fg} />
           </Pressable>
           <Text style={styles.toolTitle} numberOfLines={1}>
-            {source || "Reader"}
+            {displayedSource || "Reader"}
           </Text>
           <Pressable
             onPress={openSafari}
@@ -100,7 +102,7 @@ export function InAppReader({ url, title, source, visible, onClose }: Props) {
         ) : (
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
             <Text style={styles.headline}>{headline}</Text>
-            {source ? <Text style={styles.byline}>{source}</Text> : null}
+            {displayedSource ? <Text style={styles.byline}>{displayedSource}</Text> : null}
             {paragraphs.map((p) => (
               <Text key={p.slice(0, 48)} style={styles.p}>
                 {p}

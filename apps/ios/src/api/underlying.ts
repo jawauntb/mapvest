@@ -1,5 +1,5 @@
 import { UNDERLYING_API_URL } from "@/util/env";
-import { ApiError } from "./client";
+import { ApiError } from "./errors";
 
 /**
  * Typed client for The Underlying Analyzer's chart-DATA endpoints (JSON
@@ -371,6 +371,23 @@ export type ChartDataRequest = {
 };
 
 type FetchOpts = { signal?: AbortSignal };
+
+const CHART_UNAVAILABLE_MESSAGE = "Chart data unavailable. Try again.";
+const CHART_EMPTY_MESSAGE = "No chart data returned.";
+
+/**
+ * Convert transport and per-ticker chart failures into display-safe copy.
+ * Upstream error strings remain available on the thrown error/envelope for
+ * diagnostics, but provider names, hosts, status text, and entitlements never
+ * become user-facing chart copy.
+ */
+export function formatChartError(error: unknown): string {
+  const message =
+    typeof error === "string" ? error.trim() : error instanceof Error ? error.message.trim() : "";
+  return /^no (?:chart )?data(?: returned)?$/i.test(message)
+    ? CHART_EMPTY_MESSAGE
+    : CHART_UNAVAILABLE_MESSAGE;
+}
 
 async function underlyingFetch<T>(
   path: string,

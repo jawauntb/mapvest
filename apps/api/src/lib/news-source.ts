@@ -236,7 +236,7 @@ async function fetchMassive(ticker: string, apiKey: string): Promise<NewsItem[]>
       {
         title: item.title,
         url: item.article_url,
-        source: item.publisher?.name?.trim() || "Massive",
+        source: item.publisher?.name?.trim() || "Market news",
         publishedAt,
       },
     ];

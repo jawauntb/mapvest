@@ -12,6 +12,7 @@ import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { RichText } from "@/components/RichText";
 import { ShareButton } from "@/components/ShareButton";
+import { neutralizeProviderMetadata } from "@/evidence/presentation";
 import { colors, radii } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
 import {
@@ -313,7 +314,7 @@ export function ResearchSheet({
         return;
       }
       const tools = article.toolsUsed?.length
-        ? ` · ${article.toolsUsed.slice(0, 3).join(", ")}`
+        ? ` · ${article.toolsUsed.slice(0, 3).map(neutralizeProviderMetadata).join(", ")}`
         : "";
       setStatus(`Brief ready${tools}`);
     };
@@ -352,7 +353,7 @@ export function ResearchSheet({
         setStatus(null);
       } else {
         const tools = article.toolsUsed?.length
-          ? ` · ${article.toolsUsed.slice(0, 3).join(", ")}`
+          ? ` · ${article.toolsUsed.slice(0, 3).map(neutralizeProviderMetadata).join(", ")}`
           : "";
         setStatus(`Brief ready${tools}`);
       }
@@ -378,7 +379,10 @@ export function ResearchSheet({
               if (!isCurrent()) return;
               if (ev.type === "tool") {
                 const d = ev.data as { name: string };
-                setTimeline((timeline) => [...timeline, `Running: ${d.name}`]);
+                setTimeline((timeline) => [
+                  ...timeline,
+                  `Running: ${neutralizeProviderMetadata(d.name)}`,
+                ]);
               } else if (ev.type === "reasoning") {
                 const d = ev.data as { text: string; conversationId?: string };
                 if (d.conversationId) {
@@ -562,7 +566,10 @@ export function ResearchSheet({
                     <Text style={styles.bullet}>Evidence · {item.summary}</Text>
                     {item.source || item.freshness ? (
                       <Text style={styles.meta}>
-                        {[item.source, item.freshness].filter(Boolean).join(" · ")}
+                        {[item.source, item.freshness]
+                          .filter((value): value is string => Boolean(value))
+                          .map(neutralizeProviderMetadata)
+                          .join(" · ")}
                       </Text>
                     ) : null}
                   </View>
@@ -635,12 +642,15 @@ export function ResearchSheet({
                   </Text>
                 ) : null}
                 {t.toolsUsed.length ? (
-                  <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
+                  <Text style={styles.tools}>
+                    Tools · {t.toolsUsed.slice(0, 5).map(neutralizeProviderMetadata).join(" · ")}
+                  </Text>
                 ) : null}
                 {t.sources?.length ? (
                   <View style={styles.sourceRow}>
                     {t.sources.slice(0, 4).map((s) => {
                       const url = s.url;
+                      const label = neutralizeProviderMetadata(s.label);
                       return url ? (
                         <Pressable
                           key={`${s.label}-${url}`}
@@ -650,17 +660,17 @@ export function ResearchSheet({
                           }}
                           style={styles.sourceChip}
                           accessibilityRole="link"
-                          accessibilityLabel={`Open source: ${s.label}`}
+                          accessibilityLabel={`Open source: ${label}`}
                         >
                           <Text style={styles.sourceChipText} numberOfLines={1}>
-                            {s.label}
+                            {label}
                           </Text>
                           <Ionicons name="open-outline" size={11} color={colors.accent} />
                         </Pressable>
                       ) : (
                         <View key={s.label} style={styles.sourceChip}>
                           <Text style={styles.sourceChipMuted} numberOfLines={1}>
-                            {s.label}
+                            {label}
                           </Text>
                         </View>
                       );

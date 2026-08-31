@@ -490,7 +490,7 @@ export class MassiveClient {
         aggregates: {
           supported: true,
           access,
-          note: "Stock and option bars use Massive aggregate endpoints.",
+          note: "Historical stock and option price bars are available.",
         },
         optionChain: {
           supported: true,
@@ -665,12 +665,12 @@ export class MassiveClient {
     const mode = freshness();
     const disclaimer =
       mode === "real-time"
-        ? "real-time, source: Massive"
+        ? "Real-time market data."
         : mode === "delayed"
-          ? "delayed, source: Massive"
+          ? "Delayed market data."
           : mode === "end-of-day"
-            ? "end-of-day, source: Massive"
-            : "freshness depends on Massive subscription, source: Massive";
+            ? "End-of-day market data."
+            : "Market-data freshness depends on subscription.";
     return {
       symbol: sym,
       price,

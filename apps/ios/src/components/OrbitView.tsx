@@ -34,8 +34,8 @@ import {
   fetchCompanyGraph,
   fetchDemandPulse,
 } from "@/api/graph";
-import type { Source } from "@/api/types";
 import { usePaywall } from "@/billing/Paywall";
+import { providerName, safeEvidenceLink } from "@/evidence/presentation";
 import { findsQueryKey } from "@/finds/queryKeys";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -96,11 +96,6 @@ function fmtPct(n: number): string {
   const abs = Math.abs(n);
   const body = abs >= 10 ? n.toFixed(0) : n.toFixed(1);
   return `${n >= 0 ? "+" : ""}${body}%`;
-}
-
-function hostOf(url: string): string {
-  const host = url.match(/^https?:\/\/([^/]+)/i)?.[1];
-  return host ? host.replace(/^www\./i, "") : url;
 }
 
 export function OrbitView({
@@ -473,7 +468,10 @@ function EdgePanel({
   caught: boolean;
   onClose: () => void;
 }) {
-  const cited = edge.sources.filter((s): s is Source & { url: string } => !!s.url);
+  const cited = edge.sources.flatMap((source) => {
+    const link = safeEvidenceLink(source.url);
+    return link ? [{ source, link }] : [];
+  });
   return (
     <View style={styles.panel}>
       <View style={styles.panelHead}>
@@ -504,16 +502,16 @@ function EdgePanel({
       ) : null}
 
       {cited.length > 0 ? (
-        cited.slice(0, 4).map((s, i) => (
+        cited.slice(0, 4).map(({ source, link }, i) => (
           <Pressable
-            key={`${s.url}-${i}`}
-            onPress={() => Linking.openURL(s.url).catch(() => {})}
+            key={`${link.url}-${i}`}
+            onPress={() => Linking.openURL(link.url).catch(() => {})}
             hitSlop={6}
             accessibilityRole="link"
-            accessibilityLabel={`Open source on ${hostOf(s.url)}`}
+            accessibilityLabel={`Open source from ${providerName(source.provider)} at ${link.host}`}
           >
             <Text style={styles.panelLink} numberOfLines={1}>
-              {s.provider} · {hostOf(s.url)}
+              {providerName(source.provider)} · {link.host}
             </Text>
           </Pressable>
         ))

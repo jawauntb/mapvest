@@ -399,6 +399,29 @@ describe("market-data additive API contracts", () => {
     expect(result.items[0]?.title).toBe("Fallback headline");
   });
 
+  test("uses neutral copy when market news has no publisher", async () => {
+    massiveEnv();
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        response({
+          status: "OK",
+          results: [
+            {
+              title: "Publisher-free headline",
+              article_url: "https://example.com/publisher-free-news",
+              published_utc: "2025-01-01T00:00:00Z",
+            },
+          ],
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const result = await fetchTickerNews("PUBLISHER_FREE_NEWS_TEST", 1);
+    expect(result.items[0]?.source).toBe("Market news");
+    expect(result.items[0]?.source).not.toMatch(/massive/i);
+    expect(result.provider).toBe("massive");
+  });
+
   test("treats a Massive ERROR envelope as a failed provider response", async () => {
     massiveEnv();
     process.env.MASSIVE_MAX_RETRIES = "0";

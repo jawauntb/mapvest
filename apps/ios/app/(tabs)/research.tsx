@@ -18,6 +18,7 @@ import { RichText } from "@/components/RichText";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
+import { neutralizeProviderMetadata } from "@/evidence/presentation";
 import { decodeChatSeed, seedToDraft } from "@/nav/chatAbout";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticTap } from "@/util/haptics";
@@ -393,7 +394,7 @@ export default function ResearchChatScreen() {
         setStatus(null);
       } else {
         const tools = article.toolsUsed?.length
-          ? ` · ${article.toolsUsed.slice(0, 3).join(", ")}`
+          ? ` · ${article.toolsUsed.slice(0, 3).map(neutralizeProviderMetadata).join(", ")}`
           : "";
         setStatus(`Brief ready${tools}`);
       }
@@ -566,7 +567,10 @@ export default function ResearchChatScreen() {
                     <Text style={styles.bullet}>Evidence · {item.summary}</Text>
                     {item.source || item.freshness ? (
                       <Text style={styles.meta}>
-                        {[item.source, item.freshness].filter(Boolean).join(" · ")}
+                        {[item.source, item.freshness]
+                          .filter((value): value is string => Boolean(value))
+                          .map(neutralizeProviderMetadata)
+                          .join(" · ")}
                       </Text>
                     ) : null}
                   </View>
@@ -651,12 +655,15 @@ export default function ResearchChatScreen() {
                   </Pressable>
                 ))}
                 {t.toolsUsed.length ? (
-                  <Text style={styles.tools}>Tools · {t.toolsUsed.slice(0, 5).join(" · ")}</Text>
+                  <Text style={styles.tools}>
+                    Tools · {t.toolsUsed.slice(0, 5).map(neutralizeProviderMetadata).join(" · ")}
+                  </Text>
                 ) : null}
                 {t.sources?.length ? (
                   <View style={styles.sourceRow}>
                     {t.sources.slice(0, 4).map((s) => {
                       const url = s.url;
+                      const label = neutralizeProviderMetadata(s.label);
                       return url ? (
                         <Pressable
                           key={`${s.label}-${url}`}
@@ -666,17 +673,17 @@ export default function ResearchChatScreen() {
                           }}
                           style={styles.sourceChip}
                           accessibilityRole="link"
-                          accessibilityLabel={`Open source: ${s.label}`}
+                          accessibilityLabel={`Open source: ${label}`}
                         >
                           <Text style={styles.sourceChipText} numberOfLines={1}>
-                            {s.label}
+                            {label}
                           </Text>
                           <Ionicons name="open-outline" size={11} color={colors.accent} />
                         </Pressable>
                       ) : (
                         <View key={s.label} style={styles.sourceChip}>
                           <Text style={styles.sourceChipMuted} numberOfLines={1}>
-                            {s.label}
+                            {label}
                           </Text>
                         </View>
                       );

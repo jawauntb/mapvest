@@ -90,7 +90,7 @@ export function OptionsPanel({ ticker, underlyingPrice }: Props) {
 
   return (
     <section className="app-panel">
-      <h2>Options · Massive</h2>
+      <h2>Options chain</h2>
       <p className="app-muted">Snapshot chain for research, not an order ticket.</p>
 
       {contractsLoading ? <p className="app-muted">Finding active expirations…</p> : null}

@@ -28,6 +28,7 @@ import { OrbitView } from "@/components/OrbitView";
 import { RichText } from "@/components/RichText";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
+import { neutralizeProviderMetadata } from "@/evidence/presentation";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -238,7 +239,9 @@ export default function DetailSheet() {
                     </Text>
                   </View>
                   <Text style={styles.quoteDisclaimer}>
-                    {quote.disclaimer || "Market-data freshness depends on subscription"}
+                    {neutralizeProviderMetadata(
+                      quote.disclaimer || "Freshness depends on market data availability",
+                    )}
                   </Text>
                 </>
               ) : null}
@@ -327,7 +330,7 @@ export default function DetailSheet() {
             ) : null}
 
             {ticker ? (
-              <MassiveRatiosSection
+              <DailyFinancialRatiosSection
                 data={ratiosQ.data}
                 isError={ratiosQ.isError}
                 isLoading={ratiosQ.isLoading}
@@ -338,7 +341,7 @@ export default function DetailSheet() {
               /* Collapsed by default like the ratio panels — and because
                  CollapsibleSection unmounts its children, the two options
                  fetches don't fire until someone actually opens it. */
-              <CollapsibleSection title="Options · Massive">
+              <CollapsibleSection title="Options chain">
                 <OptionsChainSection
                   ticker={ticker}
                   token={session?.token}
@@ -919,7 +922,7 @@ function FinancialRatiosSection({
   );
 }
 
-function MassiveRatiosSection({
+function DailyFinancialRatiosSection({
   data,
   isError,
   isLoading,
@@ -930,7 +933,7 @@ function MassiveRatiosSection({
 }) {
   const ratio = data?.ratios[0];
   return (
-    <CollapsibleSection title="Massive financial ratios">
+    <CollapsibleSection title="Daily financial ratios">
       {isLoading ? <Text style={styles.muted}>Loading end-of-day ratios…</Text> : null}
       {!isLoading && isError ? (
         <Text style={styles.muted}>Ratios unavailable right now.</Text>

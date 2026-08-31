@@ -92,9 +92,9 @@ export default function Terms() {
           <h2>Third-party services</h2>
           <p>
             Mapvest sends parts of your requests to third-party processors (Anthropic, OpenRouter,
-            Massive, Yahoo Finance, Finnhub, Exa, OpenStreetMap Nominatim, Google Maps, Expo,
-            Stripe, Robinhood). Each has its own terms and privacy policy. See the{" "}
-            <a href="/privacy">Privacy Policy</a> for the full list and what we send them.
+            market-data and news providers, Exa, OpenStreetMap Nominatim, Google Maps, Expo, Stripe,
+            Robinhood). Each has its own terms and privacy policy. See the{" "}
+            <a href="/privacy">Privacy Policy</a> for details on what we send them.
           </p>
         </section>
 

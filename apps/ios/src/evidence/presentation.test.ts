@@ -3,8 +3,10 @@ import type { Source } from "@/api/types";
 import {
   confidenceLabel,
   confidenceMeaning,
+  displayEvidenceHost,
   evidenceState,
   formatEvidenceFetchedAt,
+  neutralizeProviderMetadata,
   providerName,
   safeEvidenceLink,
 } from "./presentation";
@@ -19,8 +21,28 @@ const source: Source = {
 describe("evidence presentation", () => {
   test("uses human provider names and explains returned confidence", () => {
     expect(providerName("sec")).toBe("U.S. SEC");
+    expect(providerName("massive")).toBe("Market data");
+    expect(providerName("polygon")).toBe("Market data");
     expect(confidenceLabel("medium")).toBe("Medium confidence");
     expect(confidenceMeaning("low")).toContain("not a conclusion");
+  });
+
+  test("neutralizes branded provider metadata without touching unrelated labels", () => {
+    expect(neutralizeProviderMetadata("Massive")).toBe("Market data");
+    expect(neutralizeProviderMetadata("Massive news")).toBe("Market news");
+    expect(neutralizeProviderMetadata("Polygon.io")).toBe("Market data source");
+    expect(neutralizeProviderMetadata("get_massive_quote")).toBe("get Market data quote");
+    expect(neutralizeProviderMetadata("delayed, source: Massive")).toBe("Delayed market data");
+    expect(neutralizeProviderMetadata("delayed by 15 min, source: Polygon.io")).toBe(
+      "Delayed market data",
+    );
+    expect(neutralizeProviderMetadata("https://api.massive.com/v2/aggs")).toBe(
+      "Market data source",
+    );
+    expect(neutralizeProviderMetadata("Reuters")).toBe("Reuters");
+    expect(neutralizeProviderMetadata("A massive opportunity")).toBe("A massive opportunity");
+    expect(neutralizeProviderMetadata("Polygon-shaped demand")).toBe("Polygon-shaped demand");
+    expect(neutralizeProviderMetadata("Massive Attack")).toBe("Massive Attack");
   });
 
   test("formats a source fetch date without claiming an update", () => {
@@ -37,6 +59,11 @@ describe("evidence presentation", () => {
       url: "http://example.com/filing",
       host: "example.com",
     });
+    expect(safeEvidenceLink("https://api.massive.com/v2/aggs?ticker=AAPL")).toEqual({
+      url: "https://api.massive.com/v2/aggs?ticker=AAPL",
+      host: "Market data source",
+    });
+    expect(displayEvidenceHost("reference.polygon.io")).toBe("Market data source");
     expect(safeEvidenceLink("javascript:alert(1)")).toBeUndefined();
     expect(safeEvidenceLink("ftp://example.com/filing")).toBeUndefined();
     expect(safeEvidenceLink("mailto:filings@example.com")).toBeUndefined();

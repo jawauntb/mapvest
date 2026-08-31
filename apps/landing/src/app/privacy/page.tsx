@@ -95,8 +95,9 @@ export default function PrivacyPolicy() {
               context we assemble for it) is sent to Anthropic to generate a response.
             </li>
             <li>
-              <strong>Massive, with explicit Yahoo Finance / Finnhub fallbacks.</strong> Quote data,
-              historical closes, and per-ticker news headlines. Only the ticker symbol is sent.
+              <strong>Market-data and news providers.</strong> Quote data, historical closes, and
+              per-ticker news headlines, with Yahoo Finance and Finnhub available as explicit
+              fallbacks. Only the ticker symbol is sent.
             </li>
             <li>
               <strong>Exa.</strong> Web research snippets used to enrich local economy briefings.

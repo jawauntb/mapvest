@@ -113,6 +113,41 @@ describe("Massive provider adapter", () => {
     );
   });
 
+  test("keeps quote freshness copy neutral while preserving provider identity", async () => {
+    installFetch(() =>
+      json({
+        ticker: {
+          prevDay: { c: 200 },
+          lastTrade: { p: 202, t: 1_700_000_001_000 },
+        },
+        status: "OK",
+      }),
+    );
+
+    for (const [freshness, disclaimer] of [
+      ["real-time", "Real-time market data."],
+      ["delayed", "Delayed market data."],
+      ["end-of-day", "End-of-day market data."],
+      ["unknown", "Market-data freshness depends on subscription."],
+    ] as const) {
+      process.env.MASSIVE_MARKET_DATA_FRESHNESS = freshness;
+      const quote = await massiveClient.getQuote("ABC");
+
+      expect(quote?.disclaimer).toBe(disclaimer);
+      expect(quote?.disclaimer).not.toMatch(/massive/i);
+      expect(quote?.provider).toBe("massive");
+    }
+  });
+
+  test("keeps aggregate capability copy neutral while preserving provider identity", () => {
+    const capabilities = massiveClient.capabilities();
+    const aggregateNote = capabilities.datasets.aggregates?.note;
+
+    expect(aggregateNote).toBe("Historical stock and option price bars are available.");
+    expect(aggregateNote).not.toMatch(/massive/i);
+    expect(capabilities.provider).toBe("massive");
+  });
+
   test("retries a rate limit and then returns the successful quote", async () => {
     process.env.MASSIVE_MAX_RETRIES = "1";
     let attempt = 0;
