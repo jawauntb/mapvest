@@ -227,9 +227,12 @@ this environment can't run — that step is the "acceptance" gate below.
 - [x] iOS: inbound share-to-Mapvest via `expo-share-intent` —
       `ShareIntentListener` + `app/share-intent.tsx` run a shared image
       through the same `/v1/identify` pipeline as the Camera tab
-- [x] iOS: WidgetKit "Nearby" list + map widgets (`targets/widget/`, via
-      `@bacons/apple-targets`) — Swift source in place, deployment target
-      16.0, no iOS-17-only APIs
+- [x] iOS: WidgetKit "Nearby Dex" + "Discovery Signals" widgets
+      (`targets/widget/`, via `@bacons/apple-targets`) — app-authored atomic
+      account snapshots, fail-closed account transitions, cited confidence,
+      private-comparable labels, bounded/cache-backed synchronization, honest
+      stale/setup states, exact links, deployment target 16.0, and a guarded
+      iOS 17+ container background
 - [x] Android: "Nearby" home-screen widget (`src/widgets/`, via
       `react-native-android-widget`) — JSX widget UI + headless task handler
 - [ ] `expo prebuild --clean` run at least once against these changes and

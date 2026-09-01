@@ -22,7 +22,8 @@ module.exports = {
   entitlements: {
     // Must match `ios.entitlements` in app.json and IOS_APP_GROUP in
     // apps/ios/src/widgets/widgetLocation.ts — this is how the main app
-    // hands the widget extension a last-known lat/lng.
+    // hands the extension its display-only discovery snapshot and the
+    // heartbeat's last-known origin.
     "com.apple.security.application-groups": ["group.com.mapvest.app.widget"],
   },
 };

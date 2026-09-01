@@ -2,88 +2,141 @@ import SwiftUI
 import WidgetKit
 
 struct NearbyListWidgetView: View {
-    var entry: NearbyEntry
+    let entry: NearbyEntry
     @Environment(\.widgetFamily) private var family
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(widgetHeader(for: entry.locationState))
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.mapvestAccent)
-            WidgetLastUpdatedView(state: entry.locationState)
+    private var snapshot: WidgetDiscoverySnapshotV1? { entry.state.snapshot }
 
-            if entry.locationState.location == nil {
-                Spacer()
-                WidgetLocationStatusView(state: entry.locationState)
-                Spacer()
-            } else if let errorMessage = entry.errorMessage {
-                Spacer()
-                Text(errorMessage)
-                    .font(.system(size: 12))
-                    .foregroundColor(.mapvestDanger)
-                Spacer()
-            } else if entry.items.isEmpty {
-                Spacer()
-                Text("Nothing nearby yet")
-                    .font(.system(size: 12))
-                    .foregroundColor(.mapvestFgMuted)
-                Spacer()
+    private var rootURL: URL? {
+        guard let snapshot else { return URL(string: "mapvest:///map") }
+        if snapshot.cards.isEmpty { return snapshot.mapURL }
+        if family == .systemSmall { return snapshot.cards.first?.url ?? snapshot.mapURL }
+        return nil
+    }
+
+    var body: some View {
+        Group {
+            if let snapshot, !snapshot.cards.isEmpty {
+                discovery(snapshot)
+                    .privacySensitive(snapshot.isPrivacySensitive)
             } else {
-                ForEach(entry.items.prefix(maxRows)) { item in
-                    Link(destination: item.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
-                        NearbyRow(item: item, showPrice: family != .systemSmall)
+                status
+            }
+        }
+        .padding(contentPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .mapvestWidgetBackground { widgetBackground }
+        .widgetURL(rootURL)
+    }
+
+    @ViewBuilder
+    private func discovery(_ snapshot: WidgetDiscoverySnapshotV1) -> some View {
+        switch family {
+        case .systemSmall:
+            VStack(alignment: .leading, spacing: 8) {
+                DiscoveryHeader(snapshot: snapshot, state: entry.state)
+                if let card = snapshot.cards.first {
+                    PrimaryDiscoveryCard(card: card, compact: true)
+                }
+            }
+        case .systemMedium:
+            VStack(alignment: .leading, spacing: 8) {
+                DiscoveryHeader(snapshot: snapshot, state: entry.state)
+                HStack(spacing: 9) {
+                    if let card = snapshot.cards.first {
+                        Link(destination: card.url) {
+                            PrimaryDiscoveryCard(card: card, compact: true)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        if let quest = snapshot.quest {
+                            Link(destination: quest.url) {
+                                QuestPanel(quest: quest)
+                            }
+                        } else if let card = snapshot.cards.dropFirst().first {
+                            Link(destination: card.url) {
+                                CompactDiscoveryRow(card: card)
+                            }
+                        }
+                        if let card = snapshot.cards.dropFirst(snapshot.quest == nil ? 2 : 1).first {
+                            Link(destination: card.url) {
+                                CompactDiscoveryRow(card: card)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                DiscoveryHeader(snapshot: snapshot, state: entry.state)
+                HStack(spacing: 9) {
+                    if let card = snapshot.cards.first {
+                        Link(destination: card.url) {
+                            PrimaryDiscoveryCard(card: card, compact: false)
+                        }
+                    }
+                    VStack(spacing: 8) {
+                        if let quest = snapshot.quest {
+                            Link(destination: quest.url) {
+                                QuestPanel(quest: quest)
+                            }
+                        }
+                        if let dex = snapshot.dex {
+                            Link(destination: dex.url) {
+                                DexProgressPanel(dex: dex)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Text("OTHER SIGNALS")
+                    .font(.caption2.weight(.black))
+                    .tracking(0.6)
+                    .foregroundColor(.mapvestFgMuted)
+                ForEach(snapshot.cards.dropFirst().prefix(3)) { card in
+                    Link(destination: card.url) {
+                        CompactDiscoveryRow(card: card)
                     }
                 }
-                Spacer(minLength: 0)
             }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.mapvestBg)
-        .widgetURL(widgetMapURL(for: entry.locationState))
-    }
-
-    private var maxRows: Int {
-        switch family {
-        case .systemSmall: return 2
-        case .systemMedium: return 3
-        default: return 7
-        }
-    }
-}
-
-private struct NearbyRow: View {
-    let item: NearbyItemDTO
-    let showPrice: Bool
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.mapvestFg)
-                    .lineLimit(1)
-                Text("\(item.label) · \(widgetDistanceText(item.distanceM))")
-                    .font(.system(size: 10))
-                    .foregroundColor(.mapvestFgMuted)
-                    .lineLimit(1)
-            }
-            Spacer()
-            if showPrice, let price = item.price {
-                Text(priceText(price: price, changePct: item.changePct))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor((item.changePct ?? 0) >= 0 ? .mapvestAccent : .mapvestDanger)
-            }
-        }
-        .padding(.vertical, 3)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Color.mapvestBorder).frame(height: 0.5)
         }
     }
 
-    private func priceText(price: Double, changePct: Double?) -> String {
-        guard let changePct else { return String(format: "$%.2f", price) }
-        return String(format: "$%.2f %@%.1f%%", price, changePct >= 0 ? "+" : "", changePct)
+    private var status: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let snapshot {
+                DiscoveryHeader(snapshot: snapshot, state: entry.state)
+            } else {
+                HStack(spacing: 5) {
+                    Image(systemName: "scope")
+                    Text("NEARBY DEX")
+                }
+                .font(.caption2.weight(.black))
+                .tracking(0.8)
+                .foregroundColor(.mapvestAccent)
+            }
+            Spacer(minLength: 0)
+            WidgetStatusView(state: entry.state)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var widgetBackground: some View {
+        ZStack {
+            Color.mapvestBg
+            RadialGradient(
+                colors: [Color.mapvestAccent.opacity(0.10), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 190
+            )
+        }
+    }
+
+    private var contentPadding: CGFloat {
+        if #available(iOSApplicationExtension 17.0, *) { return 0 }
+        return 12
     }
 }
 
@@ -91,11 +144,11 @@ struct NearbyListWidget: Widget {
     let kind = "MapvestNearbyWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: NearbyProvider(limit: 8, wantsMapImage: false)) { entry in
+        StaticConfiguration(kind: kind, provider: NearbyProvider()) { entry in
             NearbyListWidgetView(entry: entry)
         }
-        .configurationDisplayName("Mapvest Nearby")
-        .description("Investable brands around your recent location or chosen map area.")
+        .configurationDisplayName("Nearby Dex")
+        .description("Catch investable companies around you and track your next discovery quest.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

@@ -7,6 +7,7 @@ import {
   widgetLocationState,
 } from "./widgetFreshness";
 import type { WidgetCapturedFix, WidgetRegistrationContext } from "./widgetPolicy";
+import { clearWidgetDiscoverySnapshotState } from "./widgetSnapshotStorage";
 
 // Keep the historical import path available to the heartbeat adapter while
 // the policy types live in a dependency-free module for unit tests.
@@ -210,7 +211,18 @@ export async function clearWidgetRegistrationContext(): Promise<void> {
  * later account cannot relay or display the previous account's state.
  */
 export async function clearWidgetLocationState(): Promise<void> {
-  await clearWidgetStorage([ASYNC_STORAGE_KEY, ASYNC_REGISTRATION_KEY]);
+  let failure: unknown;
+  try {
+    await clearWidgetDiscoverySnapshotState();
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    await clearWidgetStorage([ASYNC_STORAGE_KEY, ASYNC_REGISTRATION_KEY]);
+  } catch (error) {
+    failure ??= error;
+  }
+  if (failure) throw new Error("Could not clear widget location state");
 }
 
 export async function saveLastLocationForWidgets(
