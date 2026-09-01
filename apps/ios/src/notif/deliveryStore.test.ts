@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PushNotificationDelivery } from "./delivery";
-import { type PushDeliveryStorage, createPushDeliveryStore } from "./deliveryStore";
+import { type PushDeliveryStorage, createPushDeliveryStore } from "./deliveryStoreCore";
 
 const NOW = Date.parse("2026-09-01T16:00:00.000Z");
 

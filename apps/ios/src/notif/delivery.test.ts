@@ -109,6 +109,29 @@ describe("push delivery parsing and admission", () => {
       }),
     ).toBe("capacity");
   });
+
+  test("validates every embedded field without loading Expo workspace dependencies", () => {
+    expect(
+      parsePushNotificationDelivery({
+        mapvest: { ...delivery(), target: { type: "map", lat: 40 } },
+      }),
+    ).toBeNull();
+    expect(
+      parsePushNotificationDelivery({
+        mapvest: { ...delivery(), target: { type: "company", ticker: " " } },
+      }),
+    ).toBeNull();
+    expect(
+      parsePushNotificationDelivery({
+        mapvest: { ...delivery(), issuedAt: "2026-09-01T15:59:00Z" },
+      }),
+    ).toBeNull();
+    expect(
+      parsePushNotificationDelivery({
+        mapvest: { ...delivery(), target: { type: "company", ticker: " NVDA " } },
+      })?.target,
+    ).toEqual({ type: "company", ticker: "NVDA" });
+  });
 });
 
 describe("push delivery routing", () => {

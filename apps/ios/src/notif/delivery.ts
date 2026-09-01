@@ -1,7 +1,6 @@
-import {
-  type PushNotificationDelivery as ApiPushNotificationDelivery,
-  PushNotificationDelivery as PushNotificationDeliverySchema,
-  type PushNotificationTarget,
+import type {
+  PushNotificationDelivery as ApiPushNotificationDelivery,
+  PushNotificationTarget,
 } from "@/api/types";
 /**
  * This client-side schema mirrors packages/core because Expo Metro does not
@@ -40,11 +39,112 @@ export type PushDeliveryAdmissionReason =
   | "duplicate"
   | "capacity";
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function boundedString(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= max ? trimmed : undefined;
+}
+
+function optionalBoundedString(value: unknown, max: number): string | null | undefined {
+  if (value === undefined) return undefined;
+  return boundedString(value, max) ?? null;
+}
+
+function boundedNumber(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max
+    ? value
+    : undefined;
+}
+
+function canonicalIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return new Date(parsed).toISOString() === value ? value : undefined;
+}
+
+function parsePushNotificationTarget(value: unknown): PushNotificationTarget | null {
+  const target = record(value);
+  if (!target || typeof target.type !== "string") return null;
+  switch (target.type) {
+    case "home": {
+      if (
+        target.section !== undefined &&
+        target.section !== "daily-brief" &&
+        target.section !== "local-brief"
+      ) {
+        return null;
+      }
+      return { type: "home", ...(target.section ? { section: target.section } : {}) };
+    }
+    case "map": {
+      const placeId = optionalBoundedString(target.placeId, 256);
+      const ticker = optionalBoundedString(target.ticker, 24);
+      const label = optionalBoundedString(target.label, 160);
+      const reason = optionalBoundedString(target.reason, 240);
+      if (placeId === null || ticker === null || label === null || reason === null) return null;
+      const lat = target.lat === undefined ? undefined : boundedNumber(target.lat, -90, 90);
+      const lng = target.lng === undefined ? undefined : boundedNumber(target.lng, -180, 180);
+      if (
+        (target.lat !== undefined && lat === undefined) ||
+        (target.lng !== undefined && lng === undefined)
+      ) {
+        return null;
+      }
+      if (
+        (lat === undefined) !== (lng === undefined) ||
+        (!placeId && !ticker && lat === undefined)
+      ) {
+        return null;
+      }
+      return {
+        type: "map",
+        ...(placeId ? { placeId } : {}),
+        ...(ticker ? { ticker } : {}),
+        ...(lat !== undefined && lng !== undefined ? { lat, lng } : {}),
+        ...(label ? { label } : {}),
+        ...(reason ? { reason } : {}),
+      };
+    }
+    case "company": {
+      const ticker = boundedString(target.ticker, 24);
+      return ticker ? { type: "company", ticker } : null;
+    }
+    case "research": {
+      const threadId = optionalBoundedString(target.threadId, 256);
+      return threadId === null ? null : { type: "research", ...(threadId ? { threadId } : {}) };
+    }
+    case "alerts":
+    case "camera":
+    case "universe":
+    case "settings":
+      return { type: target.type };
+    default:
+      return null;
+  }
+}
+
 export function parsePushNotificationDelivery(
   data: NotificationData | null | undefined,
 ): PushNotificationDelivery | null {
-  const parsed = PushNotificationDeliverySchema.safeParse(data?.mapvest);
-  return parsed.success ? parsed.data : null;
+  const value = record(data?.mapvest);
+  if (!value || value.schemaVersion !== 1) return null;
+  const deliveryId = boundedString(value.deliveryId, 128);
+  const installationId = boundedString(value.installationId, 128);
+  const issuedAt = canonicalIsoDate(value.issuedAt);
+  const expiresAt = canonicalIsoDate(value.expiresAt);
+  const eventKind = boundedString(value.eventKind, 64);
+  const target = parsePushNotificationTarget(value.target);
+  if (!deliveryId || !installationId || !issuedAt || !expiresAt || !eventKind || !target) {
+    return null;
+  }
+  return { schemaVersion: 1, deliveryId, installationId, issuedAt, expiresAt, eventKind, target };
 }
 
 export function prunePushDeliveryEntries(
