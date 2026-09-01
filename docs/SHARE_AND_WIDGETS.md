@@ -112,29 +112,39 @@ capture path unavailable should still produce the text fallback.
 
 ## Home-screen widgets
 
-Both widgets read `GET /v1/widget/nearby` (trimmed nearby payload, capped
-at 12 items, quotes on top 6 tickers) and the map widget additionally reads
-`GET /v1/widget/map-snapshot` (a server-rendered Google Static Maps PNG).
-See `apps/api/src/routes/widget.ts`. Both endpoints are public (no bearer
-token) since a widget can't reliably hold a fresh session, and they return
-the same public brand/ticker data `/v1/nearby` does.
+iOS and Android intentionally use different data paths in this release:
 
-**The map snapshot is server-rendered on purpose** — same rule as the iOS
-maps SDK key (`docs/SECRETS.md`): a widget extension is a build artifact
-distributed to end users, so it must never carry `GOOGLE_MAPS_API_KEY`
-directly. If `GOOGLE_MAPS_API_KEY` isn't configured, `/v1/widget/map-snapshot`
-returns `501` and the map widget falls back to the same list layout as the
-"Nearby" list widget.
+- **iOS** renders one app-authored `WidgetDiscoverySnapshotV1`. After Map or
+  List resolves nearby results, the app atomically composes public company
+  cards with the current account's Find, quest, and Sector Dex truth. The
+  WidgetKit extension never carries a bearer token, makes a personalized
+  network join, or independently combines records from different refreshes.
+- **Android** retains the existing public `GET /v1/widget/nearby` flow. Its
+  redesign and atomic snapshot parity are deferred; the public endpoint and
+  `GET /v1/widget/map-snapshot` remain supported for Android and backwards
+  compatibility.
+
+The iOS snapshot contains display-ready tickers, names, sectors, coarse
+distances, collection/quest totals, freshness, account scope/epoch, exact
+`mapvest:///` links, and up to three cited finance sources per card. Each card
+shows its categorical confidence and source count; a public comparable for a
+private brand is always labeled with `≈$` rather than presented as the brand's
+own ticker. A card with no usable citation is forced to low confidence. The
+snapshot excludes precise coordinates, bearer tokens, email, photos, provider
+credentials, news, and price movement. The native widget marks signed-in
+content and all device/map-derived guest content privacy-sensitive so iOS may
+redact location-revealing signals when protected widget data is unavailable;
+only the explicitly labeled demo area can remain public.
 
 ### Where the widgets get a location
 
 Widgets can't prompt for GPS permission themselves. Whenever the Map or List
 tab gets a location fix, it calls `saveLastLocationForWidgets()`
-(`apps/ios/src/widgets/widgetLocation.ts`), which persists
-`{lat, lng, capturedAt, source}`. A widget origin is fresh for six hours;
-older or legacy coordinates are shown as stale/setup state and are never
-queried or labeled "Nearby". A GPS fix uses `source: "device"`; a user-panned
-map center uses `source: "map"` and is labeled "Map area" rather than
+(`apps/ios/src/widgets/widgetLocation.ts`), which persists the origin for the
+legacy Android path and the coarse iOS heartbeat. The iOS app separately
+turns that context and its resolved nearby response into a display-only
+snapshot with a six-hour expiry. A GPS result uses `source: "device"`; a
+user-panned center uses `source: "map"` and is labeled "Map area" rather than
 implying the device is there.
 
 The storage paths are:
@@ -143,17 +153,25 @@ The storage paths are:
   handler (`apps/ios/src/widgets/widget-task-handler.tsx`, registered from
   `apps/ios/index.js`) runs in the same JS engine and reads it straight
   back.
-- **iOS**: mirrors the value into a shared App Group
-  (`group.com.mapvest.app.widget`) via `@bacons/apple-targets`'
-  `ExtensionStorage`, since the WidgetKit extension is a fully separate
-  Swift process with zero JS/RN access. `targets/widget/NearbyModels.swift`
-  reads it back with `UserDefaults(suiteName:)`.
+- **iOS**: mirrors both the heartbeat origin and one JSON snapshot string into
+  the shared App Group (`group.com.mapvest.app.widget`) via
+  `@bacons/apple-targets`' `ExtensionStorage`. The WidgetKit extension is a
+  separate Swift process with zero JS/RN access;
+  `targets/widget/NearbyModels.swift` validates the version, card bounds,
+  links, account/epoch match, and expiry before rendering.
 
-A widget that has never seen a location shows “Set up your nearby location”
-and asks the user to open Mapvest and visit Map. A stale location shows its
-last-updated context and asks the user to refresh Mapvest. The six-hour
-freshness window is deliberately shared by the TypeScript origin classifier
-and the Swift WidgetKit target.
+A widget with no valid snapshot asks the user to open Mapvest and visit Map.
+Corrupt or account-mismatched snapshots fail closed. An expired, offline, or
+permission-denied snapshot may show the matching last-good companies with an
+explicit stale label; a valid empty result says no signals were resolved in
+that area and never invents a ticker.
+
+Map/List synchronization reuses the existing TanStack Query caches for Finds,
+Dex, and quests, applies a 15-second deadline to the personal join, and limits
+successful per-account WidgetKit reloads to one every 30 seconds. A newer map
+area invalidates an older in-flight composition. Universe personalization uses
+the snapshot ID as a compare-and-swap token, so it cannot overwrite a newer
+proximity frame.
 
 #### Account and notification lifecycle
 
@@ -161,8 +179,15 @@ WidgetKit location fixes are relayable only after the active account has a
 successful push registration. The app writes an opaque registration epoch to
 the App Group; the extension copies that account/epoch onto each captured fix,
 and the foreground relay rejects missing, mismatched, pre-registration, stale,
-or future fixes. This prevents a guest or a previous account's pending fix from
-being posted into a later account.
+or future fixes. The visual snapshot has its own account ID and authentication
+generation epoch. Sign-out invalidates the in-memory writer before serialized
+cleanup, and every read/write must match the exact supplied account. Account
+activation is two-phase: the persisted scope changes before the writer commits,
+so even a failed old-snapshot removal makes the previous frame scope-mismatched
+and hidden. A same-generation guest transition after boot cleanup remains
+valid, while late work from the removed account stays blocked. This prevents a
+guest or later account from seeing, relaying, or contaminating an old account's
+state.
 
 Confirmed notification opt-out and sign-out stop visit monitoring and clear
 the AsyncStorage origin plus the App Group `widgetLocationFix`, `lastLocation`,
@@ -207,20 +232,22 @@ written, but the Xcode project wiring, `Info.plist`, and entitlements are
 generated.
 
 - `expo-target.config.js` — target type `widget`, App Group entitlement.
-- `NearbyModels.swift` — DTOs mirroring `WidgetNearbyResponse`
-  (`packages/core`), the timestamped App Group reader, freshness classifier,
-  deep-link builders, and the two `fetch*` network calls (plain `URLSession`,
-  no dependencies).
-- `NearbyProvider.swift` — shared `TimelineProvider`, refreshes every 30
-  minutes.
-- `NearbyListWidget.swift` — small/medium/large list of nearby brands with
-  ticker/comparable labeling, distance, and last-updated context. Each ticker
-  row opens its detail route; the widget surface opens Map centered on the
-  shown origin.
-- `NearbyMapWidget.swift` — medium/large map snapshot with the nearest brand,
-  ticker/comparable label, distance, and last-updated context; the widget opens
-  Map centered on the shown origin and falls back to an honest text state when
-  the origin is not fresh or the snapshot is unavailable.
+- `NearbyModels.swift` — native snapshot DTOs plus strict App Group decoding,
+  account/epoch selection, freshness classification, and preview truth.
+- `NearbyProvider.swift` — shared `TimelineProvider`; requests a coarse
+  heartbeat and rereads the app-authored snapshot every 30 minutes without
+  making network requests or combining personalized records.
+- `NearbyListWidget.swift` — **Nearby Dex** at small/medium/large sizes: one
+  uncovered/caught target, exact company link, relevance and distance, then
+  quest, Sector Dex, and additional signals as space permits.
+- `NearbyMapWidget.swift` — **Discovery Signals** at medium/large sizes: an
+  explicitly non-geographic distance field, closest target, quest, and Dex
+  progress. It does not imply compass direction and never displays an
+  independently fetched map image.
+- `DiscoveryWidgetComponents.swift` — shared visual hierarchy, textual
+  caught/uncovered status, source confidence, honest public-comparable labels,
+  visible device/map/demo context, accessible labels, progress, and stale
+  freshness.
 - Android applies the same setup/stale/map-area headers, adjusts visible rows
   to the widget's current height, and deep-links ticker rows to Detail.
 - `MapvestWidgetBundle.swift` — `@main` `WidgetBundle` registering both.
@@ -228,10 +255,11 @@ generated.
   mirrored as plain hex `Color` values, so the widget target doesn't need
   its own Xcode asset-catalog color story.
 
-Deployment target is pinned to iOS 16 in `expo-target.config.js` — the
-widgets intentionally avoid iOS 17-only APIs (SwiftUI `Map`,
-`containerBackground(for:)`) so they build against the same minimum iOS
-version as the main app.
+Deployment target is pinned to iOS 16 in `expo-target.config.js`. The widgets
+avoid an iOS 17-only SwiftUI map, but conditionally adopt
+`containerBackground(for: .widget)` on iOS 17+ and retain the existing
+background path on iOS 16. This keeps current WidgetKit rendering valid while
+preserving the app's minimum iOS version.
 
 ### Android — App Widget (`apps/ios/src/widgets/`)
 
@@ -265,13 +293,17 @@ without extra plumbing, so the Android widget is list-only for now; the
    plugin warns (does not hard-fail prebuild) without it, but the widget
    extension target won't code-sign.
 3. `bunx expo prebuild --clean`.
-4. iOS: open `xed ios`, confirm the "MapvestWidgets" target builds, add the
-   widget to a simulator home screen, and confirm it shows the placeholder
-   data before the network call resolves and real data after.
+4. iOS: open `xed ios`, confirm the "MapvestWidgets" target builds, add both
+   widget kinds in every supported size, visit Map/List to author a real
+   snapshot, and verify guest, signed-in, empty, stale/offline, denied,
+   corrupt/setup, account-switch, failed-cleanup, and sign-out states plus every
+   deep link. Confirm map/demo headers, `≈$` comparable labels, confidence/source
+   copy, and lock-screen redaction for account and device/map guest snapshots.
 5. Android: `expo run:android`, long-press the home screen → Widgets →
    "Mapvest Nearby", confirm it renders and updates after visiting the Map
    or List tab (which seeds the last-known location).
-6. Both: hit `GET {API_URL}/v1/widget/nearby?lat=37.7749&lng=-122.4194` and
+6. Android/backwards compatibility: hit
+   `GET {API_URL}/v1/widget/nearby?lat=37.7749&lng=-122.4194` and
    `GET {API_URL}/v1/widget/map-snapshot?lat=37.7749&lng=-122.4194` directly
    to confirm the deployed API is serving them (the map snapshot 501s until
    `GOOGLE_MAPS_API_KEY` is set on Railway — see `docs/SECRETS.md`).

@@ -27,6 +27,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { investablePinColor, sectorColor } from "@/util/sectors";
+import { useWidgetDiscoverySync } from "@/widgets/widgetDiscoverySync";
 import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
@@ -248,6 +249,14 @@ export default function ListScreen() {
     () => visibleResultsForLocationContext(locationContext, items),
     [items, locationContext],
   );
+
+  useWidgetDiscoverySync({
+    context: locationContext,
+    origin,
+    items: visibleItems,
+    settled: !q.isFetching && !q.isError && q.data !== undefined,
+    enabled: isFocused,
+  });
 
   const tickers = useMemo(() => {
     const out: string[] = [];

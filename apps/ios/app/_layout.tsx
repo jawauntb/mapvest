@@ -23,6 +23,10 @@ import {
   clearWidgetRegistrationContext,
   saveWidgetRegistrationContext,
 } from "@/widgets/widgetLocation";
+import {
+  activateWidgetSnapshotSession,
+  invalidateWidgetSnapshotSession,
+} from "@/widgets/widgetSnapshotStorage";
 import { Syne_700Bold, Syne_800ExtraBold } from "@expo-google-fonts/syne";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -257,6 +261,21 @@ function PushBridge() {
   return null;
 }
 
+/** Establish the account epoch WidgetKit must match before personal rendering. */
+function WidgetSnapshotScopeBridge() {
+  const { user, authGeneration } = useSession();
+
+  useEffect(() => {
+    void activateWidgetSnapshotSession(
+      { accountId: user?.id ?? null, authGeneration },
+      { allowBlockedIdentity: true },
+    );
+    return invalidateWidgetSnapshotSession;
+  }, [authGeneration, user?.id]);
+
+  return null;
+}
+
 export default function RootLayout() {
   // Brand display font (Syne) loads in the background — rendering is never
   // gated on it. Until it lands, brand moments fall back to system sans.
@@ -315,6 +334,7 @@ export default function RootLayout() {
         <SessionProvider>
           <SidebarProvider>
             <PaywallProvider>
+              <WidgetSnapshotScopeBridge />
               <PushBridge />
               <StatusBar style="light" />
               <Stack

@@ -1,87 +1,119 @@
 import SwiftUI
 import WidgetKit
 
-/// Shows the server-rendered static map PNG (`/v1/widget/map-snapshot`,
-/// proxied so the widget never needs a Google Maps key of its own — see
-/// docs/SECRETS.md) with the nearest ticker overlaid. Falls back to the
-/// same compact list the "Nearby" widget shows when no key is configured
-/// server-side or the snapshot fetch fails.
+/// A deliberately non-geographic distance field. Points communicate proximity
+/// and collection state without implying a direction the snapshot does not own.
 struct NearbyMapWidgetView: View {
-    var entry: NearbyEntry
+    let entry: NearbyEntry
+    @Environment(\.widgetFamily) private var family
+
+    private var snapshot: WidgetDiscoverySnapshotV1? { entry.state.snapshot }
+    private var rootURL: URL? {
+        guard let snapshot else { return URL(string: "mapvest:///map") }
+        return snapshot.cards.isEmpty ? snapshot.mapURL : nil
+    }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            if let mapImage = entry.mapImage {
-                Image(uiImage: mapImage)
-                    .resizable()
-                    .scaledToFill()
+        Group {
+            if let snapshot, !snapshot.cards.isEmpty {
+                signalField(snapshot)
+                    .privacySensitive(snapshot.isPrivacySensitive)
             } else {
-                Color.mapvestBg
+                status
             }
-
-            overlay
         }
-        .clipped()
-        .widgetURL(widgetMapURL(for: entry.locationState))
+        .padding(contentPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .mapvestWidgetBackground { widgetBackground }
+        .widgetURL(rootURL)
     }
 
     @ViewBuilder
-    private var overlay: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(widgetHeader(for: entry.locationState))
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(.mapvestAccent)
-            WidgetLastUpdatedView(state: entry.locationState)
-
-            if entry.locationState.location == nil {
-                WidgetLocationStatusView(state: entry.locationState)
-            } else if entry.mapImage != nil {
-                if let top = entry.items.first {
-                    Link(destination: top.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(top.name)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            Text("\(top.label) · \(widgetDistanceText(top.distanceM))")
-                                .font(.system(size: 9))
-                                .foregroundColor(.white.opacity(0.85))
-                                .lineLimit(1)
+    private func signalField(_ snapshot: WidgetDiscoverySnapshotV1) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DiscoveryHeader(snapshot: snapshot, state: entry.state)
+            if family == .systemLarge {
+                DistanceSignalField(cards: snapshot.cards)
+                    .frame(maxHeight: .infinity)
+                HStack(spacing: 9) {
+                    if let quest = snapshot.quest {
+                        Link(destination: quest.url) {
+                            QuestPanel(quest: quest)
+                        }
+                    }
+                    if let dex = snapshot.dex {
+                        Link(destination: dex.url) {
+                            DexProgressPanel(dex: dex)
                         }
                     }
                 }
-            } else if let errorMessage = entry.errorMessage {
-                Text(errorMessage).font(.system(size: 11)).foregroundColor(.mapvestDanger)
-            } else if entry.items.isEmpty {
-                Text("Nothing nearby yet").font(.system(size: 11)).foregroundColor(.mapvestFgMuted)
-            } else {
-                ForEach(entry.items.prefix(3)) { item in
-                    Link(destination: item.ticker.map { widgetDetailURL(for: $0) } ?? widgetMapURL(for: entry.locationState)) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.name)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.mapvestFg)
-                                .lineLimit(1)
-                            Text("\(item.label) · \(widgetDistanceText(item.distanceM))")
-                                .font(.system(size: 9))
-                                .foregroundColor(.mapvestFgMuted)
-                                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) {
+                    ForEach(snapshot.cards.prefix(2)) { card in
+                        Link(destination: card.url) {
+                            CompactDiscoveryRow(card: card)
                         }
                     }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    DistanceSignalField(cards: snapshot.cards)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(alignment: .leading, spacing: 7) {
+                        if let target = snapshot.cards.first {
+                            Text("NEXT TARGET")
+                                .font(.caption2.weight(.black))
+                                .tracking(0.5)
+                                .foregroundColor(.mapvestFgMuted)
+                            Link(destination: target.url) {
+                                CompactDiscoveryRow(card: target)
+                            }
+                        }
+                        if let dex = snapshot.dex {
+                            Link(destination: dex.url) {
+                                DexProgressPanel(dex: dex)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            entry.mapImage != nil
-                ? LinearGradient(
-                    colors: [Color.black.opacity(0.7), .clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                : nil
-        )
+    }
+
+    private var status: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let snapshot {
+                DiscoveryHeader(snapshot: snapshot, state: entry.state)
+            } else {
+                HStack(spacing: 5) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                    Text("DISTANCE SIGNALS")
+                }
+                .font(.caption2.weight(.black))
+                .tracking(0.8)
+                .foregroundColor(.mapvestAccent)
+            }
+            Spacer(minLength: 0)
+            WidgetStatusView(state: entry.state)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var widgetBackground: some View {
+        ZStack {
+            Color.mapvestBg
+            LinearGradient(
+                colors: [Color.mapvestBlue.opacity(0.08), .clear, Color.mapvestAccent.opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var contentPadding: CGFloat {
+        if #available(iOSApplicationExtension 17.0, *) { return 0 }
+        return 12
     }
 }
 
@@ -89,11 +121,11 @@ struct NearbyMapWidget: Widget {
     let kind = "MapvestNearbyMapWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: NearbyProvider(limit: 6, wantsMapImage: true)) { entry in
+        StaticConfiguration(kind: kind, provider: NearbyProvider()) { entry in
             NearbyMapWidgetView(entry: entry)
         }
-        .configurationDisplayName("Mapvest Map")
-        .description("A map of investable brands around your recent location or chosen map area.")
+        .configurationDisplayName("Discovery Signals")
+        .description("See nearby investable companies as honest distance signals, with your Sector Dex progress.")
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }

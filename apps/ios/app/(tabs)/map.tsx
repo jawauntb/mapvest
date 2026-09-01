@@ -32,6 +32,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { matchNotificationMapTarget } from "@/notif/mapTarget";
 import { colors, motion, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { useWidgetDiscoverySync } from "@/widgets/widgetDiscoverySync";
 import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
@@ -406,6 +407,23 @@ export default function MapScreen() {
     queryFn: () => listFinds({ token: session?.token }),
     enabled: !!session?.token,
     staleTime: 60_000,
+  });
+
+  const widgetOrigin = useMemo(
+    () => ({ lat: region.latitude, lng: region.longitude }),
+    [region.latitude, region.longitude],
+  );
+  useWidgetDiscoverySync({
+    context: locationContext,
+    origin: widgetOrigin,
+    items: visibleItems,
+    settled:
+      !nearbyQuery.isFetching &&
+      !nearbyQuery.isError &&
+      nearbyQuery.data !== undefined &&
+      (!session?.token || (!findsQuery.isError && findsQuery.data !== undefined)),
+    enabled: isFocused,
+    finds: findsQuery.data?.finds,
   });
 
   const geoFinds = useMemo(() => {

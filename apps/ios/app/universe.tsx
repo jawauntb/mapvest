@@ -42,10 +42,11 @@ import { sectorColor } from "@/util/sectors";
 import { shareBriefImage } from "@/util/share";
 import { canStartShareAttempt, isShareCardReady } from "@/util/shareReadiness";
 import { universeShareCopy } from "@/util/universeShare";
+import { refreshWidgetDiscoveryPersonalization } from "@/widgets/widgetDiscoverySync";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -104,7 +105,7 @@ const RARITY_COLORS: Record<DexRarity, string> = {
 export default function UniverseScreen() {
   const router = useRouter();
   const qc = useQueryClient();
-  const { session } = useSession();
+  const { session, user, authGeneration } = useSession();
 
   useFocusEffect(
     useCallback(() => {
@@ -206,6 +207,35 @@ export default function UniverseScreen() {
     retry: false,
   });
   const quests = questsQ.data?.quests ?? [];
+
+  useEffect(() => {
+    if (
+      !user?.id ||
+      !findsQ.data ||
+      !dexQ.data ||
+      !questsQ.data ||
+      findsQ.isError ||
+      dexQ.isError ||
+      questsQ.isError
+    )
+      return;
+    void refreshWidgetDiscoveryPersonalization({
+      accountId: user.id,
+      authGeneration,
+      finds: findsQ.data.finds,
+      quests: questsQ.data,
+      dex: dexQ.data,
+    });
+  }, [
+    authGeneration,
+    dexQ.data,
+    dexQ.isError,
+    findsQ.data,
+    findsQ.isError,
+    questsQ.data,
+    questsQ.isError,
+    user?.id,
+  ]);
 
   const syms = useMemo(
     () =>
