@@ -1,59 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-type ProductionTestFlightWorkflow = {
-  on: Record<string, unknown>;
-  jobs: {
-    build_ios: {
-      type: string;
-      params: {
-        platform: string;
-        profile: string;
-      };
-    };
-    distribute_to_testflight: {
-      type: string;
-      needs: string[];
-      params: {
-        build_id: string;
-        profile: string;
-        external_groups: string[];
-        changelog: string;
-        submit_beta_review: boolean;
-        wait_processing_timeout_seconds: number;
-      };
-    };
-  };
-};
-
-type RecoveryTestFlightWorkflow = {
-  on: {
-    workflow_dispatch: {
-      inputs: {
-        asc_build_id: {
-          type: string;
-          required: boolean;
-          description: string;
-        };
-        submit_beta_review: {
-          type: string;
-          default: boolean;
-          description: string;
-        };
-      };
-    };
-  };
-  jobs: {
-    distribute_to_testflight: {
-      type: string;
-      params: Record<string, unknown> & {
-        asc_build_id: string;
-        external_groups: string[];
-        changelog: string;
-        submit_beta_review: string;
-      };
-    };
-  };
-};
+import { loadReleaseManifest } from "./releaseManifest";
 
 const productionEasWorkflowUrl = new URL(
   "../../.eas/workflows/testflight-production.yml",
@@ -63,187 +9,272 @@ const recoveryEasWorkflowUrl = new URL(
   "../../.eas/workflows/testflight-external.yml",
   import.meta.url,
 );
+const distributionEasWorkflowUrl = new URL(
+  "../../.eas/workflows/testflight-distribute.yml",
+  import.meta.url,
+);
 const githubProductionWorkflowUrl = new URL(
   "../../../../.github/workflows/ios-eas-production.yml",
   import.meta.url,
 );
+const appStoreWorkflowUrl = new URL(
+  "../../../../.github/workflows/ios-app-store-release.yml",
+  import.meta.url,
+);
+const recoveryGithubWorkflowUrl = new URL(
+  "../../../../.github/workflows/ios-testflight-recovery.yml",
+  import.meta.url,
+);
+const ledgerWorkflowUrl = new URL(
+  "../../../../.github/workflows/ios-release-ledger.yml",
+  import.meta.url,
+);
+const manifestUrl = new URL("../../release/v0.1.0.json", import.meta.url);
 const testFlightRunbookUrl = new URL("../../DEPLOY_TESTFLIGHT.md", import.meta.url);
 const deploymentDocUrl = new URL("../../../../docs/DEPLOY.md", import.meta.url);
 
-describe("external TestFlight distribution", () => {
-  test("passes the exact native iOS build to the populated external group", async () => {
-    const workflow = Bun.YAML.parse(
-      await Bun.file(productionEasWorkflowUrl).text(),
-    ) as ProductionTestFlightWorkflow;
-    const buildJob = workflow.jobs.build_ios;
-    const distributionJob = workflow.jobs.distribute_to_testflight;
+type WorkflowInput = {
+  required?: boolean;
+  options?: string[];
+};
 
-    expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
-    expect(workflow.on.workflow_dispatch).toEqual({});
-    expect(workflow.on.app_store_connect).toBeUndefined();
-    expect(buildJob.type).toBe("build");
+type WorkflowStep = {
+  id?: string;
+  run?: string;
+};
+
+type WorkflowJob = {
+  environment?: string;
+  if?: string;
+  needs?: string | string[];
+  "timeout-minutes"?: number;
+  params?: Record<string, unknown>;
+  steps: WorkflowStep[];
+};
+
+type WorkflowDocument = {
+  on: {
+    workflow_dispatch: { inputs: Record<string, WorkflowInput> };
+    workflow_run?: unknown;
+    push?: unknown;
+  };
+  permissions?: Record<string, string>;
+  jobs: Record<string, WorkflowJob>;
+};
+
+async function parseWorkflow(url: URL): Promise<WorkflowDocument> {
+  return Bun.YAML.parse(await Bun.file(url).text()) as WorkflowDocument;
+}
+
+function job(workflow: WorkflowDocument, name: string): WorkflowJob {
+  const candidate = workflow.jobs[name];
+  if (!candidate) {
+    throw new Error(`Missing workflow job ${name}`);
+  }
+  return candidate;
+}
+
+function input(inputs: Record<string, WorkflowInput>, name: string): WorkflowInput {
+  const candidate = inputs[name];
+  if (!candidate) {
+    throw new Error(`Missing workflow input ${name}`);
+  }
+  return candidate;
+}
+
+describe("manifest-bound TestFlight distribution", () => {
+  test("builds once, then sends only the separately inspected UUID to TestFlight", async () => {
+    const buildWorkflow = await parseWorkflow(productionEasWorkflowUrl);
+    const distributionWorkflow = await parseWorkflow(distributionEasWorkflowUrl);
+    const manifest = await loadReleaseManifest(manifestUrl);
+    const buildInputs = buildWorkflow.on.workflow_dispatch.inputs;
+    const distributionInputs = distributionWorkflow.on.workflow_dispatch.inputs;
+    const buildJob = job(buildWorkflow, "build_ios");
+    const distributionJob = job(distributionWorkflow, "distribute_to_testflight");
+
+    expect(Object.keys(buildWorkflow.on)).toEqual(["workflow_dispatch"]);
+    expect(input(buildInputs, "manifest_hash").required).toBe(true);
+    expect(input(buildInputs, "source_commit_sha").required).toBe(true);
+    expect(buildInputs.what_to_test).toBeUndefined();
+    expect(buildInputs.testflight_group).toBeUndefined();
     expect(buildJob.params).toEqual({ platform: "ios", profile: "production" });
-    expect(distributionJob.type).toBe("testflight");
-    expect(distributionJob.needs).toEqual(["build_ios"]);
-    expect(distributionJob.params.build_id).toBe("${{ needs.build_ios.outputs.build_id }}");
-    expect(distributionJob.params.profile).toBe("production");
-    expect(distributionJob.params.external_groups).toEqual(["friend-testers"]);
-    expect(distributionJob.params.submit_beta_review).toBe(true);
-    expect(distributionJob.params.changelog).toContain("Mapvest beta");
-    expect(distributionJob.params.wait_processing_timeout_seconds).toBe(3600);
+    expect(buildWorkflow.jobs.distribute_to_testflight).toBeUndefined();
+    for (const field of [
+      "build_id",
+      "manifest_hash",
+      "source_commit_sha",
+      "what_to_test",
+      "testflight_group",
+    ]) {
+      expect(input(distributionInputs, field).required).toBe(true);
+    }
+    expect(distributionJob.params?.build_id).toBe("${{ inputs.build_id }}");
+    expect(distributionJob.params?.external_groups).toEqual(["${{ inputs.testflight_group }}"]);
+    expect(manifest.release.testFlightGroup).toBe("friend-testers");
+    expect(distributionJob.params?.submit_beta_review).toBe(true);
+    expect(distributionJob.params?.changelog).toBe("${{ inputs.what_to_test }}");
+    expect(manifest.copy.testFlightWhatToTest).toContain("Mapvest beta");
   });
 
-  test("recovers one explicit processed App Store Connect build", async () => {
-    const workflow = Bun.YAML.parse(
-      await Bun.file(recoveryEasWorkflowUrl).text(),
-    ) as RecoveryTestFlightWorkflow;
-    const distributionJob = workflow.jobs.distribute_to_testflight;
+  test("recovers only one explicit ASC build under the same manifest binding", async () => {
+    const workflow = await parseWorkflow(recoveryEasWorkflowUrl);
+    const inputs = workflow.on.workflow_dispatch.inputs;
+    const distributionJob = job(workflow, "distribute_to_testflight");
+
+    expect(input(inputs, "asc_build_id").required).toBe(true);
+    expect(input(inputs, "manifest_hash").required).toBe(true);
+    expect(input(inputs, "source_commit_sha").required).toBe(true);
+    expect(input(inputs, "what_to_test").required).toBe(true);
+    expect(input(inputs, "testflight_group").required).toBe(true);
+    expect(distributionJob.params?.asc_build_id).toBe("${{ inputs.asc_build_id }}");
+    expect(distributionJob.params?.build_id).toBeUndefined();
+    expect(distributionJob.params?.changelog).toBe("${{ inputs.what_to_test }}");
+    expect(distributionJob.params?.external_groups).toEqual(["${{ inputs.testflight_group }}"]);
+  });
+
+  test("cuts no candidate on green main and requires an explicit exact manifest trigger", async () => {
+    const workflow = await parseWorkflow(githubProductionWorkflowUrl);
+    const dispatch = workflow.on.workflow_dispatch;
+    const gate = job(workflow, "release_gate");
+    const gateScript = gate.steps.find((step) => step.id === "release")?.run ?? "";
 
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
-    expect(workflow.on.workflow_dispatch.inputs.asc_build_id).toEqual({
-      type: "string",
-      required: true,
-      description: "Processed App Store Connect build ID to distribute.",
-    });
-    expect(workflow.on.workflow_dispatch.inputs.submit_beta_review).toEqual({
-      type: "boolean",
-      default: true,
-      description: "Submit this build for Beta App Review.",
-    });
-    expect(Object.keys(workflow.jobs)).toEqual(["distribute_to_testflight"]);
-    expect(distributionJob.type).toBe("testflight");
-    expect(distributionJob.params.asc_build_id).toBe("${{ inputs.asc_build_id }}");
-    expect(distributionJob.params.build_id).toBeUndefined();
-    expect(distributionJob.params.profile).toBeUndefined();
-    expect(distributionJob.params.wait_processing_timeout_seconds).toBeUndefined();
-    expect(distributionJob.params.external_groups).toEqual(["friend-testers"]);
-    expect(distributionJob.params.submit_beta_review).toBe("${{ inputs.submit_beta_review }}");
-    expect(distributionJob.params.changelog).toContain("Mapvest beta");
+    expect(workflow.on.workflow_run).toBeUndefined();
+    expect(workflow.on.push).toBeUndefined();
+    expect(input(dispatch.inputs, "manifest_path").required).toBe(true);
+    expect(input(dispatch.inputs, "manifest_hash").required).toBe(true);
+    expect(input(dispatch.inputs, "source_commit_sha").required).toBe(true);
+    expect(workflow.permissions).toEqual({ actions: "read", contents: "read" });
+    expect(gateScript).toContain("git/ref/heads/main");
+    expect(gateScript).toContain("actions/workflows/ci.yml/runs");
+    expect(gateScript).toContain("status=success");
+    expect(gateScript).toContain("release-manifest.ts validate-request");
+    expect(await Bun.file(githubProductionWorkflowUrl).text()).toContain("release-manifest.ts");
+    expect(job(workflow, "signing_preflight").environment).toBe("ios-production-release");
+    expect(job(workflow, "eas-ios").environment).toBe("ios-production-release");
+    expect(job(workflow, "inspect_candidate").environment).toBe("ios-production-release");
+    expect(job(workflow, "distribute_candidate").environment).toBe("ios-production-release");
+    expect(job(workflow, "distribute_candidate").needs).toEqual([
+      "release_gate",
+      "eas-ios",
+      "inspect_candidate",
+    ]);
+    const source = await Bun.file(githubProductionWorkflowUrl).text();
+    expect(source).toContain("mapvest-ios-inspected-");
+    expect(source).toContain(".eas/workflows/testflight-distribute.yml");
+    expect(source).toContain('--input "build_id=$EAS_BUILD_ID"');
+    expect(source.indexOf("  inspect_candidate:")).toBeLessThan(
+      source.indexOf("  distribute_candidate:"),
+    );
+    expect(job(workflow, "eas-ios").steps.some((step) => step.run?.includes("--latest"))).toBe(
+      false,
+    );
   });
 
-  test("validates both workflows before tracking the exact production run", async () => {
-    const productionWorkflow = Bun.YAML.parse(
-      await Bun.file(githubProductionWorkflowUrl).text(),
-    ) as {
-      concurrency: {
-        group: string;
-        queue: string;
-        "cancel-in-progress"?: boolean;
-      };
-      jobs: {
-        release_gate: {
-          outputs: { should_release: string };
-          steps: Array<{ id?: string; run?: string }>;
-        };
-        signing_preflight: {
-          needs: string;
-          if: string;
-          steps: Array<{
-            uses?: string;
-            run?: string;
-            "working-directory"?: string;
-          }>;
-        };
-        "eas-ios": {
-          if: string;
-          "timeout-minutes": number;
-          steps: Array<{
-            env?: Record<string, string>;
-            if?: string;
-            "timeout-minutes"?: number;
-            uses?: string;
-            run?: string;
-            "working-directory"?: string;
-          }>;
-        };
-      };
-    };
-    const steps = productionWorkflow.jobs["eas-ios"].steps;
-    const setupIndex = steps.findIndex((step) => step.uses === "expo/expo-github-action@v8");
-    const validationIndex = steps.findIndex((step) => step.run?.includes("eas workflow:validate"));
-    const runIndex = steps.findIndex((step) => step.run === "bun scripts/testflight-production.ts");
-    const validationStep = steps[validationIndex];
-    const runStep = steps[runIndex];
-    const runScript = runStep?.run ?? "";
-    const cleanupStep = steps.find((step) => step.run?.includes("--reconcile-run-id-file"));
-    const dispatchFreshnessStep = steps.find((step) =>
-      step.run?.includes("Final TestFlight release gate"),
-    );
-    const freshnessStep = productionWorkflow.jobs.release_gate.steps.find(
-      (step) => step.id === "freshness",
-    );
+  test("protects recovery and derives all mutable copy from the checked-in manifest", async () => {
+    const workflow = await parseWorkflow(recoveryGithubWorkflowUrl);
+    const inputs = workflow.on.workflow_dispatch.inputs;
+    const recover = job(workflow, "recover");
+    const combined = await Bun.file(recoveryGithubWorkflowUrl).text();
 
-    expect(productionWorkflow.concurrency).toEqual({
-      group: "ios-eas-production-store",
-      "cancel-in-progress": false,
-      queue: "max",
-    });
-    expect(productionWorkflow.jobs.release_gate.outputs.should_release).toBe(
-      "${{ steps.freshness.outputs.should_release }}",
-    );
-    expect(freshnessStep?.run).toContain("gh api");
-    expect(freshnessStep?.run).toContain('[[ "$REQUESTED_SHA" == "$main_sha" ]]');
-    expect(freshnessStep?.run).toContain('echo "should_release=$should_release"');
-    expect(productionWorkflow.jobs.signing_preflight.needs).toBe("release_gate");
-    expect(productionWorkflow.jobs.signing_preflight.if).toBe(
-      "needs.release_gate.outputs.should_release == 'true'",
-    );
-    expect(productionWorkflow.jobs["eas-ios"].if).toContain("always()");
-    expect(productionWorkflow.jobs["eas-ios"].if).toContain(
-      "needs.signing_preflight.result == 'success'",
-    );
-    expect(productionWorkflow.jobs["eas-ios"]["timeout-minutes"]).toBe(180);
-    expect(setupIndex).toBeGreaterThanOrEqual(0);
-    expect(validationIndex).toBeGreaterThan(setupIndex);
-    expect(runIndex).toBeGreaterThan(validationIndex);
-    expect(validationStep?.["working-directory"]).toBe("apps/ios");
-    expect(validationStep?.run).toContain(".eas/workflows/testflight-production.yml");
-    expect(validationStep?.run).toContain(".eas/workflows/testflight-external.yml");
-    expect(validationStep?.run).toContain("--non-interactive");
-    expect(dispatchFreshnessStep?.run).toContain("gh api");
-    expect(dispatchFreshnessStep?.run).toContain('[[ "$REQUESTED_SHA" != "$main_sha" ]]');
-    expect(runStep?.["working-directory"]).toBe("apps/ios");
-    expect(runStep?.if).toBe(
-      "${{ success() && !cancelled() && steps.dispatch_freshness.outputs.should_release == 'true' }}",
-    );
-    expect(
-      steps
-        .filter((step) => step !== cleanupStep)
-        .every((step) => step.if?.includes("success()") && step.if.includes("!cancelled()")),
-    ).toBe(true);
-    expect(runScript).toBe("bun scripts/testflight-production.ts");
-    expect(runStep?.env?.MAPVEST_EAS_RUN_ID_FILE).toContain("runner.temp");
-    expect(cleanupStep?.if).toBe("${{ cancelled() }}");
-    expect(cleanupStep?.["timeout-minutes"]).toBe(4);
-    expect(cleanupStep?.env?.MAPVEST_EAS_RUN_ID_FILE).toBe(runStep?.env?.MAPVEST_EAS_RUN_ID_FILE);
-    const installSteps = steps.filter((step) => step.run?.includes("npm "));
-    expect(installSteps.map((step) => step.run)).toEqual(["npm ci --no-workspaces"]);
-    expect(
-      productionWorkflow.jobs.signing_preflight.steps
-        .filter((step) => step.run?.includes("npm "))
-        .map((step) => step.run),
-    ).toEqual(["npm ci --no-workspaces"]);
-    expect(steps.some((step) => step.run?.includes("eas build"))).toBe(false);
+    expect(Object.keys(inputs)).toEqual([
+      "asc_build_id",
+      "manifest_path",
+      "manifest_hash",
+      "source_commit_sha",
+      "submit_beta_review",
+    ]);
+    expect(recover.environment).toBe("ios-production-release");
+    expect(recover["timeout-minutes"]).toBe(90);
+    expect(combined).toContain('release-manifest.ts render "$MANIFEST_PATH" testflight');
+    expect(combined).toContain(".release.testFlightGroup");
+    expect(combined).toContain("compare/main...$SOURCE_COMMIT_SHA");
+    expect(combined).not.toContain("inputs.what_to_test");
+    expect(combined).not.toContain("inputs.testflight_group");
   });
 
-  test("documents break-glass release, ASC recovery, and tester availability boundaries", async () => {
+  test("creates ledgers only from a successful candidate run plus protected attestations", async () => {
+    const workflow = await parseWorkflow(ledgerWorkflowUrl);
+    const inputs = workflow.on.workflow_dispatch.inputs;
+    const attest = job(workflow, "attest");
+    const combined = await Bun.file(ledgerWorkflowUrl).text();
+
+    for (const field of [
+      "candidate_run_id",
+      "physical_device_checklist",
+      "app_store_metadata_audit",
+      "app_privacy_audit",
+      "reviewer_access",
+      "subscription_review",
+      "account_deletion_and_ai_consent",
+    ]) {
+      expect(input(inputs, field).required).toBe(true);
+    }
+    expect(attest.environment).toBe("ios-production-release");
+    expect(attest["timeout-minutes"]).toBe(20);
+    expect(combined).toContain(".github/workflows/ios-eas-production.yml");
+    expect(combined).toContain(".github/workflows/ci.yml");
+    expect(combined).toContain(".testFlightDistribution");
+    expect(combined).toContain("mapvest-ios-candidate-${{ inputs.source_commit_sha }}");
+    expect(combined).toContain("release-ledger.ts");
+    expect(combined).toContain("APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64");
+    expect(combined).toContain("mapvest-release-ledger-${{ inputs.source_commit_sha }}");
+  });
+
+  test("protects exact-ID dry-run, submission, and storefront release separately", async () => {
+    const workflow = await parseWorkflow(appStoreWorkflowUrl);
+    const inputs = workflow.on.workflow_dispatch.inputs;
+    const preflightScript = job(workflow, "preflight").steps.at(-1)?.run ?? "";
+    const reviewJob = job(workflow, "review");
+    const releaseJob = job(workflow, "storefront_release");
+    const combined = await Bun.file(appStoreWorkflowUrl).text();
+
+    expect(workflow.permissions).toEqual({ actions: "read", contents: "read" });
+    expect(input(inputs, "mode").options).toEqual(["dry-run", "submit", "release"]);
+    for (const field of ["manifest_path", "manifest_hash", "source_commit_sha"]) {
+      expect(input(inputs, field).required).toBe(true);
+    }
+    expect(inputs.asc_build_id).toBeUndefined();
+    expect(inputs.app_store_version_id).toBeUndefined();
+    expect(preflightScript).not.toContain("git/ref/heads/main");
+    expect(preflightScript).toContain("compare/main...$SOURCE_COMMIT_SHA");
+    expect(preflightScript).toContain(".head_branch");
+    expect(preflightScript).toContain("compare/$SOURCE_COMMIT_SHA...$producer_head_sha");
+    expect(combined).toContain("release-ledger.json");
+    expect(combined).not.toContain("inputs.ledger_path");
+    expect(combined).not.toContain("inputs.ledger_artifact_name");
+    expect(combined).toContain(".github/workflows/ios-release-ledger.yml");
+    expect(combined).toContain(".github/workflows/ios-app-store-release.yml");
+    expect(combined).toContain("mapvest-release-ledger-${{ inputs.source_commit_sha }}");
+    expect(reviewJob.environment).toBe("app-store-review-submission");
+    expect(releaseJob.environment).toBe("app-store-production-release");
+    expect(reviewJob.needs).toBe("preflight");
+    expect(releaseJob.needs).toBe("preflight");
+    expect(reviewJob.if).toBe("${{ inputs.mode == 'dry-run' || inputs.mode == 'submit' }}");
+    expect(releaseJob.if).toBe("${{ inputs.mode == 'release' }}");
+    expect(reviewJob["timeout-minutes"]).toBe(30);
+    expect(releaseJob["timeout-minutes"]).toBe(30);
+    expect(combined).toContain("doppler run --project mapvest --config prd");
+    expect(combined).toContain("APP_STORE_CONNECT_PRIVATE_KEY");
+    expect(combined).toContain("must be single-line base64");
+    expect(combined).toContain("if: ${{ always() }}");
+    expect(combined).toContain("app-store-release.ts");
+    expect(combined).not.toContain("appStoreVersionSubmissions");
+    expect(combined).not.toContain("--latest");
+  });
+
+  test("documents explicit triggering, immutable ledgers, and distinct release states", async () => {
     const docs = `${await Bun.file(testFlightRunbookUrl).text()}\n${await Bun.file(deploymentDocUrl).text()}`;
 
-    expect(docs).toContain("break-glass");
-    expect(docs).toContain('select(.status != "completed")');
-    expect(docs).toContain("set -euo pipefail");
-    expect(docs).toContain("bun scripts/testflight-production.ts");
-    expect(docs).toContain("as terminal EAS states");
-    expect(docs).toContain("gh run watch GITHUB_RUN_ID --exit-status");
-    expect(docs).toContain("only dispatches the GitHub workflow");
-    expect(docs).toContain("skips stale out-of-order CI completions");
-    expect(docs).toContain("--input asc_build_id=PROCESSED_ASC_BUILD_ID");
-    expect(docs).toContain("--input submit_beta_review=false");
-    expect(docs).toContain("does not mean Apple approved the build");
-    expect(docs).toContain("Automatic Updates");
-    expect(docs).toContain("one build of each marketing version");
-    expect(docs).toContain("six TestFlight review submissions in 24 hours");
-    expect(docs).toContain("newest processed pending build");
-    expect(docs).toContain("not the visible build number or EAS build ID");
+    expect(docs).toContain("does not run after every green `main` merge");
+    expect(docs).toContain("release manifest");
+    expect(docs).toContain("runtime ledger");
+    expect(docs).toContain("reviewSubmissions");
+    expect(docs).toContain("app-store-review-submission");
+    expect(docs).toContain("app-store-production-release");
+    expect(docs).toContain(
+      "upload, TestFlight, Beta Review, App Review, approval, release, and storefront availability",
+    );
+    expect(docs).toContain("never `--latest`");
   });
 });

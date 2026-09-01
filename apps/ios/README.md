@@ -99,8 +99,9 @@ guarantee needs server-supported identify idempotency.
 
 ## Build (EAS)
 
-Production TestFlight is automatic: green `ci` on `main` runs
-`ios-eas-production` (see `DEPLOY_TESTFLIGHT.md`). Manual:
+Production TestFlight is explicit: after green `ci` on `main`, dispatch the
+protected manifest-bound `ios-eas-production` workflow (see
+`DEPLOY_TESTFLIGHT.md`). Local builds remain available for development:
 
 ```
 bun run build:dev     # dev client, simulator

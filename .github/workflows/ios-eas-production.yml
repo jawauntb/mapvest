@@ -1,95 +1,99 @@
-# TestFlight: EAS production iOS build + external distribution.
-#
-# Triggers
-# - Green `ci` on `main` (same gate as Railway `deploy.yml`)
-# - Manual: Actions → ios-eas-production → Run workflow
-# - Version tags: `v*`
-#
-# Do not set EAS_NO_VCS=1. The worker git root is /Users/expo/workingdir/build
-# and must contain apps/ios/package.json. A VCS-less pack from apps/ios fails
-# in PRE_INSTALL_HOOK (builds 96 and 98).
+# Explicit release-candidate build. Ordinary green main merges never trigger it.
 name: ios-eas-production
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
-    branches: [main]
+    inputs:
+      manifest_path:
+        type: string
+        required: true
+        default: apps/ios/release/v0.1.0.json
+        description: Checked-in versioned release manifest.
+      manifest_hash:
+        type: string
+        required: true
+        description: Immutable sha256 hash printed by release-manifest validate.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Full merged main SHA to build.
 
 concurrency:
-  # Queue requests so out-of-order CI completions cannot replace newer work.
-  # release_gate cheaply skips any workflow_run SHA that is no longer main.
   group: ios-eas-production-store
   cancel-in-progress: false
-  queue: max
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   release_gate:
-    name: resolve freshest eligible release
+    name: validate exact merged release manifest
     runs-on: ubuntu-latest
     outputs:
-      should_release: ${{ steps.freshness.outputs.should_release }}
+      manifest_path: ${{ steps.release.outputs.manifest_path }}
+      manifest_hash: ${{ steps.release.outputs.manifest_hash }}
+      source_commit_sha: ${{ steps.release.outputs.source_commit_sha }}
+      ci_run_id: ${{ steps.release.outputs.ci_run_id }}
 
     steps:
-      - name: Keep only the current green main SHA
-        id: freshness
+      - name: Checkout exact requested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Validate manifest, hash, and current main identity
+        id: release
         shell: bash
         env:
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
         run: |
           set -euo pipefail
-
-          should_release=true
-          reason="explicit manual or tag release"
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            should_release=false
-            reason="CI was not a successful main run"
-            if [[ "$CI_CONCLUSION" == "success" && "$CI_HEAD_BRANCH" == "main" ]]; then
-              main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-              if [[ "$REQUESTED_SHA" == "$main_sha" ]]; then
-                should_release=true
-                reason="CI SHA is still the current main SHA"
-              else
-                reason="a newer main SHA superseded this CI completion"
-              fi
-            fi
-          fi
-
-          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          [[ "$MANIFEST_PATH" =~ ^apps/ios/release/v[0-9]+\.[0-9]+\.[0-9]+\.json$ ]]
+          current_main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          bun apps/ios/scripts/release-manifest.ts validate-request \
+            "$MANIFEST_PATH" "$MANIFEST_HASH" "$SOURCE_COMMIT_SHA" "$current_main_sha"
+          ci_run_id="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$SOURCE_COMMIT_SHA" -f event=push -f status=success -f per_page=10 \
+            --jq '.workflow_runs[0].id // empty')"
+          test -n "$ci_run_id"
+          test "$(jq -r '.expo.version' apps/ios/app.json)" = \
+            "$(jq -r '.identity.marketingVersion' "$MANIFEST_PATH")"
+          echo "manifest_path=$MANIFEST_PATH" >> "$GITHUB_OUTPUT"
+          echo "manifest_hash=$MANIFEST_HASH" >> "$GITHUB_OUTPUT"
+          echo "source_commit_sha=$SOURCE_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "ci_run_id=$ci_run_id" >> "$GITHUB_OUTPUT"
           {
-            echo "### TestFlight release gate"
+            echo "### Validated iOS release candidate"
             echo
-            echo "- Requested SHA: \`$REQUESTED_SHA\`"
-            echo "- Release: \`$should_release\`"
-            echo "- Reason: $reason"
+            echo "- Manifest: \`$MANIFEST_PATH\`"
+            echo "- Manifest hash: \`$MANIFEST_HASH\`"
+            echo "- Source SHA: \`$SOURCE_COMMIT_SHA\`"
+            echo "- Successful main CI run: \`$ci_run_id\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   signing_preflight:
     name: local production signing preflight
     needs: release_gate
     runs-on: macos-15
-    if: needs.release_gate.outputs.should_release == 'true'
+    environment: ios-production-release
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout exact validated source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.release_gate.outputs.source_commit_sha }}
 
-      # SDK 54's pinned EAS image uses Xcode 26.0. GitHub currently provides
-      # 26.0.1 at this stable path, avoiding its moving default generation.
       - name: Match EAS Xcode toolchain
         run: |
           sudo xcode-select --switch /Applications/Xcode_26.0.app/Contents/Developer
@@ -113,9 +117,16 @@ jobs:
           eas-version: 22.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
-      # This uses the production certificate and profiles without reserving a
-      # remote build number. Capability/profile drift therefore fails here,
-      # before the cloud build and App Store submission are created.
+      - name: Revalidate release binding
+        env:
+          MANIFEST_PATH: ${{ needs.release_gate.outputs.manifest_path }}
+          MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
+          CI_RUN_ID: ${{ needs.release_gate.outputs.ci_run_id }}
+          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
+        run: >-
+          bun apps/ios/scripts/release-manifest.ts validate-request
+          "$MANIFEST_PATH" "$MANIFEST_HASH" "$SOURCE_COMMIT_SHA" "$SOURCE_COMMIT_SHA"
+
       - name: Build and sign production locally
         working-directory: apps/ios
         env:
@@ -129,21 +140,69 @@ jobs:
           --non-interactive
           --output "$RUNNER_TEMP/mapvest-signing-preflight.ipa"
 
+      - name: Inspect signed app and widget identity, privacy, and entitlements
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ github.workspace }}/${{ needs.release_gate.outputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          archive_root="$RUNNER_TEMP/mapvest-signing-preflight"
+          mkdir "$archive_root"
+          unzip -q "$RUNNER_TEMP/mapvest-signing-preflight.ipa" -d "$archive_root"
+          app_path=("$archive_root"/Payload/*.app)
+          test "${#app_path[@]}" -eq 1
+          widget_path=""
+          for extension in "${app_path[0]}"/PlugIns/*.appex; do
+            point="$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$extension/Info.plist" 2>/dev/null || true)"
+            if [[ "$point" == "com.apple.widgetkit-extension" ]]; then
+              test -z "$widget_path"
+              widget_path="$extension"
+            fi
+          done
+          test -n "$widget_path"
+          expected_version="$(jq -r '.identity.marketingVersion' "$MANIFEST_PATH")"
+          app_version="$(plutil -extract CFBundleShortVersionString raw "${app_path[0]}/Info.plist")"
+          app_build="$(plutil -extract CFBundleVersion raw "${app_path[0]}/Info.plist")"
+          widget_version="$(plutil -extract CFBundleShortVersionString raw "$widget_path/Info.plist")"
+          widget_build="$(plutil -extract CFBundleVersion raw "$widget_path/Info.plist")"
+          test "$app_version" = "$expected_version"
+          test "$widget_version" = "$app_version"
+          test "$widget_build" = "$app_build"
+          codesign -d --entitlements :- "${app_path[0]}" > "$RUNNER_TEMP/app-entitlements.plist"
+          codesign -d --entitlements :- "$widget_path" > "$RUNNER_TEMP/widget-entitlements.plist"
+          grep -q 'group.com.mapvest.app.widget' "$RUNNER_TEMP/app-entitlements.plist"
+          grep -q 'group.com.mapvest.app.widget' "$RUNNER_TEMP/widget-entitlements.plist"
+          test -f "$widget_path/PrivacyInfo.xcprivacy"
+          if grep -R -a -E -q \
+            'OPENROUTER_API_KEY|EXA_API_KEY|MASSIVE_API_KEY|APP_STORE_CONNECT_PRIVATE_KEY|Bearer eyJ' \
+            "${app_path[0]}"; then
+            echo "::error::Signed archive contains forbidden credential material or names."
+            exit 1
+          fi
+          {
+            echo "### Signed archive identity"
+            echo
+            echo "- App/widget version: \`$app_version\`"
+            echo "- App/widget build: \`$app_build\`"
+            echo "- App Group and widget privacy manifest: verified"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   eas-ios:
-    name: eas build + external TestFlight distribution (ios production)
-    needs: signing_preflight
-    # Keep the job runner available for the `cancelled()` cleanup step. Every
-    # ordinary release step is explicitly cancellation-sensitive below.
+    name: build exact EAS candidate
+    needs: [release_gate, signing_preflight]
     if: ${{ always() && needs.signing_preflight.result == 'success' }}
     runs-on: ubuntu-latest
+    environment: ios-production-release
     timeout-minutes: 180
+    outputs:
+      eas_run_id: ${{ steps.candidate.outputs.eas_run_id }}
 
     steps:
-      - name: Checkout
+      - name: Checkout exact validated source
         if: ${{ success() && !cancelled() }}
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.release_gate.outputs.source_commit_sha }}
 
       - name: Set up Bun
         if: ${{ success() && !cancelled() }}
@@ -155,8 +214,6 @@ jobs:
         if: ${{ success() && !cancelled() }}
         run: bun install --frozen-lockfile
 
-      # apps/ios is not a Bun workspace member (Metro vs hoisted .bun/).
-      # eas-cli resolves expo-router locally before it uploads the tarball.
       - name: Install iOS dependencies
         if: ${{ success() && !cancelled() }}
         working-directory: apps/ios
@@ -174,50 +231,72 @@ jobs:
         working-directory: apps/ios
         run: |
           eas workflow:validate .eas/workflows/testflight-production.yml --non-interactive
+          eas workflow:validate .eas/workflows/testflight-distribute.yml --non-interactive
           eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive
 
-      # The signing preflight can take long enough for main to advance. Repeat
-      # the cheap SHA comparison at the last boundary before EAS gets a build.
-      - name: Recheck freshest eligible release before dispatch
+      - name: Recheck exact source is still current main
         if: ${{ success() && !cancelled() }}
-        id: dispatch_freshness
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
         run: |
           set -euo pipefail
+          current_main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$SOURCE_COMMIT_SHA" = "$current_main_sha"
 
-          should_release=true
-          reason="explicit manual or tag release"
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-            if [[ "$REQUESTED_SHA" != "$main_sha" ]]; then
-              should_release=false
-              reason="main advanced during signing preflight"
-            else
-              reason="CI SHA is still the current main SHA after signing preflight"
-            fi
-          fi
-
-          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Final TestFlight release gate"
-            echo
-            echo "- Requested SHA: \`$REQUESTED_SHA\`"
-            echo "- Release: \`$should_release\`"
-            echo "- Reason: $reason"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # The runner refuses dirty source and prior nonterminal production runs,
-      # then records, waits on, and reconciles one exact EAS workflow run ID.
-      - name: Start and track EAS production release workflow
-        if: ${{ success() && !cancelled() && steps.dispatch_freshness.outputs.should_release == 'true' }}
+      - name: Start and track manifest-bound EAS production workflow
+        if: ${{ success() && !cancelled() }}
         working-directory: apps/ios
         env:
           MAPVEST_EAS_RUN_ID_FILE: ${{ runner.temp }}/mapvest-eas-production-run-id
+          MAPVEST_RELEASE_MANIFEST: ${{ github.workspace }}/${{ needs.release_gate.outputs.manifest_path }}
+          MAPVEST_RELEASE_MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
+          MAPVEST_RELEASE_SOURCE_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
+          MAPVEST_CURRENT_MAIN_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
         run: bun scripts/testflight-production.ts
+
+      - name: Capture exact successful EAS build identity
+        id: candidate
+        if: ${{ success() && !cancelled() }}
+        shell: bash
+        env:
+          EAS_RUN_ID_FILE: ${{ runner.temp }}/mapvest-eas-production-run-id
+          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
+          MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
+          CI_RUN_ID: ${{ needs.release_gate.outputs.ci_run_id }}
+        run: |
+          set -euo pipefail
+          eas_run_id="$(tr -d '\r\n' < "$EAS_RUN_ID_FILE")"
+          mkdir -p "$RUNNER_TEMP/mapvest-eas-candidate"
+          eas workflow:status "$eas_run_id" --json --non-interactive > "$RUNNER_TEMP/eas-status.json"
+          jq --arg source "$SOURCE_COMMIT_SHA" --arg manifest "$MANIFEST_HASH" \
+            --arg ci_run_id "$CI_RUN_ID" '
+            (.jobs[] | select(.key == "build_ios" and .status == "SUCCESS")) as $build |
+            {
+              schemaVersion: 1,
+              easWorkflowRunId: .id,
+              easBuildId: $build.outputs.build_id,
+              buildNumber: $build.outputs.app_build_version,
+              marketingVersion: $build.outputs.app_version,
+              bundleIdentifier: $build.outputs.app_identifier,
+              sourceCommitSha: $build.outputs.git_commit_hash,
+              manifestHash: $manifest,
+              githubCiRunId: $ci_run_id
+            } |
+            select(.sourceCommitSha == $source)
+          ' "$RUNNER_TEMP/eas-status.json" > "$RUNNER_TEMP/mapvest-eas-candidate/eas-candidate.json"
+          test -s "$RUNNER_TEMP/mapvest-eas-candidate/eas-candidate.json"
+          echo "eas_run_id=$eas_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve candidate identity for shipped-IPA inspection
+        if: ${{ success() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-eas-candidate-${{ needs.release_gate.outputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-eas-candidate/eas-candidate.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Reconcile EAS release after GitHub cancellation
         if: ${{ cancelled() }}
@@ -228,8 +307,235 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -s "$MAPVEST_EAS_RUN_ID_FILE" ]]; then
-            echo "::warning::No EAS run ID was persisted. The next release's active-run guard must reconcile any ambiguous dispatch."
+            echo "::warning::No exact EAS run ID was persisted; the next release must reconcile the orphan before dispatch."
             exit 1
           fi
           bun scripts/testflight-production.ts \
             --reconcile-run-id-file "$MAPVEST_EAS_RUN_ID_FILE"
+
+  inspect_candidate:
+    name: inspect exact EAS candidate IPA
+    needs: [release_gate, eas-ios]
+    runs-on: macos-15
+    environment: ios-production-release
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact validated source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release_gate.outputs.source_commit_sha }}
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 22.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download exact EAS candidate identity
+        uses: actions/download-artifact@v4
+        with:
+          name: mapvest-eas-candidate-${{ needs.release_gate.outputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-eas-candidate
+
+      - name: Download and inspect the exact candidate IPA
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ github.workspace }}/${{ needs.release_gate.outputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/mapvest-eas-candidate/eas-candidate.json"
+          test "$(jq -r '.schemaVersion' "$candidate")" = "1"
+          test "$(jq -r '.sourceCommitSha' "$candidate")" = \
+            "${{ needs.release_gate.outputs.source_commit_sha }}"
+          test "$(jq -r '.manifestHash' "$candidate")" = \
+            "${{ needs.release_gate.outputs.manifest_hash }}"
+          test "$(jq -r '.marketingVersion' "$candidate")" = \
+            "$(jq -r '.identity.marketingVersion' "$MANIFEST_PATH")"
+          test "$(jq -r '.bundleIdentifier' "$candidate")" = \
+            "$(jq -r '.identity.bundleIdentifier' "$MANIFEST_PATH")"
+          eas_build_id="$(jq -r '.easBuildId' "$candidate")"
+          eas build:view "$eas_build_id" --json > "$RUNNER_TEMP/eas-build.json"
+          build_url="$(jq -r '.artifacts.buildUrl' "$RUNNER_TEMP/eas-build.json")"
+          [[ -n "$build_url" && "$build_url" != "null" ]]
+          curl --fail --location --silent --show-error "$build_url" \
+            --output "$RUNNER_TEMP/mapvest-shipped.ipa"
+          archive_root="$RUNNER_TEMP/mapvest-shipped"
+          mkdir "$archive_root"
+          unzip -q "$RUNNER_TEMP/mapvest-shipped.ipa" -d "$archive_root"
+          app_path=("$archive_root"/Payload/*.app)
+          test "${#app_path[@]}" -eq 1
+          widget_path=""
+          for extension in "${app_path[0]}"/PlugIns/*.appex; do
+            point="$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$extension/Info.plist" 2>/dev/null || true)"
+            if [[ "$point" == "com.apple.widgetkit-extension" ]]; then
+              test -z "$widget_path"
+              widget_path="$extension"
+            fi
+          done
+          test -n "$widget_path"
+          expected_version="$(jq -r '.identity.marketingVersion' "$MANIFEST_PATH")"
+          expected_build="$(jq -r '.buildNumber' "$candidate")"
+          app_version="$(plutil -extract CFBundleShortVersionString raw "${app_path[0]}/Info.plist")"
+          app_build="$(plutil -extract CFBundleVersion raw "${app_path[0]}/Info.plist")"
+          widget_version="$(plutil -extract CFBundleShortVersionString raw "$widget_path/Info.plist")"
+          widget_build="$(plutil -extract CFBundleVersion raw "$widget_path/Info.plist")"
+          test "$app_version" = "$expected_version"
+          test "$app_build" = "$expected_build"
+          test "$widget_version" = "$app_version"
+          test "$widget_build" = "$app_build"
+          codesign -d --entitlements :- "${app_path[0]}" > "$RUNNER_TEMP/app-entitlements.plist"
+          codesign -d --entitlements :- "$widget_path" > "$RUNNER_TEMP/widget-entitlements.plist"
+          grep -q 'group.com.mapvest.app.widget' "$RUNNER_TEMP/app-entitlements.plist"
+          grep -q 'group.com.mapvest.app.widget' "$RUNNER_TEMP/widget-entitlements.plist"
+          test -f "$widget_path/PrivacyInfo.xcprivacy"
+          if grep -R -a -E -q \
+            'OPENROUTER_API_KEY|EXA_API_KEY|MASSIVE_API_KEY|APP_STORE_CONNECT_PRIVATE_KEY|Bearer eyJ' \
+            "${app_path[0]}"; then
+            echo "::error::Candidate archive contains forbidden credential material or names."
+            exit 1
+          fi
+          ipa_sha256="$(shasum -a 256 "$RUNNER_TEMP/mapvest-shipped.ipa" | awk '{print $1}')"
+          jq --arg ipa_sha256 "$ipa_sha256" \
+            '. + {ipaSha256: $ipa_sha256, archiveInspection: "passed"}' \
+            "$candidate" > "$RUNNER_TEMP/candidate-evidence.json"
+
+      - name: Publish inspected candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-ios-inspected-${{ needs.release_gate.outputs.source_commit_sha }}
+          path: ${{ runner.temp }}/candidate-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  distribute_candidate:
+    name: distribute exact inspected candidate to TestFlight
+    needs: [release_gate, eas-ios, inspect_candidate]
+    runs-on: ubuntu-latest
+    environment: ios-production-release
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact validated source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release_gate.outputs.source_commit_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 22.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download inspected candidate evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: mapvest-ios-inspected-${{ needs.release_gate.outputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-ios-inspected
+
+      - name: Validate exact candidate and render manifest-owned TestFlight settings
+        id: candidate
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ needs.release_gate.outputs.manifest_path }}
+          MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/mapvest-ios-inspected/candidate-evidence.json"
+          test "$(jq -r '.archiveInspection' "$candidate")" = "passed"
+          test "$(jq -r '.sourceCommitSha' "$candidate")" = "$SOURCE_COMMIT_SHA"
+          test "$(jq -r '.manifestHash' "$candidate")" = "$MANIFEST_HASH"
+          test "$(jq -r '.marketingVersion' "$candidate")" = \
+            "$(jq -r '.identity.marketingVersion' "$MANIFEST_PATH")"
+          test "$(jq -r '.bundleIdentifier' "$candidate")" = \
+            "$(jq -r '.identity.bundleIdentifier' "$MANIFEST_PATH")"
+          eas_build_id="$(jq -r '.easBuildId' "$candidate")"
+          test -n "$eas_build_id"
+          testflight_group="$(jq -r '.release.testFlightGroup' "$MANIFEST_PATH")"
+          what_to_test="$(bun apps/ios/scripts/release-manifest.ts render "$MANIFEST_PATH" testflight)"
+          {
+            echo "eas_build_id=$eas_build_id"
+            echo "testflight_group=$testflight_group"
+            echo "what_to_test<<MAPVEST_COPY"
+            echo "$what_to_test"
+            echo "MAPVEST_COPY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Distribute only the inspected EAS build UUID
+        id: distribution
+        shell: bash
+        working-directory: apps/ios
+        env:
+          EAS_BUILD_ID: ${{ steps.candidate.outputs.eas_build_id }}
+          MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
+          TESTFLIGHT_GROUP: ${{ steps.candidate.outputs.testflight_group }}
+          WHAT_TO_TEST: ${{ steps.candidate.outputs.what_to_test }}
+        run: |
+          set -euo pipefail
+          list_distribution_runs() {
+            local destination="$1"
+            if ! eas workflow:runs --workflow testflight-distribute.yml --json --limit 100 \
+              > "$destination"; then
+              eas workflow:runs --json --limit 100 | jq \
+                '[.[] | select(.workflowFileName == "testflight-distribute.yml")]' \
+                > "$destination"
+            fi
+          }
+          before="$RUNNER_TEMP/distribution-runs-before.json"
+          list_distribution_runs "$before"
+          set +e
+          dispatch="$(eas workflow:run .eas/workflows/testflight-distribute.yml \
+            --input "build_id=$EAS_BUILD_ID" \
+            --input "manifest_hash=$MANIFEST_HASH" \
+            --input "source_commit_sha=$SOURCE_COMMIT_SHA" \
+            --input "what_to_test=$WHAT_TO_TEST" \
+            --input "testflight_group=$TESTFLIGHT_GROUP" \
+            --json --no-wait --non-interactive)"
+          dispatch_status=$?
+          set -e
+          run_id="$(jq -r '.id // empty' <<<"$dispatch" 2>/dev/null || true)"
+          if [[ -z "$run_id" ]]; then
+            after="$RUNNER_TEMP/distribution-runs-after.json"
+            for attempt in 1 2 3 4 5; do
+              list_distribution_runs "$after"
+              run_id="$(jq -r --slurpfile before "$before" '
+                [.[].id] - [$before[0][].id] | if length == 1 then .[0] else empty end
+              ' "$after")"
+              [[ -n "$run_id" ]] && break
+              sleep 2
+            done
+          fi
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Could not identify exactly one TestFlight distribution run after dispatch exit $dispatch_status."
+            exit 1
+          fi
+          echo "$run_id" > "$RUNNER_TEMP/testflight-distribution-run-id"
+          eas workflow:status "$run_id" --wait --json --non-interactive
+          echo "eas_run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Publish final distributed candidate evidence
+        shell: bash
+        env:
+          DISTRIBUTION_RUN_ID: ${{ steps.distribution.outputs.eas_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mapvest-ios-candidate"
+          jq --arg run_id "$DISTRIBUTION_RUN_ID" \
+            '. + {testFlightWorkflowRunId: $run_id, testFlightDistribution: "passed"}' \
+            "$RUNNER_TEMP/mapvest-ios-inspected/candidate-evidence.json" \
+            > "$RUNNER_TEMP/mapvest-ios-candidate/candidate-evidence.json"
+
+      - name: Preserve final exact candidate evidence for ledger bootstrap
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-ios-candidate-${{ needs.release_gate.outputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-ios-candidate/candidate-evidence.json
+          if-no-files-found: error
+          retention-days: 90
