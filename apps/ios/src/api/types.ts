@@ -614,3 +614,52 @@ export const SynthesisMemoResponse = z.object({
   sources: z.array(Source),
 });
 export type SynthesisMemoResponse = z.infer<typeof SynthesisMemoResponse>;
+
+// -------- account-scoped push delivery --------
+
+export const PushNotificationTarget = z
+  .discriminatedUnion("type", [
+    z.object({
+      type: z.literal("home"),
+      section: z.enum(["daily-brief", "local-brief"]).optional(),
+    }),
+    z.object({
+      type: z.literal("map"),
+      placeId: z.string().trim().min(1).max(256).optional(),
+      ticker: z.string().trim().min(1).max(24).optional(),
+      lat: z.number().min(-90).max(90).optional(),
+      lng: z.number().min(-180).max(180).optional(),
+      label: z.string().trim().min(1).max(160).optional(),
+      reason: z.string().trim().min(1).max(240).optional(),
+    }),
+    z.object({ type: z.literal("company"), ticker: z.string().trim().min(1).max(24) }),
+    z.object({
+      type: z.literal("research"),
+      threadId: z.string().trim().min(1).max(256).optional(),
+    }),
+    z.object({ type: z.literal("alerts") }),
+    z.object({ type: z.literal("camera") }),
+    z.object({ type: z.literal("universe") }),
+    z.object({ type: z.literal("settings") }),
+  ])
+  .superRefine((target, ctx) => {
+    if (target.type !== "map") return;
+    if ((target.lat === undefined) !== (target.lng === undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "map coordinates must be paired" });
+    }
+    if (!target.placeId && !target.ticker && target.lat === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "map target requires an identity" });
+    }
+  });
+export type PushNotificationTarget = z.infer<typeof PushNotificationTarget>;
+
+export const PushNotificationDelivery = z.object({
+  schemaVersion: z.literal(1),
+  deliveryId: z.string().trim().min(1).max(128),
+  installationId: z.string().trim().min(1).max(128),
+  issuedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  eventKind: z.string().trim().min(1).max(64),
+  target: PushNotificationTarget,
+});
+export type PushNotificationDelivery = z.infer<typeof PushNotificationDelivery>;

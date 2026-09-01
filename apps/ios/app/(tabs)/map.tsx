@@ -29,6 +29,7 @@ import {
   visibleResultsForLocationContext,
 } from "@/location/locationContext";
 import { openChatAbout } from "@/nav/chatAbout";
+import { matchNotificationMapTarget } from "@/notif/mapTarget";
 import { colors, motion, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
@@ -77,7 +78,16 @@ type CameraUpdateMode = "programmatic" | "user";
 export default function MapScreen() {
   const router = useRouter();
   const mapPanInProgress = useRef(false);
-  const params = useLocalSearchParams<{ lat?: string | string[]; lng?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    lat?: string | string[];
+    lng?: string | string[];
+    source?: string | string[];
+    deliveryId?: string | string[];
+    placeId?: string | string[];
+    ticker?: string | string[];
+    label?: string | string[];
+    reason?: string | string[];
+  }>();
   const qc = useQueryClient();
   const { session } = useSession();
   useQuery<LocationContextState | undefined>({
@@ -119,6 +129,11 @@ export default function MapScreen() {
   const [showFinds, setShowFinds] = useState(true);
   /** Silhouette layer — nearby investables the user has not caught yet. */
   const [showUncaught, setShowUncaught] = useState(true);
+  const [notificationNotice, setNotificationNotice] = useState<{
+    kind: "matched" | "missing";
+    message: string;
+  } | null>(null);
+  const handledNotificationTargetRef = useRef<string | null>(null);
 
   const publishLocationContext = useCallback(
     (next: LocationContextState, cameraUpdate?: CameraUpdateMode) => {
@@ -316,6 +331,51 @@ export default function MapScreen() {
         haversineMeters(a.place.location, center) - haversineMeters(b.place.location, center),
     );
   }, [nearbyQuery.data, region.latitude, region.longitude]);
+
+  useEffect(() => {
+    const source = Array.isArray(params.source) ? params.source[0] : params.source;
+    if (source !== "notification" || nearbyQuery.isFetching) return;
+    const deliveryId = Array.isArray(params.deliveryId) ? params.deliveryId[0] : params.deliveryId;
+    const placeId = Array.isArray(params.placeId) ? params.placeId[0] : params.placeId;
+    const ticker = Array.isArray(params.ticker) ? params.ticker[0] : params.ticker;
+    const label = Array.isArray(params.label) ? params.label[0] : params.label;
+    const reason = Array.isArray(params.reason) ? params.reason[0] : params.reason;
+    const targetKey = deliveryId ?? `${placeId ?? ""}:${ticker ?? ""}`;
+    if (!targetKey || handledNotificationTargetRef.current === targetKey) return;
+
+    handledNotificationTargetRef.current = targetKey;
+    if (nearbyQuery.isError) {
+      setNotificationNotice({
+        kind: "missing",
+        message: `Centered near ${label ?? ticker ?? "the company"}, but nearby results could not refresh.`,
+      });
+      return;
+    }
+    const match = matchNotificationMapTarget(items, { placeId, ticker });
+    if (match) {
+      setShowUncaught(true);
+      setFocusedPlaceId(match.item.place.id);
+      setNotificationNotice({
+        kind: "matched",
+        message: reason ?? `Showing ${label ?? match.item.place.name} from your notification.`,
+      });
+      return;
+    }
+    setNotificationNotice({
+      kind: "missing",
+      message: `Centered near ${label ?? ticker ?? "the company"}, but it is not in the latest nearby results.`,
+    });
+  }, [
+    items,
+    nearbyQuery.isError,
+    nearbyQuery.isFetching,
+    params.deliveryId,
+    params.label,
+    params.placeId,
+    params.reason,
+    params.source,
+    params.ticker,
+  ]);
   const visibleItems = useMemo(
     () => visibleResultsForLocationContext(locationContext, items),
     [items, locationContext],
@@ -511,9 +571,12 @@ export default function MapScreen() {
           }
         }}
         onRegionChangeComplete={(r, details) => {
-          setFocusedPlaceId(null);
           setTrackMarkers(true);
           const userCameraInteraction = details?.isGesture === true || mapPanInProgress.current;
+          if (userCameraInteraction) {
+            setFocusedPlaceId(null);
+            setNotificationNotice(null);
+          }
           const programmaticRegion = programmaticCameraRegionRef.current;
           const isProgrammaticCompletion =
             !userCameraInteraction && sameLocationRegion(r, programmaticRegion);
@@ -546,7 +609,10 @@ export default function MapScreen() {
             { capturedAt, source: "map" },
           );
         }}
-        onPress={() => setFocusedPlaceId(null)}
+        onPress={() => {
+          setFocusedPlaceId(null);
+          setNotificationNotice(null);
+        }}
         showsUserLocation
         showsMyLocationButton
         showsPointsOfInterest={false}
@@ -648,6 +714,32 @@ export default function MapScreen() {
             <Text style={styles.warn}>
               {(nearbyQuery.error as Error).message || "Could not load nearby brands."}
             </Text>
+          </BlurView>
+        ) : null}
+        {notificationNotice ? (
+          <BlurView intensity={48} tint="dark" style={styles.notificationTargetWrap}>
+            <View style={styles.notificationTargetCopy}>
+              <Ionicons
+                name={notificationNotice.kind === "matched" ? "locate" : "alert-circle-outline"}
+                size={15}
+                color={notificationNotice.kind === "matched" ? colors.accent : colors.warn}
+              />
+              <Text style={styles.notificationTargetText}>{notificationNotice.message}</Text>
+            </View>
+            {notificationNotice.kind === "missing" ? (
+              <Pressable
+                style={styles.notificationRetry}
+                onPress={() => {
+                  handledNotificationTargetRef.current = null;
+                  setNotificationNotice(null);
+                  void nearbyQuery.refetch();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Retry nearby company"
+              >
+                <Text style={styles.notificationRetryText}>Retry</Text>
+              </Pressable>
+            ) : null}
           </BlurView>
         ) : null}
         {focusedPlaceId ? (
@@ -1277,6 +1369,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     fontSize: 12,
   },
+  notificationTargetWrap: {
+    width: "100%",
+    overflow: "hidden",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  notificationTargetCopy: { flexDirection: "row", alignItems: "center", gap: 7 },
+  notificationTargetText: { color: colors.fg, flex: 1, fontSize: 12, lineHeight: 17 },
+  notificationRetry: { minHeight: 44, justifyContent: "center", alignItems: "center" },
+  notificationRetryText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
   pinCanvas: {
     width: PIN_W,
     height: PIN_H,

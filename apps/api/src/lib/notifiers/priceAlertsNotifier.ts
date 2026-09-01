@@ -99,6 +99,7 @@ export async function runPriceAlertScan(): Promise<{
           kind: "price_alert",
           tickers: triggeredNow.map((t) => t.ticker),
         },
+        target: { type: "alerts" },
       });
       pushesSent += result.successes;
     } catch {

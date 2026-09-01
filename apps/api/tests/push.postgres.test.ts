@@ -253,6 +253,7 @@ if (!databaseUrl) {
         eventKey: "daily_brief",
         title: "Morning read",
         body: "Ready",
+        target: { type: "home", section: "daily-brief" },
       });
       await sendStarted;
       let transferred = false;
@@ -304,6 +305,7 @@ if (!databaseUrl) {
         eventKey: "daily_brief",
         title: "Morning read",
         body: "Ready",
+        target: { type: "home", section: "daily-brief" },
       });
       await sendStarted;
       let unlinked = false;
@@ -431,6 +433,7 @@ if (!databaseUrl) {
         eventKey: "daily_brief",
         title: "Morning read",
         body: "Ready",
+        target: { type: "home", section: "daily-brief" },
         leaseMs: 20,
       });
       await firstStarted;
@@ -443,6 +446,7 @@ if (!databaseUrl) {
         eventKey: "daily_brief",
         title: "Morning read",
         body: "Ready",
+        target: { type: "home", section: "daily-brief" },
         leaseMs: 20,
       });
       const [firstResult, secondResult] = await Promise.all([first, second]);
@@ -509,6 +513,7 @@ if (!databaseUrl) {
           eventKey: "daily_brief",
           title: "Morning read",
           body: "Ready",
+          target: { type: "home", section: "daily-brief" },
         }),
       );
       await Promise.race([

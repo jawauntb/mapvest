@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { initDb } from "./lib/db.js";
 import { startPushScheduler } from "./lib/scheduler.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
+import { printRedactedRequestLog } from "./middleware/pushLogRedaction.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 import admin from "./routes/admin.js";
 import agent from "./routes/agent.js";
@@ -61,7 +62,7 @@ void initDb().catch((err) => {
 startPushScheduler();
 
 const app = new Hono();
-app.use("*", logger());
+app.use("*", logger(printRedactedRequestLog));
 app.use(
   "*",
   cors({

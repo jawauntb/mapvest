@@ -35,5 +35,6 @@ export async function onIdentifyFinished(
       brand: brand ?? "",
       ticker: ticker ?? "",
     },
+    target: ticker ? { type: "company", ticker: ticker.toUpperCase() } : { type: "camera" },
   });
 }

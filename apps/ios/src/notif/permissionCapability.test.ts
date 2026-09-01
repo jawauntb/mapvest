@@ -22,4 +22,34 @@ describe("notification alert capability", () => {
     expect(allowsNotificationAlerts({ status: "granted" }, "android")).toBe(true);
     expect(allowsNotificationAlerts({ status: "denied" }, "android")).toBe(false);
   });
+
+  test("treats provisional and ephemeral iOS authorization as usable", () => {
+    expect(
+      allowsNotificationAlerts(
+        { status: "undetermined", ios: { status: 3, allowsAlert: false } },
+        "ios",
+      ),
+    ).toBe(true);
+    expect(
+      notificationAlertPermissionStatus(
+        { status: "undetermined", ios: { status: 4, allowsAlert: false } },
+        "ios",
+      ),
+    ).toBe("granted");
+  });
+
+  test("accepts the authorized iOS enum only when alert presentation is enabled", () => {
+    expect(
+      allowsNotificationAlerts(
+        { status: "undetermined", ios: { status: 2, allowsAlert: true } },
+        "ios",
+      ),
+    ).toBe(true);
+    expect(
+      allowsNotificationAlerts(
+        { status: "undetermined", ios: { status: 2, allowsAlert: false } },
+        "ios",
+      ),
+    ).toBe(false);
+  });
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  PushNotificationTarget,
   PushPreferencesReadResponse,
   PushPreferencesUpdateResponse,
   PushRegistrationResponse,
@@ -468,6 +469,14 @@ describe("push route contract", () => {
 });
 
 describe("claim-validated push delivery", () => {
+  test("rejects incomplete map destinations at the shared schema boundary", () => {
+    expect(PushNotificationTarget.safeParse({ type: "map", lat: 40 }).success).toBe(false);
+    expect(PushNotificationTarget.safeParse({ type: "map" }).success).toBe(false);
+    expect(PushNotificationTarget.safeParse({ type: "map", placeId: "place-one" }).success).toBe(
+      true,
+    );
+  });
+
   test("handoff cleanup unlocks every token before pool release and preserves a release-only result", async () => {
     const individualUnlockFailure = new Error("one per-token unlock failed");
     const releaseFailure = new Error("pool release failed");
@@ -530,6 +539,7 @@ describe("claim-validated push delivery", () => {
           eventKey: "daily_brief",
           title: "Morning read",
           body: "Ready",
+          target: { type: "home", section: "daily-brief" },
         }),
         deliverPush({
           tokens: candidates,
@@ -537,6 +547,7 @@ describe("claim-validated push delivery", () => {
           eventKey: "daily_brief",
           title: "Morning read",
           body: "Ready",
+          target: { type: "home", section: "daily-brief" },
         }),
       ]);
       expect(calls).toBe(1);
@@ -572,11 +583,139 @@ describe("claim-validated push delivery", () => {
         eventKey: "daily_brief",
         title: "Morning read",
         body: "Ready",
+        target: { type: "home", section: "daily-brief" },
       });
       expect(result.invalidTokens).toEqual([token.expoToken]);
       expect(await listTokensForUser(uid)).toEqual([]);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("app credential errors never revoke a user's valid installation", async () => {
+    const uid = userId();
+    const token = await registerPushToken(uid, expoToken(), "ios", "phone");
+    await updatePrefs(uid, token.id, { notifications_enabled: true, daily_brief: true });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              status: "error",
+              message: "Push credentials are invalid",
+              details: { error: "InvalidCredentials" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const result = await deliverPush({
+        tokens: [token],
+        dedupe: [{ slot: "daily_brief", key: "20260826" }],
+        eventKey: "daily_brief",
+        title: "Morning read",
+        body: "Ready",
+        target: { type: "home", section: "daily-brief" },
+      });
+      expect(result.failures).toBe(1);
+      expect(result.invalidTokens).toEqual([]);
+      expect((await listTokensForUser(uid)).map((candidate) => candidate.id)).toEqual([token.id]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("sends a unique scoped envelope per installation while preserving legacy data", async () => {
+    const uid = userId();
+    const phone = await registerPushToken(uid, expoToken(), "ios", "phone");
+    const tablet = await registerPushToken(uid, expoToken(), "ios", "tablet");
+    await updatePrefs(uid, phone.id, { notifications_enabled: true, uncaught_nearby: true });
+    await updatePrefs(uid, tablet.id, { notifications_enabled: true, uncaught_nearby: true });
+    const originalFetch = globalThis.fetch;
+    const payloads: Array<{
+      to: string;
+      data: {
+        kind?: string;
+        ticker?: string;
+        mapvest: { deliveryId: string; installationId: string; target: { type: string } };
+      };
+      categoryId?: string;
+    }> = [];
+    globalThis.fetch = (async (_input, init) => {
+      const batch = JSON.parse(String(init?.body)) as typeof payloads;
+      payloads.push(...batch);
+      return new Response(
+        JSON.stringify({
+          data: batch.map(() => ({ status: "ok", id: crypto.randomUUID() })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    try {
+      const tokens = await listTokensForEvent("uncaught_nearby");
+      const result = await deliverPush({
+        tokens,
+        dedupe: [{ slot: "uncaught:test", key: "one" }],
+        eventKey: "uncaught_nearby",
+        title: "Nearby",
+        body: "JPM is nearby",
+        data: { kind: "uncaught_nearby", ticker: "JPM" },
+        target: { type: "map", placeId: "place-jpm", ticker: "JPM", lat: 40, lng: -74 },
+      });
+      expect(result.successes).toBe(2);
+      expect(new Set(payloads.map((payload) => payload.data.mapvest.deliveryId)).size).toBe(2);
+      expect(new Set(payloads.map((payload) => payload.data.mapvest.installationId))).toEqual(
+        new Set([phone.id, tablet.id]),
+      );
+      expect(payloads.every((payload) => payload.data.mapvest.target.type === "map")).toBe(true);
+      expect(payloads.every((payload) => payload.categoryId === "mapvest-map-v1")).toBe(true);
+      expect(payloads.map((payload) => [payload.data.kind, payload.data.ticker])).toEqual([
+        ["uncaught_nearby", "JPM"],
+        ["uncaught_nearby", "JPM"],
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("production fails closed before network handoff without Expo push security", async () => {
+    const uid = userId();
+    const token = await registerPushToken(uid, expoToken(), "ios", "phone");
+    await updatePrefs(uid, token.id, { notifications_enabled: true, daily_brief: true });
+    const originalFetch = globalThis.fetch;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalSecurity = process.env.EXPO_PUSH_SECURITY_ENABLED;
+    const originalAccessToken = process.env.EXPO_ACCESS_TOKEN;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    process.env.NODE_ENV = "production";
+    Reflect.deleteProperty(process.env, "EXPO_PUSH_SECURITY_ENABLED");
+    Reflect.deleteProperty(process.env, "EXPO_ACCESS_TOKEN");
+    try {
+      const result = await deliverPush({
+        tokens: [token],
+        dedupe: [{ slot: "daily_brief", key: "production-guard" }],
+        eventKey: "daily_brief",
+        title: "Morning read",
+        body: "Ready",
+        target: { type: "home", section: "daily-brief" },
+      });
+      expect(result).toMatchObject({ successes: 0, failures: 1 });
+      expect(calls).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalSecurity === undefined)
+        Reflect.deleteProperty(process.env, "EXPO_PUSH_SECURITY_ENABLED");
+      else process.env.EXPO_PUSH_SECURITY_ENABLED = originalSecurity;
+      if (originalAccessToken === undefined)
+        Reflect.deleteProperty(process.env, "EXPO_ACCESS_TOKEN");
+      else process.env.EXPO_ACCESS_TOKEN = originalAccessToken;
     }
   });
 });

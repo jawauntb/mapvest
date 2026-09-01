@@ -8,6 +8,15 @@ import {
   enableVisitMonitoring,
   isVisitMonitoringEnabled,
 } from "@/location/visits";
+import {
+  INDIVIDUAL_NOTIFICATION_EVENTS,
+  NOTIFICATION_BUNDLES,
+  type NotificationBundle,
+  notificationBundlePatch,
+  notificationBundleState,
+  notificationBundleValueLabel,
+} from "@/notif/bundles";
+import { registerNotificationCategories } from "@/notif/categoriesNative";
 import { notificationAlertPermissionStatus } from "@/notif/permissionCapability";
 import {
   PUSH_EVENT_LABELS,
@@ -46,8 +55,8 @@ import {
  * Sign-in / sign-out lives here (Phase 8 Slice B); other tabs work for guests.
  *
  * Notifications section is entirely opt-in: master switch requests OS
- * permission on first flip; individual per-event toggles POST to
- * /v1/push/prefs on every change and exposes a retry state on failure.
+ * permission on first flip; bundle and individual toggles POST to
+ * /v1/push/prefs atomically and expose a retry state on failure.
  */
 export default function SettingsScreen() {
   const { user, session, signOut } = useSession();
@@ -247,8 +256,8 @@ export default function SettingsScreen() {
 // ---------- Notifications sub-section ----------
 
 /**
- * One-per-event toggle list. All prefs default to `false`; the user MUST
- * flip individual switches for each notification kind they want. The master
+ * Intent-based bundle list plus two event-specific controls. All prefs
+ * default to `false`; the user MUST opt into each bundle they want. The master
  * switch is a persisted product-level preference, separate from iOS
  * authorization. Settings can request OS permission; the Camera may also
  * do so after its explicit, narrow Find evolution CTA.
@@ -334,31 +343,35 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
     }
   };
 
+  const connectForNotifications = async (retry: () => void): Promise<string | null> => {
+    const granted = await ensurePermissions();
+    setPermissionStatus(granted ? "granted" : "denied");
+    if (!granted) {
+      setError("iOS is blocking notifications. Open iOS Settings to allow Mapvest, then retry.");
+      retryRef.current = retry;
+      return null;
+    }
+    const registration = await registerForPush(
+      { token: sessionToken, userId },
+      { requestPermission: false },
+    );
+    const id = registration?.tokenId ?? tokenId;
+    if (!id) {
+      setError("Mapvest could not register this device. Check your connection and retry.");
+      retryRef.current = retry;
+      return null;
+    }
+    if (id !== tokenId) setTokenId(id);
+    await registerNotificationCategories();
+    return id;
+  };
+
   const enableMaster = async () => {
     setBusyKey("master");
     setError(null);
     try {
-      const granted = await ensurePermissions();
-      setPermissionStatus(granted ? "granted" : "denied");
-      if (!granted) {
-        setError("iOS is blocking notifications. Open iOS Settings to allow Mapvest, then retry.");
-        retryRef.current = () => void enableMaster();
-        return;
-      }
-
-      // Explicit enablement may register a token, but this call never asks
-      // again — permission was just handled by the line above.
-      const registration = await registerForPush(
-        { token: sessionToken, userId },
-        { requestPermission: false },
-      );
-      const id = registration?.tokenId ?? tokenId;
-      if (!id) {
-        setError("Mapvest could not register this device. Check your connection and retry.");
-        retryRef.current = () => void enableMaster();
-        return;
-      }
-      if (id !== tokenId) setTokenId(id);
+      const id = await connectForNotifications(() => void enableMaster());
+      if (!id) return;
 
       const previous = prefs;
       const optimistic = { ...prefs, notifications_enabled: true };
@@ -382,20 +395,69 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
     }
   };
 
-  const setEvent = (key: PushEventKey, val: boolean) => {
-    if (prefsLoadState !== "ready" || !tokenId) return;
+  const setSelection = async (args: {
+    key: string;
+    label: string;
+    patch: Partial<PushPrefs>;
+    enabled: boolean;
+  }) => {
+    if (prefsLoadState !== "ready") return;
+    const retry = () => void setSelection(args);
+    setBusyKey(args.key);
+    setError(null);
+    let id = tokenId;
+    if (args.enabled && (!id || permissionStatus !== "granted" || !masterOn)) {
+      try {
+        id = await connectForNotifications(retry);
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Could not connect notifications. Check your connection and retry.",
+        );
+        retryRef.current = retry;
+        setBusyKey(null);
+        return;
+      }
+    }
+    if (!id) {
+      setError("This device has no registered notification token. Enable notifications and retry.");
+      retryRef.current = retry;
+      setBusyKey(null);
+      return;
+    }
     const previous = prefs;
-    const optimistic = { ...prefs, [key]: val };
+    const patch = {
+      ...(args.enabled ? { notifications_enabled: true } : {}),
+      ...args.patch,
+    };
+    const optimistic = { ...prefs, ...patch };
     setPrefs(optimistic);
     hapticSelect();
-    void persist({
-      token: tokenId,
-      patch: { [key]: val },
+    await persist({
+      token: id,
+      patch,
       previous,
       optimistic,
-      label: PUSH_EVENT_LABELS[key],
+      label: args.label,
     });
   };
+
+  const setBundle = (bundle: NotificationBundle, enabled: boolean) =>
+    setSelection({
+      key: `bundle:${bundle.key}`,
+      label: bundle.label,
+      patch: notificationBundlePatch(bundle, enabled),
+      enabled,
+    });
+
+  const setEvent = (key: PushEventKey, enabled: boolean) =>
+    setSelection({
+      key: `event:${key}`,
+      label: PUSH_EVENT_LABELS[key],
+      patch: { [key]: enabled },
+      enabled,
+    });
 
   const onToggleMaster = async (next: boolean) => {
     if (prefsLoadState !== "ready") return;
@@ -434,9 +496,9 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
         <Text style={styles.label}>Notifications</Text>
       </View>
       <Text style={styles.muted}>
-        Opt-in push notifications. Each event below is off by default. Turn on the master switch to
-        grant iOS permission and enable Mapvest delivery, then pick which events you want to hear
-        about. Turning it off mutes every event on this device, including weekly rivalries.
+        Choose the moments you want Mapvest to surface. Turning on any bundle can connect this
+        device and ask for iOS permission. The master switch mutes or resumes all selected moments
+        without erasing those choices.
       </Text>
 
       {prefsLoadState === "loading" ? (
@@ -504,17 +566,52 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
             </View>
           ) : null}
 
-          {PUSH_EVENT_ORDER.map((key) => (
+          {NOTIFICATION_BUNDLES.map((bundle) => {
+            const bundleState = notificationBundleState(prefs, bundle);
+            const isBusy = busyKey === `bundle:${bundle.key}` || busyKey === bundle.label;
+            const stateLabel = isBusy
+              ? "Connecting…"
+              : error && retryRef.current
+                ? "Retry"
+                : permissionStatus === "denied"
+                  ? "Needs permission"
+                  : permissionStatus === "granted" && !tokenId
+                    ? "Unavailable"
+                    : notificationBundleValueLabel(bundleState);
+            return (
+              <View style={styles.notifBundleRow} key={bundle.key}>
+                <View style={styles.notifBundleCopy}>
+                  <View style={styles.notifBundleTitleRow}>
+                    <Text style={styles.notifLabel}>{bundle.label}</Text>
+                    <Text style={styles.notifBundleStatus}>{stateLabel}</Text>
+                  </View>
+                  <Text style={styles.muted}>{bundle.description}</Text>
+                </View>
+                <Switch
+                  value={bundleState !== "off"}
+                  disabled={busy}
+                  onValueChange={(value) => void setBundle(bundle, value)}
+                  accessibilityLabel={bundle.label}
+                  accessibilityHint={bundle.description}
+                  accessibilityValue={{ text: stateLabel }}
+                  accessibilityState={{ disabled: busy, busy: isBusy }}
+                />
+              </View>
+            );
+          })}
+
+          <Text style={styles.notifGroupLabel}>Individual alerts</Text>
+          {INDIVIDUAL_NOTIFICATION_EVENTS.map((key) => (
             <View style={styles.notifRow} key={key}>
               <Text style={styles.notifLabel}>{PUSH_EVENT_LABELS[key]}</Text>
               <Switch
                 value={prefs[key] === true}
-                disabled={!masterOn || !tokenId || permissionStatus !== "granted" || busy}
-                onValueChange={(v) => setEvent(key, v)}
+                disabled={busy}
+                onValueChange={(v) => void setEvent(key, v)}
                 accessibilityLabel={PUSH_EVENT_LABELS[key]}
                 accessibilityState={{
-                  disabled: !masterOn || !tokenId || permissionStatus !== "granted" || busy,
-                  busy,
+                  disabled: busy,
+                  busy: busyKey === `event:${key}`,
                 }}
               />
             </View>
@@ -522,7 +619,8 @@ function NotificationsSection({ sessionToken, userId }: { sessionToken: string; 
 
           {masterOn && !anyEventOn ? (
             <Text style={styles.muted}>
-              Nothing is enabled yet — flip any switch above to start receiving that event type.
+              Nothing is selected yet — choose a bundle or individual alert to make notifications
+              useful.
             </Text>
           ) : null}
         </>
@@ -723,6 +821,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     flex: 1,
     paddingRight: 8,
+  },
+  notifBundleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    minHeight: 64,
+    paddingVertical: 8,
+  },
+  notifBundleCopy: { flex: 1, gap: 3 },
+  notifBundleTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  notifBundleStatus: { color: colors.accent, fontSize: 11, fontWeight: "700" },
+  notifGroupLabel: {
+    color: colors.fgMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    marginTop: 6,
+    textTransform: "uppercase",
   },
   notifActions: { gap: 8 },
   notifError: { color: "#ff9f9f", fontSize: 13, lineHeight: 18 },

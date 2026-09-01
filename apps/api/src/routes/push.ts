@@ -210,7 +210,6 @@ push.post("/register", async (c) => {
       user_id: user.id,
       platform,
       has_device_id: Boolean(deviceId),
-      token_id: tok.id,
     });
     return c.json({ id: tok.id, prefs: tok.prefs });
   });
@@ -246,7 +245,6 @@ push.post("/prefs", async (c) => {
     if (!updated) return c.json({ error: "token not found" }, 404);
     span.setAttributes({
       user_id: user.id,
-      token_id: tokenId,
       keys_written: Object.keys(patch).join(","),
     });
     // A heartbeat carrying coordinates is a movement signal: evaluate the
@@ -299,7 +297,7 @@ push.delete("/token/:id", async (c) => {
     const { id } = parsed.data;
     const user = c.get("user");
     const removed = await unregisterPushToken(user.id, id);
-    span.setAttributes({ user_id: user.id, token_id: id, removed });
+    span.setAttributes({ user_id: user.id, removed });
     if (!removed) return c.json({ error: "token not found" }, 404);
     return c.body(null, 204);
   });

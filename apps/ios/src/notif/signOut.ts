@@ -9,6 +9,7 @@ import * as Notifications from "expo-notifications";
 
 import { disableVisitMonitoring } from "@/location/visits";
 import { clearWidgetLocationState } from "@/widgets/widgetLocation";
+import { clearPushDeliveryLedger } from "./deliveryStore";
 import {
   unlinkPushToken,
   unlinkPushTokenByExpiredSession,
@@ -157,6 +158,10 @@ export async function unlinkPushForSignOut(
     dismissNative: dismissNativeNotifications,
     clearStoredTokenId,
   });
+
+  // Clear delayed/pending response state before SessionController permits a
+  // different account to become active on this installation.
+  await clearPushDeliveryLedger();
 
   // SessionController only deletes the session after this function resolves,
   // so confirmed cleanup cannot leave a background visit task or a widget fix

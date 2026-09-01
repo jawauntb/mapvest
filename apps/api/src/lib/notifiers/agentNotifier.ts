@@ -31,5 +31,6 @@ export async function onAgentResponseReady(
       kind: "agent_response",
       threadId: threadId ?? "",
     },
+    target: { type: "research", ...(threadId ? { threadId } : {}) },
   });
 }
