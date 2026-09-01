@@ -11,7 +11,10 @@
     "build:dev": "eas build --platform ios --profile development",
     "build:preview": "eas build --platform ios --profile preview",
     "build:prod": "npx eas-cli@22.0.0 build --platform ios --profile production",
-    "submit": "eas submit --platform ios --latest",
+    "release:manifest": "bun scripts/release-manifest.ts",
+    "release:testflight": "bun scripts/testflight-production.ts",
+    "release:ledger": "bun scripts/release-ledger.ts",
+    "release:app-store": "bun scripts/app-store-release.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

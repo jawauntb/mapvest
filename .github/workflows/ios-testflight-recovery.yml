@@ -1,0 +1,138 @@
+name: ios-testflight-recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      asc_build_id:
+        type: string
+        required: true
+        description: Exact processed App Store Connect build resource ID.
+      manifest_path:
+        type: string
+        required: true
+        default: apps/ios/release/v0.1.0.json
+        description: Checked-in immutable release manifest.
+      manifest_hash:
+        type: string
+        required: true
+        description: Validated release-manifest SHA-256.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Full merged main SHA bound to this build.
+      submit_beta_review:
+        type: boolean
+        required: true
+        default: true
+        description: Submit this exact build for Beta App Review.
+
+concurrency:
+  group: ios-testflight-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    name: recover exact TestFlight distribution
+    runs-on: ubuntu-latest
+    environment: ios-production-release
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 22.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Validate merged source and manifest-owned recovery settings
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MANIFEST_PATH" =~ ^apps/ios/release/v[0-9]+\.[0-9]+\.[0-9]+\.json$ ]]
+          compare_status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SOURCE_COMMIT_SHA" --jq '.status')"
+          [[ "$compare_status" == "behind" || "$compare_status" == "identical" ]]
+          bun apps/ios/scripts/release-manifest.ts validate-request \
+            "$MANIFEST_PATH" "$MANIFEST_HASH" "$SOURCE_COMMIT_SHA" "$SOURCE_COMMIT_SHA"
+          testflight_group="$(jq -r '.release.testFlightGroup' "$MANIFEST_PATH")"
+          what_to_test="$(bun apps/ios/scripts/release-manifest.ts render "$MANIFEST_PATH" testflight)"
+          {
+            echo "testflight_group=$testflight_group"
+            echo "what_to_test<<MAPVEST_COPY"
+            echo "$what_to_test"
+            echo "MAPVEST_COPY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate exact-build recovery workflow
+        working-directory: apps/ios
+        run: eas workflow:validate .eas/workflows/testflight-external.yml --non-interactive
+
+      - name: Distribute the requested ASC build with manifest-derived copy and group
+        shell: bash
+        working-directory: apps/ios
+        env:
+          ASC_BUILD_ID: ${{ inputs.asc_build_id }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+          SUBMIT_BETA_REVIEW: ${{ inputs.submit_beta_review }}
+          TESTFLIGHT_GROUP: ${{ steps.release.outputs.testflight_group }}
+          WHAT_TO_TEST: ${{ steps.release.outputs.what_to_test }}
+        run: |
+          set -euo pipefail
+          list_recovery_runs() {
+            local destination="$1"
+            if ! eas workflow:runs --workflow testflight-external.yml --json --limit 100 \
+              > "$destination"; then
+              eas workflow:runs --json --limit 100 | jq \
+                '[.[] | select(.workflowFileName == "testflight-external.yml")]' \
+                > "$destination"
+            fi
+          }
+          before="$RUNNER_TEMP/recovery-runs-before.json"
+          list_recovery_runs "$before"
+          set +e
+          dispatch="$(eas workflow:run .eas/workflows/testflight-external.yml \
+            --input "asc_build_id=$ASC_BUILD_ID" \
+            --input "manifest_hash=$MANIFEST_HASH" \
+            --input "source_commit_sha=$SOURCE_COMMIT_SHA" \
+            --input "what_to_test=$WHAT_TO_TEST" \
+            --input "testflight_group=$TESTFLIGHT_GROUP" \
+            --input "submit_beta_review=$SUBMIT_BETA_REVIEW" \
+            --json --no-wait --non-interactive)"
+          dispatch_status=$?
+          set -e
+          run_id="$(jq -r '.id // empty' <<<"$dispatch" 2>/dev/null || true)"
+          if [[ -z "$run_id" ]]; then
+            after="$RUNNER_TEMP/recovery-runs-after.json"
+            for attempt in 1 2 3 4 5; do
+              list_recovery_runs "$after"
+              run_id="$(jq -r --slurpfile before "$before" '
+                [.[].id] - [$before[0][].id] | if length == 1 then .[0] else empty end
+              ' "$after")"
+              [[ -n "$run_id" ]] && break
+              sleep 2
+            done
+          fi
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Could not identify exactly one recovery run after dispatch exit $dispatch_status."
+            exit 1
+          fi
+          eas workflow:status "$run_id" --wait --json --non-interactive

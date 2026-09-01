@@ -1,26 +1,23 @@
-name: Build and distribute production TestFlight
+name: Build manifest-bound production candidate
 
 on:
-  workflow_dispatch: {}
-
+  workflow_dispatch:
+    inputs:
+      manifest_hash:
+        type: string
+        required: true
+        description: Validated immutable release-manifest hash.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Exact merged main SHA uploaded for this build.
 jobs:
   build_ios:
-    name: Build iOS production
+    name: Build exact iOS production source
     type: build
+    env:
+      MAPVEST_RELEASE_MANIFEST_HASH: ${{ inputs.manifest_hash }}
+      MAPVEST_RELEASE_SOURCE_SHA: ${{ inputs.source_commit_sha }}
     params:
       platform: ios
       profile: production
-
-  distribute_to_testflight:
-    name: Distribute to friend-testers
-    type: testflight
-    needs: [build_ios]
-    params:
-      build_id: ${{ needs.build_ios.outputs.build_id }}
-      profile: production
-      external_groups:
-        - friend-testers
-      changelog: |
-        Mapvest beta: try Map, Camera, Your Universe, Research, and Mapvest Daily.
-      submit_beta_review: true
-      wait_processing_timeout_seconds: 3600

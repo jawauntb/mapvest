@@ -1,0 +1,188 @@
+name: ios-release-ledger
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        type: string
+        required: true
+        description: Successful ios-eas-production run containing the final candidate evidence.
+      manifest_path:
+        type: string
+        required: true
+        default: apps/ios/release/v0.1.0.json
+        description: Checked-in immutable release manifest.
+      manifest_hash:
+        type: string
+        required: true
+        description: Validated release-manifest SHA-256.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Full merged main SHA built by the candidate run.
+      physical_device_checklist:
+        type: boolean
+        required: true
+        default: false
+        description: I verified the release checklist on a physical iPhone.
+      app_store_metadata_audit:
+        type: boolean
+        required: true
+        default: false
+        description: I verified product metadata and screenshots in App Store Connect.
+      app_privacy_audit:
+        type: boolean
+        required: true
+        default: false
+        description: I verified App Privacy answers against the shipped app.
+      reviewer_access:
+        type: boolean
+        required: true
+        default: false
+        description: I verified review credentials and reviewer fallback instructions.
+      subscription_review:
+        type: boolean
+        required: true
+        default: false
+        description: I verified the subscription and paywall review configuration.
+      account_deletion_and_ai_consent:
+        type: boolean
+        required: true
+        default: false
+        description: I verified deletion, AI consent, and data-safety flows on the exact candidate.
+
+concurrency:
+  group: ios-release-ledger-${{ inputs.source_commit_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  attest:
+    name: attest evidence and resolve exact App Store identity
+    runs-on: ubuntu-latest
+    environment: ios-production-release
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Prove merged source and candidate workflow provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MANIFEST_PATH" =~ ^apps/ios/release/v[0-9]+\.[0-9]+\.[0-9]+\.json$ ]]
+          compare_status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SOURCE_COMMIT_SHA" --jq '.status')"
+          [[ "$compare_status" == "behind" || "$compare_status" == "identical" ]]
+          candidate_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID")"
+          test "$(jq -r '.path' <<<"$candidate_run")" = ".github/workflows/ios-eas-production.yml"
+          test "$(jq -r '.conclusion' <<<"$candidate_run")" = "success"
+          test "$(jq -r '.head_sha' <<<"$candidate_run")" = "$SOURCE_COMMIT_SHA"
+          bun apps/ios/scripts/release-manifest.ts validate-request \
+            "$MANIFEST_PATH" "$MANIFEST_HASH" "$SOURCE_COMMIT_SHA" "$SOURCE_COMMIT_SHA"
+
+      - name: Download final exact candidate evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: mapvest-ios-candidate-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-ios-candidate
+
+      - name: Prove candidate evidence and successful exact-source CI provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/mapvest-ios-candidate/candidate-evidence.json"
+          test "$(jq -r '.sourceCommitSha' "$candidate")" = "$SOURCE_COMMIT_SHA"
+          test "$(jq -r '.manifestHash' "$candidate")" = "$MANIFEST_HASH"
+          test "$(jq -r '.archiveInspection' "$candidate")" = "passed"
+          test "$(jq -r '.testFlightDistribution' "$candidate")" = "passed"
+          ci_run_id="$(jq -r '.githubCiRunId' "$candidate")"
+          [[ "$ci_run_id" =~ ^[0-9]+$ ]]
+          ci_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ci_run_id")"
+          test "$(jq -r '.path' <<<"$ci_run")" = ".github/workflows/ci.yml"
+          test "$(jq -r '.event' <<<"$ci_run")" = "push"
+          test "$(jq -r '.head_sha' <<<"$ci_run")" = "$SOURCE_COMMIT_SHA"
+          test "$(jq -r '.conclusion' <<<"$ci_run")" = "success"
+
+      - name: Create protected runtime release ledger
+        shell: bash
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+          PHYSICAL_DEVICE_CHECKLIST: ${{ inputs.physical_device_checklist }}
+          APP_STORE_METADATA_AUDIT: ${{ inputs.app_store_metadata_audit }}
+          APP_PRIVACY_AUDIT: ${{ inputs.app_privacy_audit }}
+          REVIEWER_ACCESS: ${{ inputs.reviewer_access }}
+          SUBSCRIPTION_REVIEW: ${{ inputs.subscription_review }}
+          ACCOUNT_DELETION_AND_AI_CONSENT: ${{ inputs.account_deletion_and_ai_consent }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mapvest-release-ledger"
+          umask 077
+          doppler run --project mapvest --config prd -- bash -euo pipefail -c '
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\n'"'"'* && "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\r'"'"'* ]]
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" =~ ^[A-Za-z0-9+/=]+$ ]] || {
+              echo "APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64" >&2
+              exit 1
+            }
+            decoded="$(printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode)"
+            [[ "$decoded" == -----BEGIN\ PRIVATE\ KEY-----* ]]
+            unset decoded
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_KEY_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_ISSUER_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_PRIVATE_KEY"
+            bun apps/ios/scripts/release-ledger.ts \
+              --manifest "$MANIFEST_PATH" \
+              --manifest-hash "$MANIFEST_HASH" \
+              --source-sha "$SOURCE_COMMIT_SHA" \
+              --candidate "$RUNNER_TEMP/mapvest-ios-candidate/candidate-evidence.json" \
+              --repository "$GITHUB_REPOSITORY" \
+              --candidate-run-id "$CANDIDATE_RUN_ID" \
+              --ledger-run-id "$GITHUB_RUN_ID" \
+              --physical-device-checklist "$PHYSICAL_DEVICE_CHECKLIST" \
+              --app-store-metadata-audit "$APP_STORE_METADATA_AUDIT" \
+              --app-privacy-audit "$APP_PRIVACY_AUDIT" \
+              --reviewer-access "$REVIEWER_ACCESS" \
+              --subscription-review "$SUBSCRIPTION_REVIEW" \
+              --account-deletion-and-ai-consent "$ACCOUNT_DELETION_AND_AI_CONSENT" \
+              > "$RUNNER_TEMP/mapvest-release-ledger/release-ledger.json"
+          '
+          test "$(jq -r '.sourceCommitSha' "$RUNNER_TEMP/mapvest-release-ledger/release-ledger.json")" = \
+            "$SOURCE_COMMIT_SHA"
+
+      - name: Preserve immutable runtime release ledger
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          if-no-files-found: error
+          retention-days: 365

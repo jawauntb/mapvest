@@ -19,6 +19,7 @@ const failure = (exitCode: number, stderr = "failed"): CommandResult => ({
 
 type HarnessOptions = {
   dirtyCommand?: "worktree" | "index" | "untracked";
+  headSha?: string;
   activeRuns?: Partial<Record<(typeof ACTIVE_WORKFLOW_STATUSES)[number], unknown[]>>;
   workflowRunResults?: CommandResult[];
   waitResults?: CommandResult[];
@@ -43,6 +44,9 @@ function createHarness(options: HarnessOptions = {}) {
     commands.push({ command: args, options: commandOptions });
 
     if (args[0] === "git") {
+      if (args[1] === "rev-parse") {
+        return success(`${options.headSha ?? "1234567890abcdef1234567890abcdef12345678"}\n`);
+      }
       const statusCommand = args[1] === "status";
       if (options.dirtyCommand && statusCommand) {
         const marker =
@@ -116,6 +120,10 @@ function createHarness(options: HarnessOptions = {}) {
     },
     log: () => {},
     warn: (message) => warnings.push(message),
+    releaseContext: async () => ({
+      manifestHash: `sha256:${"a".repeat(64)}`,
+      sourceCommitSha: "1234567890abcdef1234567890abcdef12345678",
+    }),
   });
 
   return { runner, commands, sleeps, summaries, persistedRunIds, warnings };
@@ -132,11 +140,16 @@ describe("TestFlight production runner", () => {
     expect(harness.persistedRunIds).toEqual(["release-run-id"]);
     expect(harness.commands.map(({ command }) => command)).toEqual([
       ["git", "status", "--porcelain", "--untracked-files=normal"],
+      ["git", "rev-parse", "HEAD"],
       ["eas", "workflow:runs", "--workflow", PRODUCTION_WORKFLOW_FILE, "--json", "--limit", "100"],
       [
         "eas",
         "workflow:run",
         `.eas/workflows/${PRODUCTION_WORKFLOW_FILE}`,
+        "--input",
+        `manifest_hash=sha256:${"a".repeat(64)}`,
+        "--input",
+        "source_commit_sha=1234567890abcdef1234567890abcdef12345678",
         "--json",
         "--no-wait",
         "--non-interactive",
@@ -215,6 +228,15 @@ describe("TestFlight production runner", () => {
       expect(harness.commands.some(({ command }) => command[0] === "eas")).toBe(false);
     },
   );
+
+  test("refuses a clean checkout at a different commit before contacting EAS", async () => {
+    const harness = createHarness({
+      headSha: "abcdef1234567890abcdef1234567890abcdef12",
+    });
+
+    await expect(harness.runner.run()).rejects.toThrow("different source commit");
+    expect(harness.commands.some(({ command }) => command[0] === "eas")).toBe(false);
+  });
 
   test("retries an ambiguous waiter, cancels the exact run, and proves terminal state", async () => {
     const harness = createHarness({

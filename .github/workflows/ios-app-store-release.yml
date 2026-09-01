@@ -1,0 +1,244 @@
+name: ios-app-store-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        required: true
+        default: dry-run
+        options: [dry-run, submit, release]
+        description: Inspect, submit for App Review, or release an approved exact version.
+      manifest_path:
+        type: string
+        required: true
+        default: apps/ios/release/v0.1.0.json
+        description: Checked-in static release manifest.
+      manifest_hash:
+        type: string
+        required: true
+        description: Immutable manifest sha256 hash.
+      ledger_artifact_run_id:
+        type: string
+        required: true
+        description: Successful protected ledger-bootstrap or prior App Store release workflow run.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Full merged main SHA bound to the ledger.
+
+concurrency:
+  group: ios-app-store-release
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  preflight:
+    name: validate immutable manifest and runtime ledger
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Download exact runtime ledger
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ledger_artifact_run_id }}
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Prove merged-main ancestry and exact ledger binding without credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          LEDGER_PATH: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+          LEDGER_PRODUCER_RUN_ID: ${{ inputs.ledger_artifact_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$MANIFEST_PATH" =~ ^apps/ios/release/v[0-9]+\.[0-9]+\.[0-9]+\.json$ ]]
+          compare_status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SOURCE_COMMIT_SHA" --jq '.status')"
+          [[ "$compare_status" == "behind" || "$compare_status" == "identical" ]]
+          producer="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LEDGER_PRODUCER_RUN_ID")"
+          producer_path="$(jq -r '.path' <<<"$producer")"
+          [[ "$producer_path" == ".github/workflows/ios-release-ledger.yml" || \
+            "$producer_path" == ".github/workflows/ios-app-store-release.yml" ]]
+          test "$(jq -r '.conclusion' <<<"$producer")" = "success"
+          test "$(jq -r '.head_branch' <<<"$producer")" = "main"
+          producer_head_sha="$(jq -r '.head_sha' <<<"$producer")"
+          producer_compare="$(gh api \
+            "repos/$GITHUB_REPOSITORY/compare/$SOURCE_COMMIT_SHA...$producer_head_sha" \
+            --jq '.status')"
+          [[ "$producer_compare" == "ahead" || "$producer_compare" == "identical" ]]
+          test "$(realpath "$LEDGER_PATH")" = "$(realpath "$RUNNER_TEMP/mapvest-release-ledger/release-ledger.json")"
+          bun apps/ios/scripts/app-store-release.ts \
+            --manifest "$MANIFEST_PATH" \
+            --manifest-hash "$MANIFEST_HASH" \
+            --ledger "$LEDGER_PATH" \
+            --source-sha "$SOURCE_COMMIT_SHA" \
+            --offline true
+
+  review:
+    name: protected App Store dry-run or review submission
+    needs: preflight
+    if: ${{ inputs.mode == 'dry-run' || inputs.mode == 'submit' }}
+    runs-on: ubuntu-latest
+    environment: app-store-review-submission
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Download exact runtime ledger
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ledger_artifact_run_id }}
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Inspect or submit the exact App Store version
+        shell: bash
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          MAPVEST_ASC_AGREEMENTS_CONFIRMED: ${{ vars.MAPVEST_ASC_AGREEMENTS_CONFIRMED }}
+          MODE: ${{ inputs.mode }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          LEDGER_PATH: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          doppler run --project mapvest --config prd -- bash -euo pipefail -c '
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\n'"'"'* && "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\r'"'"'* ]] || {
+              echo "APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64" >&2
+              exit 1
+            }
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" =~ ^[A-Za-z0-9+/=]+$ ]] || {
+              echo "APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64" >&2
+              exit 1
+            }
+            decoded="$(printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode)"
+            [[ "$decoded" == -----BEGIN\ PRIVATE\ KEY-----* ]]
+            unset decoded
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_KEY_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_ISSUER_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_PRIVATE_KEY"
+            bun apps/ios/scripts/app-store-release.ts \
+              --mode "$MODE" \
+              --manifest "$MANIFEST_PATH" \
+              --manifest-hash "$MANIFEST_HASH" \
+              --ledger "$LEDGER_PATH" \
+              --source-sha "$SOURCE_COMMIT_SHA"
+          '
+
+      - name: Preserve updated exact-ID ledger
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          if-no-files-found: error
+          retention-days: 90
+
+  storefront_release:
+    name: second approval and exact storefront release
+    needs: preflight
+    if: ${{ inputs.mode == 'release' }}
+    runs-on: ubuntu-latest
+    environment: app-store-production-release
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Download approved runtime ledger
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ledger_artifact_run_id }}
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Release only the recorded approved version
+        shell: bash
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          MAPVEST_ASC_AGREEMENTS_CONFIRMED: ${{ vars.MAPVEST_ASC_AGREEMENTS_CONFIRMED }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          LEDGER_PATH: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          doppler run --project mapvest --config prd -- bash -euo pipefail -c '
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\n'"'"'* && "$APP_STORE_CONNECT_PRIVATE_KEY" != *$'"'"'\r'"'"'* ]] || {
+              echo "APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64" >&2
+              exit 1
+            }
+            [[ "$APP_STORE_CONNECT_PRIVATE_KEY" =~ ^[A-Za-z0-9+/=]+$ ]] || {
+              echo "APP_STORE_CONNECT_PRIVATE_KEY must be single-line base64" >&2
+              exit 1
+            }
+            decoded="$(printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode)"
+            [[ "$decoded" == -----BEGIN\ PRIVATE\ KEY-----* ]]
+            unset decoded
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_KEY_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_ISSUER_ID"
+            printf "::add-mask::%s\n" "$APP_STORE_CONNECT_PRIVATE_KEY"
+            bun apps/ios/scripts/app-store-release.ts \
+              --mode release \
+              --manifest "$MANIFEST_PATH" \
+              --manifest-hash "$MANIFEST_HASH" \
+              --ledger "$LEDGER_PATH" \
+              --source-sha "$SOURCE_COMMIT_SHA"
+          '
+
+      - name: Preserve storefront availability ledger
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvest-release-ledger-${{ inputs.source_commit_sha }}
+          path: ${{ runner.temp }}/mapvest-release-ledger/release-ledger.json
+          if-no-files-found: error
+          retention-days: 365

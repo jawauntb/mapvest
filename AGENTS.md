@@ -100,7 +100,7 @@ bun run ios        # launches simulator
 ## 8. Deploy
 
 - API + landing → **Railway** (`infra/railway`).
-- iOS → **TestFlight** via **EAS** (`apps/ios/eas.json`). Green `ci` on `main` runs `ios-eas-production` (build + auto-submit).
+- iOS → **TestFlight** via **EAS** (`apps/ios/eas.json`). After green `ci` on `main`, an explicit protected `ios-eas-production` dispatch builds one manifest-bound candidate, inspects that exact IPA, and then distributes its exact EAS build UUID.
 - Never deploy from a dirty tree. Never deploy `main` without CI green.
 
 ## 9. Agent workflow rules

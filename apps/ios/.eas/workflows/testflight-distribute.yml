@@ -1,12 +1,12 @@
-name: Recover exact external TestFlight distribution
+name: Distribute inspected manifest-bound production candidate
 
 on:
   workflow_dispatch:
     inputs:
-      asc_build_id:
+      build_id:
         type: string
         required: true
-        description: Exact processed App Store Connect build resource ID.
+        description: Exact inspected EAS build UUID.
       manifest_hash:
         type: string
         required: true
@@ -14,7 +14,7 @@ on:
       source_commit_sha:
         type: string
         required: true
-        description: Exact merged main SHA bound to this build.
+        description: Exact merged main SHA carried by the build.
       what_to_test:
         type: string
         required: true
@@ -23,21 +23,19 @@ on:
         type: string
         required: true
         description: Exact external group named by the release manifest.
-      submit_beta_review:
-        type: boolean
-        default: true
-        description: Submit this exact build for Beta App Review.
 
 jobs:
   distribute_to_testflight:
-    name: Distribute exact processed build to friend-testers
+    name: Distribute exact inspected build
     type: testflight
     env:
       MAPVEST_RELEASE_MANIFEST_HASH: ${{ inputs.manifest_hash }}
       MAPVEST_RELEASE_SOURCE_SHA: ${{ inputs.source_commit_sha }}
     params:
-      asc_build_id: ${{ inputs.asc_build_id }}
+      build_id: ${{ inputs.build_id }}
+      profile: production
       external_groups:
         - ${{ inputs.testflight_group }}
       changelog: ${{ inputs.what_to_test }}
-      submit_beta_review: ${{ inputs.submit_beta_review }}
+      submit_beta_review: true
+      wait_processing_timeout_seconds: 3600

@@ -1,4 +1,5 @@
 import { appendFile, readFile, rename, writeFile } from "node:fs/promises";
+import { loadReleaseManifest, validateReleaseRequest } from "../src/release/releaseManifest";
 
 export const PRODUCTION_WORKFLOW_FILE = "testflight-production.yml";
 export const ACTIVE_WORKFLOW_STATUSES = ["NEW", "IN_PROGRESS", "ACTION_REQUIRED"] as const;
@@ -51,7 +52,36 @@ type ProductionRunnerDependencies = {
   persistRunId?: (runId: string) => Promise<void>;
   log?: (message: string) => void;
   warn?: (message: string) => void;
+  releaseContext?: () => Promise<ProductionReleaseContext>;
 };
+
+export type ProductionReleaseContext = {
+  manifestHash: string;
+  sourceCommitSha: string;
+};
+
+async function defaultReleaseContext(): Promise<ProductionReleaseContext> {
+  const manifestPath = process.env.MAPVEST_RELEASE_MANIFEST;
+  const manifestHash = process.env.MAPVEST_RELEASE_MANIFEST_HASH;
+  const sourceCommitSha = process.env.MAPVEST_RELEASE_SOURCE_SHA;
+  const currentMainSha = process.env.MAPVEST_CURRENT_MAIN_SHA;
+  if (!manifestPath || !manifestHash || !sourceCommitSha || !currentMainSha) {
+    throw new Error(
+      "Production TestFlight dispatch requires manifest path/hash and exact source/current-main SHAs",
+    );
+  }
+  const manifest = await loadReleaseManifest(manifestPath);
+  const request = validateReleaseRequest({
+    manifest,
+    manifestHash,
+    sourceCommitSha,
+    currentMainSha,
+  });
+  return {
+    manifestHash: request.manifestHash,
+    sourceCommitSha: request.sourceCommitSha,
+  };
+}
 
 function isWorkflowStatus(value: unknown): value is WorkflowStatus {
   return (
@@ -230,6 +260,7 @@ export class TestFlightProductionRunner {
   private readonly persistRunId: (runId: string) => Promise<void>;
   private readonly log: (message: string) => void;
   private readonly warn: (message: string) => void;
+  private readonly releaseContext: () => Promise<ProductionReleaseContext>;
   private runId: string | undefined;
   private terminalStatus: TerminalWorkflowStatus | undefined;
   private stopExitCode: number | undefined;
@@ -245,10 +276,12 @@ export class TestFlightProductionRunner {
     this.persistRunId = dependencies.persistRunId ?? defaultPersistRunId;
     this.log = dependencies.log ?? console.log;
     this.warn = dependencies.warn ?? console.warn;
+    this.releaseContext = dependencies.releaseContext ?? defaultReleaseContext;
   }
 
   async run(): Promise<number> {
-    await this.assertCleanCheckout();
+    const release = await this.releaseContext();
+    await this.assertCleanCheckout(release.sourceCommitSha);
     const priorRuns = await this.assertNoActiveProductionRun();
 
     if (this.stopExitCode !== undefined) {
@@ -258,6 +291,10 @@ export class TestFlightProductionRunner {
     const dispatchCommand = this.eas(
       "workflow:run",
       `.eas/workflows/${PRODUCTION_WORKFLOW_FILE}`,
+      "--input",
+      `manifest_hash=${release.manifestHash}`,
+      "--input",
+      `source_commit_sha=${release.sourceCommitSha}`,
       "--json",
       "--no-wait",
       "--non-interactive",
@@ -338,7 +375,7 @@ export class TestFlightProductionRunner {
     return this.cancelAndConfirm();
   }
 
-  private async assertCleanCheckout(): Promise<void> {
+  private async assertCleanCheckout(sourceCommitSha: string): Promise<void> {
     const statusCommand = ["git", "status", "--porcelain", "--untracked-files=normal"];
     const statusResult = await this.commandRunner(statusCommand, {
       timeoutMs: QUICK_COMMAND_TIMEOUT_MS,
@@ -347,6 +384,13 @@ export class TestFlightProductionRunner {
       throw new Error(
         "Refusing to upload an EAS source archive from a checkout with uncommitted changes",
       );
+    }
+    const headCommand = ["git", "rev-parse", "HEAD"];
+    const headResult = await this.commandRunner(headCommand, {
+      timeoutMs: QUICK_COMMAND_TIMEOUT_MS,
+    });
+    if (headResult.exitCode !== 0 || headResult.stdout.trim() !== sourceCommitSha) {
+      throw new Error("Refusing to upload an EAS source archive from a different source commit");
     }
   }
 

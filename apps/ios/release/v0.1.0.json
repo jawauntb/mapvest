@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "mapvest-ios-0.1.0",
+  "contentHash": "sha256:b6b8b5371d9ec0642cc90e6e6894f88d9456d77b4af0c58b318d7fee8498dc33",
+  "identity": {
+    "bundleIdentifier": "com.mapvest.app",
+    "appStoreConnectAppId": "6798832989",
+    "marketingVersion": "0.1.0",
+    "sourceBranch": "main"
+  },
+  "release": {
+    "mode": "manual_after_approval",
+    "testFlightGroup": "friend-testers",
+    "supportContact": "jawaun@generalintelligencecompany.com"
+  },
+  "copy": {
+    "testFlightWhatToTest": "Mapvest beta — live first run, Nearby Quest widgets, and safer alerts\n\nPlease test on a real device:\n• On a fresh install, start the quickstart. Confirm you see one real nearby company before sign-in. After sign-in, save a map company, identify a different company with Camera or a photo, see a sourced Local Brief, and send the editable two-company Research prompt in about a minute of active time.\n• Kill and reopen during every step. The mission card should resume without duplicating either company. Explore on my own must remain available, and notification permission must not appear.\n• Deny location or Camera once. Confirm Map offers a selected-area path, Camera offers photo-library/Settings recovery, and no step is falsely completed.\n• Add the Mapvest Nearby Quest widget, resize it, and confirm it shows an honest setup, stale, permission, empty, guest, or nearby state.\n• Move to a new area, reopen Mapvest, and confirm the widget refreshes.\n• Save the highlighted nearby company and confirm quest/universe progress updates.\n• Enable Research Ready or Nearby Discovery in Settings; Mapvest must not ask on first launch.\n• Tap an uncaught-nearby alert and confirm Map opens on the highlighted company.\n• Sign out or switch accounts and confirm old widget data and notification taps never carry over.\n• From Settings, use a disposable account to test permanent account deletion; an old session must not sign back in.\n\nFinance information is sourced research, not advice.\nFeedback: jawaun@generalintelligencecompany.com",
+    "betaReviewNotes": "Mapvest helps people discover publicly traded companies and sourced public comparables for private brands through a map, camera, and research experience. It provides informational market research; it does not execute trades, connect to brokerage accounts in this release, manage portfolios, or provide personalized investment advice. Follow the reviewer walkthrough for sign-in, the live quickstart, AI-sharing consent, widget setup, one opt-in notification, and disposable-account deletion.",
+    "appStoreWhatsNew": "Explore the companies around you with the new Nearby Quest widgets. See a nearby company, track your Universe progress, and jump straight into the map from your Home Screen.\n\nNew here? A delightful live quickstart gets you from the map to your first Local Brief, Camera find, two-company Universe, and Research question in about a minute.\n\nNotifications are smarter and fully opt-in: choose the updates you want, then open nearby discoveries in the exact place on the map. This release also improves sign-in continuity, account deletion, stale/offline states, and account privacy across onboarding, widgets, and alerts.",
+    "appReviewNotes": "Use the secure demo-account delivery configured in the protected release environment. Start on Map, inspect a nearby company, and sign in when saving. Complete the live quickstart with a second Camera or photo-library company and accept the editable Research prompt. AI sharing is disclosed before Camera and Research transfers. Add the Nearby Quest widget from the Home Screen. Enable a notification category in Settings, use the deterministic protected trigger, and confirm the alert highlights the intended Map company. Test permanent deletion only with the separate disposable account. See the fallback fields in this manifest if live location or Camera is unavailable. Mapvest is sourced informational research, not investment advice or trade execution.",
+    "subtitle": "Discover companies around you",
+    "descriptionTheme": "Discover nearby public companies, scan brands and products for a sourced ticker or public comparable, save companies to your Universe, and deepen your understanding with optional Research.",
+    "keywords": "stocks,map,brands,ticker,companies,research,investing,scanner,watchlist,nearby",
+    "screenshotNarrative": [
+      "Nearby place and sourced ticker on the map",
+      "Camera object to public company or comparable",
+      "Two-company Universe and quest progress",
+      "Local Brief and optional sourced Research",
+      "Nearby Quest widget and opt-in alerts"
+    ]
+  },
+  "reviewerWalkthrough": {
+    "signIn": "Open the profile drawer, choose Sign in, and use the protected review mailbox or demo-code delivery described in App Store Connect review credentials.",
+    "sampleMapArea": "Use Midtown Manhattan around Bryant Park if current location is sparse; select that map area and refresh nearby results.",
+    "cameraSubject": "Use a clearly labeled Coca-Cola product or the protected review photo fixture; expect KO with cited sources.",
+    "notificationTrigger": "Enable Nearby Discovery in Settings, then use the protected reviewer trigger documented in App Store Connect; allow the documented delivery delay and tap View on Map.",
+    "deletionAccount": "Use only the separate disposable review account, reauthenticate, type the destructive confirmation, and inspect operation status if the request is interrupted.",
+    "fallback": "If location is unavailable, use the selected map area. If Camera is unavailable, choose the protected review photo from the photo library. Contact support if a provider is unavailable."
+  },
+  "evidence": {
+    "required": [
+      "ci",
+      "xcode26_archive",
+      "archive_identity_and_privacy",
+      "testflight_distribution",
+      "physical_device_checklist",
+      "app_store_metadata_audit",
+      "app_privacy_audit",
+      "reviewer_access",
+      "subscription_review",
+      "account_deletion_and_ai_consent"
+    ]
+  }
+}

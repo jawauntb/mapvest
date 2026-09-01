@@ -28,8 +28,8 @@
 	<key>NSWidgetWantsLocation</key>
 	<true/>
 	<key>CFBundleVersion</key>
-	<string>98</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 </dict>
 </plist>
