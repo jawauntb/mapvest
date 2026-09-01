@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Find, NearbyItem } from "@mapvest/core";
 import {
   MAX_PUSHES_PER_DAY,
+  MAX_PUSHES_PER_WEEK,
   MIN_SCORE,
   PUSHED_MARKER,
   type UncaughtCandidate,
@@ -15,6 +16,9 @@ import {
   uncaughtBody,
   uncaughtDaySlot,
   uncaughtDedupeSlot,
+  uncaughtRelevanceReason,
+  uncaughtWeekKey,
+  uncaughtWeekSlot,
 } from "../src/lib/notifiers/uncaughtNearbyNotifier.js";
 import type { WatchEntry } from "../src/lib/watchlist-store.js";
 
@@ -35,6 +39,7 @@ const SEED = {
 
 function candidate(over: Partial<UncaughtCandidate> = {}): UncaughtCandidate {
   return {
+    placeId: "osm:node:1",
     ticker: "JPM",
     brand: "JPMorgan Chase",
     sector: "Financials",
@@ -299,6 +304,7 @@ describe("buildCandidates", () => {
       pushedTickers: new Set(),
     });
     expect(out.map((c) => c.ticker)).toEqual(["JPM"]);
+    expect(out[0]?.placeId).toBe("osm:node:1");
     expect(out[0]?.sector).toBe("Financials");
     expect(out[0]?.previouslyPushed).toBe(false);
   });
@@ -328,6 +334,7 @@ describe("buildCandidates", () => {
       pushedTickers: new Set(),
     });
     expect(out).toHaveLength(1);
+    expect(out[0]?.placeId).toBe("near");
     expect(out[0]?.distanceM).toBeLessThan(100);
   });
 
@@ -446,7 +453,7 @@ describe("dedupe + budget key shapes", () => {
     expect(uncaughtDaySlot(TOKEN_ID)).toBe("uncaught_day:push_phone");
     expect(uncaughtDaySlot(TOKEN_ID)).not.toBe(uncaughtDaySlot("push_tablet"));
     expect(dayBudgetValue("20260820", 1)).toBe("20260820:1");
-    expect(dayBudgetValue("20260820", MAX_PUSHES_PER_DAY)).toBe("20260820:2");
+    expect(dayBudgetValue("20260820", MAX_PUSHES_PER_DAY)).toBe("20260820:1");
   });
 
   test("pushesToday counts today's spend and ignores other days", () => {
@@ -457,15 +464,15 @@ describe("dedupe + budget key shapes", () => {
 
   test("one device's budget never debits its sibling device", () => {
     const tabletSlot = uncaughtDaySlot("push_tablet");
-    const phone = tok({ [DAY_SLOT]: "20260820:2" });
+    const phone = tok({ [DAY_SLOT]: "20260820:1" });
     const tablet = tok({ [tabletSlot]: "20260820:1" });
     expect(pushesToday(phone, "20260820", DAY_SLOT)).toBe(MAX_PUSHES_PER_DAY);
     expect(pushesToday(tablet, "20260820", tabletSlot)).toBe(1);
     expect(pushesToday(tablet, "20260820", DAY_SLOT)).toBe(0);
   });
 
-  test("MAX_PUSHES_PER_DAY is two, and a malformed value never grants budget", () => {
-    expect(MAX_PUSHES_PER_DAY).toBe(2);
+  test("MAX_PUSHES_PER_DAY is one, and a malformed value never grants budget", () => {
+    expect(MAX_PUSHES_PER_DAY).toBe(1);
     expect(pushesToday(tok({ [DAY_SLOT]: "garbage" }), "20260820", DAY_SLOT)).toBe(0);
     expect(pushesToday(tok({ [DAY_SLOT]: "20260820:" }), "20260820", DAY_SLOT)).toBe(0);
     expect(pushesToday(tok({ [DAY_SLOT]: "20260820:nope" }), "20260820", DAY_SLOT)).toBe(0);
@@ -473,6 +480,15 @@ describe("dedupe + budget key shapes", () => {
 
   test("the per-ticker slot never collides with the day slot", () => {
     expect(uncaughtDedupeSlot(TOKEN_ID, "DAY")).not.toBe(uncaughtDaySlot(TOKEN_ID));
+  });
+
+  test("the weekly budget is device-scoped, Monday-based, and capped at three", () => {
+    const weekSlot = uncaughtWeekSlot(TOKEN_ID);
+    const weekKey = uncaughtWeekKey(new Date("2026-08-20T12:00:00.000Z"));
+    expect(weekKey).toBe("20260817");
+    expect(weekSlot).toBe("uncaught_week:push_phone");
+    expect(MAX_PUSHES_PER_WEEK).toBe(3);
+    expect(pushesToday(tok({ [weekSlot]: `${weekKey}:3` }), weekKey, weekSlot)).toBe(3);
   });
 });
 
@@ -498,5 +514,19 @@ describe("uncaughtBody", () => {
 
   test("the symbol is normalized into the copy", () => {
     expect(uncaughtBody("Starbucks", " sbux ")).toContain("(SBUX)");
+  });
+});
+
+describe("uncaughtRelevanceReason", () => {
+  test("explains the strongest product-relevant signal in plain language", () => {
+    expect(
+      uncaughtRelevanceReason(candidate({ brand: "JPMorgan Chase", sector: "Financials" }), [
+        "sector_affinity",
+        "first_in_tile",
+      ]),
+    ).toBe("JPMorgan Chase matches the Financials companies you already explore.");
+    expect(uncaughtRelevanceReason(candidate({ brand: "NVIDIA" }), ["first_in_tile"])).toBe(
+      "NVIDIA is a new company near this part of your map.",
+    );
   });
 });

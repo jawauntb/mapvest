@@ -6,8 +6,10 @@ import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { FirstOpenSheet } from "@/components/FirstOpenSheet";
 import { syncWidgetFixIfFresh } from "@/location/heartbeat";
 import { SidebarProvider } from "@/nav/SidebarContext";
-import { registerForPush } from "@/notif/registerForPush";
-import { type NotifData, pathFromNotificationData } from "@/notif/router";
+import { registerNotificationCategories } from "@/notif/categoriesNative";
+import { pushDeliveryStore } from "@/notif/deliveryStore";
+import { readPushClaimSnapshot, registerForPush } from "@/notif/registerForPush";
+import { type NotifData, pathFromNotificationData, pathFromPendingDelivery } from "@/notif/router";
 import { ShareIntentListener } from "@/share/ShareIntentListener";
 import { colors } from "@/theme/tokens";
 import {
@@ -107,11 +109,7 @@ function PushBridge() {
   const sessionToken = session?.token;
 
   const prepareWidgetRelay = useCallback(
-    async (
-      expectedGeneration: number,
-      activeToken: string,
-      accountId: string,
-    ): Promise<boolean> => {
+    async (expectedGeneration: number, activeToken: string, accountId: string) => {
       // A widget fix is only relayable after this exact account has a current
       // server push registration. This also prevents a pre-registration fix
       // from being mistaken for the next account's location.
@@ -127,21 +125,28 @@ function PushBridge() {
       } catch {
         registration = null;
       }
-      if (!isActiveSession(expectedGeneration, activeToken)) return false;
+      if (!isActiveSession(expectedGeneration, activeToken)) return null;
       if (!registration) {
         await clearWidgetRegistrationContext().catch(() => {});
-        return false;
+        return null;
       }
       try {
-        await saveWidgetRegistrationContext({
-          accountId,
-          registrationId: registration.tokenId,
-        });
+        await Promise.all([
+          saveWidgetRegistrationContext({
+            accountId,
+            registrationId: registration.tokenId,
+          }),
+          pushDeliveryStore.activateScope({
+            accountId,
+            installationId: registration.tokenId,
+          }),
+          registerNotificationCategories(),
+        ]);
       } catch {
         await clearWidgetRegistrationContext().catch(() => {});
-        return false;
+        return null;
       }
-      return isActiveSession(expectedGeneration, activeToken);
+      return isActiveSession(expectedGeneration, activeToken) ? registration : null;
     },
     [isActiveSession],
   );
@@ -152,8 +157,8 @@ function PushBridge() {
     const activeToken = sessionToken;
     const accountId = user.id;
     let cancelled = false;
-    void prepareWidgetRelay(expectedGeneration, activeToken, accountId).then((ready) => {
-      if (!cancelled && ready && isActiveSession(expectedGeneration, activeToken)) {
+    void prepareWidgetRelay(expectedGeneration, activeToken, accountId).then((registration) => {
+      if (!cancelled && registration && isActiveSession(expectedGeneration, activeToken)) {
         void syncWidgetFixIfFresh();
       }
     });
@@ -175,8 +180,8 @@ function PushBridge() {
     const isActive = () => isActiveSession(expectedGeneration, activeToken);
     const syncAfterRegistration = () => {
       if (!isActive()) return;
-      void prepareWidgetRelay(expectedGeneration, activeToken, user.id).then((ready) => {
-        if (ready && isActive()) void syncWidgetFixIfFresh();
+      void prepareWidgetRelay(expectedGeneration, activeToken, user.id).then((registration) => {
+        if (registration && isActive()) void syncWidgetFixIfFresh();
       });
     };
     if (appState.current === "active") syncAfterRegistration();
@@ -191,28 +196,63 @@ function PushBridge() {
   useEffect(() => {
     const expectedGeneration = authGeneration;
     let cancelled = false;
-    const routeResponse = (response: Notifications.NotificationResponse) => {
-      if (cancelled || !sessionToken || !isActiveSession(expectedGeneration, sessionToken)) return;
+    if (!sessionToken || !user?.id) return;
+    const activeToken = sessionToken;
+    const accountId = user.id;
+    const isCurrent = () => !cancelled && isActiveSession(expectedGeneration, activeToken);
+    const currentScope = async () => {
+      const registration = await prepareWidgetRelay(expectedGeneration, activeToken, accountId);
+      if (!registration || !isCurrent()) return null;
+      const claim = await readPushClaimSnapshot();
+      if (
+        !claim.readable ||
+        claim.snapshot?.ownerUserId !== accountId ||
+        claim.snapshot.tokenId !== registration.tokenId
+      ) {
+        return null;
+      }
+      return {
+        accountId,
+        installationId: registration.tokenId,
+        claimOwnerAccountId: claim.snapshot.ownerUserId,
+      };
+    };
+    const routeResponse = async (response: Notifications.NotificationResponse) => {
+      if (!isCurrent()) return;
+      const scope = await currentScope();
+      if (!scope || !isCurrent()) return;
       const data = response.notification.request.content.data as NotifData | undefined;
-      const path = pathFromNotificationData(data);
-      if (path) router.push(path as never);
+      const admitted = await pushDeliveryStore.admit(data, scope);
+      if (!admitted.accepted || !isCurrent()) return;
+      const path = pathFromNotificationData(data, response.actionIdentifier);
+      if (!path) return;
+      router.push(path as never);
+      const handled = await pushDeliveryStore.markHandled(admitted.delivery.deliveryId, scope);
+      if (handled) await Notifications.clearLastNotificationResponseAsync().catch(() => {});
     };
     (async () => {
       try {
+        const scope = await currentScope();
+        if (!scope || !isCurrent()) return;
+        for (const delivery of await pushDeliveryStore.pending(scope)) {
+          if (!isCurrent()) return;
+          router.push(pathFromPendingDelivery(delivery) as never);
+          await pushDeliveryStore.markHandled(delivery.deliveryId, scope);
+        }
         const last = await Notifications.getLastNotificationResponseAsync();
-        if (last) routeResponse(last);
+        if (last) await routeResponse(last);
       } catch {
         /* not fatal */
       }
     })();
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      routeResponse(response);
+      void routeResponse(response);
     });
     return () => {
       cancelled = true;
       sub.remove();
     };
-  }, [authGeneration, isActiveSession, router, sessionToken]);
+  }, [authGeneration, isActiveSession, prepareWidgetRelay, router, sessionToken, user?.id]);
 
   return null;
 }

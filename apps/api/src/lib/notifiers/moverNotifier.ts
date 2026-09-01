@@ -50,6 +50,7 @@ async function pushMover(
       ticker: ticker.toUpperCase(),
       changePct,
     },
+    target: { type: "company", ticker: ticker.toUpperCase() },
   });
 }
 

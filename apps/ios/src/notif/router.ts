@@ -1,55 +1,24 @@
-/**
- * Deep-link routes for notification taps.
- *
- * Called from `_layout.tsx`'s `Notifications.addNotificationResponseReceivedListener`.
- * Given the notification's `data.kind`, returns a path to push (or null when
- * the notification carries no deep-link intent).
- */
-export type NotifData = {
-  kind?: string;
-  ticker?: string;
-  threadId?: string;
-  lat?: number;
-  lng?: number;
-  brand?: string;
-  tickers?: string[];
-  changePct?: number;
-  findId?: string;
-  rivalryId?: string;
-  tier?: string;
-  place?: string;
-};
+/** Account-safe notification routing uses only the typed delivery envelope. */
+import {
+  type NotificationData,
+  type PushNotificationDelivery,
+  parsePushNotificationDelivery,
+  pathFromPushDelivery,
+} from "./delivery";
 
-export function pathFromNotificationData(data: NotifData | null | undefined): string | null {
-  if (!data || !data.kind) return null;
-  switch (data.kind) {
-    case "daily_brief":
-      return "/(tabs)/home";
-    case "local_brief":
-      return "/(tabs)/home";
-    case "price_alert":
-      return "/alerts";
-    case "agent_response":
-      return data.threadId
-        ? `/(tabs)/research?intent=thread&id=${encodeURIComponent(data.threadId)}`
-        : "/(tabs)/research";
-    case "memo_finished":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/watchlists";
-    case "identify_done":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/camera";
-    case "watchlist_mover":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/home";
-    // Universe pushes (roadmap A2 / B4 / C6). Each carries the ticker the
-    // notification is about, so they land on that company. B4's "open the map
-    // with the pin highlighted" is not built yet — the map takes no params —
-    // so an uncaught ticker falls back to the map tab.
-    case "find_evolution":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/universe";
-    case "uncaught_nearby":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/(tabs)/map";
-    case "rivalry_weekly_close":
-      return data.ticker ? `/detail/${encodeURIComponent(data.ticker)}` : "/universe";
-    default:
-      return null;
-  }
+export type NotifData = NotificationData;
+
+export function pathFromNotificationData(
+  data: NotifData | null | undefined,
+  actionIdentifier?: string,
+): string | null {
+  const delivery = parsePushNotificationDelivery(data);
+  return delivery ? pathFromPushDelivery(delivery, actionIdentifier) : null;
+}
+
+export function pathFromPendingDelivery(
+  delivery: PushNotificationDelivery,
+  actionIdentifier?: string,
+): string {
+  return pathFromPushDelivery(delivery, actionIdentifier);
 }

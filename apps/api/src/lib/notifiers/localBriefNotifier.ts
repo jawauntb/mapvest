@@ -42,5 +42,6 @@ export async function onLocalBriefGenerated(
       lat: location.lat,
       lng: location.lng,
     },
+    target: { type: "home", section: "local-brief" },
   });
 }

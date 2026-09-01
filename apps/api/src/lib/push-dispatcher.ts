@@ -9,8 +9,13 @@
  * safeExecuteWithSpan and NEVER thrown to callers — a push outage must not
  * take down the transaction that produced the event.
  */
+import {
+  PushNotificationDelivery as PushNotificationDeliverySchema,
+  type PushNotificationTarget,
+} from "@mapvest/core";
 import { safeExecuteWithSpan } from "./logfire.js";
 import {
+  type PushDeliveryClaim,
   type PushDeliveryDedupe,
   type PushEventKey,
   type PushToken,
@@ -23,6 +28,15 @@ const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const BATCH_SIZE = 100;
 const MAX_ATTEMPTS = 3;
 const DEFAULT_MAX_CONCURRENT_HANDOFFS = 4;
+const DEFAULT_DELIVERY_TTL_SECONDS = 24 * 60 * 60;
+const MIN_DELIVERY_TTL_SECONDS = 5 * 60;
+const MAX_DELIVERY_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+export const PUSH_CATEGORY_IDS = {
+  map: "mapvest-map-v1",
+  company: "mapvest-company-v1",
+  settings: "mapvest-settings-v1",
+} as const;
 
 // A handoff reserves one database connection for its session advisory locks.
 // Keep that bounded per process so a push burst cannot consume the pool used
@@ -80,6 +94,7 @@ export type PushMessage = {
   badge?: number;
   priority?: "default" | "normal" | "high";
   channelId?: string;
+  categoryId?: string;
   ttl?: number;
 };
 
@@ -109,6 +124,82 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function productionPushSecurityReady(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  return (
+    process.env.EXPO_PUSH_SECURITY_ENABLED === "1" &&
+    typeof process.env.EXPO_ACCESS_TOKEN === "string" &&
+    process.env.EXPO_ACCESS_TOKEN.trim().length > 0
+  );
+}
+
+function deliveryTtlSeconds(value: number | undefined): number {
+  if (!Number.isFinite(value)) return DEFAULT_DELIVERY_TTL_SECONDS;
+  return Math.min(
+    Math.max(Math.floor(value ?? DEFAULT_DELIVERY_TTL_SECONDS), MIN_DELIVERY_TTL_SECONDS),
+    MAX_DELIVERY_TTL_SECONDS,
+  );
+}
+
+function categoryIdForTarget(target: PushNotificationTarget): string {
+  if (target.type === "map") return PUSH_CATEGORY_IDS.map;
+  if (target.type === "company") return PUSH_CATEGORY_IDS.company;
+  return PUSH_CATEGORY_IDS.settings;
+}
+
+function eventKindForDelivery(params: {
+  eventKey?: PushEventKey;
+  eventKind?: string;
+  data?: Record<string, unknown>;
+}): string {
+  if (typeof params.eventKind === "string" && params.eventKind.trim()) {
+    return params.eventKind.trim().slice(0, 64);
+  }
+  const legacyKind = params.data?.kind;
+  if (typeof legacyKind === "string" && legacyKind.trim()) return legacyKind.trim().slice(0, 64);
+  return params.eventKey ?? "mapvest_update";
+}
+
+function deliveryMessages(
+  claims: PushDeliveryClaim[],
+  params: {
+    eventKey?: PushEventKey;
+    eventKind?: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+    target: PushNotificationTarget;
+    deliveryTtlSeconds?: number;
+  },
+): PushMessage[] {
+  const ttl = deliveryTtlSeconds(params.deliveryTtlSeconds);
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + ttl * 1000);
+  const eventKind = eventKindForDelivery(params);
+  const target = params.target;
+  return claims.map((claim) => {
+    const mapvest = PushNotificationDeliverySchema.parse({
+      schemaVersion: 1,
+      deliveryId: claim.claimId,
+      installationId: claim.tokenId,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      eventKind,
+      target,
+    });
+    return {
+      to: claim.expoToken,
+      title: params.title,
+      body: params.body,
+      data: { ...(params.data ?? {}), mapvest },
+      sound: "default",
+      priority: "high",
+      categoryId: categoryIdForTarget(target),
+      ttl,
+    };
+  });
 }
 
 type ExpoTicket = {
@@ -164,37 +255,30 @@ async function postBatch(
  * increments the failure counter and (for known "gone" tokens) surfaces the
  * offending token strings so callers can unregister them.
  */
-async function sendExpoPush(params: {
-  tokens: string[];
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-}): Promise<SendPushResult> {
+async function sendExpoPush(messages: PushMessage[]): Promise<SendPushResult> {
   return safeExecuteWithSpan("push.dispatch", async (span) => {
-    const uniqueTokens = [...new Set(params.tokens.filter(Boolean))];
-    span.setAttributes({
-      recipient_count: uniqueTokens.length,
-      title: params.title.slice(0, 60),
-    });
-    if (uniqueTokens.length === 0) {
+    const uniqueMessages = messages.filter(
+      (message, index, all) =>
+        Boolean(message.to) && all.findIndex((candidate) => candidate.to === message.to) === index,
+    );
+    span.setAttribute("recipient_count", uniqueMessages.length);
+    if (uniqueMessages.length === 0) {
       return emptySendResult();
     }
-
-    const messages: PushMessage[] = uniqueTokens.map((to) => ({
-      to,
-      title: params.title,
-      body: params.body,
-      data: params.data ?? {},
-      sound: "default",
-      priority: "high",
-    }));
+    if (!productionPushSecurityReady()) {
+      span.setAttributes({
+        configuration_error: "push_security_required",
+        failures: uniqueMessages.length,
+      });
+      return { ...emptySendResult(), failures: uniqueMessages.length };
+    }
 
     let successes = 0;
     let failures = 0;
     const invalidTokens: string[] = [];
     const successfulTokens: string[] = [];
 
-    for (const batch of chunk(messages, BATCH_SIZE)) {
+    for (const batch of chunk(uniqueMessages, BATCH_SIZE)) {
       let tickets: ExpoTicket[] = [];
       let attempt = 0;
       let sent = false;
@@ -236,11 +320,11 @@ async function sendExpoPush(params: {
           if (batch[i]?.to) successfulTokens.push(batch[i]!.to);
         } else {
           failures += 1;
-          // DeviceNotRegistered / InvalidCredentials → surface the token so
-          // the caller can prune it. Other errors (MessageTooBig, RateExceeded)
-          // are transient at the ticket level and left alone.
+          // Only DeviceNotRegistered is evidence that this physical token is
+          // gone. InvalidCredentials is an app-level credential failure; it
+          // must not erase every user's otherwise-valid registration.
           const kind = t.details?.error ?? "";
-          if (kind === "DeviceNotRegistered" || kind === "InvalidCredentials") {
+          if (kind === "DeviceNotRegistered") {
             const bad = batch[i]?.to;
             if (bad) invalidTokens.push(bad);
           }
@@ -273,6 +357,9 @@ export async function deliverPush(params: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  target: PushNotificationTarget;
+  eventKind?: string;
+  deliveryTtlSeconds?: number;
   leaseMs?: number;
 }): Promise<SendPushResult> {
   const result = emptySendResult();
@@ -286,12 +373,7 @@ export async function deliverPush(params: {
 
       const sent = await withPushDeliveryHandoff(claims, params.eventKey, async (valid) => {
         if (valid.length === 0) return emptySendResult();
-        return sendExpoPush({
-          tokens: valid.map((claim) => claim.expoToken),
-          title: params.title,
-          body: params.body,
-          data: params.data,
-        });
+        return sendExpoPush(deliveryMessages(valid, params));
       });
       await finalizePushDelivery(
         claims,

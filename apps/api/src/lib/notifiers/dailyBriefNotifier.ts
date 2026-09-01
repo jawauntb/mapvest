@@ -31,5 +31,6 @@ export async function onDailyBriefGenerated(userId: string, brief: DailyBrief): 
     title: "Your morning read",
     body: brief.headline.slice(0, 240),
     data: { kind: "daily_brief" },
+    target: { type: "home", section: "daily-brief" },
   });
 }

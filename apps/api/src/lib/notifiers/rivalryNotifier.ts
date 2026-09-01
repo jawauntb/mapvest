@@ -296,6 +296,7 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
             diffPp: scored.diffPp,
             weekStart: weekKey,
           },
+          target: { type: "company", ticker: updated.ticker },
         });
         if (result.successes > 0) out.pushesSent += 1;
       }

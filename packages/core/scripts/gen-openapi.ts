@@ -105,6 +105,8 @@ const S = {
   PushPreferencesPatch: component("PushPreferencesPatch", raw.PushPreferencesPatch),
   PushRegistrationRequest: component("PushRegistrationRequest", raw.PushRegistrationRequest),
   PushRegistrationResponse: component("PushRegistrationResponse", raw.PushRegistrationResponse),
+  PushNotificationTarget: component("PushNotificationTarget", raw.PushNotificationTarget),
+  PushNotificationDelivery: component("PushNotificationDelivery", raw.PushNotificationDelivery),
   PushPreferencesUpdateRequest: component(
     "PushPreferencesUpdateRequest",
     raw.PushPreferencesUpdateRequest,

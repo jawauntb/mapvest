@@ -12,7 +12,8 @@
  *   - only the single highest-scoring candidate is considered,
  *   - it must clear `MIN_SCORE`, otherwise the arrival is silent,
  *   - at most one push per move event,
- *   - at most `MAX_PUSHES_PER_DAY` per device per day,
+ *   - at most `MAX_PUSHES_PER_DAY` per device per day and
+ *     `MAX_PUSHES_PER_WEEK` per device per week,
  *   - a ticker that was ever pushed to this device is never pushed again.
  * "A mediocre daily ping trains users to swipe away the great ones."
  *
@@ -20,6 +21,7 @@
  * claim-aware dispatcher, with DEVICE-SCOPED slots:
  *   - `uncaught:{tokenId}:{TICKER}` → `"1"` once pushed to this device, ever.
  *   - `uncaught_day:{tokenId}`      → `"{YYYYMMDD}:{count}"`, the day counter.
+ *   - `uncaught_week:{tokenId}`     → `"{Monday YYYYMMDD}:{count}"`, the week counter.
  * Both survive a process restart, so a redeploy cannot re-spend the budget.
  *
  * Framing (roadmap, non-negotiable): this is a **collection gap, not a buy
@@ -49,10 +51,12 @@ export const NEARBY_LIMIT = 12;
 /** Minimum score a candidate must reach to be worth interrupting someone. */
 export const MIN_SCORE = 3;
 /** Hard ceiling on uncaught pushes per device per calendar day (UTC). */
-export const MAX_PUSHES_PER_DAY = 2;
+export const MAX_PUSHES_PER_DAY = 1;
+/** Weekly ceiling keeps Nearby Discovery earned rather than habitual. */
+export const MAX_PUSHES_PER_WEEK = 3;
 /** Finds pulled per arrival to build the affinity/tile context. */
 const MAX_FINDS = 200;
-/** Lease/dedupe retention for the once-ever ticker and daily budget claims. */
+/** Lease/dedupe retention for the once-ever ticker and calendar budget claims. */
 const DEDUPE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 /** Stored value of a per-ticker slot once it has been pushed. */
@@ -116,6 +120,7 @@ function normTicker(input: string | undefined | null): string | null {
 }
 
 export type UncaughtCandidate = {
+  placeId: string;
   ticker: string;
   brand: string;
   sector?: string;
@@ -262,6 +267,7 @@ export function buildCandidates(args: {
     const changePct = investable.quote?.changePct;
 
     const candidate: UncaughtCandidate = {
+      placeId: item.place.id,
       ticker,
       brand: investable.brand.name,
       sector: investable.brand.sector,
@@ -330,6 +336,34 @@ export function uncaughtBody(brand: string, ticker: string, meters?: number): st
   return `${brand} (${symbol}) is nearby and isn't in your universe yet`;
 }
 
+/** Plain-language explanation shown again when the Map target opens. */
+export function uncaughtRelevanceReason(
+  candidate: Pick<UncaughtCandidate, "brand" | "sector">,
+  reasons: string[],
+): string {
+  if (reasons.includes("sector_affinity") && candidate.sector) {
+    return `${candidate.brand} matches the ${candidate.sector} companies you already explore.`;
+  }
+  if (reasons.includes("empty_sector") && candidate.sector) {
+    return `${candidate.brand} adds a nearby ${candidate.sector} company to explore.`;
+  }
+  if (reasons.includes("first_in_tile")) {
+    return `${candidate.brand} is a new company near this part of your map.`;
+  }
+  return `${candidate.brand} is nearby and not in your universe yet.`;
+}
+
+export function uncaughtWeekKey(date = new Date()): string {
+  const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const weekday = monday.getUTCDay() || 7;
+  monday.setUTCDate(monday.getUTCDate() - weekday + 1);
+  return ymd(monday);
+}
+
+export function uncaughtWeekSlot(tokenId: string): string {
+  return `uncaught_week:${tokenId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -344,7 +378,9 @@ export type UncaughtNearbyResult = {
   reason:
     | "pushed"
     | "no_tokens"
+    | "no_interest"
     | "day_budget"
+    | "week_budget"
     | "nearby_failed"
     | "no_candidates"
     | "below_threshold"
@@ -367,7 +403,7 @@ export async function onUserMovedFar(
 ): Promise<UncaughtNearbyResult> {
   return safeExecuteWithSpan("notifier.uncaught_nearby", async (span) => {
     const { userId } = token;
-    span.setAttributes({ user_id: userId, token_id: token.id });
+    span.setAttribute("user_id", userId);
 
     if (
       token.prefs.notifications_enabled === false ||
@@ -385,6 +421,13 @@ export async function onUserMovedFar(
     if (spent >= MAX_PUSHES_PER_DAY) {
       return { eligible: true, candidates: 0, pushed: false, reason: "day_budget" as const };
     }
+    const weekKey = uncaughtWeekKey();
+    const weekSlot = uncaughtWeekSlot(token.id);
+    const spentThisWeek = pushesToday(token, weekKey, weekSlot);
+    span.setAttributes({ week_key: weekKey, pushes_this_week: spentThisWeek });
+    if (spentThisWeek >= MAX_PUSHES_PER_WEEK) {
+      return { eligible: true, candidates: 0, pushed: false, reason: "week_budget" as const };
+    }
 
     const [finds, watchEntries, nearby] = await Promise.all([
       listFinds(userId, MAX_FINDS).catch(() => [] as Find[]),
@@ -400,6 +443,9 @@ export async function onUserMovedFar(
 
     if (!nearby) {
       return { eligible: true, candidates: 0, pushed: false, reason: "nearby_failed" as const };
+    }
+    if (finds.length === 0 && watchEntries.length === 0) {
+      return { eligible: true, candidates: 0, pushed: false, reason: "no_interest" as const };
     }
 
     const ownedTickers = new Set<string>();
@@ -466,6 +512,11 @@ export async function onUserMovedFar(
           key: dayBudgetValue(dayKey, spent + 1),
           ttlMs: DEDUPE_TTL_MS,
         },
+        {
+          slot: weekSlot,
+          key: dayBudgetValue(weekKey, spentThisWeek + 1),
+          ttlMs: DEDUPE_TTL_MS,
+        },
       ],
       eventKey: UNCAUGHT_NEARBY_EVENT_KEY,
       title: `Uncaught nearby — ${candidate.brand}`,
@@ -475,6 +526,15 @@ export async function onUserMovedFar(
         ticker: candidate.ticker,
         lat: candidate.lat,
         lng: candidate.lng,
+      },
+      target: {
+        type: "map",
+        placeId: candidate.placeId,
+        ticker: candidate.ticker,
+        lat: candidate.lat,
+        lng: candidate.lng,
+        label: candidate.brand,
+        reason: uncaughtRelevanceReason(candidate, reasons),
       },
     });
     if (result.successes === 0) {

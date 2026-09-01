@@ -269,7 +269,8 @@ tier; dex counts reconcile with `user_finds` × `brands.json`.
 
 Detail: `docs/UNIVERSE_ROADMAP.md` §2. Two problems, two costs: in-app brief
 staleness is a foreground bug fix; background awareness powers the arrival
-push. Notification budget is product law (max 1/arrival, 2/day, threshold-gated).
+push. Notification budget is product law (max 1/arrival, 1/day, 3/week,
+interest- and threshold-gated).
 
 - [x] B1 foreground Local Economy Brief refresh (>2km → refetch)
 - [x] B2 uncaught silhouette pins on the map

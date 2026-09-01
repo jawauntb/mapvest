@@ -251,6 +251,7 @@ export async function runFindEvolutionScan(): Promise<{
             changePct: pct,
             ...(geo.place ? { place: geo.place } : {}),
           },
+          target: { type: "company", ticker },
         });
         if (result.successes > 0) {
           pushedForUser += 1;

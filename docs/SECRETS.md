@@ -42,6 +42,8 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `SESSION_SIGNING_KEY` | self | `apps/api` (magic-link JWT) |
 | `IOS_MAPS_TOKEN_SIGNING_KEY` | self | `apps/api` for the short-lived iOS map token |
 | `EXPO_TOKEN` | Expo | GitHub Actions `ios-eas-production` only. Create at expo.dev → Access tokens. Never put it in the iOS bundle, Doppler-to-client path, or a commit. |
+| `EXPO_ACCESS_TOKEN` | Expo Push Service | `apps/api` production dispatch only, after Expo Push Security is enabled. Store in `shared/prd`; never expose it to iOS or logs. |
+| `EXPO_PUSH_SECURITY_ENABLED` | Mapvest configuration | Non-secret production assertion. Set to `1` only after enabling Expo Push Security for the project; dispatch fails closed otherwise. |
 | `DERIVATION_RESEARCH_API_ORIGIN` | Railway Derivation Research Console | Server-only origin for `/api/explore` and `/api/autoresearch`; `DERIVATION_URL` remains a compatibility alias |
 | `DERIVATION_RESEARCH_SERVICE_TOKEN` | Derivation Doppler/Railway | Server-only bearer used by Mapvest's research proxy; never expose it to web or iOS |
 | `RESEARCH_CONSOLE_FORWARDED_HOST` | Optional trusted proxy/front-door host | Set only when Mapvest intentionally reaches Console through that proxy. Omit it for direct local or Railway-to-Railway calls; Mapvest does not infer a front door from the Console origin. |
@@ -62,6 +64,16 @@ and are not required by the REST adapter.
 ### App Store Connect (StoreKit)
 
 Create an auto-renewable subscription with product id `mapvest_pro_monthly` at $19.99/month, bundle `com.mapvest.app`. Sandbox testers use a Sandbox Apple ID — do not put a card number in the repo or Doppler. After the StoreKit client is on TestFlight, set `APPLE_IAP_PRODUCT_ID=mapvest_pro_monthly` on the Railway API so checkout stops returning Stripe to iOS.
+
+### Expo push security
+
+Enable Expo Push Security for the Mapvest EAS project, create a server access
+token, and store it as `EXPO_ACCESS_TOKEN` in Doppler `shared/prd`. Set the
+non-secret `EXPO_PUSH_SECURITY_ENABLED=1` assertion in the production API at
+the same time. Production delivery intentionally returns failures without a
+network request when either value is absent; local and test environments do not
+require the production assertion. `EXPO_ACCESS_TOKEN` is distinct from the
+GitHub Actions `EXPO_TOKEN` used to run EAS builds.
 
 ### Robinhood MCP (operator vs user)
 

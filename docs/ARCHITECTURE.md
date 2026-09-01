@@ -227,10 +227,33 @@ never part of authorization.
 
 Location-derived work stays scoped to that same token. The movement scheduler
 uses each device's own heartbeat, anchor, local-brief dedupe, uncaught ticker
-dedupe, and uncaught daily budget; a phone cannot move, spend budget, or cause
-a local push on its sibling tablet. Local-brief request responses do not send
+dedupe, and uncaught daily/weekly budgets; a phone cannot move, spend budget,
+or cause a local push on its sibling tablet. Nearby Discovery requires at
+least one saved find or watchlist entry and is capped at one alert per UTC day
+and three per Monday-based UTC week. Local-brief request responses do not send
 a redundant push because the requesting device is already displaying the
 brief. Non-location events retain their account-wide opted-in fan-out.
+
+Every Expo handoff is assembled per recipient. Its additive `data.mapvest`
+envelope contains schema version, unique delivery claim ID, opaque installation
+ID, issue/expiry timestamps, event kind, and a bounded typed destination. The
+legacy top-level fields remain for older binaries. Current iOS clients accept
+only the typed envelope after session hydration, current claimant verification,
+expiry checks, and account/installation matching. They record an accepted item
+as `pending` before navigation, mark it `handled` after router handoff, retain
+both states through expiry plus clock skew, and retry unexpired pending work on
+startup. Corrupt, duplicate, over-capacity, stale, or mismatched state fails
+closed. Sign-out clears the replay ledger before another account may activate.
+
+Settings exposes intent bundles rather than nine undifferentiated switches:
+Nearby Discovery (`uncaught_nearby`, `local_brief`, `identify_done`), My
+Universe (`watchlist_mover`, `find_evolution`), and Research Ready
+(`memo_finished`, `agent_response`). Daily Brief and user-created Price Alerts
+remain individual. iOS provisional authorization is usable; denial keeps a
+visible System Settings path. Notification actions only foreground the app and
+navigate to Map, company, or notification settings. A Nearby destination opens
+the supplied coordinates, highlights the exact place ID (ticker fallback), and
+shows an explicit retry state rather than substituting an unrelated result.
 
 Startup serializes lazy push-schema work with a transaction advisory lock,
 elects one deterministic legacy row, then mutes every other row. `CREATE OR
@@ -303,6 +326,11 @@ selected only after the previous batch finishes. A request already
 accepted by Expo/APNs cannot be retracted after that handoff; the gate closes
 the server-side selection/state race without claiming impossible downstream
 timing guarantees.
+
+Production Expo dispatch is disabled unless `EXPO_PUSH_SECURITY_ENABLED=1`
+and a non-empty Doppler-provided `EXPO_ACCESS_TOKEN` are both present. Request
+logs redact opaque push token IDs in paths and query strings, and push spans do
+not attach tokens, delivery IDs, envelopes, titles, or bodies.
 
 ## Observability
 

@@ -21,5 +21,6 @@ export async function onMemoFinished(userId: string, ticker: string): Promise<vo
     title: `Your $${ticker.toUpperCase()} brief is ready`,
     body: `Your investment memo for $${ticker.toUpperCase()} is ready to read.`,
     data: { kind: "memo_finished", ticker: ticker.toUpperCase() },
+    target: { type: "company", ticker: ticker.toUpperCase() },
   });
 }
