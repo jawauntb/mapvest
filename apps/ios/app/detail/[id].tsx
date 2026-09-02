@@ -1159,8 +1159,11 @@ function WatchlistActions({
   if (!token) {
     return (
       <View style={{ gap: 8 }}>
+        {/* Memo and Prism both run signed-out (both routes are optionalAuth and
+            metered by device), so the sign-in prompt only claims what sign-in
+            actually adds: keeping the work. */}
         <Text style={styles.muted}>
-          Sign in to save this ticker, generate memos, and open Research briefs.
+          Sign in to save this ticker, keep its memos, and open Research briefs.
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
@@ -1191,9 +1194,29 @@ function WatchlistActions({
             ) : (
               <>
                 <Ionicons name="document-text-outline" size={15} color={colors.fg} />
-                <Text style={styles.actionBtnText}>Generate memo</Text>
+                {/* "Memo", not "Generate memo": this row carries three buttons
+                    and at 375pt the longer label wraps. Same label as the
+                    signed-in row; the verb lives in the accessibility label. */}
+                <Text style={styles.actionBtnText}>Memo</Text>
               </>
             )}
+          </Pressable>
+          {/* Prism is offered signed-out for the same reason the memo is:
+              `/v1/prism` is optionalAuth and meters anonymous callers by
+              X-Device-Id, which the client already sends. Gating it here while
+              offering the metered memo next to it would be an inconsistency,
+              not a product decision. */}
+          <Pressable
+            onPress={() => {
+              hapticTap();
+              router.push({ pathname: "/prism/[ticker]", params: { ticker: sym } });
+            }}
+            style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Open Prism for ${sym}`}
+          >
+            <Ionicons name="prism-outline" size={15} color={colors.fg} />
+            <Text style={styles.actionBtnText}>Prism</Text>
           </Pressable>
         </View>
         {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
@@ -1264,6 +1287,22 @@ function WatchlistActions({
               <Text style={styles.actionBtnText}>{displayMemo ? "Regenerate memo" : "Memo"}</Text>
             </>
           )}
+        </Pressable>
+        {/* Prism is the long-form sibling of the quick memo: the full packet
+            dashboard at /prism/<ticker>. It builds on demand there. */}
+        <Pressable
+          onPress={() => {
+            hapticTap();
+            router.push({ pathname: "/prism/[ticker]", params: { ticker: sym } });
+          }}
+          // flex:0 so adding a third button shrinks Save/Memo proportionally
+          // instead of wrapping "Regenerate memo" onto two lines.
+          style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel={`Open Prism for ${sym}`}
+        >
+          <Ionicons name="prism-outline" size={15} color={colors.fg} />
+          <Text style={styles.actionBtnText}>Prism</Text>
         </Pressable>
       </View>
 

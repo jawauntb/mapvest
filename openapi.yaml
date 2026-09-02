@@ -33,6 +33,8 @@ tags:
     description: Passwordless email sign-in
   - name: billing
     description: Entitlements + $19.99/mo subscription checkout
+  - name: prism
+    description: Prism (working name "ubermemo") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.
   - name: admin
     description: Requires the `admin` scope
 security:
@@ -5593,6 +5595,964 @@ components:
         - memo
         - generatedAt
         - sources
+    PrismRecommendation:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - strong_buy
+            - buy
+            - hold
+            - sell
+            - strong_sell
+        strength:
+          type: string
+          enum:
+            - strong
+            - normal
+            - weak
+        conviction:
+          type: number
+          minimum: 0
+          maximum: 1
+        one_line:
+          type: string
+      required:
+        - action
+        - strength
+        - conviction
+        - one_line
+      additionalProperties: false
+    PrismScenarioCases:
+      type: object
+      properties:
+        bull:
+          type: object
+          properties:
+            probability:
+              type:
+                - number
+                - "null"
+            narrative:
+              type: string
+            horizons:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  expected_return:
+                    type:
+                      - number
+                      - "null"
+                  p10:
+                    type:
+                      - number
+                      - "null"
+                  p50:
+                    type:
+                      - number
+                      - "null"
+                  p90:
+                    type:
+                      - number
+                      - "null"
+                  price_p10:
+                    type:
+                      - number
+                      - "null"
+                  price_p50:
+                    type:
+                      - number
+                      - "null"
+                  price_p90:
+                    type:
+                      - number
+                      - "null"
+              default: {}
+          required:
+            - probability
+            - narrative
+        neutral:
+          type: object
+          properties:
+            probability:
+              type:
+                - number
+                - "null"
+            narrative:
+              type: string
+            horizons:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  expected_return:
+                    type:
+                      - number
+                      - "null"
+                  p10:
+                    type:
+                      - number
+                      - "null"
+                  p50:
+                    type:
+                      - number
+                      - "null"
+                  p90:
+                    type:
+                      - number
+                      - "null"
+                  price_p10:
+                    type:
+                      - number
+                      - "null"
+                  price_p50:
+                    type:
+                      - number
+                      - "null"
+                  price_p90:
+                    type:
+                      - number
+                      - "null"
+              default: {}
+          required:
+            - probability
+            - narrative
+        bear:
+          type: object
+          properties:
+            probability:
+              type:
+                - number
+                - "null"
+            narrative:
+              type: string
+            horizons:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  expected_return:
+                    type:
+                      - number
+                      - "null"
+                  p10:
+                    type:
+                      - number
+                      - "null"
+                  p50:
+                    type:
+                      - number
+                      - "null"
+                  p90:
+                    type:
+                      - number
+                      - "null"
+                  price_p10:
+                    type:
+                      - number
+                      - "null"
+                  price_p50:
+                    type:
+                      - number
+                      - "null"
+                  price_p90:
+                    type:
+                      - number
+                      - "null"
+              default: {}
+          required:
+            - probability
+            - narrative
+      required:
+        - bull
+        - neutral
+        - bear
+      additionalProperties: false
+    PrismMeta:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              error:
+                type: string
+            required:
+              - source
+              - error
+          default: []
+        source_status:
+          type: object
+          additionalProperties: {}
+          default: {}
+        timings_ms:
+          type: object
+          additionalProperties:
+            type: number
+          default: {}
+        cache:
+          type: object
+          additionalProperties:
+            anyOf:
+              - type: string
+              - type: number
+          default: {}
+        unavailable:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        notes:
+          type: array
+          items:
+            type: string
+        stored: {}
+    PrismPacket:
+      type: object
+      properties:
+        ticker:
+          type: string
+        as_of:
+          type: string
+        generated_at:
+          type: string
+        engine_version:
+          type: string
+        name:
+          type: string
+        profile:
+          type:
+            - object
+            - "null"
+          properties:
+            name:
+              type:
+                - string
+                - "null"
+            sector:
+              type:
+                - string
+                - "null"
+            industry:
+              type:
+                - string
+                - "null"
+            market_cap:
+              type:
+                - number
+                - "null"
+            description:
+              type:
+                - string
+                - "null"
+            listed_since:
+              type:
+                - string
+                - "null"
+            primary_exchange:
+              type:
+                - string
+                - "null"
+            related_etfs:
+              type:
+                - array
+                - "null"
+              items:
+                type: string
+        universe:
+          type: array
+          items:
+            type: object
+            properties:
+              symbol:
+                type: string
+              label:
+                type: string
+              role:
+                type: string
+              provider:
+                type: string
+              first_date:
+                type:
+                  - string
+                  - "null"
+              last_date:
+                type:
+                  - string
+                  - "null"
+              n_days:
+                type:
+                  - number
+                  - "null"
+            required:
+              - symbol
+          default: []
+        seasonality:
+          type:
+            - object
+            - "null"
+          properties: {}
+        macro:
+          type:
+            - object
+            - "null"
+          properties: {}
+        relational:
+          type:
+            - object
+            - "null"
+          properties: {}
+        factors:
+          type:
+            - object
+            - "null"
+          properties: {}
+        regimes:
+          type:
+            - object
+            - "null"
+          properties: {}
+        entropy:
+          type:
+            - object
+            - "null"
+          properties: {}
+        spectral:
+          type:
+            - object
+            - "null"
+          properties: {}
+        eigen:
+          type:
+            - object
+            - "null"
+          properties: {}
+        fundamentals:
+          type:
+            - object
+            - "null"
+          properties: {}
+        filings:
+          type:
+            - object
+            - "null"
+          properties: {}
+        volatility:
+          type:
+            - object
+            - "null"
+          properties: {}
+        levels:
+          type:
+            - object
+            - "null"
+          properties: {}
+        news:
+          type:
+            - object
+            - "null"
+          properties: {}
+        recent:
+          type:
+            - object
+            - "null"
+          properties: {}
+        scenarios:
+          type:
+            - object
+            - "null"
+          properties:
+            method:
+              type: string
+            weights:
+              type: object
+              additionalProperties:
+                type: number
+            weight_evidence:
+              type: object
+              additionalProperties: {}
+            cases:
+              type: object
+              properties:
+                bull:
+                  type: object
+                  properties:
+                    probability:
+                      type:
+                        - number
+                        - "null"
+                    narrative:
+                      type: string
+                    horizons:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          expected_return:
+                            type:
+                              - number
+                              - "null"
+                          p10:
+                            type:
+                              - number
+                              - "null"
+                          p50:
+                            type:
+                              - number
+                              - "null"
+                          p90:
+                            type:
+                              - number
+                              - "null"
+                          price_p10:
+                            type:
+                              - number
+                              - "null"
+                          price_p50:
+                            type:
+                              - number
+                              - "null"
+                          price_p90:
+                            type:
+                              - number
+                              - "null"
+                      default: {}
+                  required:
+                    - probability
+                    - narrative
+                neutral:
+                  type: object
+                  properties:
+                    probability:
+                      type:
+                        - number
+                        - "null"
+                    narrative:
+                      type: string
+                    horizons:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          expected_return:
+                            type:
+                              - number
+                              - "null"
+                          p10:
+                            type:
+                              - number
+                              - "null"
+                          p50:
+                            type:
+                              - number
+                              - "null"
+                          p90:
+                            type:
+                              - number
+                              - "null"
+                          price_p10:
+                            type:
+                              - number
+                              - "null"
+                          price_p50:
+                            type:
+                              - number
+                              - "null"
+                          price_p90:
+                            type:
+                              - number
+                              - "null"
+                      default: {}
+                  required:
+                    - probability
+                    - narrative
+                bear:
+                  type: object
+                  properties:
+                    probability:
+                      type:
+                        - number
+                        - "null"
+                    narrative:
+                      type: string
+                    horizons:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          expected_return:
+                            type:
+                              - number
+                              - "null"
+                          p10:
+                            type:
+                              - number
+                              - "null"
+                          p50:
+                            type:
+                              - number
+                              - "null"
+                          p90:
+                            type:
+                              - number
+                              - "null"
+                          price_p10:
+                            type:
+                              - number
+                              - "null"
+                          price_p50:
+                            type:
+                              - number
+                              - "null"
+                          price_p90:
+                            type:
+                              - number
+                              - "null"
+                      default: {}
+                  required:
+                    - probability
+                    - narrative
+              required:
+                - bull
+                - neutral
+                - bear
+              additionalProperties: false
+            distribution:
+              type: object
+              additionalProperties:
+                type: object
+                properties: {}
+            entry:
+              type: object
+              properties:
+                bargain_below:
+                  type:
+                    - number
+                    - "null"
+                fair_value:
+                  type:
+                    - number
+                    - "null"
+                expensive_above:
+                  type:
+                    - number
+                    - "null"
+                current_price:
+                  type:
+                    - number
+                    - "null"
+                current_vs_fair:
+                  type:
+                    - number
+                    - "null"
+            timing:
+              type: object
+              properties:
+                this_month:
+                  type: string
+                reason:
+                  type: string
+            watch_signals:
+              type: array
+              items:
+                type: object
+                properties: {}
+          required:
+            - cases
+        memo:
+          type:
+            - object
+            - "null"
+          properties:
+            recommendation:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - strong_buy
+                    - buy
+                    - hold
+                    - sell
+                    - strong_sell
+                strength:
+                  type: string
+                  enum:
+                    - strong
+                    - normal
+                    - weak
+                conviction:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                one_line:
+                  type: string
+              required:
+                - action
+                - strength
+                - conviction
+                - one_line
+              additionalProperties: false
+            entry_price:
+              type:
+                - number
+                - "null"
+            exit_targets:
+              type: array
+              items:
+                type: object
+                properties:
+                  horizon:
+                    type: string
+                  price:
+                    type:
+                      - number
+                      - "null"
+                  probability:
+                    type:
+                      - number
+                      - "null"
+                required:
+                  - horizon
+            stop_or_reassess:
+              type:
+                - number
+                - "null"
+            text:
+              type:
+                - string
+                - "null"
+            key_determinants:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  explanation:
+                    type: string
+                  direction:
+                    type:
+                      - string
+                      - "null"
+                  weight:
+                    type:
+                      - number
+                      - "null"
+                required:
+                  - name
+                  - explanation
+            priced_in:
+              type: array
+              items:
+                type: string
+            citations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  claim:
+                    type:
+                      - string
+                      - "null"
+                  source:
+                    type:
+                      - string
+                      - "null"
+                  url:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - id
+            model:
+              type:
+                - string
+                - "null"
+            generated_at:
+              type:
+                - string
+                - "null"
+          required:
+            - recommendation
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+              url:
+                type:
+                  - string
+                  - "null"
+              fetched_at:
+                type:
+                  - string
+                  - "null"
+              confidence:
+                anyOf:
+                  - type: string
+                  - type: number
+                  - type: "null"
+            required:
+              - provider
+          default: []
+        meta:
+          type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  source:
+                    type: string
+                  error:
+                    type: string
+                required:
+                  - source
+                  - error
+              default: []
+            source_status:
+              type: object
+              additionalProperties: {}
+              default: {}
+            timings_ms:
+              type: object
+              additionalProperties:
+                type: number
+              default: {}
+            cache:
+              type: object
+              additionalProperties:
+                anyOf:
+                  - type: string
+                  - type: number
+              default: {}
+            unavailable:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+            notes:
+              type: array
+              items:
+                type: string
+            stored: {}
+      required:
+        - ticker
+        - as_of
+        - generated_at
+        - engine_version
+        - profile
+        - seasonality
+        - macro
+        - relational
+        - factors
+        - regimes
+        - entropy
+        - spectral
+        - eigen
+        - fundamentals
+        - filings
+        - volatility
+        - levels
+        - news
+        - recent
+        - scenarios
+        - memo
+        - meta
+    PrismSummary:
+      type: object
+      properties:
+        ticker:
+          type: string
+        as_of:
+          type:
+            - string
+            - "null"
+        generated_at:
+          type:
+            - string
+            - "null"
+        engine_version:
+          type:
+            - string
+            - "null"
+        name:
+          type:
+            - string
+            - "null"
+        sector:
+          type:
+            - string
+            - "null"
+        industry:
+          type:
+            - string
+            - "null"
+        text:
+          type:
+            - string
+            - "null"
+        recommendation:
+          type:
+            - object
+            - "null"
+          properties:
+            action:
+              type: string
+              enum:
+                - strong_buy
+                - buy
+                - hold
+                - sell
+                - strong_sell
+            strength:
+              type: string
+              enum:
+                - strong
+                - normal
+                - weak
+            conviction:
+              type: number
+              minimum: 0
+              maximum: 1
+            one_line:
+              type: string
+          required:
+            - action
+            - strength
+            - conviction
+            - one_line
+          additionalProperties: false
+        one_line:
+          type:
+            - string
+            - "null"
+        memo_excerpt:
+          type:
+            - string
+            - "null"
+        unavailable_sections:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              error:
+                type: string
+            required:
+              - source
+              - error
+        disclaimer:
+          type: string
+      required:
+        - ticker
+    PrismBuildRequest:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 16
+        force:
+          type: boolean
+        includeMemo:
+          type: boolean
+      required:
+        - ticker
+    PrismChatRequest:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 16
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        conversationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                type: string
+                minLength: 1
+                maxLength: 20000
+            required:
+              - role
+              - content
+          maxItems: 50
+      required:
+        - ticker
+        - message
+    PrismChatResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        reply:
+          type: string
+        conversationId:
+          type: string
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              claim:
+                type:
+                  - string
+                  - "null"
+              source:
+                type:
+                  - string
+                  - "null"
+              url:
+                type:
+                  - string
+                  - "null"
+            required:
+              - id
+          default: []
+        model:
+          type:
+            - string
+            - "null"
+        generatedAt:
+          type:
+            - string
+            - "null"
+      required:
+        - ticker
+        - reply
     ErrorResponse:
       type: object
       properties:
@@ -9057,6 +10017,334 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Caller lacks the `admin` scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/prism:
+    post:
+      summary: Build a Prism packet (billable)
+      description: "Runs the full memo engine for a ticker — macro, factors, regimes, spectral, entropy, fundamentals, filings, scenarios, and an authored memo — and returns the whole packet. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/prism/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/ubermemo`. Research only, not investment advice."
+      tags:
+        - prism
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrismBuildRequest"
+      responses:
+        "200":
+          description: Packet built.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrismPacket"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The Prism engine is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The Prism engine is busy; retry after `Retry-After`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/prism/{ticker}:
+    get:
+      summary: Read the latest stored Prism packet
+      description: "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/ubermemo/{ticker}`."
+      tags:
+        - prism
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Latest stored packet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrismPacket"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Prism packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/prism/{ticker}/summary:
+    get:
+      summary: Bounded agent projection of a Prism packet
+      description: The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context.
+      tags:
+        - prism
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Packet projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrismSummary"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Prism packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/prism/chat:
+    post:
+      summary: Ask a question about a built Prism packet
+      description: "One chat turn answered strictly from the stored packet, with citations back into packet sections. Unmetered: no new analysis is produced. 404s when no packet exists for the ticker."
+      tags:
+        - prism
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrismChatRequest"
+      responses:
+        "200":
+          description: Chat turn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrismChatResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Prism packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/prism/{ticker}/export:
+    get:
+      summary: Download a Prism packet as text, JSON, or PDF
+      description: "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`."
+      tags:
+        - prism
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+        - schema:
+            type: string
+            enum:
+              - txt
+              - json
+              - pdf
+          required: false
+          name: format
+          in: query
+      responses:
+        "200":
+          description: Rendered packet.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrismPacket"
+            application/pdf:
+              schema:
+                type: string
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Prism packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
           content:
             application/json:
               schema:

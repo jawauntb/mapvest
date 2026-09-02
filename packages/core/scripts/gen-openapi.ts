@@ -161,6 +161,14 @@ const S = {
   EnvironmentSeries: component("EnvironmentSeries", raw.EnvironmentSeries),
   EnvironmentBrief: component("EnvironmentBrief", raw.EnvironmentBrief),
   SynthesisMemoResponse: component("SynthesisMemoResponse", raw.SynthesisMemoResponse),
+  PrismRecommendation: component("PrismRecommendation", raw.PrismRecommendation),
+  PrismScenarioCases: component("PrismScenarioCases", raw.PrismScenarioCases),
+  PrismMeta: component("PrismMeta", raw.PrismMeta),
+  PrismPacket: component("PrismPacket", raw.PrismPacket),
+  PrismSummary: component("PrismSummary", raw.PrismSummary),
+  PrismBuildRequest: component("PrismBuildRequest", raw.PrismBuildRequest),
+  PrismChatRequest: component("PrismChatRequest", raw.PrismChatRequest),
+  PrismChatResponse: component("PrismChatResponse", raw.PrismChatResponse),
 };
 
 // -------- shared error envelope --------
@@ -1610,6 +1618,126 @@ registry.registerPath({
   },
 });
 
+// -------- Prism (working name "ubermemo") --------
+//
+// The engine lives in the sibling `underlying-analyzer-reboot` service; these
+// are Mapvest's owner-scoped proxies. Every path is also served under
+// `/v1/ubermemo` — the working-name alias, same handlers, same shapes.
+
+const prismNotFound = {
+  description: "No Prism packet has been built for this ticker yet.",
+  content: { "application/json": { schema: z.object({ error: z.string(), code: z.string() }) } },
+};
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/prism",
+  summary: "Build a Prism packet (billable)",
+  description:
+    "Runs the full memo engine for a ticker — macro, factors, regimes, spectral, entropy, fundamentals, filings, scenarios, and an authored memo — and returns the whole packet. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/prism/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/ubermemo`. Research only, not investment advice.",
+  tags: ["prism"],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PrismBuildRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Packet built.",
+      content: { "application/json": { schema: S.PrismPacket } },
+    },
+    402: errorResponses[402],
+    502: errorResponse("The Prism engine is unavailable."),
+    503: errorResponse("The Prism engine is busy; retry after `Retry-After`."),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/prism/{ticker}",
+  summary: "Read the latest stored Prism packet",
+  description:
+    "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/ubermemo/{ticker}`.",
+  tags: ["prism"],
+  request: { params: z.object({ ticker: z.string() }) },
+  responses: {
+    200: {
+      description: "Latest stored packet.",
+      content: { "application/json": { schema: S.PrismPacket } },
+    },
+    404: prismNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/prism/{ticker}/summary",
+  summary: "Bounded agent projection of a Prism packet",
+  description:
+    "The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context.",
+  tags: ["prism"],
+  request: { params: z.object({ ticker: z.string() }) },
+  responses: {
+    200: {
+      description: "Packet projection.",
+      content: { "application/json": { schema: S.PrismSummary } },
+    },
+    404: prismNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/prism/chat",
+  summary: "Ask a question about a built Prism packet",
+  description:
+    "One chat turn answered strictly from the stored packet, with citations back into packet sections. Unmetered: no new analysis is produced. 404s when no packet exists for the ticker.",
+  tags: ["prism"],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.PrismChatRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Chat turn.",
+      content: { "application/json": { schema: S.PrismChatResponse } },
+    },
+    404: prismNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/prism/{ticker}/export",
+  summary: "Download a Prism packet as text, JSON, or PDF",
+  description:
+    "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`.",
+  tags: ["prism"],
+  request: {
+    params: z.object({ ticker: z.string() }),
+    query: z.object({ format: raw.PrismExportFormat.optional() }),
+  },
+  responses: {
+    200: {
+      description: "Rendered packet.",
+      content: {
+        "text/plain": { schema: z.string() },
+        "application/json": { schema: S.PrismPacket },
+        "application/pdf": { schema: z.string() },
+      },
+    },
+    404: prismNotFound,
+    ...errorResponses,
+  },
+});
+
 // -------- generate + write --------
 
 const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -1640,6 +1768,11 @@ const document = generator.generateDocument({
     { name: "push", description: "Device push-token registration and revocation" },
     { name: "auth", description: "Passwordless email sign-in" },
     { name: "billing", description: "Entitlements + $19.99/mo subscription checkout" },
+    {
+      name: "prism",
+      description:
+        'Prism (working name "ubermemo") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.',
+    },
     { name: "admin", description: "Requires the `admin` scope" },
   ],
   security: [{ bearerAuth: [] }],
