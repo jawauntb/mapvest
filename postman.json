@@ -1864,6 +1864,144 @@
           }
         }
       ]
+    },
+    {
+      "name": "prism",
+      "description": "Prism (working name \"ubermemo\") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.",
+      "item": [
+        {
+          "name": "Build a Prism packet (billable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/prism",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "prism"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\",\n  \"force\": false,\n  \"includeMemo\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Runs the full memo engine for a ticker — macro, factors, regimes, spectral, entropy, fundamentals, filings, scenarios, and an authored memo — and returns the whole packet. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/prism/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/ubermemo`. Research only, not investment advice."
+          }
+        },
+        {
+          "name": "Read the latest stored Prism packet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/prism/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "prism",
+                "{ticker}"
+              ]
+            },
+            "description": "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/ubermemo/{ticker}`."
+          }
+        },
+        {
+          "name": "Bounded agent projection of a Prism packet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/prism/{ticker}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "prism",
+                "{ticker}",
+                "summary"
+              ]
+            },
+            "description": "The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context."
+          }
+        },
+        {
+          "name": "Ask a question about a built Prism packet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/prism/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "prism",
+                "chat"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\",\n  \"message\": \"\",\n  \"conversationId\": \"\",\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "One chat turn answered strictly from the stored packet, with citations back into packet sections. Unmetered: no new analysis is produced. 404s when no packet exists for the ticker."
+          }
+        },
+        {
+          "name": "Download a Prism packet as text, JSON, or PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/prism/{ticker}/export?format=txt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "prism",
+                "{ticker}",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "txt"
+                }
+              ]
+            },
+            "description": "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`."
+          }
+        }
+      ]
     }
   ],
   "variable": [

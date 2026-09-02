@@ -13,6 +13,7 @@ import {
 } from "../lib/derivation.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
+import { prismSummaryForPrompt } from "../lib/prism.js";
 import {
   ResearchConversationPendingError,
   buildResearchPrompt,
@@ -206,7 +207,12 @@ async function admitResearch(body: ParsedChatRequest, owner: OwnerIdentity): Pro
   }
 
   const clientMessageId = body.clientMessageId ?? `client_${crypto.randomUUID()}`;
-  const prompt = buildResearchPrompt(body.message, body.ticker);
+  // Best-effort Prism context. `prismSummaryForPrompt` never throws and is
+  // bounded by its own 3s timeout, so a slow, missing, or unconfigured engine
+  // costs one short wait and the prompt is unchanged — a research turn must
+  // never fail because a memo packet was unavailable.
+  const prismSummary = body.ticker ? await prismSummaryForPrompt(body.ticker) : undefined;
+  const prompt = buildResearchPrompt(body.message, body.ticker, prismSummary);
   const retryNamespace = continued
     ? `conversation:${continued.conversationId}`
     : (owner.deviceOwnerKey ?? owner.ownerKey);

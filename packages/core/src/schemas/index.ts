@@ -1484,3 +1484,408 @@ export const SynthesisMemoResponse = z.object({
   sources: z.array(Source),
 });
 export type SynthesisMemoResponse = z.infer<typeof SynthesisMemoResponse>;
+
+// -------- Prism (working name "ubermemo") --------
+
+/**
+ * Prism is the full-stack memo engine that lives in the sibling
+ * `underlying-analyzer-reboot` service. It splits one ticker's price into
+ * macro, factor, regime, spectral, entropy, fundamental, and filing components
+ * and recombines them into bull/neutral/bear scenarios, a recommendation, and a
+ * chat-able memo. Mapvest proxies it at `/v1/prism/*` (alias `/v1/ubermemo/*`).
+ *
+ * Schema posture, deliberately mixed:
+ *   - **Loose** (`.passthrough()`) for every analytical section. The engine adds
+ *     intermediate results as it grows and clients must not break on a new key.
+ *     Each section is `null` when it could not be computed, with a sibling
+ *     `<section>_error` string carried through by the packet passthrough.
+ *   - **Strict** (`.strict()`) for the three shapes a client renders as a
+ *     contract rather than as data: `memo.recommendation` (the action grammar),
+ *     `scenarios.cases` (exactly bull/neutral/bear), and `meta`.
+ *
+ * The API route is a thin proxy and does **not** validate upstream packets, so
+ * a strict-shape drift surfaces as a client-side parse failure, never a 502.
+ * Numbers are plain floats; percent returns are decimal fractions (0.034 = 3.4%).
+ */
+
+/** A packet section whose interior is deliberately not pinned field-by-field. */
+export const PrismSection = z.object({}).passthrough();
+export type PrismSection = z.infer<typeof PrismSection>;
+
+/** Forecast horizons the engine projects, shortest first. */
+export const PrismHorizon = z.enum(["1m", "2m", "3m", "6m", "12m", "18m"]);
+export type PrismHorizon = z.infer<typeof PrismHorizon>;
+
+/** `GET /v1/prism/{ticker}/export?format=` — the three renderings of a packet. */
+export const PrismExportFormat = z.enum(["txt", "json", "pdf"]);
+export type PrismExportFormat = z.infer<typeof PrismExportFormat>;
+
+export const PrismRecommendationAction = z.enum([
+  "strong_buy",
+  "buy",
+  "hold",
+  "sell",
+  "strong_sell",
+]);
+export type PrismRecommendationAction = z.infer<typeof PrismRecommendationAction>;
+
+export const PrismRecommendationStrength = z.enum(["strong", "normal", "weak"]);
+export type PrismRecommendationStrength = z.infer<typeof PrismRecommendationStrength>;
+
+/**
+ * The recommendation grammar — strict on purpose. `conviction` is `[0,1]` and
+ * `one_line` is the single-sentence thesis rendered in the hero chip.
+ * Research-only output: never an order, never advice.
+ */
+export const PrismRecommendation = z
+  .object({
+    action: PrismRecommendationAction,
+    strength: PrismRecommendationStrength,
+    conviction: z.number().min(0).max(1),
+    one_line: z.string(),
+  })
+  .strict();
+export type PrismRecommendation = z.infer<typeof PrismRecommendation>;
+
+/**
+ * One rung of the exit ladder. `price`/`probability` are optional as well as
+ * nullable: the engine's own targets always carry all three keys, but the memo
+ * may instead pass through the model's `exit_targets` verbatim, and a rung the
+ * model left off must not fail the whole packet.
+ */
+export const PrismExitTarget = z
+  .object({
+    horizon: z.string(),
+    price: z.number().nullable().optional(),
+    probability: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PrismExitTarget = z.infer<typeof PrismExitTarget>;
+
+export const PrismKeyDeterminant = z
+  .object({
+    name: z.string(),
+    explanation: z.string(),
+    direction: z.string().nullable().optional(),
+    weight: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PrismKeyDeterminant = z.infer<typeof PrismKeyDeterminant>;
+
+/** A memo claim tied back to a packet section or a fetched document. */
+export const PrismCitation = z
+  .object({
+    id: z.string(),
+    claim: z.string().nullable().optional(),
+    source: z.string().nullable().optional(),
+    /** `null` for a citation that points at a packet section rather than a document. */
+    url: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type PrismCitation = z.infer<typeof PrismCitation>;
+
+export const PrismMemo = z
+  .object({
+    recommendation: PrismRecommendation,
+    entry_price: z.number().nullable().optional(),
+    exit_targets: z.array(PrismExitTarget).optional(),
+    stop_or_reassess: z.number().nullable().optional(),
+    /** Markdown. Always carries a "not investment advice" line. */
+    text: z.string().nullable().optional(),
+    key_determinants: z.array(PrismKeyDeterminant).optional(),
+    priced_in: z.array(z.string()).optional(),
+    citations: z.array(PrismCitation).optional(),
+    /** `null` on the deterministic fallback memo (no Anthropic key configured). */
+    model: z.string().nullable().optional(),
+    generated_at: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type PrismMemo = z.infer<typeof PrismMemo>;
+
+/** Per-horizon return + price fan for one scenario case. */
+export const PrismHorizonOutlook = z
+  .object({
+    expected_return: z.number().nullable().optional(),
+    p10: z.number().nullable().optional(),
+    p50: z.number().nullable().optional(),
+    p90: z.number().nullable().optional(),
+    price_p10: z.number().nullable().optional(),
+    price_p50: z.number().nullable().optional(),
+    price_p90: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PrismHorizonOutlook = z.infer<typeof PrismHorizonOutlook>;
+
+export const PrismScenarioCase = z
+  .object({
+    /**
+     * Probability of this case at the packet's `probability_horizon`. Nullable:
+     * the engine reads it off the mixture block for that horizon, and a horizon
+     * with no surviving component forecast yields `null` rather than a made-up
+     * number (`app/prism/scenarios.py` — `_finite(block.get("probability"))`).
+     */
+    probability: z.number().nullable(),
+    narrative: z.string(),
+    /** Keyed by `PrismHorizon`; a horizon the engine could not project is absent. */
+    horizons: z.record(z.string(), PrismHorizonOutlook).default({}),
+  })
+  .passthrough();
+export type PrismScenarioCase = z.infer<typeof PrismScenarioCase>;
+
+/** Strict: a scenario split is exactly these three cases and their probabilities sum to 1. */
+export const PrismScenarioCases = z
+  .object({
+    bull: PrismScenarioCase,
+    neutral: PrismScenarioCase,
+    bear: PrismScenarioCase,
+  })
+  .strict();
+export type PrismScenarioCases = z.infer<typeof PrismScenarioCases>;
+
+/**
+ * Where the current price sits against the engine's 6-month fair-value
+ * distribution: `bargain_below` is p25, `expensive_above` is p75.
+ */
+export const PrismEntryZone = z
+  .object({
+    bargain_below: z.number().nullable().optional(),
+    fair_value: z.number().nullable().optional(),
+    expensive_above: z.number().nullable().optional(),
+    current_price: z.number().nullable().optional(),
+    current_vs_fair: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PrismEntryZone = z.infer<typeof PrismEntryZone>;
+
+export const PrismScenarios = z
+  .object({
+    method: z.string().optional(),
+    /** Mixture weights per component, ∝ out-of-sample explanatory power. */
+    weights: z.record(z.string(), z.number()).optional(),
+    weight_evidence: z.record(z.string(), z.unknown()).optional(),
+    cases: PrismScenarioCases,
+    distribution: z.record(z.string(), PrismSection).optional(),
+    entry: PrismEntryZone.optional(),
+    timing: z
+      .object({ this_month: z.string().optional(), reason: z.string().optional() })
+      .passthrough()
+      .optional(),
+    watch_signals: z.array(PrismSection).optional(),
+  })
+  .passthrough();
+export type PrismScenarios = z.infer<typeof PrismScenarios>;
+
+/**
+ * Every field is nullable as well as optional: the engine emits the reference
+ * record with the keys always present and `null` where the provider had no
+ * value — an ETF has no `sector`/`industry`, for instance. Verified against a
+ * live SPY packet.
+ */
+export const PrismProfile = z
+  .object({
+    name: z.string().nullable().optional(),
+    sector: z.string().nullable().optional(),
+    industry: z.string().nullable().optional(),
+    market_cap: z.number().nullable().optional(),
+    description: z.string().nullable().optional(),
+    listed_since: z.string().nullable().optional(),
+    primary_exchange: z.string().nullable().optional(),
+    related_etfs: z.array(z.string()).nullable().optional(),
+  })
+  .passthrough();
+export type PrismProfile = z.infer<typeof PrismProfile>;
+
+/** One symbol in the benchmark universe the packet was computed against. */
+export const PrismUniverseEntry = z
+  .object({
+    symbol: z.string(),
+    label: z.string().optional(),
+    role: z.string().optional(),
+    provider: z.string().optional(),
+    first_date: z.string().nullable().optional(),
+    last_date: z.string().nullable().optional(),
+    n_days: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PrismUniverseEntry = z.infer<typeof PrismUniverseEntry>;
+
+/**
+ * Packet-level provenance. Distinct from the Mapvest `Source` schema: the
+ * engine names its own upstreams (`massive`, `fred`, `sec`, `exa`, `anthropic`)
+ * and Mapvest passes them through verbatim rather than remapping a provider
+ * enum it does not own.
+ */
+export const PrismSourceRef = z
+  .object({
+    provider: z.string(),
+    /** `null` for a provider row that is an API call rather than a document. */
+    url: z.string().nullable().optional(),
+    fetched_at: z.string().nullable().optional(),
+    /**
+     * The engine scores confidence numerically (0..1) on most rows and labels
+     * it on others, so both are accepted rather than coercing one into the
+     * other and losing the distinction.
+     */
+    confidence: z.union([z.string(), z.number()]).nullable().optional(),
+  })
+  .passthrough();
+export type PrismSourceRef = z.infer<typeof PrismSourceRef>;
+
+export const PrismMetaError = z.object({ source: z.string(), error: z.string() }).passthrough();
+export type PrismMetaError = z.infer<typeof PrismMetaError>;
+
+/**
+ * The honesty ledger. `errors` lists every section that failed and why,
+ * `source_status` says which upstreams answered, `timings_ms` is per-stage, and
+ * `cache` reports the ticker-independent benchmark/macro legs — `hit`/`miss`
+ * strings alongside numeric hit/miss counters. A packet with an empty `errors`
+ * array is a fully computed packet.
+ *
+ * INTEGRATION NOTE (I2): this shape was `.strict()` per the build plan. Parsing
+ * a real engine packet showed the block is bookkeeping, not a fixed contract —
+ * `app/prism/contract.py::empty_meta()` also emits `unavailable` and `notes`,
+ * `engine.py` adds a `stored` record from `store.save_packet()`, and it writes
+ * numeric `cache.hits` / `cache.misses` next to the `hit`/`miss` strings. A
+ * strict gate here rejected every real packet, so the documented keys stay
+ * pinned and everything else passes through. The two shapes that really are
+ * contracts — `PrismRecommendation` and `PrismScenarioCases` — are still strict,
+ * and both were verified against the engine's own construction sites.
+ */
+export const PrismMeta = z
+  .object({
+    errors: z.array(PrismMetaError).default([]),
+    source_status: z.record(z.string(), z.unknown()).default({}),
+    timings_ms: z.record(z.string(), z.number()).default({}),
+    /** `hit`/`miss` per cached leg, plus numeric counters from the series cache. */
+    cache: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
+    /** Sources the engine could not reach at all, distinct from a failed section. */
+    unavailable: z.array(z.record(z.string(), z.unknown())).optional(),
+    notes: z.array(z.string()).optional(),
+    /** Where `store.save_packet()` put this packet (local path and/or Supabase id). */
+    stored: z.unknown().optional(),
+  })
+  .passthrough();
+export type PrismMeta = z.infer<typeof PrismMeta>;
+
+/**
+ * The whole packet. Every analytical section is present and `null`-able: a
+ * `null` section means "could not compute", never "zero". Unknown top-level
+ * keys — including the `<section>_error` siblings — survive parsing.
+ */
+export const PrismPacket = z
+  .object({
+    ticker: z.string(),
+    as_of: z.string(),
+    generated_at: z.string(),
+    engine_version: z.string(),
+    name: z.string().optional(),
+    profile: PrismProfile.nullable(),
+    universe: z.array(PrismUniverseEntry).default([]),
+    seasonality: PrismSection.nullable(),
+    macro: PrismSection.nullable(),
+    relational: PrismSection.nullable(),
+    factors: PrismSection.nullable(),
+    regimes: PrismSection.nullable(),
+    entropy: PrismSection.nullable(),
+    spectral: PrismSection.nullable(),
+    eigen: PrismSection.nullable(),
+    fundamentals: PrismSection.nullable(),
+    filings: PrismSection.nullable(),
+    volatility: PrismSection.nullable(),
+    levels: PrismSection.nullable(),
+    news: PrismSection.nullable(),
+    recent: PrismSection.nullable(),
+    scenarios: PrismScenarios.nullable(),
+    memo: PrismMemo.nullable(),
+    sources: z.array(PrismSourceRef).default([]),
+    meta: PrismMeta,
+  })
+  .passthrough();
+export type PrismPacket = z.infer<typeof PrismPacket>;
+
+/**
+ * The bounded agent projection served by `GET /v1/prism/{ticker}/summary` —
+ * `app/prism/engine.py::prism_summary()`. Small enough to inline in a prompt,
+ * complete enough to answer "what does Prism think, and on what evidence".
+ *
+ * Deliberately loose: the engine owns the field list and adds to it, so only
+ * the keys a client can actually rely on are pinned and everything else passes
+ * through. INTEGRATION NOTE (I2): the projection has no `text` key — the memo
+ * prose arrives as `memo_excerpt` (1500 chars) and the thesis as `one_line`.
+ * `text` stays declared because the engine may add it and because the proxy's
+ * `renderPrismSummary()` prefers it when present; it is not the primary field.
+ */
+export const PrismSummary = z
+  .object({
+    ticker: z.string(),
+    as_of: z.string().nullable().optional(),
+    generated_at: z.string().nullable().optional(),
+    engine_version: z.string().nullable().optional(),
+    /** Company name from the packet profile, `null` when the profile failed. */
+    name: z.string().nullable().optional(),
+    sector: z.string().nullable().optional(),
+    industry: z.string().nullable().optional(),
+    text: z.string().nullable().optional(),
+    /** `null` when the packet was built with `includeMemo: false`. */
+    recommendation: PrismRecommendation.nullable().optional(),
+    one_line: z.string().nullable().optional(),
+    /** First 1500 characters of the memo markdown. */
+    memo_excerpt: z.string().nullable().optional(),
+    /** Section keys that are `null` in the packet this projection came from. */
+    unavailable_sections: z.array(z.string()).optional(),
+    errors: z.array(PrismMetaError).optional(),
+    disclaimer: z.string().optional(),
+  })
+  .passthrough();
+export type PrismSummary = z.infer<typeof PrismSummary>;
+
+/**
+ * `POST /v1/prism` body. Billable — counts against the free-tier generation
+ * meter as `kind: "memo"` — and slow: a cold build is 1–3 minutes, so clients
+ * should show staged progress and may poll `GET /v1/prism/{ticker}` instead.
+ * `force` recomputes even when a stored packet exists for today; `includeMemo`
+ * is `false` to get the quantitative packet without spending an LLM call.
+ */
+export const PrismBuildRequest = z.object({
+  ticker: z.string().min(1).max(16),
+  force: z.boolean().optional(),
+  includeMemo: z.boolean().optional(),
+});
+export type PrismBuildRequest = z.infer<typeof PrismBuildRequest>;
+
+export const PrismChatMessage = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1).max(20_000),
+});
+export type PrismChatMessage = z.infer<typeof PrismChatMessage>;
+
+/**
+ * `POST /v1/prism/chat` body. The engine answers only from the stored packet
+ * for `ticker`, so a packet must already exist (404 otherwise). `history` is
+ * the client-held thread; `conversationId` lets the engine persist it instead.
+ */
+export const PrismChatRequest = z.object({
+  ticker: z.string().min(1).max(16),
+  message: z.string().min(1).max(4000),
+  conversationId: z.string().min(1).max(128).optional(),
+  history: z.array(PrismChatMessage).max(50).optional(),
+});
+export type PrismChatRequest = z.infer<typeof PrismChatRequest>;
+
+/**
+ * `POST /v1/prism/chat` response, normalized to camelCase by the proxy.
+ * `citations` point back into packet sections by id so the client can deep-link
+ * the answer to the number it came from.
+ */
+export const PrismChatResponse = z
+  .object({
+    ticker: z.string(),
+    reply: z.string(),
+    conversationId: z.string().optional(),
+    citations: z.array(PrismCitation).default([]),
+    /** `null` when the engine answered from the stored memo (no model configured). */
+    model: z.string().nullable().optional(),
+    generatedAt: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type PrismChatResponse = z.infer<typeof PrismChatResponse>;

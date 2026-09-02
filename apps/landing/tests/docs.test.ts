@@ -18,6 +18,7 @@ describe("public docs policy", () => {
       "implementation-plan",
       "market-data-migration",
       "massive-capability-matrix",
+      "prism",
       "readme",
       "secrets",
       "system-design",

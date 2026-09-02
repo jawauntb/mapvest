@@ -58,12 +58,32 @@ export function isResearchConversationTerminal(value: unknown): boolean {
   return typeof value === "string" && TERMINAL_STATUSES.has(value as ResearchConversationStatus);
 }
 
-export function buildResearchPrompt(message: string, ticker?: string): string {
+/** Hard cap on injected Prism context so one packet cannot crowd out the turn. */
+export const RESEARCH_PRISM_CONTEXT_MAX_CHARS = 6_000;
+
+/**
+ * Builds the upstream research prompt.
+ *
+ * `prismSummary` is the optional bounded projection of a Prism packet for
+ * `ticker` (see `lib/prism.ts`). It is *context*, never a requirement: callers
+ * fetch it best-effort and pass `undefined` when it is missing, which leaves
+ * the prompt byte-identical to the pre-Prism shape. It is placed before
+ * {@link USER_PROMPT_MARKER} so `userFacingPrompt` still strips it out of
+ * anything the client displays.
+ */
+export function buildResearchPrompt(
+  message: string,
+  ticker?: string,
+  prismSummary?: string,
+): string {
   const instruction =
     "Write like a short financial news brief when you conclude — lede first, then evidence. Research-only; no trades; no broker orders.";
-  return ticker
-    ? `Focus ticker: $${ticker}. ${instruction}${USER_PROMPT_MARKER}${message}`
-    : `${instruction}${USER_PROMPT_MARKER}${message}`;
+  const focus = ticker ? `Focus ticker: $${ticker}. ` : "";
+  const summary = prismSummary?.trim();
+  const context = summary
+    ? `\n\nPrism packet context for $${ticker ?? "the subject"} — a quantitative memo packet already computed by the Underlying engine (macro, factor, regime, spectral, entropy, fundamentals, filings). Treat it as evidence you may cite as "Prism", verify anything load-bearing, and say so if it contradicts what you find:\n${summary.slice(0, RESEARCH_PRISM_CONTEXT_MAX_CHARS)}`
+    : "";
+  return `${focus}${instruction}${context}${USER_PROMPT_MARKER}${message}`;
 }
 
 function userFacingPrompt(value: string): string {

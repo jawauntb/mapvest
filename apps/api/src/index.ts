@@ -32,6 +32,7 @@ import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
 import options from "./routes/options.js";
+import prism from "./routes/prism.js";
 import progress from "./routes/progress.js";
 import proxy from "./routes/proxy.js";
 import pulse from "./routes/pulse.js";
@@ -101,6 +102,11 @@ app.route("/v1/market-data", marketData);
 app.route("/v1/market-events", marketEvents);
 app.route("/v1/underlying", underlying);
 app.route("/v1/memo", memo);
+// Prism — the full-stack memo engine (macro/factor/regime/spectral packet +
+// recommendation + chat + export), proxied from the sibling engine. Mounted
+// twice so the working name "ubermemo" keeps resolving to the same handlers.
+app.route("/v1/prism", prism);
+app.route("/v1/ubermemo", prism);
 app.route("/v1/chart", chart);
 app.route("/v1/analysis", analysis);
 app.route("/v1/cockpit", cockpit);

@@ -53,6 +53,8 @@ in `eas.json`.
   Client + types live in `src/api/underlying.ts`; base URL overridable via
   `EXPO_PUBLIC_UNDERLYING_API_URL`. Below it: Research, Save/memo, comps,
   ETFs, SEC, news, agent brief.
+- `/prism/[ticker]` — **Prism**, the full-stack memo dashboard (working name
+  "ubermemo"). See the Prism section below.
 
 Home and Your universe refresh their signed-in finds, progression, summary,
 dex, and quests data only after that session successfully identifies at least
@@ -62,6 +64,83 @@ after its response has returned; blurring preserves that pending work for the
 next eligible focus. Find observers use limit-aware cache keys (100 rows for
 Home/Map and 200 for Your universe/Orbit), while focus invalidation uses the
 shared `finds/{token}` prefix to update both projections.
+
+## Prism (`/prism/[ticker]`)
+
+Prism splits one ticker's price into macro, factor, regime, spectral, entropy,
+fundamental, and filing components and recombines them into bull / neutral /
+bear scenarios, a recommendation, entry and exit levels, and a chat-able memo.
+The engine lives in the sibling `underlying-analyzer-reboot` service; the app
+talks only to the Mapvest proxy at `/v1/prism/*` (alias `/v1/ubermemo/*`).
+
+**Entry point.** One button: "Prism" in the actions row of `/detail/[id]`, next
+to Memo — in both the signed-in and the signed-out branch, because
+`/v1/prism` is `optionalAuth` and meters anonymous callers by `X-Device-Id`
+exactly like the memo button beside it. It routes to `/prism/{ticker}`; the
+packet is built on demand there.
+
+**Files.**
+
+- `src/api/prism.ts` — typed client and the packet contract as TypeScript
+  (`PrismPacket` and every section), mirroring the zod schemas in
+  `packages/core`. Also `formatPrismError`, which keeps upstream transport
+  detail off the screen.
+- `src/prism/constants.ts` — the vocabulary (horizons, windows, cases). Zero
+  imports, so the pure helpers and their tests never pull in the fetch stack.
+- `src/prism/format.ts`, `scenario.ts`, `signals.ts`, `progress.ts` — pure
+  helpers: formatting, the scenario mixture math, packet → chart rows, and the
+  staged build copy. Unit tested with `bun test apps/ios/src/prism`.
+- `src/prism/usePrismPacket.ts` / `usePrismChat.ts` — packet lifecycle and the
+  chat thread.
+- `src/prism/*Section.tsx`, `PrismHero.tsx`, `PrismProgress.tsx`, `ui.tsx` —
+  the screen.
+- `src/chartkit/prism/*` — the charts (regime ribbon, seasonality grid, horizon
+  fan, correlation/beta heatmap with kinematics arrows, spectral cycle wheel and
+  wave, entropy gauge and backtest bars, factor bars, sparklines, yield curve,
+  volatility smile, key-level ladder, scenario density). They are drawn with the
+  same View-backed SVG shims as the rest of `src/chartkit` (no
+  `react-native-svg`) but painted with Atlas Signal tokens, not the amber
+  terminal palette — that palette is the analyzer charts' data contract and
+  stays with them.
+
+**Three behaviours worth knowing.**
+
+1. *The build is slow.* `POST /v1/prism` runs the whole engine and takes one to
+   three minutes. `usePrismPacket` shows staged, elapsed-time progress copy and
+   at the same time polls `GET /v1/prism/:ticker` every five seconds, so a
+   dropped request still ends with the packet on screen. A 404 from the read
+   route is the "never built" state, not an error.
+2. *A null section is still a rendered section.* Every card mounts whether or
+   not the engine produced its data; when it did not, the card says
+   "unavailable" and names the reason from the packet's own `<section>_error`
+   sibling or `meta.errors`. Nothing renders a null as zero, and the last card
+   on the page is the provenance ledger listing every source that failed.
+3. *Sections mount lazily.* The page carries a dozen charts. `LazySection`
+   mounts each one a viewport ahead of the reader and never unmounts it.
+
+**Honesty rules the screen enforces.** These are places where the packet says
+something more careful than the obvious reading, and the UI has to say the
+careful thing:
+
+- *Exit targets are not odds.* `memo.exit_targets[].probability` is the **bull
+  case's** probability at that horizon — the engine copies it off the same bull
+  block it took `price_p50` from and says so in `basis`. The hero labels it
+  "12M · bull case 27%" and prints the basis underneath. Calling it "27% odds"
+  would overstate the chance of the price by roughly 2×.
+- *Weights are not always earned.* `ScenariosSection` reads
+  `scenarios.weight_evidence`. When the engine reports a `fallback`, the
+  subtitle says the weights are a shrunk prior, and every component listed in
+  `prior_only_components` is marked "· prior" next to its bar.
+- *Prices carry their date.* The hero prints `scenarios.entry.current_price`
+  and nothing else — never `memo.entry_price`, which is a bargain threshold —
+  captions it `close · {as_of}`, and shows an amber "rebuild for current prices"
+  line once the packet is more than three days old (`isPacketStale`).
+- *A build costs a generation and says so.* Both "Build packet" and "Rebuild"
+  carry the cost in their label and accessibility label and confirm before
+  spending; the three exports beside them are free.
+
+Research only — the screen states "not investment advice" and Prism never
+places orders.
 
 ## Offline photo queue
 

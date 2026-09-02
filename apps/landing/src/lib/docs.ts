@@ -38,6 +38,9 @@ const HIDDEN_SLUGS = new Set<string>([
   "implementation-plan",
   "market-data-migration",
   "massive-capability-matrix",
+  // Prism names its upstream providers and env vars — operational, like
+  // data-sources and the capability matrix.
+  "prism",
   "readme",
   "secrets",
   "system-design",
