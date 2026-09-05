@@ -259,6 +259,7 @@ jobs:
       - name: Capture exact successful EAS build identity
         id: candidate
         if: ${{ success() && !cancelled() }}
+        working-directory: apps/ios
         shell: bash
         env:
           EAS_RUN_ID_FILE: ${{ runner.temp }}/mapvest-eas-production-run-id
@@ -339,6 +340,7 @@ jobs:
           path: ${{ runner.temp }}/mapvest-eas-candidate
 
       - name: Download and inspect the exact candidate IPA
+        working-directory: apps/ios
         shell: bash
         env:
           MANIFEST_PATH: ${{ github.workspace }}/${{ needs.release_gate.outputs.manifest_path }}
