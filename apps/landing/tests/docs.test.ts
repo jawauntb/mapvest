@@ -21,6 +21,7 @@ describe("public docs policy", () => {
       "prism",
       "readme",
       "secrets",
+      "situate",
       "system-design",
       "universe-roadmap",
       "loadtest-v0.1.0",

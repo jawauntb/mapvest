@@ -2002,6 +2002,144 @@
           }
         }
       ]
+    },
+    {
+      "name": "situate",
+      "description": "Situate — the single-name research engine (reforms Prism), proxied from the sibling Underlying service. Situates a stock: exposure, per-horizon odds, options-implied distribution, and what the business is saying; posture not buy/sell. Also served at `/v1/research`.",
+      "item": [
+        {
+          "name": "Build a Situate packet (billable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/situate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "situate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\",\n  \"force\": false,\n  \"includeMemo\": false,\n  \"asOf\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Runs the full single-name research engine for a ticker — factor + macro exposure, vol/trend state, empirical base rates, options-implied distribution, fundamentals trajectory, filing diffs, cheap/rich zones, a validated cross-sectional stack (or a stated fallback), merged odds per horizon, and an authored memo with a *posture* (odds favorable / balanced / odds unfavorable — never buy/sell) and three falsifiers. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/situate/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/research`. Research only, not investment advice; no point price targets."
+          }
+        },
+        {
+          "name": "Read the latest stored Situate packet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/situate/{ticker}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "situate",
+                "{ticker}"
+              ]
+            },
+            "description": "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/research/{ticker}`."
+          }
+        },
+        {
+          "name": "Bounded agent projection of a Situate packet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/situate/{ticker}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "situate",
+                "{ticker}",
+                "summary"
+              ]
+            },
+            "description": "The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context."
+          }
+        },
+        {
+          "name": "Ask a question about a built Situate packet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/situate/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "situate",
+                "chat"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticker\": \"\",\n  \"message\": \"\",\n  \"conversationId\": \"\",\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "One chat turn answered strictly from the stored packet, with citations back into packet modules. Unmetered against the generation tier (no new analysis) but capped per identity — it spends one upstream completion. 404s when no packet exists for the ticker."
+          }
+        },
+        {
+          "name": "Download a Situate packet as text, JSON, or PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/situate/{ticker}/export?format=txt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "situate",
+                "{ticker}",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "txt"
+                }
+              ]
+            },
+            "description": "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`."
+          }
+        }
+      ]
     }
   ],
   "variable": [
