@@ -41,6 +41,7 @@ type WorkflowInput = {
 type WorkflowStep = {
   id?: string;
   run?: string;
+  "working-directory"?: string;
 };
 
 type WorkflowJob = {
@@ -51,6 +52,12 @@ type WorkflowJob = {
   params?: Record<string, unknown>;
   steps: WorkflowStep[];
 };
+
+function directEasSteps(workflow: WorkflowDocument): WorkflowStep[] {
+  return Object.values(workflow.jobs)
+    .flatMap((workflowJob) => workflowJob.steps)
+    .filter((step) => /(^|\n)\s*eas\s/.test(step.run ?? ""));
+}
 
 type WorkflowDocument = {
   on: {
@@ -159,6 +166,11 @@ describe("manifest-bound TestFlight distribution", () => {
       "eas-ios",
       "inspect_candidate",
     ]);
+    const easSteps = directEasSteps(workflow);
+    expect(easSteps).not.toHaveLength(0);
+    for (const step of easSteps) {
+      expect(step["working-directory"]).toBe("apps/ios");
+    }
     const source = await Bun.file(githubProductionWorkflowUrl).text();
     expect(source).toContain("mapvest-ios-inspected-");
     expect(source).toContain(".eas/workflows/testflight-distribute.yml");
