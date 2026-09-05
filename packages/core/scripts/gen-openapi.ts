@@ -169,6 +169,14 @@ const S = {
   PrismBuildRequest: component("PrismBuildRequest", raw.PrismBuildRequest),
   PrismChatRequest: component("PrismChatRequest", raw.PrismChatRequest),
   PrismChatResponse: component("PrismChatResponse", raw.PrismChatResponse),
+  SituatePosture: component("SituatePosture", raw.SituatePosture),
+  SituateOddsHorizon: component("SituateOddsHorizon", raw.SituateOddsHorizon),
+  SituateMeta: component("SituateMeta", raw.SituateMeta),
+  SituatePacket: component("SituatePacket", raw.SituatePacket),
+  SituateSummary: component("SituateSummary", raw.SituateSummary),
+  SituateBuildRequest: component("SituateBuildRequest", raw.SituateBuildRequest),
+  SituateChatRequest: component("SituateChatRequest", raw.SituateChatRequest),
+  SituateChatResponse: component("SituateChatResponse", raw.SituateChatResponse),
 };
 
 // -------- shared error envelope --------
@@ -1738,6 +1746,126 @@ registry.registerPath({
   },
 });
 
+// -------- Situate (reforms Prism; single-name research engine) --------
+//
+// The engine lives in the sibling `underlying-analyzer-reboot` service under
+// `/api/situate/*`; these are Mapvest's owner-scoped proxies. Every path is
+// also served under `/v1/research` — the alias, same handlers, same shapes.
+
+const situateNotFound = {
+  description: "No Situate packet has been built for this ticker yet.",
+  content: { "application/json": { schema: z.object({ error: z.string(), code: z.string() }) } },
+};
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/situate",
+  summary: "Build a Situate packet (billable)",
+  description:
+    "Runs the full single-name research engine for a ticker — factor + macro exposure, vol/trend state, empirical base rates, options-implied distribution, fundamentals trajectory, filing diffs, cheap/rich zones, a validated cross-sectional stack (or a stated fallback), merged odds per horizon, and an authored memo with a *posture* (odds favorable / balanced / odds unfavorable — never buy/sell) and three falsifiers. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/situate/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/research`. Research only, not investment advice; no point price targets.",
+  tags: ["situate"],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.SituateBuildRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Packet built.",
+      content: { "application/json": { schema: S.SituatePacket } },
+    },
+    402: errorResponses[402],
+    502: errorResponse("The Situate engine is unavailable."),
+    503: errorResponse("The Situate engine is busy; retry after `Retry-After`."),
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/situate/{ticker}",
+  summary: "Read the latest stored Situate packet",
+  description:
+    "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/research/{ticker}`.",
+  tags: ["situate"],
+  request: { params: z.object({ ticker: z.string() }) },
+  responses: {
+    200: {
+      description: "Latest stored packet.",
+      content: { "application/json": { schema: S.SituatePacket } },
+    },
+    404: situateNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/situate/{ticker}/summary",
+  summary: "Bounded agent projection of a Situate packet",
+  description:
+    "The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context.",
+  tags: ["situate"],
+  request: { params: z.object({ ticker: z.string() }) },
+  responses: {
+    200: {
+      description: "Packet projection.",
+      content: { "application/json": { schema: S.SituateSummary } },
+    },
+    404: situateNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/situate/chat",
+  summary: "Ask a question about a built Situate packet",
+  description:
+    "One chat turn answered strictly from the stored packet, with citations back into packet modules. Unmetered against the generation tier (no new analysis) but capped per identity — it spends one upstream completion. 404s when no packet exists for the ticker.",
+  tags: ["situate"],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.SituateChatRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Chat turn.",
+      content: { "application/json": { schema: S.SituateChatResponse } },
+    },
+    404: situateNotFound,
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/situate/{ticker}/export",
+  summary: "Download a Situate packet as text, JSON, or PDF",
+  description:
+    "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`.",
+  tags: ["situate"],
+  request: {
+    params: z.object({ ticker: z.string() }),
+    query: z.object({ format: raw.SituateExportFormat.optional() }),
+  },
+  responses: {
+    200: {
+      description: "Rendered packet.",
+      content: {
+        "text/plain": { schema: z.string() },
+        "application/json": { schema: S.SituatePacket },
+        "application/pdf": { schema: z.string() },
+      },
+    },
+    404: situateNotFound,
+    ...errorResponses,
+  },
+});
+
 // -------- generate + write --------
 
 const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -1772,6 +1900,11 @@ const document = generator.generateDocument({
       name: "prism",
       description:
         'Prism (working name "ubermemo") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.',
+    },
+    {
+      name: "situate",
+      description:
+        "Situate — the single-name research engine (reforms Prism), proxied from the sibling Underlying service. Situates a stock: exposure, per-horizon odds, options-implied distribution, and what the business is saying; posture not buy/sell. Also served at `/v1/research`.",
     },
     { name: "admin", description: "Requires the `admin` scope" },
   ],

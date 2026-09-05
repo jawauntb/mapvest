@@ -35,6 +35,8 @@ tags:
     description: Entitlements + $19.99/mo subscription checkout
   - name: prism
     description: Prism (working name "ubermemo") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.
+  - name: situate
+    description: "Situate — the single-name research engine (reforms Prism), proxied from the sibling Underlying service. Situates a stock: exposure, per-horizon odds, options-implied distribution, and what the business is saying; posture not buy/sell. Also served at `/v1/research`."
   - name: admin
     description: Requires the `admin` scope
 security:
@@ -6553,6 +6555,655 @@ components:
       required:
         - ticker
         - reply
+    SituatePosture:
+      type: object
+      properties:
+        stance:
+          type: string
+          enum:
+            - odds_favorable
+            - balanced
+            - odds_unfavorable
+        horizon:
+          type: string
+        conviction:
+          type: number
+          minimum: 0
+          maximum: 1
+        one_line:
+          type: string
+      required:
+        - stance
+        - horizon
+        - conviction
+        - one_line
+      additionalProperties: false
+    SituateOddsHorizon:
+      type: object
+      properties:
+        source:
+          type: string
+          enum:
+            - stack
+            - base_rates+implied
+        quantiles:
+          type: object
+          properties:
+            q05:
+              type:
+                - number
+                - "null"
+            q25:
+              type:
+                - number
+                - "null"
+            q50:
+              type:
+                - number
+                - "null"
+            q75:
+              type:
+                - number
+                - "null"
+            q95:
+              type:
+                - number
+                - "null"
+        p_up:
+          type:
+            - number
+            - "null"
+        base_rate_q50:
+          type:
+            - number
+            - "null"
+        shrink_w:
+          type:
+            - number
+            - "null"
+      required:
+        - source
+        - quantiles
+      additionalProperties: false
+    SituateMeta:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              error:
+                type: string
+            required:
+              - source
+              - error
+          default: []
+        unavailable:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          default: []
+        source_status:
+          type: object
+          additionalProperties: {}
+          default: {}
+        timings_ms:
+          type: object
+          additionalProperties:
+            type: number
+          default: {}
+        versions:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+        cache:
+          type: object
+          additionalProperties:
+            anyOf:
+              - type: string
+              - type: number
+          default: {}
+        stored: {}
+        notes:
+          type: array
+          items:
+            type: string
+    SituatePacket:
+      type: object
+      properties:
+        ticker:
+          type: string
+        as_of:
+          type: string
+        generated_at:
+          type: string
+        engine:
+          type: string
+        engine_version:
+          type: string
+        profile:
+          type:
+            - object
+            - "null"
+          properties:
+            name:
+              type:
+                - string
+                - "null"
+            sector:
+              type:
+                - string
+                - "null"
+            industry:
+              type:
+                - string
+                - "null"
+            market_cap:
+              type:
+                - number
+                - "null"
+            description:
+              type:
+                - string
+                - "null"
+            listed_since:
+              type:
+                - string
+                - "null"
+            related_etfs:
+              type:
+                - array
+                - "null"
+              items:
+                type: string
+        exposure:
+          type:
+            - object
+            - "null"
+          properties: {}
+        state:
+          type:
+            - object
+            - "null"
+          properties: {}
+        base_rates:
+          type:
+            - object
+            - "null"
+          properties: {}
+        implied:
+          type:
+            - object
+            - "null"
+          properties: {}
+        fundamentals:
+          type:
+            - object
+            - "null"
+          properties: {}
+        text:
+          type:
+            - object
+            - "null"
+          properties: {}
+        levels:
+          type:
+            - object
+            - "null"
+          properties: {}
+        stack:
+          type:
+            - object
+            - "null"
+          properties: {}
+        odds:
+          type:
+            - object
+            - "null"
+          additionalProperties:
+            type: object
+            properties:
+              source:
+                type: string
+                enum:
+                  - stack
+                  - base_rates+implied
+              quantiles:
+                type: object
+                properties:
+                  q05:
+                    type:
+                      - number
+                      - "null"
+                  q25:
+                    type:
+                      - number
+                      - "null"
+                  q50:
+                    type:
+                      - number
+                      - "null"
+                  q75:
+                    type:
+                      - number
+                      - "null"
+                  q95:
+                    type:
+                      - number
+                      - "null"
+              p_up:
+                type:
+                  - number
+                  - "null"
+              base_rate_q50:
+                type:
+                  - number
+                  - "null"
+              shrink_w:
+                type:
+                  - number
+                  - "null"
+            required:
+              - source
+              - quantiles
+            additionalProperties: false
+        scenarios:
+          type:
+            - object
+            - "null"
+          properties: {}
+        memo:
+          type:
+            - object
+            - "null"
+          properties:
+            posture:
+              type: object
+              properties:
+                stance:
+                  type: string
+                  enum:
+                    - odds_favorable
+                    - balanced
+                    - odds_unfavorable
+                horizon:
+                  type: string
+                conviction:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                one_line:
+                  type: string
+              required:
+                - stance
+                - horizon
+                - conviction
+                - one_line
+              additionalProperties: false
+            text:
+              type:
+                - string
+                - "null"
+            falsifiers:
+              type:
+                - array
+                - "null"
+              items:
+                type: string
+            key_determinants:
+              type:
+                - array
+                - "null"
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  explanation:
+                    type: string
+                  direction:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - name
+                  - explanation
+            whats_priced_in:
+              type:
+                - array
+                - "null"
+              items:
+                type: string
+            citations:
+              type:
+                - array
+                - "null"
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  claim:
+                    type:
+                      - string
+                      - "null"
+                  module:
+                    type:
+                      - string
+                      - "null"
+                  version:
+                    type:
+                      - string
+                      - "null"
+                  url:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - id
+            zones:
+              type:
+                - object
+                - "null"
+              properties:
+                cheap:
+                  type:
+                    - object
+                    - "null"
+                  properties: {}
+                rich:
+                  type:
+                    - object
+                    - "null"
+                  properties: {}
+            model:
+              type:
+                - string
+                - "null"
+            generated_at:
+              type:
+                - string
+                - "null"
+          required:
+            - posture
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+              url:
+                type:
+                  - string
+                  - "null"
+              fetched_at:
+                type:
+                  - string
+                  - "null"
+              confidence:
+                anyOf:
+                  - type: string
+                  - type: number
+                  - type: "null"
+            required:
+              - provider
+          default: []
+        meta:
+          type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  source:
+                    type: string
+                  error:
+                    type: string
+                required:
+                  - source
+                  - error
+              default: []
+            unavailable:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+              default: []
+            source_status:
+              type: object
+              additionalProperties: {}
+              default: {}
+            timings_ms:
+              type: object
+              additionalProperties:
+                type: number
+              default: {}
+            versions:
+              type: object
+              additionalProperties:
+                type: string
+              default: {}
+            cache:
+              type: object
+              additionalProperties:
+                anyOf:
+                  - type: string
+                  - type: number
+              default: {}
+            stored: {}
+            notes:
+              type: array
+              items:
+                type: string
+      required:
+        - ticker
+        - as_of
+        - generated_at
+        - profile
+        - exposure
+        - state
+        - base_rates
+        - implied
+        - fundamentals
+        - text
+        - levels
+        - stack
+        - odds
+        - scenarios
+        - memo
+        - meta
+    SituateSummary:
+      type: object
+      properties:
+        ticker:
+          type: string
+        as_of:
+          type:
+            - string
+            - "null"
+        generated_at:
+          type:
+            - string
+            - "null"
+        engine_version:
+          type:
+            - string
+            - "null"
+        name:
+          type:
+            - string
+            - "null"
+        sector:
+          type:
+            - string
+            - "null"
+        industry:
+          type:
+            - string
+            - "null"
+        text:
+          type:
+            - string
+            - "null"
+        posture:
+          type:
+            - object
+            - "null"
+          properties:
+            stance:
+              type: string
+              enum:
+                - odds_favorable
+                - balanced
+                - odds_unfavorable
+            horizon:
+              type: string
+            conviction:
+              type: number
+              minimum: 0
+              maximum: 1
+            one_line:
+              type: string
+          required:
+            - stance
+            - horizon
+            - conviction
+            - one_line
+          additionalProperties: false
+        one_line:
+          type:
+            - string
+            - "null"
+        memo_excerpt:
+          type:
+            - string
+            - "null"
+        unavailable_sections:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              error:
+                type: string
+            required:
+              - source
+              - error
+        disclaimer:
+          type: string
+      required:
+        - ticker
+    SituateBuildRequest:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 16
+        force:
+          type: boolean
+        includeMemo:
+          type: boolean
+        asOf:
+          type: string
+          minLength: 4
+          maxLength: 32
+      required:
+        - ticker
+    SituateChatRequest:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 16
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        conversationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                type: string
+                minLength: 1
+                maxLength: 20000
+            required:
+              - role
+              - content
+          maxItems: 50
+      required:
+        - ticker
+        - message
+    SituateChatResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        reply:
+          type: string
+        conversationId:
+          type: string
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              claim:
+                type:
+                  - string
+                  - "null"
+              module:
+                type:
+                  - string
+                  - "null"
+              version:
+                type:
+                  - string
+                  - "null"
+              url:
+                type:
+                  - string
+                  - "null"
+            required:
+              - id
+          default: []
+        model:
+          type:
+            - string
+            - "null"
+        generatedAt:
+          type:
+            - string
+            - "null"
+      required:
+        - ticker
+        - reply
     ErrorResponse:
       type: object
       properties:
@@ -10325,6 +10976,334 @@ paths:
                 $ref: "#/components/schemas/QuotaExceeded"
         "404":
           description: No Prism packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/situate:
+    post:
+      summary: Build a Situate packet (billable)
+      description: "Runs the full single-name research engine for a ticker — factor + macro exposure, vol/trend state, empirical base rates, options-implied distribution, fundamentals trajectory, filing diffs, cheap/rich zones, a validated cross-sectional stack (or a stated fallback), merged odds per horizon, and an authored memo with a *posture* (odds favorable / balanced / odds unfavorable — never buy/sell) and three falsifiers. A cold build takes 1–3 minutes; clients should show staged progress or poll `GET /v1/situate/{ticker}`. Counts against the 50-generation free tier as `memo`. Alias: `POST /v1/research`. Research only, not investment advice; no point price targets."
+      tags:
+        - situate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SituateBuildRequest"
+      responses:
+        "200":
+          description: Packet built.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SituatePacket"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The Situate engine is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The Situate engine is busy; retry after `Retry-After`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/situate/{ticker}:
+    get:
+      summary: Read the latest stored Situate packet
+      description: "Free and unmetered — reading a packet spends no provider money. 404s until a packet has been built. Alias: `GET /v1/research/{ticker}`."
+      tags:
+        - situate
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Latest stored packet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SituatePacket"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Situate packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/situate/{ticker}/summary:
+    get:
+      summary: Bounded agent projection of a Situate packet
+      description: The compact, prompt-sized rendering of the packet. `POST /v1/agent/chat` fetches this best-effort (3s budget) when a ticker is set and injects it as research context.
+      tags:
+        - situate
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+      responses:
+        "200":
+          description: Packet projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SituateSummary"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Situate packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/situate/chat:
+    post:
+      summary: Ask a question about a built Situate packet
+      description: One chat turn answered strictly from the stored packet, with citations back into packet modules. Unmetered against the generation tier (no new analysis) but capped per identity — it spends one upstream completion. 404s when no packet exists for the ticker.
+      tags:
+        - situate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SituateChatRequest"
+      responses:
+        "200":
+          description: Chat turn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SituateChatResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Situate packet has been built for this ticker yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                required:
+                  - error
+                  - code
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/situate/{ticker}/export:
+    get:
+      summary: Download a Situate packet as text, JSON, or PDF
+      description: "Streams the engine's bytes with `Content-Disposition: attachment`, so a client can hand the response straight to a share sheet. `format` defaults to `txt`."
+      tags:
+        - situate
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: ticker
+          in: path
+        - schema:
+            type: string
+            enum:
+              - txt
+              - json
+              - pdf
+          required: false
+          name: format
+          in: query
+      responses:
+        "200":
+          description: Rendered packet.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SituatePacket"
+            application/pdf:
+              schema:
+                type: string
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "404":
+          description: No Situate packet has been built for this ticker yet.
           content:
             application/json:
               schema:

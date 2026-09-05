@@ -46,6 +46,7 @@ import rivalries from "./routes/rivalries.js";
 import robinhood from "./routes/robinhood.js";
 import sessionRoutes from "./routes/session.js";
 import settings from "./routes/settings.js";
+import situate from "./routes/situate.js";
 import territory from "./routes/territory.js";
 import underlying from "./routes/underlying.js";
 import universe from "./routes/universe.js";
@@ -108,6 +109,11 @@ app.route("/v1/memo", memo);
 // twice so the working name "ubermemo" keeps resolving to the same handlers.
 app.route("/v1/prism", prism);
 app.route("/v1/ubermemo", prism);
+// Situate reforms Prism as the primary single-name research engine; mounted
+// twice so the neutral name "research" resolves to the same handlers, exactly
+// as the engine aliases `/api/situate` and `/api/research`.
+app.route("/v1/situate", situate);
+app.route("/v1/research", situate);
 app.route("/v1/chart", chart);
 app.route("/v1/analysis", analysis);
 app.route("/v1/cockpit", cockpit);

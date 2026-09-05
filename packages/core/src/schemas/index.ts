@@ -1945,3 +1945,330 @@ export const PrismChatResponse = z
   })
   .passthrough();
 export type PrismChatResponse = z.infer<typeof PrismChatResponse>;
+
+// -------- Situate (reforms Prism; single-name research engine) --------
+
+/**
+ * Situate is the new primary single-name research engine that reforms Prism.
+ * It *situates* a stock: what you are exposed to (factor + macro betas), what
+ * the odds look like per horizon (empirical base rates shrunk toward the
+ * unconditional, beside an options-implied distribution), what the options
+ * market is pricing (risk-neutral density from the smile), and what the
+ * business is saying (fundamentals trajectory + filing diffs + dated events).
+ *
+ * It is **not** a price forecaster. There is no buy/sell grammar and no point
+ * price target anywhere in the packet — the call is a *posture*
+ * ("odds favorable / balanced / odds unfavorable" at a horizon), cheap/rich
+ * *zones*, and distributions with a base rate beside every conditional number.
+ *
+ * The engine lives in the sibling `underlying-analyzer-reboot` service under
+ * `/api/situate/*`; Mapvest proxies it at `/v1/situate/*` (alias
+ * `/v1/research/*`).
+ *
+ * Schema posture, deliberately mixed (mirrors `PrismPacket`):
+ *   - **Loose** (`.passthrough()`) for every analytical section — exposure,
+ *     state, base_rates, implied, fundamentals, text, levels, stack, scenarios.
+ *     The engine grows these as it learns; a client must not break on a new
+ *     key. Each section is `null` when it could not be computed, with a sibling
+ *     `<section>_error` string carried through by the packet passthrough.
+ *   - **Strict** for the two shapes a client renders as a contract rather than
+ *     as data: `memo.posture` (the posture grammar — never buy/sell) and each
+ *     `odds` horizon entry (the merged distribution the memo reads).
+ *   - `meta` pins its documented bookkeeping keys and passes the rest through,
+ *     for the same reason the reconciled `PrismMeta` does (a strict gate here
+ *     rejected every real engine packet).
+ *
+ * Numbers are decimal fractions for returns (0.034 = 3.4%). Dates are ISO.
+ */
+
+/** An analytical section whose interior is deliberately not pinned field-by-field. */
+export const SituateSection = z.object({}).passthrough();
+export type SituateSection = z.infer<typeof SituateSection>;
+
+/**
+ * Horizons the engine reports, in months, shortest first. The `by_horizon`
+ * blocks are keyed by these as strings ("1", "2", … "18"); the record schemas
+ * below accept any string key so a horizon change upstream does not 502.
+ */
+export const SituateHorizon = z.enum(["1", "2", "3", "6", "12", "18"]);
+export type SituateHorizon = z.infer<typeof SituateHorizon>;
+
+/** `GET /v1/situate/{ticker}/export?format=` — the three renderings of a packet. */
+export const SituateExportFormat = z.enum(["txt", "json", "pdf"]);
+export type SituateExportFormat = z.infer<typeof SituateExportFormat>;
+
+/**
+ * The posture grammar — strict on purpose, and pointedly NOT a buy/sell grammar.
+ * `stance` is the odds framing at `horizon`; `conviction` is `[0,1]`;
+ * `one_line` is the single-sentence thesis rendered in the hero chip.
+ * Research-only output: never an order, never advice, never a point target.
+ */
+export const SituatePosture = z
+  .object({
+    stance: z.enum(["odds_favorable", "balanced", "odds_unfavorable"]),
+    horizon: z.string(),
+    conviction: z.number().min(0).max(1),
+    one_line: z.string(),
+  })
+  .strict();
+export type SituatePosture = z.infer<typeof SituatePosture>;
+
+/** Five-number distribution summary. Every quantile nullable — `null` ≠ zero. */
+export const SituateQuantiles = z
+  .object({
+    q05: z.number().nullable().optional(),
+    q25: z.number().nullable().optional(),
+    q50: z.number().nullable().optional(),
+    q75: z.number().nullable().optional(),
+    q95: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type SituateQuantiles = z.infer<typeof SituateQuantiles>;
+
+/**
+ * One horizon of the merged forward-return distribution the memo reads —
+ * strict, because the client renders it as a contract. `source` says whether
+ * the validated cross-sectional stack published for this horizon or whether it
+ * fell back to base rates + implied; `base_rate_q50` is the unconditional
+ * median that sits beside the conditional call; `shrink_w` is the shrink weight
+ * that produced it.
+ */
+export const SituateOddsHorizon = z
+  .object({
+    source: z.enum(["stack", "base_rates+implied"]),
+    quantiles: SituateQuantiles,
+    p_up: z.number().nullable().optional(),
+    base_rate_q50: z.number().nullable().optional(),
+    shrink_w: z.number().nullable().optional(),
+  })
+  .strict();
+export type SituateOddsHorizon = z.infer<typeof SituateOddsHorizon>;
+
+/** Keyed by horizon month-string. A horizon the engine could not merge is absent. */
+export const SituateOdds = z.record(z.string(), SituateOddsHorizon);
+export type SituateOdds = z.infer<typeof SituateOdds>;
+
+/** A memo claim tied back to a packet module + its version. */
+export const SituateCitation = z
+  .object({
+    id: z.string(),
+    claim: z.string().nullable().optional(),
+    module: z.string().nullable().optional(),
+    version: z.string().nullable().optional(),
+    /** `null` for a citation that points at a module rather than a document. */
+    url: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type SituateCitation = z.infer<typeof SituateCitation>;
+
+export const SituateKeyDeterminant = z
+  .object({
+    name: z.string(),
+    explanation: z.string(),
+    direction: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type SituateKeyDeterminant = z.infer<typeof SituateKeyDeterminant>;
+
+/** Cheap/rich price zones the memo points at. Shape not pinned beyond passthrough. */
+export const SituateZones = z
+  .object({
+    cheap: SituateSection.nullable().optional(),
+    rich: SituateSection.nullable().optional(),
+  })
+  .passthrough();
+export type SituateZones = z.infer<typeof SituateZones>;
+
+/**
+ * The memo. Loose everywhere except `posture`, which is the strict grammar the
+ * hero chip renders. `falsifiers` are the three things that would prove the
+ * call wrong; `whats_priced_in` is the options-vs-history disagreement in
+ * words; `citations` tie every quantitative claim back to a module + version.
+ */
+export const SituateMemo = z
+  .object({
+    posture: SituatePosture,
+    /** Markdown. Always carries a "not investment advice" line. */
+    text: z.string().nullable().optional(),
+    falsifiers: z.array(z.string()).nullable().optional(),
+    key_determinants: z.array(SituateKeyDeterminant).nullable().optional(),
+    whats_priced_in: z.array(z.string()).nullable().optional(),
+    citations: z.array(SituateCitation).nullable().optional(),
+    zones: SituateZones.nullable().optional(),
+    /** `null` on the deterministic fallback memo (no Anthropic key configured). */
+    model: z.string().nullable().optional(),
+    generated_at: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type SituateMemo = z.infer<typeof SituateMemo>;
+
+/**
+ * Every field nullable as well as optional: the engine emits the reference
+ * record with the keys always present and `null` where the provider had no
+ * value (an ETF has no `sector`/`industry`, for instance).
+ */
+export const SituateProfile = z
+  .object({
+    name: z.string().nullable().optional(),
+    sector: z.string().nullable().optional(),
+    industry: z.string().nullable().optional(),
+    market_cap: z.number().nullable().optional(),
+    description: z.string().nullable().optional(),
+    listed_since: z.string().nullable().optional(),
+    related_etfs: z.array(z.string()).nullable().optional(),
+  })
+  .passthrough();
+export type SituateProfile = z.infer<typeof SituateProfile>;
+
+/**
+ * Packet-level provenance. Like `PrismSourceRef`, the engine names its own
+ * upstreams and Mapvest passes them through verbatim.
+ */
+export const SituateSourceRef = z
+  .object({
+    provider: z.string(),
+    url: z.string().nullable().optional(),
+    fetched_at: z.string().nullable().optional(),
+    confidence: z.union([z.string(), z.number()]).nullable().optional(),
+  })
+  .passthrough();
+export type SituateSourceRef = z.infer<typeof SituateSourceRef>;
+
+export const SituateMetaError = z.object({ source: z.string(), error: z.string() }).passthrough();
+export type SituateMetaError = z.infer<typeof SituateMetaError>;
+
+/**
+ * The honesty ledger. `errors` lists every section that failed and why,
+ * `unavailable` lists sources the engine could not reach at all, `versions`
+ * pins the module version behind every number (so a citation resolves), and
+ * `cache` reports the reused legs. Documented keys are pinned; everything else
+ * passes through — a strict gate here rejected every real Prism packet, and
+ * the Situate engine is bookkeeping the same way.
+ */
+export const SituateMeta = z
+  .object({
+    errors: z.array(SituateMetaError).default([]),
+    unavailable: z.array(z.record(z.string(), z.unknown())).default([]),
+    source_status: z.record(z.string(), z.unknown()).default({}),
+    timings_ms: z.record(z.string(), z.number()).default({}),
+    /** Module → version. Every quantitative memo claim cites one of these. */
+    versions: z.record(z.string(), z.string()).default({}),
+    cache: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
+    stored: z.unknown().optional(),
+    notes: z.array(z.string()).optional(),
+  })
+  .passthrough();
+export type SituateMeta = z.infer<typeof SituateMeta>;
+
+/**
+ * The whole packet. Every analytical section is present and `null`-able: a
+ * `null` section means "could not compute", never "zero", and a sibling
+ * `<section>_error` string (carried by the passthrough) says why. Unknown
+ * top-level keys survive parsing.
+ */
+export const SituatePacket = z
+  .object({
+    ticker: z.string(),
+    as_of: z.string(),
+    generated_at: z.string(),
+    engine: z.string().optional(),
+    engine_version: z.string().optional(),
+    profile: SituateProfile.nullable(),
+    exposure: SituateSection.nullable(),
+    state: SituateSection.nullable(),
+    base_rates: SituateSection.nullable(),
+    implied: SituateSection.nullable(),
+    fundamentals: SituateSection.nullable(),
+    text: SituateSection.nullable(),
+    levels: SituateSection.nullable(),
+    stack: SituateSection.nullable(),
+    odds: SituateOdds.nullable(),
+    scenarios: SituateSection.nullable(),
+    memo: SituateMemo.nullable(),
+    sources: z.array(SituateSourceRef).default([]),
+    meta: SituateMeta,
+  })
+  .passthrough();
+export type SituatePacket = z.infer<typeof SituatePacket>;
+
+/**
+ * The bounded agent projection served by `GET /v1/situate/{ticker}/summary`.
+ * Small enough to inline in a research prompt, complete enough to answer "what
+ * does Situate think, and on what evidence". Deliberately loose: the engine
+ * owns the field list and adds to it.
+ */
+export const SituateSummary = z
+  .object({
+    ticker: z.string(),
+    as_of: z.string().nullable().optional(),
+    generated_at: z.string().nullable().optional(),
+    engine_version: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    sector: z.string().nullable().optional(),
+    industry: z.string().nullable().optional(),
+    text: z.string().nullable().optional(),
+    /** `null` when the packet was built with `includeMemo: false`. */
+    posture: SituatePosture.nullable().optional(),
+    one_line: z.string().nullable().optional(),
+    /** First ~1500 characters of the memo markdown. */
+    memo_excerpt: z.string().nullable().optional(),
+    /** Section keys that are `null` in the packet this projection came from. */
+    unavailable_sections: z.array(z.string()).optional(),
+    errors: z.array(SituateMetaError).optional(),
+    disclaimer: z.string().optional(),
+  })
+  .passthrough();
+export type SituateSummary = z.infer<typeof SituateSummary>;
+
+/**
+ * `POST /v1/situate` body. Billable — counts against the free-tier generation
+ * meter as `kind: "memo"` — and slow: a cold build is 1–3 minutes, so clients
+ * should show staged progress and may poll `GET /v1/situate/{ticker}` instead.
+ * `force` recomputes even when a stored packet exists for today; `includeMemo`
+ * is `false` to get the quantitative packet without spending an LLM call;
+ * `asOf` pins a walk-forward evaluation date (no data after it is ever used).
+ */
+export const SituateBuildRequest = z.object({
+  ticker: z.string().min(1).max(16),
+  force: z.boolean().optional(),
+  includeMemo: z.boolean().optional(),
+  asOf: z.string().min(4).max(32).optional(),
+});
+export type SituateBuildRequest = z.infer<typeof SituateBuildRequest>;
+
+export const SituateChatMessage = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1).max(20_000),
+});
+export type SituateChatMessage = z.infer<typeof SituateChatMessage>;
+
+/**
+ * `POST /v1/situate/chat` body. The engine answers only from the stored packet
+ * for `ticker`, so a packet must already exist (404 otherwise). `history` is
+ * the client-held thread; `conversationId` lets the engine persist it instead.
+ */
+export const SituateChatRequest = z.object({
+  ticker: z.string().min(1).max(16),
+  message: z.string().min(1).max(4000),
+  conversationId: z.string().min(1).max(128).optional(),
+  history: z.array(SituateChatMessage).max(50).optional(),
+});
+export type SituateChatRequest = z.infer<typeof SituateChatRequest>;
+
+/**
+ * `POST /v1/situate/chat` response, normalized to camelCase by the proxy.
+ * `citations` point back into packet modules by id so the client can deep-link
+ * the answer to the number it came from.
+ */
+export const SituateChatResponse = z
+  .object({
+    ticker: z.string(),
+    reply: z.string(),
+    conversationId: z.string().optional(),
+    citations: z.array(SituateCitation).default([]),
+    /** `null` when the engine answered from the stored memo (no model configured). */
+    model: z.string().nullable().optional(),
+    generatedAt: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type SituateChatResponse = z.infer<typeof SituateChatResponse>;

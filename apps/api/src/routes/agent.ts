@@ -34,6 +34,7 @@ import {
   updateResearchConversation,
   upsertResearchConversation,
 } from "../lib/research-conversation-store.js";
+import { situateSummaryForPrompt } from "../lib/situate.js";
 import { createSseSession } from "../lib/sse-heartbeat.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import {
@@ -207,12 +208,19 @@ async function admitResearch(body: ParsedChatRequest, owner: OwnerIdentity): Pro
   }
 
   const clientMessageId = body.clientMessageId ?? `client_${crypto.randomUUID()}`;
-  // Best-effort Prism context. `prismSummaryForPrompt` never throws and is
-  // bounded by its own 3s timeout, so a slow, missing, or unconfigured engine
-  // costs one short wait and the prompt is unchanged — a research turn must
-  // never fail because a memo packet was unavailable.
-  const prismSummary = body.ticker ? await prismSummaryForPrompt(body.ticker) : undefined;
-  const prompt = buildResearchPrompt(body.message, body.ticker, prismSummary);
+  // Best-effort packet context. Both helpers never throw and are bounded by
+  // their own 3s timeout, so a slow, missing, or unconfigured engine costs one
+  // short wait and the prompt is unchanged — a research turn must never fail
+  // because a packet was unavailable. Situate is the primary engine, so its
+  // summary is preferred; Prism is kept as a fallback for a ticker that only
+  // has a Prism packet. Both are fetched concurrently.
+  // Prism is invoked first so its upstream call registers ahead of Situate's;
+  // both run concurrently and Situate — the primary engine — still wins the
+  // prompt when it has a packet (`buildResearchPrompt` prefers it).
+  const [prismSummary, situateSummary] = body.ticker
+    ? await Promise.all([prismSummaryForPrompt(body.ticker), situateSummaryForPrompt(body.ticker)])
+    : [undefined, undefined];
+  const prompt = buildResearchPrompt(body.message, body.ticker, prismSummary, situateSummary);
   const retryNamespace = continued
     ? `conversation:${continued.conversationId}`
     : (owner.deviceOwnerKey ?? owner.ownerKey);

@@ -41,6 +41,9 @@ const HIDDEN_SLUGS = new Set<string>([
   // Prism names its upstream providers and env vars — operational, like
   // data-sources and the capability matrix.
   "prism",
+  // Situate (reforms Prism) likewise names its upstream provider and internal
+  // module surface — operational, kept off the public site for the same reason.
+  "situate",
   "readme",
   "secrets",
   "system-design",
