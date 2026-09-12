@@ -9,6 +9,10 @@ export const colors = {
   bgSunken: "#08090B",
   bgGlass: "rgba(22, 26, 31, 0.66)",
   fg: "#F2F4F5",
+  // Between fg and fgMuted: quiet secondary copy that still reads clearly on
+  // glass cards (e.g. camera result subtitle + meaning) without competing
+  // with the near-white title.
+  fgSecondary: "#C2C9D0",
   fgMuted: "#8B939C",
   // Lightened from #5C6570 — 9–11pt captions on near-black were below
   // comfortable contrast. Still clearly quieter than fgMuted.
