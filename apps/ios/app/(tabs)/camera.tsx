@@ -704,6 +704,11 @@ export default function CameraScreen() {
                   tint="dark"
                   style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
                 >
+                  {/* Opaque scrim above the blur material: guarantees secondary
+                      (muted) text stays legible no matter how bright the camera
+                      frame behind the glass is. Blur alone let bright photos
+                      wash out the subtitle + meaning lines. */}
+                  <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardScrim]} />
                   {top ? (
                     <>
                       <View style={styles.titleRow}>
@@ -1257,8 +1262,14 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: radii.lg,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
     gap: 8,
   },
+  // Sits between the blur material and the card content. Near-opaque so muted
+  // secondary text reads cleanly (~4.6:1 even over a pure-white frame); the
+  // small remaining translucency keeps the glass depth at the card edges.
+  cardScrim: { backgroundColor: "rgba(12, 14, 16, 0.88)" },
   resultRegion: { marginBottom: 8, flexShrink: 1 },
   resultScroll: { flexGrow: 0, flexShrink: 1 },
   resultScrollContent: { paddingBottom: 4 },
