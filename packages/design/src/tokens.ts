@@ -15,6 +15,9 @@ export const atlasSignal = {
     // backdrop blur on web and a BlurView on iOS.
     bgGlass: "rgba(22, 26, 31, 0.66)",
     fg: "#F2F4F5",
+    // Between fg and fgMuted: quiet secondary copy that still reads clearly
+    // on glass cards without competing with the near-white title.
+    fgSecondary: "#C2C9D0",
     fgMuted: "#8B939C",
     fgDim: "#5C6570",
     accent: "#14C4A6",

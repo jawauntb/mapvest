@@ -1280,7 +1280,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resultTitle: { color: colors.fg, ...type.h3, fontSize: 18, flexShrink: 1 },
-  resultSubtitle: { color: colors.fgMuted, fontSize: 13, marginTop: 2 },
+  resultSubtitle: { color: colors.fgSecondary, fontSize: 13, marginTop: 2 },
   noMatchHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
   noMatchCopy: { color: colors.fgMuted, ...type.body, fontSize: 14, marginTop: 8 },
   noMatchActions: {
@@ -1299,7 +1299,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   confidencePillText: { color: colors.fgMuted, ...type.caption },
-  meaning: { color: colors.fgMuted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  meaning: { color: colors.fgSecondary, fontSize: 14, lineHeight: 20, marginTop: 6 },
   priceLine: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 4 },
   dominantBtn: {
     minHeight: 44,
