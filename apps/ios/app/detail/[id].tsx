@@ -398,13 +398,15 @@ export default function DetailSheet() {
               </CollapsibleSection>
             ) : null}
 
+            {/* Brand rule: evidence travels with every result. Default open so
+                the reader sees where every number came from without another tap. */}
             <CollapsibleSection
               title={
                 dedupedSources.length
                   ? `Evidence · ${dedupedSources.length}`
                   : "Evidence · no citations"
               }
-              defaultOpen={dedupedSources.length === 0}
+              defaultOpen
             >
               <EvidenceSection sources={dedupedSources} showTitle={false} />
             </CollapsibleSection>

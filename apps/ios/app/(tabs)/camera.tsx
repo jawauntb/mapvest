@@ -30,6 +30,7 @@ import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { pickFromLibrary } from "@/util/pickImage";
+import { evidenceChipLabel, rarityFromInvestable, rarityLabel } from "@/util/rarity";
 import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
@@ -702,7 +703,18 @@ export default function CameraScreen() {
                 <BlurView
                   intensity={50}
                   tint="dark"
-                  style={[styles.resultCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
+                  style={[
+                    styles.resultCard,
+                    {
+                      // Brand rule: a low-confidence result must not look like
+                      // a solid one. Left-border switches to the warn tone and
+                      // the whole outer border goes dashed so a shared card
+                      // reads as tentative without the reader having to squint.
+                      borderLeftColor: top?.confidence === "low" ? colors.warn : accent,
+                      borderLeftWidth: 3,
+                      ...(top?.confidence === "low" ? styles.resultCardLowConfidence : null),
+                    },
+                  ]}
                 >
                   {/* Opaque scrim above the blur material: guarantees secondary
                       (muted) text stays legible no matter how bright the camera
@@ -715,16 +727,58 @@ export default function CameraScreen() {
                         <Text style={styles.resultTitle} numberOfLines={1}>
                           {top.brand.name}
                         </Text>
-                        <View style={styles.confidencePill}>
-                          <Text style={styles.confidencePillText}>
-                            {confidenceLabel(top.confidence)}
-                          </Text>
+                        <View style={styles.chipRow}>
+                          {(() => {
+                            const rarity = rarityFromInvestable(top);
+                            if (!rarity) return null;
+                            return (
+                              <View
+                                style={styles.rarityChip}
+                                accessibilityLabel={`${rarityLabel(rarity)} — a private brand bridged via a public comparable`}
+                              >
+                                <Ionicons
+                                  name="sparkles-outline"
+                                  size={11}
+                                  color={colors.accent}
+                                />
+                                <Text style={styles.rarityChipText}>{rarityLabel(rarity)}</Text>
+                              </View>
+                            );
+                          })()}
+                          <View
+                            style={[
+                              styles.confidencePill,
+                              top.confidence === "low" ? styles.confidencePillLow : null,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.confidencePillText,
+                                top.confidence === "low" ? styles.confidencePillTextLow : null,
+                              ]}
+                            >
+                              {confidenceLabel(top.confidence)}
+                            </Text>
+                          </View>
                         </View>
                       </View>
                       <Text style={styles.resultSubtitle}>
                         {ticker ? ticker : "Private"}
                         {top.brand.sector ? ` · ${top.brand.sector}` : ""}
                       </Text>
+                      {top.confidence === "low" ? (
+                        <View style={styles.lowConfNote}>
+                          <Ionicons
+                            name="alert-circle-outline"
+                            size={14}
+                            color={colors.warn}
+                          />
+                          <Text style={styles.lowConfNoteText}>
+                            Low confidence — treat as a lead, not a conclusion. Check the
+                            evidence below before acting.
+                          </Text>
+                        </View>
+                      ) : null}
                       {meaning ? <Text style={styles.meaning}>{meaning}</Text> : null}
                       {quote ? (
                         <Text style={styles.priceLine}>
@@ -837,26 +891,68 @@ export default function CameraScreen() {
                         Also found ({additionalInvestables.length})
                       </Text>
                       <View style={styles.additionalResultsList}>
-                        {additionalInvestables.map((investable, index) => (
-                          <Pressable
-                            key={`${investable.brand.name}-${index}`}
-                            style={styles.additionalResult}
-                            onPress={() => openDetail(investable)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Open ${investable.brand.name}, ${investableLabel(investable)}`}
-                          >
-                            <View style={styles.additionalResultText}>
-                              <Text style={styles.additionalResultTitle} numberOfLines={1}>
-                                {investable.brand.name}
-                              </Text>
-                              <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
-                                {investableLabel(investable)}
-                                {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
-                              </Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
-                          </Pressable>
-                        ))}
+                        {additionalInvestables.map((investable, index) => {
+                          const sourceCount = investable.sources?.length ?? 0;
+                          const uncited = sourceCount === 0;
+                          const rarity = rarityFromInvestable(investable);
+                          return (
+                            <Pressable
+                              key={`${investable.brand.name}-${index}`}
+                              style={styles.additionalResult}
+                              onPress={() => openDetail(investable)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${investable.brand.name}, ${investableLabel(investable)}, ${evidenceChipLabel(sourceCount)}`}
+                            >
+                              <View style={styles.additionalResultText}>
+                                <Text style={styles.additionalResultTitle} numberOfLines={1}>
+                                  {investable.brand.name}
+                                </Text>
+                                <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
+                                  {investableLabel(investable)}
+                                  {investable.brand.sector
+                                    ? ` · ${investable.brand.sector}`
+                                    : ""}
+                                </Text>
+                                <View style={styles.additionalResultChips}>
+                                  {rarity ? (
+                                    <View style={styles.rarityChipMini}>
+                                      <Text style={styles.rarityChipMiniText}>
+                                        {rarityLabel(rarity)}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  <View
+                                    style={[
+                                      styles.evidenceChipMini,
+                                      uncited ? styles.evidenceChipMiniWarn : null,
+                                    ]}
+                                  >
+                                    <Ionicons
+                                      name={
+                                        uncited
+                                          ? "alert-circle-outline"
+                                          : "document-text-outline"
+                                      }
+                                      size={10}
+                                      color={uncited ? colors.warn : colors.fgMuted}
+                                    />
+                                    <Text
+                                      style={[
+                                        styles.evidenceChipMiniText,
+                                        uncited
+                                          ? styles.evidenceChipMiniTextWarn
+                                          : null,
+                                      ]}
+                                    >
+                                      {evidenceChipLabel(sourceCount)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                              <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+                            </Pressable>
+                          );
+                        })}
                       </View>
                     </View>
                   ) : null}
@@ -1299,6 +1395,92 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   confidencePillText: { color: colors.fgMuted, ...type.caption },
+  confidencePillLow: {
+    backgroundColor: "rgba(232, 160, 84, 0.14)",
+    borderColor: colors.warn,
+  },
+  confidencePillTextLow: { color: colors.warn },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rarityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(20, 196, 166, 0.14)",
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  rarityChipText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  // Dashed border applied to the outer result card at low confidence. The
+  // color falls through to the warn tone via the inline borderLeftColor.
+  resultCardLowConfidence: {
+    borderStyle: "dashed",
+    borderColor: colors.warn,
+  },
+  lowConfNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 8,
+    padding: 8,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(232, 160, 84, 0.10)",
+    borderColor: "rgba(232, 160, 84, 0.35)",
+    borderWidth: 1,
+  },
+  lowConfNoteText: {
+    color: colors.warn,
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
+    fontWeight: "600",
+  },
+  additionalResultChips: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  rarityChipMini: {
+    backgroundColor: "rgba(20, 196, 166, 0.14)",
+    borderRadius: radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  rarityChipMiniText: {
+    color: colors.accent,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  evidenceChipMini: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    backgroundColor: colors.bgGlass,
+  },
+  evidenceChipMiniWarn: {
+    backgroundColor: "rgba(232, 160, 84, 0.14)",
+  },
+  evidenceChipMiniText: {
+    color: colors.fgMuted,
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  evidenceChipMiniTextWarn: {
+    color: colors.warn,
+  },
   meaning: { color: colors.fgSecondary, fontSize: 14, lineHeight: 20, marginTop: 6 },
   priceLine: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 4 },
   dominantBtn: {
