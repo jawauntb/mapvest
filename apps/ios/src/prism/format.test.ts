@@ -84,8 +84,14 @@ describe("vocabulary", () => {
     expect(humanize(null)).toBe(DASH);
   });
 
-  test("recommendation grammar maps to labels and tones", () => {
-    expect(recommendationLabel("strong_buy")).toBe("Strong buy");
+  test("recommendation grammar maps to posture labels and tones", () => {
+    // Mapvest ships postures, not buy/sell calls. Server keys are stable;
+    // labels are the user-facing posture grammar.
+    expect(recommendationLabel("strong_buy")).toBe("Favorable");
+    expect(recommendationLabel("buy")).toBe("Leans favorable");
+    expect(recommendationLabel("hold")).toBe("Balanced");
+    expect(recommendationLabel("sell")).toBe("Leans unfavorable");
+    expect(recommendationLabel("strong_sell")).toBe("Unfavorable");
     expect(recommendationLabel("nope")).toBe(DASH);
     expect(recommendationTone("strong_sell")).toBe("bear");
     expect(recommendationTone("hold")).toBe("neutral");
@@ -94,12 +100,12 @@ describe("vocabulary", () => {
     expect(isRecommendationAction("BUY")).toBe(false);
   });
 
-  test("conviction bands", () => {
-    expect(convictionLabel(0.81)).toBe("High conviction");
-    expect(convictionLabel(0.5)).toBe("Moderate conviction");
-    expect(convictionLabel(0.3)).toBe("Low conviction");
-    expect(convictionLabel(0.1)).toBe("Very low conviction");
-    expect(convictionLabel(null)).toBe("Conviction unstated");
+  test("confidence bands describe posture confidence, not conviction", () => {
+    expect(convictionLabel(0.81)).toBe("High confidence");
+    expect(convictionLabel(0.5)).toBe("Moderate confidence");
+    expect(convictionLabel(0.3)).toBe("Low confidence");
+    expect(convictionLabel(0.1)).toBe("Very low confidence");
+    expect(convictionLabel(null)).toBe("Confidence unstated");
   });
 
   test("tones from labels and signed values", () => {

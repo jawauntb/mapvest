@@ -80,23 +80,23 @@ function IconChart() {
 const features = [
   {
     icon: <IconCamera />,
-    title: "Identify anything around you",
-    body: "Camera or map. Public brand → the ticker. Private → the closest public comparable and an ETF with real exposure. Every find is kept — your universe grows as you move through the world.",
+    title: "Point at anything with a name on it",
+    body: "Camera or map. Public brand returns the ticker. Private brand returns the closest public comparable and an ETF that actually holds it. Every result carries confidence, and every result carries evidence. No account needed to identify — sign in when you find something worth keeping.",
   },
   {
     icon: <IconResearch />,
-    title: "Agentic local research",
-    body: "Once a place or photo has an identity, research the company — or the local economy around it. Regional quirks that make a street better or worse for a business show up in the brief.",
+    title: "Research the neighborhood, not just the name",
+    body: "Once an identify lands, the brief covers the block around it — foot traffic, local competitors, permits, the regional quirks that make one corner better than another. The company and the ground it stands on come back together.",
   },
   {
     icon: <IconChat />,
-    title: "Finance agent, briefs, chats",
-    body: "A finance agent with tools writes memos on names you care about. Save chats. Chat about / Chat with a ticker from the map and everywhere else.",
+    title: "A finance agent that cites its tools",
+    body: "Chat about any name in your universe. The agent doesn't guess — it names the tool it used, the sources it read, and what it couldn't find. Every morning it writes one brief on the names you've caught. No hype, no calls.",
   },
   {
     icon: <IconChart />,
-    title: "Analytics that inform a position",
-    body: "Charts and modules for trends and levels — so you can think about how and why to own, trade, or structure a position around the asset. Not just a name on a card.",
+    title: "Prices and postures — never buy or sell",
+    body: "Charts, options chains, corporate events, and a Prism dashboard that states a posture (favorable, balanced, unfavorable) with a confidence band. Mapvest identifies. Mapvest does not recommend.",
   },
 ];
 
@@ -114,31 +114,31 @@ const screenshots = [
     src: "/screenshots/auth.svg",
     alt: "Mapvest sign-in — magic-link email input over the wordmark",
     caption:
-      "One tap, one link. Magic-link email — no passwords, no OAuth carousel — gets you into the alpha.",
+      "One link, no password. You can identify without signing in — sign in when you find something worth keeping.",
   },
   {
     key: "map",
-    label: "Map view",
+    label: "The map",
     src: "/screenshots/map.svg",
     alt: "Mapvest map view — five public brand pins and two private-brand comparables around a selected Hershey’s location",
     caption:
-      "Pin the world. Green pins are public tickers; orange pins are private brands resolved to comparables.",
+      "Jade pins are public tickers. Blue pins are private brands resolved to a comparable and an ETF that holds them.",
   },
   {
     key: "camera",
-    label: "Camera",
+    label: "Identify",
     src: "/screenshots/camera.svg",
     alt: "Mapvest camera view — a Hershey’s bar is identified and returned as HSY $179.04 +0.77%",
     caption:
-      "Point at a shelf. Multimodal vision resolves the brand and returns the ticker with confidence and sources.",
+      "Point at a shelf, a sign, a can. The brand becomes a ticker with a confidence level and an evidence card.",
   },
   {
     key: "detail",
-    label: "Detail sheet",
+    label: "The result",
     src: "/screenshots/detail.svg",
     alt: "Hershey Company detail sheet — three comparables, four ETFs, and source citations",
     caption:
-      "HSY header, sector, three comparables, four ETFs with weights, and the sources that produced every number.",
+      "Ticker, sector, comparables, ETFs that actually hold it, and the sources behind every number. Evidence travels with the result.",
   },
 ] as const;
 
@@ -168,8 +168,9 @@ export default async function HomePage() {
             See a brand. Get the <span className="accent">ticker</span>.
           </p>
           <p className="hero__sub">
-            Everything you find builds a universe — companies you’ve seen with your own eyes,
-            researched like you mean it.
+            A can of soda on a shelf is a claim on a public company's future cash flows. Mapvest
+            removes the packaging. Point at anything with a name on it — public or private — and
+            get the ticker, the comparable, and the evidence.
           </p>
           <div className="hero__ctas">
             <a
@@ -181,7 +182,7 @@ export default async function HomePage() {
               Get TestFlight
             </a>
             <a className="btn btn--ghost" href="/app">
-              Open in browser
+              Preview in the browser
             </a>
             <span
               className={`status-badge status-badge--${apiState}`}
@@ -211,16 +212,40 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="shots" aria-labelledby="shots-title">
-        <Reveal className="container">
-          <div className="section__eyebrow">Screenshots</div>
-          <h2 id="shots-title" className="section__title">
-            Log in. Learn what’s around you. Build a universe from it.
+      <section className="section container" aria-labelledby="manifesto-title">
+        <Reveal>
+          <div className="section__eyebrow">Manifesto</div>
+          <h2 id="manifesto-title" className="section__title">
+            Remove the packaging.
           </h2>
           <p className="section__lead">
-            The iPhone app is the product. Identify a place or a photo and it’s saved as a find
-            automatically. Then research, brief, and chart the name — every ticker and comparable
-            comes back with sources.
+            A can of soda on a shelf and a bottle of shampoo in a drugstore aisle are legal claims
+            on a public company's future cash flows, and nobody standing there thinks about them
+            that way.
+          </p>
+          <p className="section__lead">
+            Mapvest removes the packaging. Point the camera at the object and what comes back
+            isn't the product — it's the company behind it, priced, charted, and sourced.
+            Public brand: the ticker. Private brand: the closest public comparable and an ETF that
+            actually holds it. Every find is kept in your universe. Every result travels with
+            evidence.
+          </p>
+          <p className="section__lead">
+            Mapvest identifies. Mapvest does not recommend. Not advice — evidence.
+          </p>
+        </Reveal>
+      </section>
+
+      <section className="shots" aria-labelledby="shots-title">
+        <Reveal className="container">
+          <div className="section__eyebrow">The app</div>
+          <h2 id="shots-title" className="section__title">
+            Point at something. Read the brief. Build a universe.
+          </h2>
+          <p className="section__lead">
+            The iPhone app is the product. Every identify is kept as a find — your universe grows as
+            you move through the world. The brief writes itself. The tape shows up when you're ready
+            to decide. Nothing on the card is unsourced.
           </p>
         </Reveal>
 
@@ -254,14 +279,15 @@ export default async function HomePage() {
 
       <section className="section container" aria-labelledby="how-title">
         <Reveal>
-          <div className="section__eyebrow">How it works</div>
+          <div className="section__eyebrow">The loop</div>
           <h2 id="how-title" className="section__title">
-            From a place or a photo to a decision.
+            Capture → identify → confidence → evidence.
           </h2>
           <p className="section__lead">
-            See what’s around you and turn it into an investable universe. Research the company or
-            the local economy, get a brief, then look at the charts before you decide whether to own
-            or trade it. Sources stay on the card.
+            Point at it. The world becomes a ticker or a comparable, and it comes back with a
+            confidence level and an evidence card. Then comps, news, and a brief on the neighborhood
+            the object was found in. Evidence travels with every result. Nothing on the card is
+            unsourced.
           </p>
         </Reveal>
 

@@ -56,12 +56,11 @@ export function FirstOpenSheet() {
         <View style={[styles.card, elevation.lg]}>
           <Text style={styles.title}>See a brand. Get the ticker.</Text>
           <Text style={styles.body}>
-            Snap a storefront or tap a place. Public → the stock. Private → its closest public
-            cousin. Every answer shows its sources.
+            Point at anything with a name on it. Public brand: the ticker. Private brand: the
+            closest public comparable and an ETF that holds it. Every result travels with evidence.
           </Text>
           <Text style={styles.body}>
-            Everything you find builds your universe — the map of companies in your world, with the
-            research to actually understand them.
+            Every find lands in your universe — the map of companies you've caught yourself.
           </Text>
           <PrimaryButton
             label="Find your first one"
@@ -76,9 +75,9 @@ export function FirstOpenSheet() {
             }}
             style={styles.secondary}
             accessibilityRole="button"
-            accessibilityLabel="Walk the map"
+            accessibilityLabel="Walk the map instead"
           >
-            <Text style={styles.secondaryText}>Walk the map</Text>
+            <Text style={styles.secondaryText}>Or walk the map</Text>
           </Pressable>
         </View>
       </View>

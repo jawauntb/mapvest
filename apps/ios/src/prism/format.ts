@@ -100,13 +100,18 @@ export function horizonLabel(h: PrismHorizonKey): string {
 }
 
 // -------- recommendation grammar --------
+//
+// Mapvest identifies; it does not recommend. Server-side the action keys are
+// still buy/hold/sell for schema stability, but user-facing labels are the
+// posture grammar used everywhere else in the product. Never render a raw
+// action key next to a user.
 
 const ACTION_LABELS: Readonly<Record<PrismRecommendationAction, string>> = {
-  strong_buy: "Strong buy",
-  buy: "Buy",
-  hold: "Hold",
-  sell: "Sell",
-  strong_sell: "Strong sell",
+  strong_buy: "Favorable",
+  buy: "Leans favorable",
+  hold: "Balanced",
+  sell: "Leans unfavorable",
+  strong_sell: "Unfavorable",
 };
 
 const ACTION_TONES: Readonly<Record<PrismRecommendationAction, Tone>> = {
@@ -129,14 +134,15 @@ export function recommendationTone(action: unknown): Tone {
   return isRecommendationAction(action) ? ACTION_TONES[action] : "neutral";
 }
 
-/** Conviction is `[0,1]`; the band words are what the meter labels itself with. */
+/** Conviction is `[0,1]`; the band words describe our confidence in the
+ * posture, not conviction in a call. Mapvest doesn't make calls. */
 export function convictionLabel(conviction: unknown): string {
   const v = num(conviction);
-  if (v === null) return "Conviction unstated";
-  if (v >= 0.75) return "High conviction";
-  if (v >= 0.5) return "Moderate conviction";
-  if (v >= 0.25) return "Low conviction";
-  return "Very low conviction";
+  if (v === null) return "Confidence unstated";
+  if (v >= 0.75) return "High confidence";
+  if (v >= 0.5) return "Moderate confidence";
+  if (v >= 0.25) return "Low confidence";
+  return "Very low confidence";
 }
 
 /** Regime / scenario words → the tone that colors them. Unknown stays neutral. */

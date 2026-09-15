@@ -59,7 +59,7 @@ const STAGES: readonly StageSpec[] = [
     atMs: 145_000,
     key: "memo",
     label: "Writing the memo",
-    detail: "Recommendation, entry zone, exit targets, and citations back to the packet.",
+    detail: "Posture, entry zone, scenario prices, and citations back to the packet.",
   },
   {
     atMs: 185_000,

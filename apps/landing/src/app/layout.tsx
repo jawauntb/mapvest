@@ -27,7 +27,7 @@ const plexMono = IBM_Plex_Mono({
 
 const SITE_NAME = "Mapvest";
 const SITE_DESCRIPTION =
-  "See a brand. Get the ticker. Every find builds your universe — with neighborhood-level research, agent briefs, and charts, all with sources.";
+  "A can of soda on a shelf is a claim on a public company's future cash flows. Mapvest removes the packaging — point the camera and get the ticker, the comparable, and the evidence. Mapvest identifies. Mapvest does not recommend.";
 const SITE_URL = "https://mapvest.app";
 
 export const metadata: Metadata = {
@@ -138,7 +138,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <main>{children}</main>
         <footer className="site-footer">
           <div className="container site-footer__inner">
-            <div>&copy; {new Date().getFullYear()} Mapvest. Not investment advice.</div>
+            <div>
+              &copy; {new Date().getFullYear()} Mapvest. Not advice — evidence.
+            </div>
             <div style={{ display: "flex", gap: 16 }}>
               <a href="/docs">Docs</a>
               <a href="/privacy">Privacy</a>

@@ -22,9 +22,10 @@ import { Chip, KeyValueRow, Meter, StatTile, toneBg, toneFg } from "./ui";
  * The hero: what Prism concluded, how strongly, and where the price sits
  * against its own fair-value distribution.
  *
- * The recommendation chip is the only place the action grammar is stated, and
- * it is always paired with the conviction meter — a "strong buy" at 0.3
- * conviction has to look different from one at 0.9, or the chip is a lie.
+ * The posture chip is the only place the grammar is stated, and it is always
+ * paired with the confidence meter — a "Favorable" posture at 0.3 confidence
+ * has to look different from one at 0.9, or the chip is a lie. Mapvest never
+ * says buy or sell; the server keys stay stable but the labels are postures.
  *
  * The big number is the entry block's `current_price` and nothing else. It is
  * the session close the packet was built from, so it is captioned with that
@@ -100,7 +101,9 @@ export function PrismHero({ packet }: { packet: PrismPacket }) {
         {rec ? (
           <View style={{ gap: 5 }}>
             <Meter value={rec.conviction} tone={tone} />
-            <Text style={styles.convictionValue}>{fmtPct(rec.conviction, 0)} conviction</Text>
+            <Text style={styles.convictionValue}>
+              {fmtPct(rec.conviction, 0)} confidence in this posture
+            </Text>
           </View>
         ) : null}
         {rec?.one_line ? <Text style={styles.thesis}>{rec.one_line}</Text> : null}
@@ -179,7 +182,7 @@ export function PrismHero({ packet }: { packet: PrismPacket }) {
 
       {ladder.length > 0 ? (
         <View style={{ gap: 2 }}>
-          <Text style={styles.blockTitle}>Exit targets</Text>
+          <Text style={styles.blockTitle}>Scenario prices</Text>
           {ladder.map((row) => (
             <KeyValueRow
               key={`${row.horizon}-${row.price ?? "na"}`}

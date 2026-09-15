@@ -407,7 +407,7 @@ export default function HomeScreen() {
               <ScalePressable
                 onPress={() => router.push("/(tabs)/camera?intent=snap")}
                 accessibilityRole="button"
-                accessibilityLabel="Open camera — identify what's investable"
+                accessibilityLabel="Open camera — point at a brand to get the ticker"
                 style={[styles.hero, elevation.md]}
               >
                 <LinearGradient
@@ -420,9 +420,9 @@ export default function HomeScreen() {
                     <Ionicons name="camera" size={18} color={colors.accentInk} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.heroTitle}>Snap a brand</Text>
+                    <Text style={styles.heroTitle}>Point at anything with a name on it</Text>
                     <Text style={styles.heroSub}>
-                      Turn what's in front of you into something you can own.
+                      The ticker, the comparable, and the evidence.
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={colors.accentInk} />
@@ -436,7 +436,7 @@ export default function HomeScreen() {
                 }}
                 style={styles.mapLink}
                 accessibilityRole="button"
-                accessibilityLabel="Open map — nearby brands"
+                accessibilityLabel="Walk the map — brands around you"
               >
                 <Ionicons name="map-outline" size={16} color={colors.accent} />
                 <Text style={styles.mapLinkText}>Or walk the map</Text>
@@ -547,7 +547,7 @@ export default function HomeScreen() {
                   <TextInput
                     ref={searchRef}
                     style={styles.search}
-                    placeholder="Find ticker — AAPL, SBUX…"
+                    placeholder="Type a ticker — AAPL, SBUX, HSY…"
                     placeholderTextColor={colors.fgDim}
                     autoCapitalize="characters"
                     autoCorrect={false}
@@ -765,8 +765,9 @@ export default function HomeScreen() {
               {!session?.token ? (
                 <View style={styles.guestHint}>
                   <Text style={styles.guestHintText}>
-                    You can snap and explore without an account. Sign in when you find something
-                    worth keeping.
+                    You can point and walk without an account. Sign in once you find something
+                    worth keeping — your universe, streak, and level all live on your account from
+                    that moment on.
                   </Text>
                   <Pressable
                     onPress={() => router.push("/auth")}
@@ -782,8 +783,8 @@ export default function HomeScreen() {
               ) : items.length === 0 ? (
                 <EmptyState
                   icon="bookmark-outline"
-                  title="Nothing found yet"
-                  subtitle="Snap a storefront or walk the map — everything you find lands here."
+                  title="Your universe is quiet"
+                  subtitle="Point at anything with a name on it. Every find lands here — the ticker, the comparable, and its evidence."
                 />
               ) : null}
             </View>

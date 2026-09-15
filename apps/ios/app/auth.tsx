@@ -76,8 +76,8 @@ export default function AuthScreen() {
     setBusy(true);
     setStatus(
       verifiedSessionToken.current && continuation
-        ? `Saving $${continuation.ticker} to your watchlist…`
-        : "Verifying your code…",
+        ? `Keeping $${continuation.ticker}…`
+        : "Checking your code…",
     );
     let navigating = false;
     try {
@@ -89,7 +89,7 @@ export default function AuthScreen() {
         verifiedSessionToken.current = sessionToken;
       }
       if (continuation) {
-        setStatus(`Saving $${continuation.ticker} to your watchlist…`);
+        setStatus(`Keeping $${continuation.ticker}…`);
         await addToWatchlist(
           {
             ticker: continuation.ticker,
@@ -115,7 +115,7 @@ export default function AuthScreen() {
       const detail = e instanceof Error ? e.message : "Please try again.";
       setErr(
         verifiedSessionToken.current && continuation
-          ? `You're signed in, but $${continuation.ticker} wasn't saved. ${detail}`
+          ? `You're signed in, but $${continuation.ticker} didn't get kept. ${detail}`
           : detail,
       );
     } finally {
@@ -145,11 +145,11 @@ export default function AuthScreen() {
             <Text style={styles.subtitle}>
               {stage === "email"
                 ? continuation
-                  ? `Sign in to save $${continuation.ticker}. We’ll return to its details when it’s saved.`
-                  : "Enter your email — we'll send you a one-time code."
+                  ? `Sign in to keep $${continuation.ticker}. We'll drop you back on the card the second it's saved.`
+                  : "Your email. We send one link. No password to remember."
                 : retryingVerifiedSave
-                  ? `You’re signed in. Retry saving $${continuation?.ticker ?? "this ticker"}.`
-                  : `We sent a code to ${email}. Enter it below.`}
+                  ? `You're in. One more tap to keep $${continuation?.ticker ?? "this ticker"}.`
+                  : `We sent a code to ${email}. Type it in.`}
             </Text>
 
             <View style={styles.inputWrap}>
@@ -211,10 +211,10 @@ export default function AuthScreen() {
             <PrimaryButton
               label={
                 stage === "email"
-                  ? "Send code"
+                  ? "Send the code"
                   : verifiedSessionToken.current && continuation
-                    ? "Retry save"
-                    : "Verify"
+                    ? "Try again"
+                    : "Let me in"
               }
               onPress={stage === "email" ? sendLink : submitCode}
               busy={busy}

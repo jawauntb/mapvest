@@ -280,7 +280,7 @@ function RidgeDashboard({ data }: { data: RidgeGrowthDataset }) {
   const long = m?.state === "LONG";
   const rows: Array<[string, string]> = [
     ["State", m?.state ?? "—"],
-    ["Recommendation", m?.recommendation ?? "—"],
+    ["Posture", m?.recommendation ?? "—"],
     ["Equity", fmtMoney(m?.ending_equity ?? 0)],
     ["Return", fmtPct(m?.total_return ?? 0)],
     ["Drawdown", fmtPct(m?.max_drawdown ?? 0)],

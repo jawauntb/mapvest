@@ -4,7 +4,7 @@ import { listDocs } from "../../lib/docs";
 
 export const metadata: Metadata = {
   title: "Docs",
-  description: "Public product architecture and guides for Mapvest.",
+  description: "How Mapvest is built — architecture, data sources, and the rules of the world.",
 };
 
 // Every markdown file under /docs is read from the filesystem at build time.
@@ -16,10 +16,10 @@ export default function DocsIndexPage() {
   return (
     <section className="section container">
       <div className="section__eyebrow">Docs</div>
-      <h1 className="section__title">How Mapvest works.</h1>
+      <h1 className="section__title">How Mapvest is built.</h1>
       <p className="section__lead">
-        Public product architecture and guides, rendered from the markdown files that live in the
-        repository. Operational provider details remain in the source tree for maintainers.
+        The architecture, the data sources, the rules of the world — rendered straight from the
+        markdown files in the repo. If a piece of Mapvest isn't in here, it isn't shipping yet.
       </p>
 
       {docs.length === 0 ? (
