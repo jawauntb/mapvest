@@ -4,6 +4,7 @@ import { PaywallProvider } from "@/billing/Paywall";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { FirstOpenSheet } from "@/components/FirstOpenSheet";
+import { GuestConvertSheet } from "@/components/GuestConvertSheet";
 import { syncWidgetFixIfFresh } from "@/location/heartbeat";
 import { SidebarProvider } from "@/nav/SidebarContext";
 import { registerNotificationCategories } from "@/notif/categoriesNative";
@@ -376,6 +377,7 @@ export default function RootLayout() {
                 />
               </Stack>
               <FirstOpenSheet />
+              <GuestConvertSheet />
               <AppSidebar />
             </PaywallProvider>
           </SidebarProvider>

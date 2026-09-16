@@ -49,7 +49,19 @@ export type FindInput = {
   lat?: number;
   lng?: number;
   foundPrice?: number;
+  /** Original catch time when a guest journal is replayed after sign-in. */
+  createdAt?: string;
 };
+
+/** Prefer a real past ISO timestamp; reject invalid or future values. */
+export function resolveFindCreatedAt(input: string | undefined, nowIso: string): string {
+  if (!input) return nowIso;
+  const ms = Date.parse(input);
+  if (!Number.isFinite(ms)) return nowIso;
+  const nowMs = Date.parse(nowIso);
+  if (Number.isFinite(nowMs) && ms > nowMs + 60_000) return nowIso;
+  return new Date(ms).toISOString();
+}
 
 /** Memory fallback keeps at most this many finds per user (newest win). */
 const MEMORY_CAP = 500;
@@ -200,6 +212,7 @@ async function existingFindForKey(userId: string, key: string): Promise<StoredFi
 export async function recordFind(userId: string, find: FindInput): Promise<StoredFind> {
   await ensureTable();
   const now = new Date().toISOString();
+  const createdAt = resolveFindCreatedAt(find.createdAt, now);
   const existing = await existingFindForKey(userId, findIdentityKey(find));
   const geohash6 = geohashForCoords(find.lat, find.lng);
   // Recatch still counts for streak/XP; the journal stays one card per company.
@@ -232,7 +245,7 @@ export async function recordFind(userId: string, find: FindInput): Promise<Store
     lng: find.lng,
     foundPrice: find.foundPrice,
     ...(geohash6 ? { geohash6 } : {}),
-    createdAt: now,
+    createdAt,
   };
   const bucket = memBucket(userId);
   bucket.unshift(entry);
@@ -536,4 +549,10 @@ export async function backfillGeohash6(): Promise<{ stamped: number; pioneerGran
     }
   }
   return { stamped, pioneerGrants };
+}
+
+/** Test-only: wipe the in-memory journal. No-op against Postgres. */
+export function __resetFindsStore(): void {
+  memory.clear();
+  tableEnsured = false;
 }

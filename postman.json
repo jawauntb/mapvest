@@ -97,7 +97,50 @@
                 }
               ]
             },
-            "description": "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.",
+            "description": "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Guests replay a local journal via `POST /v1/finds`. Returns finds newest-first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sessionToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replay guest finds onto the signed-in journal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/finds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "finds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"finds\": [\n    {\n      \"brand\": \"\",\n      \"ticker\": \"\",\n      \"isPublic\": false,\n      \"comparable\": \"\",\n      \"confidence\": \"high\",\n      \"lat\": -90,\n      \"lng\": -180,\n      \"foundPrice\": 0,\n      \"createdAt\": \"\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Records one or more finds for the caller. Identity-idempotent with the write `/v1/identify` already performs (`recordFind`: ticker, else comparable, else brand). Used after guest sign-in so local catches move onto the account. Returns the updated journal, newest-first, with rarity stamped the same way as `GET /v1/finds`.",
             "auth": {
               "type": "bearer",
               "bearer": [

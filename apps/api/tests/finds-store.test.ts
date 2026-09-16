@@ -98,6 +98,26 @@ describe("finds-store (in-memory)", () => {
     expect(finds[0]?.foundPrice).toBe(180);
   });
 
+  test("recordFind keeps a guest replay createdAt and rejects a future stamp", async () => {
+    const uid = userId();
+    const kept = await recordFind(uid, {
+      brand: "Nike",
+      ticker: "NKE",
+      isPublic: true,
+      confidence: "high",
+      createdAt: "2026-09-01T12:00:00.000Z",
+    });
+    expect(kept.createdAt).toBe("2026-09-01T12:00:00.000Z");
+    const future = await recordFind(uid, {
+      brand: "Starbucks",
+      ticker: "SBUX",
+      isPublic: true,
+      confidence: "high",
+      createdAt: "2999-01-01T00:00:00.000Z",
+    });
+    expect(Date.parse(future.createdAt)).toBeLessThan(Date.parse("2100-01-01T00:00:00.000Z"));
+  });
+
   test("uniqueFindsNewestFirst keeps the newest row per ticker", () => {
     const collapsed = uniqueFindsNewestFirst([
       {

@@ -32,7 +32,7 @@ Mapvest is a three-tier product: **iOS client**, **HTTP API**, **shared TS packa
 3. `packages/vision.identifyFromImage(bytes, {location})` calls OpenRouter with a multimodal model. Prompt asks for `{brand, product, sector, visible_text, confidence}`.
 4. `packages/finance.resolveTicker(brand)` looks up a first-party mapping table. On miss, calls `packages/search.searchBrand()` (Exa) and asks the LLM to extract a ticker with citations.
 5. If the brand is private, `packages/finance.resolveComparable()` finds the closest public co and an ETF with meaningful exposure. Sources attached.
-6. API returns a single `IdentifyResponse` with `investable[]`; each returned match carries its `Source[]` citations and a `rarity` tier (`common` / `uncommon` / `rare` / `legendary`) from the same classifier as `GET /v1/dex`. `GET /v1/finds` stamps the same field on each journal row. Older payloads omit it; the client falls back to a rare/null local check.
+6. API returns a single `IdentifyResponse` with `investable[]`; each returned match carries its `Source[]` citations and a `rarity` tier (`common` / `uncommon` / `rare` / `legendary`) from the same classifier as `GET /v1/dex`. `GET /v1/finds` stamps the same field on each journal row. Older payloads omit it; the client falls back to a rare/null local check. Signed-in identifies also write the top investable through `recordFind`. Guests keep a local journal and replay it with `POST /v1/finds` after sign-in (identity-idempotent with that same writer).
 
 ## Request flow — “what’s around me?”
 
@@ -139,7 +139,12 @@ Comparables lead only when the name is actually private. News opens an
 in-app reader (Safari is optional).
 A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
-carousel. Comps, news, and the AI brief on Investable / Prism stay locked
+carousel. Guests keep identifying without an account. After first-open, a
+convert sheet (`Keep what you've caught`) can appear on the second find in
+a session, a rare or legendary catch, or a foreground return ≥3 days after
+the last find — never at cold boot, never when signed in, 24h cooldown per
+moment. Guest catches live in `mapvest.guestFinds.v1` and move onto the
+account via `POST /v1/finds` after magic-link sign-in. Comps, news, and the AI brief on Investable / Prism stay locked
 until the first successful identify (`mapvest.firstFind.v1` plus any
 server-side find). The lock panel reuses EmptyState and routes back to
 Camera. Price, fundamentals, and evidence stay open. Mapvest Daily and Local Economy Brief both collapse behind a

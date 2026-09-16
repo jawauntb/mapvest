@@ -1,3 +1,4 @@
+import { FIRST_OPEN_STORAGE_KEY } from "@/auth/guestPromptStorage";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
@@ -5,8 +6,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-
-const STORAGE_KEY = "mapvest.firstOpen.v1";
 
 /**
  * One-screen first-open sheet. Never a carousel. Fail closed: if
@@ -20,7 +19,7 @@ export function FirstOpenSheet() {
     let cancelled = false;
     (async () => {
       try {
-        const seen = await AsyncStorage.getItem(STORAGE_KEY);
+        const seen = await AsyncStorage.getItem(FIRST_OPEN_STORAGE_KEY);
         if (!cancelled && seen !== "1") setVisible(true);
       } catch {
         /* fail closed — do not block the app */
@@ -33,7 +32,7 @@ export function FirstOpenSheet() {
 
   async function finish(path: "/(tabs)/camera" | "/(tabs)/map") {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, "1");
+      await AsyncStorage.setItem(FIRST_OPEN_STORAGE_KEY, "1");
     } catch {
       /* still dismiss — don't trap them on a storage failure */
     }

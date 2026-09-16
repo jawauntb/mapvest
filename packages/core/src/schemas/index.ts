@@ -199,6 +199,29 @@ export const FindsResponse = z.object({
 });
 export type FindsResponse = z.infer<typeof FindsResponse>;
 
+/**
+ * One guest-journal row replayed after sign-in via `POST /v1/finds`.
+ * Identity-idempotent with `recordFind` (ticker, else comparable, else brand).
+ * `createdAt` is the original catch time when the client still has it.
+ */
+export const RecordFindInput = z.object({
+  brand: z.string().min(1).max(200),
+  ticker: z.string().min(1).max(32).optional(),
+  isPublic: z.boolean().optional(),
+  comparable: z.string().min(1).max(32).optional(),
+  confidence: Confidence,
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  foundPrice: z.number().finite().optional(),
+  createdAt: z.string().min(1).optional(),
+});
+export type RecordFindInput = z.infer<typeof RecordFindInput>;
+
+export const RecordFindsRequest = z.object({
+  finds: z.array(RecordFindInput).min(1).max(50),
+});
+export type RecordFindsRequest = z.infer<typeof RecordFindsRequest>;
+
 export const NearbyRequest = z.object({
   lat: z.number(),
   lng: z.number(),

@@ -7,7 +7,8 @@ export { DEFAULT_FINDS_LIMIT, findsQueryKey, findsQueryKeyPrefix } from "@/finds
 /**
  * Finds journal — every successful identify is recorded server-side for the
  * signed-in user ("things you found, and where"). The server writes finds
- * automatically inside POST /v1/identify; this client only reads them.
+ * automatically inside POST /v1/identify. Guests keep a local journal and
+ * replay it with POST /v1/finds after sign-in.
  */
 
 export type Find = {
@@ -122,6 +123,32 @@ export async function listFinds(
   );
   const finds = uniqueFindsNewestFirst(res.finds);
   return { finds, count: finds.length };
+}
+
+export type RecordFindInput = {
+  brand: string;
+  ticker?: string;
+  isPublic?: boolean;
+  comparable?: string;
+  confidence: Find["confidence"];
+  lat?: number;
+  lng?: number;
+  foundPrice?: number;
+  createdAt?: string;
+};
+
+/** Replay guest catches onto the signed-in journal. Identity-idempotent. */
+export async function recordFinds(
+  finds: RecordFindInput[],
+  opts: FetchOpts = {},
+): Promise<{ finds: Find[]; count: number }> {
+  const res = await apiFetch<{ finds: Find[]; count: number }>(
+    "/v1/finds",
+    { method: "POST", body: JSON.stringify({ finds }) },
+    opts,
+  );
+  const unique = uniqueFindsNewestFirst(res.finds);
+  return { finds: unique, count: unique.length };
 }
 
 /**
