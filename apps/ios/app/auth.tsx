@@ -1,12 +1,16 @@
 import { addToWatchlist, requestMagicLink, verifyMagicLink } from "@/api/client";
+import { findsQueryKeyPrefix } from "@/api/finds";
+import { replayGuestFinds } from "@/auth/guestConvert";
 import { parseSaveContinuation, saveContinuationDestination } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenFade } from "@/components/ScreenFade";
+import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { colors, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useRef, useState } from "react";
 import {
@@ -25,6 +29,7 @@ type Stage = "email" | "code";
 export default function AuthScreen() {
   const { signIn } = useSession();
   const router = useRouter();
+  const qc = useQueryClient();
   const params = useLocalSearchParams<{
     intent?: string | string[];
     ticker?: string | string[];
@@ -87,6 +92,18 @@ export default function AuthScreen() {
         await signIn(session, user);
         sessionToken = session.token;
         verifiedSessionToken.current = sessionToken;
+      }
+      try {
+        const moved = await replayGuestFinds({ token: sessionToken });
+        if (moved > 0) {
+          markFindRefreshPending(sessionToken);
+          void qc.invalidateQueries({
+            queryKey: findsQueryKeyPrefix(sessionToken),
+            refetchType: "active",
+          });
+        }
+      } catch {
+        /* sign-in already succeeded; journal stays for a later retry */
       }
       if (continuation) {
         setStatus(`Keeping $${continuation.ticker}…`);

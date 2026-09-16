@@ -20,6 +20,8 @@ import {
   Quest,
   QuestKind,
   QuestsResponse,
+  RecordFindInput,
+  RecordFindsRequest,
   RivalriesResponse,
   Rivalry,
   SynthesisMemoResponse,
@@ -158,6 +160,20 @@ describe("Investable and Find rarity", () => {
     };
     expect(Find.parse(row).rarity).toBeUndefined();
     expect(Find.parse({ ...row, rarity: "common" }).rarity).toBe("common");
+  });
+
+  test("RecordFindsRequest accepts a guest journal replay and rejects an empty batch", () => {
+    const row = {
+      brand: "Nike",
+      ticker: "NKE",
+      isPublic: true,
+      confidence: "high" as const,
+      createdAt: "2026-09-01T12:00:00.000Z",
+    };
+    expect(RecordFindInput.parse(row)).toEqual(row);
+    expect(RecordFindsRequest.parse({ finds: [row] }).finds).toHaveLength(1);
+    expect(RecordFindsRequest.safeParse({ finds: [] }).success).toBe(false);
+    expect(RecordFindInput.safeParse({ brand: "", confidence: "high" }).success).toBe(false);
   });
 });
 

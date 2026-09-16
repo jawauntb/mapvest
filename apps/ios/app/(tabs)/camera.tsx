@@ -1,5 +1,6 @@
 import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
 import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
+import { noteGuestIdentify } from "@/auth/guestConvert";
 import { authSavePath } from "@/auth/saveContinuation";
 import { useSession } from "@/auth/session";
 import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
@@ -187,10 +188,22 @@ export default function CameraScreen() {
   const primaryFindKey = result?.investables?.[0]
     ? (investableTicker(result.investables[0]) ?? result.investables[0].brand.name)
     : null;
+  const notedGuestFindKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!primaryFindKey) return;
+    if (!primaryFindKey) {
+      notedGuestFindKey.current = null;
+      return;
+    }
     void markFirstFind(qc);
-  }, [primaryFindKey, qc]);
+    const inv = result?.investables?.[0];
+    if (!inv || notedGuestFindKey.current === primaryFindKey) return;
+    notedGuestFindKey.current = primaryFindKey;
+    void noteGuestIdentify({
+      signedIn: Boolean(session?.token),
+      investable: { ...inv, rarity: resolvedRarity(inv) ?? inv.rarity },
+      location: result?.identification?.location,
+    });
+  }, [primaryFindKey, qc, result, session?.token]);
 
   const persistCamera = useCallback(
     (next: Partial<CameraCache>, scope: CameraResultScope = activeScopeRef.current) => {

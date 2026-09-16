@@ -63,9 +63,10 @@ There is no mascot. No influencer. No hype account.
   careless instead of clever.
 - **Exit.** For anyone signed in, exit cost already exists — accounts
   tied to a magic link, and finds, XP, level, and streak all live on
-  the server and survive a reinstall. The gap is guests: anyone who
-  never signs in accrues nothing. Priority isn't more persistence —
-  it's converting guests before they have a reason to leave.
+  the server and survive a reinstall. Guests are asked to sign in at
+  the second find, a rare or legendary catch, or a return after three
+  days — never on first-open. Sign-in replays the local guest journal
+  through `POST /v1/finds` so those catches stay in the universe.
 
 ## Language (real product vocabulary)
 

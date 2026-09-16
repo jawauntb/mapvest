@@ -883,6 +883,93 @@ components:
       required:
         - finds
         - count
+    RecordFindInput:
+      type: object
+      properties:
+        brand:
+          type: string
+          minLength: 1
+          maxLength: 200
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 32
+        isPublic:
+          type: boolean
+        comparable:
+          type: string
+          minLength: 1
+          maxLength: 32
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        foundPrice:
+          type: number
+        createdAt:
+          type: string
+          minLength: 1
+      required:
+        - brand
+        - confidence
+    RecordFindsRequest:
+      type: object
+      properties:
+        finds:
+          type: array
+          items:
+            type: object
+            properties:
+              brand:
+                type: string
+                minLength: 1
+                maxLength: 200
+              ticker:
+                type: string
+                minLength: 1
+                maxLength: 32
+              isPublic:
+                type: boolean
+              comparable:
+                type: string
+                minLength: 1
+                maxLength: 32
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+              lat:
+                type: number
+                minimum: -90
+                maximum: 90
+              lng:
+                type: number
+                minimum: -180
+                maximum: 180
+              foundPrice:
+                type: number
+              createdAt:
+                type: string
+                minLength: 1
+            required:
+              - brand
+              - confidence
+          minItems: 1
+          maxItems: 50
+      required:
+        - finds
     NearbyRequest:
       type: object
       properties:
@@ -7353,7 +7440,7 @@ paths:
   /v1/finds:
     get:
       summary: Finds journal for the signed-in user
-      description: Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.
+      description: Every successful `/v1/identify` by a signed-in user records the top investable as a find. Guests replay a local journal via `POST /v1/finds`. Returns finds newest-first.
       tags:
         - identify
       security:
@@ -7372,6 +7459,56 @@ paths:
       responses:
         "200":
           description: Finds returned newest-first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindsResponse"
+        "400":
+          description: Bad request — validation failed against the zod schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Free-tier generation quota spent. Clients must present the paywall, not a generic error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceeded"
+        "429":
+          description: Rate limit exceeded (per-user or per-ip).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Replay guest finds onto the signed-in journal
+      description: "Records one or more finds for the caller. Identity-idempotent with the write `/v1/identify` already performs (`recordFind`: ticker, else comparable, else brand). Used after guest sign-in so local catches move onto the account. Returns the updated journal, newest-first, with rarity stamped the same way as `GET /v1/finds`."
+      tags:
+        - identify
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordFindsRequest"
+      responses:
+        "200":
+          description: Journal after the replay, newest-first.
           content:
             application/json:
               schema:

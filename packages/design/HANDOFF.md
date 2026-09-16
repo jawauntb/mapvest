@@ -213,6 +213,8 @@ already tracked, ranked on early finds, not on raw scan count."*
 
 ## Item 4 — Convert-guests-to-accounts push
 
+**Status.** Implemented in this workstream's third PR (`feat/ios-guest-convert`).
+
 **Goal.** The exit-cost gap. A guest who identifies but never signs in
 loses everything on reinstall. Make the sign-in prompt land at the
 right moments, not on app open.

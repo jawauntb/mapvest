@@ -55,6 +55,8 @@ const S = {
   IdentifyResponse: component("IdentifyResponse", raw.IdentifyResponse),
   Find: component("Find", raw.Find),
   FindsResponse: component("FindsResponse", raw.FindsResponse),
+  RecordFindInput: component("RecordFindInput", raw.RecordFindInput),
+  RecordFindsRequest: component("RecordFindsRequest", raw.RecordFindsRequest),
   NearbyRequest: component("NearbyRequest", raw.NearbyRequest),
   NearbyItem: component("NearbyItem", raw.NearbyItem),
   NearbyResponse: component("NearbyResponse", raw.NearbyResponse),
@@ -289,7 +291,7 @@ registry.registerPath({
   path: "/v1/finds",
   summary: "Finds journal for the signed-in user",
   description:
-    "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Returns finds newest-first.",
+    "Every successful `/v1/identify` by a signed-in user records the top investable as a find. Guests replay a local journal via `POST /v1/finds`. Returns finds newest-first.",
   tags: ["identify"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -306,6 +308,32 @@ registry.registerPath({
       description: "Finds returned newest-first.",
       content: { "application/json": { schema: S.FindsResponse } },
     },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/finds",
+  summary: "Replay guest finds onto the signed-in journal",
+  description:
+    "Records one or more finds for the caller. Identity-idempotent with the write `/v1/identify` already performs (`recordFind`: ticker, else comparable, else brand). Used after guest sign-in so local catches move onto the account. Returns the updated journal, newest-first, with rarity stamped the same way as `GET /v1/finds`.",
+  tags: ["identify"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: S.RecordFindsRequest },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Journal after the replay, newest-first.",
+      content: { "application/json": { schema: S.FindsResponse } },
+    },
+    400: errorResponses[400],
     ...errorResponses,
   },
 });
