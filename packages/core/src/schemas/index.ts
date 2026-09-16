@@ -5,6 +5,15 @@ import { z } from "zod";
 export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
+/**
+ * Rarity tier of a caught brand, derived from data already on the find:
+ * public mega-cap = `common`, small-cap = `uncommon`, private-resolved-via-
+ * comparable = `rare`, and resolved by the vision pipeline but absent from the
+ * `brands.json` seed = `legendary` (that catch feeds the seed table).
+ */
+export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
+export type DexRarity = z.infer<typeof DexRarity>;
+
 export const Source = z.object({
   provider: z.enum([
     "exa",
@@ -91,6 +100,8 @@ export const Investable = z.object({
   confidence: Confidence,
   sources: z.array(Source),
   quote: Quote.optional(),
+  /** Present on identify once the server stamps `rarityForFind`. Older payloads omit it. */
+  rarity: DexRarity.optional(),
 });
 export type Investable = z.infer<typeof Investable>;
 
@@ -177,6 +188,8 @@ export const Find = z.object({
   lng: z.number().optional(),
   foundPrice: z.number().optional(),
   createdAt: z.string(), // ISO
+  /** Computed on read from the same classifier as `/v1/dex`. Older payloads omit it. */
+  rarity: DexRarity.optional(),
 });
 export type Find = z.infer<typeof Find>;
 
@@ -1196,15 +1209,6 @@ export const UniverseSummary = z.object({
   sources: z.array(Source),
 });
 export type UniverseSummary = z.infer<typeof UniverseSummary>;
-
-/**
- * Rarity tier of a caught brand, derived from data already on the find:
- * public mega-cap = `common`, small-cap = `uncommon`, private-resolved-via-
- * comparable = `rare`, and resolved by the vision pipeline but absent from the
- * `brands.json` seed = `legendary` (that catch feeds the seed table).
- */
-export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
-export type DexRarity = z.infer<typeof DexRarity>;
 
 /** One sector row of the dex: how many of that sector's seed brands are caught. */
 export const DexSector = z.object({

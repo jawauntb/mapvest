@@ -1,5 +1,6 @@
 import { DEFAULT_FINDS_LIMIT } from "@/finds/queryKeys";
 import { type FetchOpts, apiFetch } from "./http";
+import type { DexRarity } from "./types";
 
 export { DEFAULT_FINDS_LIMIT, findsQueryKey, findsQueryKeyPrefix } from "@/finds/queryKeys";
 
@@ -23,6 +24,8 @@ export type Find = {
   /** Quote price at the moment of the find, when one was available. */
   foundPrice?: number;
   createdAt: string;
+  /** Server-stamped dex rarity. Older payloads omit it. */
+  rarity?: DexRarity;
 };
 
 /** Ticker, else comparable, else brand — same key the server journal uses. */

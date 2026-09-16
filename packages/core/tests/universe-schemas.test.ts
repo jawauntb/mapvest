@@ -14,6 +14,8 @@ import {
   EnvironmentBrief,
   EnvironmentSeries,
   EventsResponse,
+  Find,
+  Investable,
   ProgressResponse,
   Quest,
   QuestKind,
@@ -128,6 +130,34 @@ describe("UniverseSummary", () => {
   test("requires a sources array (AGENTS.md §6)", () => {
     const { sources: _omitted, ...noSources } = summary;
     expect(UniverseSummary.safeParse(noSources).success).toBe(false);
+  });
+});
+
+describe("Investable and Find rarity", () => {
+  test("Investable parses without rarity and with each DexRarity tier", () => {
+    const base = {
+      brand: { name: "Nike", isPublic: true, ticker: { symbol: "NKE" } },
+      comparables: [],
+      etfs: [],
+      confidence: "high" as const,
+      sources: [source],
+    };
+    expect(Investable.parse(base).rarity).toBeUndefined();
+    expect(Investable.parse({ ...base, rarity: "legendary" }).rarity).toBe("legendary");
+    expect(Investable.safeParse({ ...base, rarity: "mythic" }).success).toBe(false);
+  });
+
+  test("Find parses without rarity so older journal rows still validate", () => {
+    const row = {
+      id: "f1",
+      brand: "Nike",
+      ticker: "NKE",
+      isPublic: true,
+      confidence: "high" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(Find.parse(row).rarity).toBeUndefined();
+    expect(Find.parse({ ...row, rarity: "common" }).rarity).toBe("common");
   });
 });
 

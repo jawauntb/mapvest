@@ -1,10 +1,17 @@
 import type { IdentifyResponse, Investable, PhotoIdentification, Source } from "@mapvest/core";
 import type { Quote } from "@mapvest/core";
 import { LatLng } from "@mapvest/core";
-import { getQuote, resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
+import {
+  getQuote,
+  resolveComparable,
+  resolveEtfExposure,
+  resolveTicker,
+  seedBrands,
+} from "@mapvest/finance";
 import { identifyFromImageWithUsage } from "@mapvest/vision";
 import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
+import { stampIdentifyInvestables } from "../lib/dex.js";
 import { recordFind } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onIdentifyFinished } from "../lib/notifiers/imageNotifier.js";
@@ -243,8 +250,9 @@ identify.post("/", async (c) => {
         };
       }),
     );
-    const investables: Investable[] = resolvedInvestables.filter(
-      (i): i is Investable => i !== null,
+    const investables: Investable[] = stampIdentifyInvestables(
+      resolvedInvestables.filter((i): i is Investable => i !== null),
+      seedBrands,
     );
 
     span.setAttribute("investables_count", investables.length);

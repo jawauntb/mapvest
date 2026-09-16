@@ -445,6 +445,13 @@ components:
             - currency
             - ts
             - disclaimer
+        rarity:
+          type: string
+          enum:
+            - common
+            - uncommon
+            - rare
+            - legendary
       required:
         - brand
         - confidence
@@ -774,6 +781,13 @@ components:
                   - currency
                   - ts
                   - disclaimer
+              rarity:
+                type: string
+                enum:
+                  - common
+                  - uncommon
+                  - rare
+                  - legendary
             required:
               - brand
               - confidence
@@ -808,6 +822,13 @@ components:
           type: number
         createdAt:
           type: string
+        rarity:
+          type: string
+          enum:
+            - common
+            - uncommon
+            - rare
+            - legendary
       required:
         - id
         - brand
@@ -845,6 +866,13 @@ components:
                 type: number
               createdAt:
                 type: string
+              rarity:
+                type: string
+                enum:
+                  - common
+                  - uncommon
+                  - rare
+                  - legendary
             required:
               - id
               - brand
@@ -1115,6 +1143,13 @@ components:
                 - currency
                 - ts
                 - disclaimer
+            rarity:
+              type: string
+              enum:
+                - common
+                - uncommon
+                - rare
+                - legendary
           required:
             - brand
             - confidence
@@ -1370,6 +1405,13 @@ components:
                       - currency
                       - ts
                       - disclaimer
+                  rarity:
+                    type: string
+                    enum:
+                      - common
+                      - uncommon
+                      - rare
+                      - legendary
                 required:
                   - brand
                   - confidence
