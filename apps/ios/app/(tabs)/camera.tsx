@@ -31,7 +31,13 @@ import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { pickFromLibrary } from "@/util/pickImage";
-import { evidenceChipLabel, rarityFromInvestable, rarityLabel } from "@/util/rarity";
+import {
+  evidenceChipLabel,
+  rarityColor,
+  rarityLabel,
+  resolvedRarity,
+  shouldShowRarityChip,
+} from "@/util/rarity";
 import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
@@ -740,15 +746,18 @@ export default function CameraScreen() {
                         </Text>
                         <View style={styles.chipRow}>
                           {(() => {
-                            const rarity = rarityFromInvestable(top);
-                            if (!rarity) return null;
+                            const rarity = resolvedRarity(top);
+                            if (!rarity || !shouldShowRarityChip(rarity, "primary")) return null;
+                            const ink = rarityColor(rarity);
                             return (
                               <View
-                                style={styles.rarityChip}
-                                accessibilityLabel={`${rarityLabel(rarity)} — a private brand bridged via a public comparable`}
+                                style={[styles.rarityChip, { borderColor: ink }]}
+                                accessibilityLabel={rarityLabel(rarity)}
                               >
-                                <Ionicons name="sparkles-outline" size={11} color={colors.accent} />
-                                <Text style={styles.rarityChipText}>{rarityLabel(rarity)}</Text>
+                                <Ionicons name="sparkles-outline" size={11} color={ink} />
+                                <Text style={[styles.rarityChipText, { color: ink }]}>
+                                  {rarityLabel(rarity)}
+                                </Text>
                               </View>
                             );
                           })()}
@@ -897,7 +906,7 @@ export default function CameraScreen() {
                         {additionalInvestables.map((investable, index) => {
                           const sourceCount = investable.sources?.length ?? 0;
                           const uncited = sourceCount === 0;
-                          const rarity = rarityFromInvestable(investable);
+                          const rarity = resolvedRarity(investable);
                           return (
                             <Pressable
                               key={`${investable.brand.name}-${index}`}
@@ -915,9 +924,14 @@ export default function CameraScreen() {
                                   {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
                                 </Text>
                                 <View style={styles.additionalResultChips}>
-                                  {rarity ? (
+                                  {rarity && shouldShowRarityChip(rarity, "secondary") ? (
                                     <View style={styles.rarityChipMini}>
-                                      <Text style={styles.rarityChipMiniText}>
+                                      <Text
+                                        style={[
+                                          styles.rarityChipMiniText,
+                                          { color: rarityColor(rarity) },
+                                        ]}
+                                      >
                                         {rarityLabel(rarity)}
                                       </Text>
                                     </View>

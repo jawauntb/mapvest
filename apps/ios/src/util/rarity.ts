@@ -1,20 +1,28 @@
-import type { Investable } from "@/api/types";
+import type { DexRarity, Investable } from "@/api/types";
+import { colors } from "@/theme/tokens";
 
 /**
  * Client-side rarity call for a fresh identify result. Mirrors the shape of
  * the server-side classification in `apps/api/src/lib/dex.ts` — but only the
  * cases we can determine without access to the seed table.
  *
- * - Private brand bridged via a comparable → **rare**. This is the case v2
- *   of the World Bible names as "already tagged rare on the server; surface
- *   it at the moment of the catch." Confirmed cheaply from `isPublic` +
- *   presence of a comparable.
+ * - Private brand bridged via a comparable → **rare**.
  * - Public brand → we don't distinguish `common` vs `legendary` client-side
  *   (that needs the seed table). Return `null` so the UI omits the chip
  *   rather than mis-labeling a genuinely rare catch as common.
  * - Anything else → `null`.
+ *
+ * Prefer `resolvedRarity` at render time so a server-stamped field wins.
  */
-export type SurfacedRarity = "rare";
+export type SurfacedRarity = DexRarity;
+
+const RARITY_TIERS: readonly SurfacedRarity[] = ["common", "uncommon", "rare", "legendary"];
+
+function asRarity(value: unknown): SurfacedRarity | null {
+  return typeof value === "string" && (RARITY_TIERS as readonly string[]).includes(value)
+    ? (value as SurfacedRarity)
+    : null;
+}
 
 export function rarityFromInvestable(inv: Investable | undefined): SurfacedRarity | null {
   if (!inv) return null;
@@ -24,12 +32,55 @@ export function rarityFromInvestable(inv: Investable | undefined): SurfacedRarit
   return null;
 }
 
+/** Server rarity when present; otherwise the client-only rare/null fallback. */
+export function resolvedRarity(inv: Investable | undefined): SurfacedRarity | null {
+  return asRarity(inv?.rarity) ?? rarityFromInvestable(inv);
+}
+
+export function resolvedFindRarity(find: {
+  rarity?: string;
+  isPublic?: boolean;
+  comparable?: string;
+}): SurfacedRarity | null {
+  const fromServer = asRarity(find.rarity);
+  if (fromServer) return fromServer;
+  if (find.isPublic === false && (find.comparable?.trim().length ?? 0) > 0) return "rare";
+  return null;
+}
+
 const RARITY_LABEL: Record<SurfacedRarity, string> = {
+  common: "Common catch",
+  uncommon: "Uncommon catch",
   rare: "Rare catch",
+  legendary: "Legendary catch",
 };
 
 export function rarityLabel(r: SurfacedRarity): string {
   return RARITY_LABEL[r];
+}
+
+/** Two accents only: jade + signal-blue. Legendary uses the existing warn gold. */
+const RARITY_COLOR: Record<SurfacedRarity, string> = {
+  common: colors.fgDim,
+  uncommon: colors.fgMuted,
+  rare: colors.accent2,
+  legendary: colors.warn,
+};
+
+export function rarityColor(r: SurfacedRarity): string {
+  return RARITY_COLOR[r];
+}
+
+/**
+ * Common is histogram context on /universe only. Rare and legendary always
+ * show. Uncommon shows wherever it appears (the server does not emit it yet).
+ */
+export function shouldShowRarityChip(
+  rarity: SurfacedRarity,
+  surface: "primary" | "secondary" | "universe",
+): boolean {
+  if (rarity === "common" && surface !== "universe") return false;
+  return true;
 }
 
 /**

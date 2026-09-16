@@ -11,6 +11,14 @@ import { z } from "zod";
 export const Confidence = z.enum(["high", "medium", "low"]);
 export type Confidence = z.infer<typeof Confidence>;
 
+/**
+ * Rarity tier of a caught brand: public mega-cap = `common`, small-cap =
+ * `uncommon`, private-resolved-via-comparable = `rare`, resolved by the vision
+ * pipeline but absent from the `brands.json` seed = `legendary`.
+ */
+export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
+export type DexRarity = z.infer<typeof DexRarity>;
+
 export const Source = z.object({
   provider: z.enum([
     "exa",
@@ -77,6 +85,7 @@ export const Investable = z.object({
   etfs: z.array(EtfExposure).default([]),
   confidence: Confidence,
   sources: z.array(Source),
+  rarity: DexRarity.optional(),
 });
 export type Investable = z.infer<typeof Investable>;
 
@@ -411,14 +420,6 @@ export const UniverseSummary = z.object({
   sources: z.array(Source),
 });
 export type UniverseSummary = z.infer<typeof UniverseSummary>;
-
-/**
- * Rarity tier of a caught brand: public mega-cap = `common`, small-cap =
- * `uncommon`, private-resolved-via-comparable = `rare`, resolved by the vision
- * pipeline but absent from the `brands.json` seed = `legendary`.
- */
-export const DexRarity = z.enum(["common", "uncommon", "rare", "legendary"]);
-export type DexRarity = z.infer<typeof DexRarity>;
 
 /** One sector row of the dex: how many of that sector's seed brands are caught. */
 export const DexSector = z.object({

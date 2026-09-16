@@ -266,6 +266,8 @@ converting guests before they have a reason to leave."*
 
 ## Item 5 — Server-side rarity on `Investable` and `Find`
 
+**Status.** Implemented in this workstream's second PR (`feat/server-rarity-on-catch`).
+
 **Goal.** Today the client computes only `rare` (private→public bridge).
 The server has full rarity classification but doesn't ship it on either
 `Investable` (the identify response) or `Find` (the journal). Add it so

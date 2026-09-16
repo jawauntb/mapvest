@@ -122,6 +122,9 @@ screen.
 
 The move is not building a rarity system. It's surfacing the one that
 already exists, at the moment of the catch, on the result card itself.
+`POST /v1/identify` now stamps `rarity` on each Investable; `GET /v1/finds`
+stamps it on each journal row. The camera result shows rare and legendary
+in place; common stays off the primary card and appears on universe rows.
 
 ## Aesthetic
 

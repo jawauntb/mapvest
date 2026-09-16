@@ -38,6 +38,7 @@ import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
 import { findsQueryKey } from "@/finds/queryKeys";
 import { colors, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { rarityColor, rarityLabel, resolvedFindRarity, shouldShowRarityChip } from "@/util/rarity";
 import { sectorColor } from "@/util/sectors";
 import { shareBriefImage } from "@/util/share";
 import { canStartShareAttempt, isShareCardReady } from "@/util/shareReadiness";
@@ -580,6 +581,7 @@ function FindRow({
   // collection event, not a buy signal: no copy changes with the tier.
   const tier = evolutionTierForChange(delta);
   const headline = find.ticker ?? (find.comparable ? `≈${find.comparable}` : find.brand);
+  const rarity = resolvedFindRarity(find);
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
@@ -602,6 +604,14 @@ function FindRow({
         <Text style={styles.rowSub} numberOfLines={1}>
           {find.brand} · {CONFIDENCE_WORD[find.confidence]}
         </Text>
+        {rarity && shouldShowRarityChip(rarity, "universe") ? (
+          <Text
+            style={[styles.rowRarity, { color: rarityColor(rarity) }]}
+            accessibilityLabel={rarityLabel(rarity)}
+          >
+            {rarityLabel(rarity)}
+          </Text>
+        ) : null}
       </View>
       {delta !== undefined ? (
         <Text style={[styles.rowDelta, { color: delta >= 0 ? colors.accent : colors.danger }]}>
@@ -771,5 +781,6 @@ const styles = StyleSheet.create({
   },
   rowHeadline: { color: colors.fg, fontSize: 15, fontWeight: "600" },
   rowSub: { color: colors.fgMuted, fontSize: 12, marginTop: 2 },
+  rowRarity: { fontSize: 11, fontWeight: "800", marginTop: 2, letterSpacing: 0.2 },
   rowDelta: { fontSize: 13, fontWeight: "700" },
 });

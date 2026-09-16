@@ -20,7 +20,7 @@
  * effective tickers; `total` counts distinct seed tickers. Same unit, so the
  * fraction reconciles and completion is attainable.
  */
-import type { DexRarity, DexRarityCounts, DexSector, Find } from "@mapvest/core";
+import type { DexRarity, DexRarityCounts, DexSector, Find, Investable } from "@mapvest/core";
 import { canonicalSector } from "@mapvest/finance";
 import { encodeGeohash } from "./geohash.js";
 
@@ -122,6 +122,41 @@ export function rarityForFind(find: Find, inSeed: boolean): DexRarity {
   if (!inSeed) return "legendary";
   if (find.isPublic === false) return "rare";
   return "common";
+}
+
+/** Enough of a Find for `rarityForFind` / `isInSeed` from an identify result. */
+function findRefFromInvestable(inv: Pick<Investable, "brand" | "comparables">): Find {
+  return {
+    id: "investable",
+    brand: inv.brand.name,
+    ticker: inv.brand.ticker?.symbol,
+    isPublic: inv.brand.isPublic,
+    comparable: inv.comparables[0]?.ticker,
+    confidence: "high",
+    createdAt: new Date(0).toISOString(),
+  };
+}
+
+/** Same classifier `/v1/dex` uses, applied to one identify Investable. */
+export function rarityForInvestable(
+  inv: Pick<Investable, "brand" | "comparables">,
+  seed: DexSeed,
+): DexRarity {
+  const find = findRefFromInvestable(inv);
+  return rarityForFind(find, isInSeed(find, seed));
+}
+
+/** Stamp rarity on each identify investable. This is what `POST /v1/identify` returns. */
+export function stampIdentifyInvestables(investables: Investable[], seed: DexSeed): Investable[] {
+  return investables.map((inv) => ({ ...inv, rarity: rarityForInvestable(inv, seed) }));
+}
+
+/** Stamp rarity on journal rows. Computed on read so older rows still classify. */
+export function stampFindList(finds: Find[], seed: DexSeed): Find[] {
+  return finds.map((find) => ({
+    ...find,
+    rarity: rarityForFind(find, isInSeed(find, seed)),
+  }));
 }
 
 /**

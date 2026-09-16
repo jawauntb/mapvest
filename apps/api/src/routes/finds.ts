@@ -6,7 +6,9 @@
  *   GET /v1/finds?limit=100 → { finds: Find[], count } newest-first
  */
 import type { FindsResponse } from "@mapvest/core";
+import { seedBrands } from "@mapvest/finance";
 import { Hono } from "hono";
+import { stampFindList } from "../lib/dex.js";
 import { listFinds } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
@@ -24,7 +26,7 @@ finds.get("/", async (c) => {
     const limit = Number.isFinite(rawLimit)
       ? Math.min(Math.max(Math.trunc(rawLimit), 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
-    const items = await listFinds(user.id, limit);
+    const items = stampFindList(await listFinds(user.id, limit), seedBrands);
     span.setAttributes({ user_id: user.id, count: items.length });
     const resp: FindsResponse = { finds: items, count: items.length };
     return c.json(resp);
