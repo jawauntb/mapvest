@@ -1,4 +1,5 @@
 import type { PrismCitation } from "@/api/prism";
+import { FirstFindSectionGate } from "@/components/FirstFindGate";
 import { colors, radii, space, type } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,7 +23,15 @@ const SUGGESTIONS = [
  * The thread is client-held and sent with each turn; if the engine returns a
  * conversation id it takes over persistence.
  */
-export function PrismChatSection({ ticker, token }: { ticker: string; token?: string }) {
+export function PrismChatSection(props: { ticker: string; token?: string }) {
+  return (
+    <FirstFindSectionGate>
+      <PrismChatSectionBody {...props} />
+    </FirstFindSectionGate>
+  );
+}
+
+function PrismChatSectionBody({ ticker, token }: { ticker: string; token?: string }) {
   const chat = usePrismChat(ticker, token);
   const [draft, setDraft] = useState("");
 

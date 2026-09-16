@@ -23,12 +23,14 @@ import { presentPaywallIfQuota, usePaywall } from "@/billing/Paywall";
 import { ChartErrorBoundary } from "@/components/ChartErrorBoundary";
 import { ChartsSection } from "@/components/ChartsSection";
 import { EvidenceSection } from "@/components/EvidenceSection";
+import { FirstFindLockedPanel } from "@/components/FirstFindGate";
 import { OptionsChainSection } from "@/components/OptionsChainSection";
 import { OrbitView } from "@/components/OrbitView";
 import { RichText } from "@/components/RichText";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
 import { neutralizeProviderMetadata } from "@/evidence/presentation";
+import { useHasFirstFind } from "@/finds/useHasFirstFind";
 import { useSidebar } from "@/nav/SidebarContext";
 import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, radii, type } from "@/theme/tokens";
@@ -46,6 +48,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -57,6 +60,8 @@ import { ResearchSheet } from "../ResearchSheet";
 export default function DetailSheet() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const { session } = useSession();
+  const { unlocked: hasFirstFind, refresh: refreshFirstFind } = useHasFirstFind();
+  const [refreshing, setRefreshing] = useState(false);
   const brand = routeParam(params.id);
 
   const q = useQuery({
@@ -180,7 +185,21 @@ export default function DetailSheet() {
   return (
     <View style={styles.root}>
       <Stack.Screen options={screenOptions} />
-      <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, gap: 20 }}>
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={{ padding: 16, gap: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              refreshFirstFind();
+              void q.refetch().finally(() => setRefreshing(false));
+            }}
+            tintColor={colors.fgMuted}
+          />
+        }
+      >
         {identityLoading ? (
           <>
             <View>
@@ -248,13 +267,17 @@ export default function DetailSheet() {
             </View>
 
             {!isListed ? (
-              <Section title="Comparables">
-                {data.comparables.length === 0 ? (
-                  <Text style={styles.muted}>No public comparables resolved.</Text>
-                ) : (
-                  data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
-                )}
-              </Section>
+              hasFirstFind ? (
+                <Section title="Comparables">
+                  {data.comparables.length === 0 ? (
+                    <Text style={styles.muted}>No public comparables resolved.</Text>
+                  ) : (
+                    data.comparables.map((c, i) => <ComparableRow key={`${c.ticker}-${i}`} c={c} />)
+                  )}
+                </Section>
+              ) : (
+                <FirstFindLockedPanel />
+              )
             ) : null}
 
             {stage >= 1 && ticker ? (
@@ -267,13 +290,15 @@ export default function DetailSheet() {
                 sheet, so they sit right under the chart. The brief stays
                 opt-in — it spends metered quota — and both keep their stage-2
                 mount so the sheet still paints before they exist. */}
-            {stage >= 2 && ticker ? (
+            {stage >= 2 && ticker && hasFirstFind ? (
               <AgentOverviewBlock ticker={ticker} token={session?.token} />
             ) : null}
 
-            {stage >= 2 && ticker ? (
+            {stage >= 2 && ticker && hasFirstFind ? (
               <TickerNewsSection ticker={ticker} token={session?.token} />
             ) : null}
+
+            {stage >= 2 && ticker && !hasFirstFind && isListed ? <FirstFindLockedPanel /> : null}
 
             {stage >= 2 && ticker ? (
               <View style={{ gap: 10 }}>
@@ -282,29 +307,32 @@ export default function DetailSheet() {
                   name={companyName ?? listedTicker ?? data.brand.name}
                   sector={data.brand.sector}
                   token={session?.token}
+                  firstFindUnlocked={hasFirstFind}
                 />
-                <Pressable
-                  onPress={() => {
-                    hapticTap();
-                    setResearchOpen(true);
-                  }}
-                  style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Research ${ticker}`}
-                >
-                  <LinearGradient
-                    colors={colors.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.researchBtnGrad}
+                {hasFirstFind ? (
+                  <Pressable
+                    onPress={() => {
+                      hapticTap();
+                      setResearchOpen(true);
+                    }}
+                    style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Research ${ticker}`}
                   >
-                    <Ionicons name="sparkles" size={18} color={colors.accentInk} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.researchBtnText}>Research…</Text>
-                      <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
-                    </View>
-                  </LinearGradient>
-                </Pressable>
+                    <LinearGradient
+                      colors={colors.gradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.researchBtnGrad}
+                    >
+                      <Ionicons name="sparkles" size={18} color={colors.accentInk} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.researchBtnText}>Research…</Text>
+                        <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
+                      </View>
+                    </LinearGradient>
+                  </Pressable>
+                ) : null}
                 {session?.token ? (
                   <View style={styles.badgeRow}>
                     <RobinhoodOpenBadge ticker={ticker} token={session.token} />
@@ -350,7 +378,7 @@ export default function DetailSheet() {
               </CollapsibleSection>
             ) : null}
 
-            {isListed && data.comparables.length > 0 ? (
+            {isListed && data.comparables.length > 0 && hasFirstFind ? (
               <Section title="Comparables">
                 {data.comparables.map((c, i) => (
                   <ComparableRow key={`${c.ticker}-${i}`} c={c} />
@@ -1033,11 +1061,13 @@ function WatchlistActions({
   name,
   sector,
   token,
+  firstFindUnlocked,
 }: {
   ticker: string;
   name: string;
   sector?: string;
   token?: string;
+  firstFindUnlocked: boolean;
 }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -1184,45 +1214,49 @@ function WatchlistActions({
             <Ionicons name="star-outline" size={15} color={colors.accentInk} />
             <Text style={[styles.actionBtnText, { color: colors.accentInk }]}>Save</Text>
           </Pressable>
-          <Pressable
-            onPress={() => memoM.mutate()}
-            disabled={memoM.isPending}
-            style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Generate memo"
-          >
-            {memoM.isPending ? (
-              <ActivityIndicator color={colors.fg} />
-            ) : (
-              <>
-                <Ionicons name="document-text-outline" size={15} color={colors.fg} />
-                {/* "Memo", not "Generate memo": this row carries three buttons
+          {firstFindUnlocked ? (
+            <Pressable
+              onPress={() => memoM.mutate()}
+              disabled={memoM.isPending}
+              style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Generate memo"
+            >
+              {memoM.isPending ? (
+                <ActivityIndicator color={colors.fg} />
+              ) : (
+                <>
+                  <Ionicons name="document-text-outline" size={15} color={colors.fg} />
+                  {/* "Memo", not "Generate memo": this row carries three buttons
                     and at 375pt the longer label wraps. Same label as the
                     signed-in row; the verb lives in the accessibility label. */}
-                <Text style={styles.actionBtnText}>Memo</Text>
-              </>
-            )}
-          </Pressable>
+                  <Text style={styles.actionBtnText}>Memo</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
           {/* Situate is the primary long-form research action (it reforms
               Prism). Offered signed-out for the same reason the memo is:
               `/v1/situate` is optionalAuth and meters anonymous callers by
               X-Device-Id, which the client already sends. The Prism route
               stays reachable at /prism/<ticker>; Situate is the entry here. */}
-          <Pressable
-            onPress={() => {
-              hapticTap();
-              router.push({ pathname: "/situate/[ticker]", params: { ticker: sym } });
-            }}
-            style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
-            accessibilityRole="button"
-            accessibilityLabel={`Open Situate research for ${sym}`}
-          >
-            <Ionicons name="locate-outline" size={15} color={colors.fg} />
-            <Text style={styles.actionBtnText}>Situate</Text>
-          </Pressable>
+          {firstFindUnlocked ? (
+            <Pressable
+              onPress={() => {
+                hapticTap();
+                router.push({ pathname: "/situate/[ticker]", params: { ticker: sym } });
+              }}
+              style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Open Situate research for ${sym}`}
+            >
+              <Ionicons name="locate-outline" size={15} color={colors.fg} />
+              <Text style={styles.actionBtnText}>Situate</Text>
+            </Pressable>
+          ) : null}
         </View>
         {statusLine ? <Text style={styles.statusLine}>{statusLine}</Text> : null}
-        {memo ? (
+        {firstFindUnlocked && memo ? (
           <View style={styles.memoCard}>
             <Text style={styles.memoProvider}>Mapvest research</Text>
             <Text style={styles.memoText}>{memo.text}</Text>
@@ -1266,47 +1300,51 @@ function WatchlistActions({
             </>
           )}
         </Pressable>
-        <Pressable
-          onPress={() => memoM.mutate()}
-          disabled={memoM.isPending}
-          style={({ pressed }) => [
-            styles.actionBtn,
-            memoM.isPending && { opacity: 0.7 },
-            pressed && { opacity: 0.7 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={displayMemo ? "Regenerate memo" : "Generate memo"}
-        >
-          {memoM.isPending ? (
-            <ActivityIndicator color={colors.fg} />
-          ) : (
-            <>
-              <Ionicons
-                name={displayMemo ? "refresh-outline" : "document-text-outline"}
-                size={15}
-                color={colors.fg}
-              />
-              <Text style={styles.actionBtnText}>{displayMemo ? "Regenerate memo" : "Memo"}</Text>
-            </>
-          )}
-        </Pressable>
+        {firstFindUnlocked ? (
+          <Pressable
+            onPress={() => memoM.mutate()}
+            disabled={memoM.isPending}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              memoM.isPending && { opacity: 0.7 },
+              pressed && { opacity: 0.7 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={displayMemo ? "Regenerate memo" : "Generate memo"}
+          >
+            {memoM.isPending ? (
+              <ActivityIndicator color={colors.fg} />
+            ) : (
+              <>
+                <Ionicons
+                  name={displayMemo ? "refresh-outline" : "document-text-outline"}
+                  size={15}
+                  color={colors.fg}
+                />
+                <Text style={styles.actionBtnText}>{displayMemo ? "Regenerate memo" : "Memo"}</Text>
+              </>
+            )}
+          </Pressable>
+        ) : null}
         {/* Situate is the primary long-form research action (it reforms Prism):
             the full single-name research dashboard at /situate/<ticker>. It
             builds on demand there. The Prism route stays reachable by URL. */}
-        <Pressable
-          onPress={() => {
-            hapticTap();
-            router.push({ pathname: "/situate/[ticker]", params: { ticker: sym } });
-          }}
-          // flex:0 so adding a third button shrinks Save/Memo proportionally
-          // instead of wrapping "Regenerate memo" onto two lines.
-          style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`Open Situate research for ${sym}`}
-        >
-          <Ionicons name="locate-outline" size={15} color={colors.fg} />
-          <Text style={styles.actionBtnText}>Situate</Text>
-        </Pressable>
+        {firstFindUnlocked ? (
+          <Pressable
+            onPress={() => {
+              hapticTap();
+              router.push({ pathname: "/situate/[ticker]", params: { ticker: sym } });
+            }}
+            // flex:0 so adding a third button shrinks Save/Memo proportionally
+            // instead of wrapping "Regenerate memo" onto two lines.
+            style={({ pressed }) => [styles.actionBtn, { flex: 0 }, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Open Situate research for ${sym}`}
+          >
+            <Ionicons name="locate-outline" size={15} color={colors.fg} />
+            <Text style={styles.actionBtnText}>Situate</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {statusLine ? (
@@ -1322,7 +1360,7 @@ function WatchlistActions({
 
       {memoM.isError ? <Text style={styles.err}>{(memoM.error as Error).message}</Text> : null}
 
-      {displayMemo ? (
+      {firstFindUnlocked && displayMemo ? (
         <View style={styles.memoCard}>
           <Text style={styles.memoProvider}>Research brief</Text>
           <Text style={styles.memoText}>{displayMemo.text}</Text>

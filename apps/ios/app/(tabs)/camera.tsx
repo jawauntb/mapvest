@@ -23,6 +23,7 @@ import { EvidenceSection } from "@/components/EvidenceSection";
 import { FindEvolutionNudge } from "@/components/FindEvolutionNudge";
 import { PhotoAnnotator } from "@/components/PhotoAnnotator";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { markFirstFind } from "@/finds/firstFindStorage";
 import { markFindRefreshPending } from "@/finds/focusRefresh";
 import { openChatAbout } from "@/nav/chatAbout";
 import { enqueuePhoto, queueScopeForUser } from "@/queue/photoQueue";
@@ -174,6 +175,16 @@ export default function CameraScreen() {
   // "Rendered more hooks than during the previous render." That crash is what
   // made the camera tab appear "broken" after the PhotoAnnotator wiring.
   const detections = useMemo<OverlayDetection[]>(() => coerceDetections(result), [result]);
+
+  // First-run ritual: persist the guest unlock the moment a primary
+  // Investable is on screen. Storage failures leave the gate up.
+  const primaryFindKey = result?.investables?.[0]
+    ? (investableTicker(result.investables[0]) ?? result.investables[0].brand.name)
+    : null;
+  useEffect(() => {
+    if (!primaryFindKey) return;
+    void markFirstFind(qc);
+  }, [primaryFindKey, qc]);
 
   const persistCamera = useCallback(
     (next: Partial<CameraCache>, scope: CameraResultScope = activeScopeRef.current) => {
@@ -736,11 +747,7 @@ export default function CameraScreen() {
                                 style={styles.rarityChip}
                                 accessibilityLabel={`${rarityLabel(rarity)} — a private brand bridged via a public comparable`}
                               >
-                                <Ionicons
-                                  name="sparkles-outline"
-                                  size={11}
-                                  color={colors.accent}
-                                />
+                                <Ionicons name="sparkles-outline" size={11} color={colors.accent} />
                                 <Text style={styles.rarityChipText}>{rarityLabel(rarity)}</Text>
                               </View>
                             );
@@ -768,14 +775,10 @@ export default function CameraScreen() {
                       </Text>
                       {top.confidence === "low" ? (
                         <View style={styles.lowConfNote}>
-                          <Ionicons
-                            name="alert-circle-outline"
-                            size={14}
-                            color={colors.warn}
-                          />
+                          <Ionicons name="alert-circle-outline" size={14} color={colors.warn} />
                           <Text style={styles.lowConfNoteText}>
-                            Low confidence — treat as a lead, not a conclusion. Check the
-                            evidence below before acting.
+                            Low confidence — treat as a lead, not a conclusion. Check the evidence
+                            below before acting.
                           </Text>
                         </View>
                       ) : null}
@@ -909,9 +912,7 @@ export default function CameraScreen() {
                                 </Text>
                                 <Text style={styles.additionalResultSubtitle} numberOfLines={1}>
                                   {investableLabel(investable)}
-                                  {investable.brand.sector
-                                    ? ` · ${investable.brand.sector}`
-                                    : ""}
+                                  {investable.brand.sector ? ` · ${investable.brand.sector}` : ""}
                                 </Text>
                                 <View style={styles.additionalResultChips}>
                                   {rarity ? (
@@ -929,9 +930,7 @@ export default function CameraScreen() {
                                   >
                                     <Ionicons
                                       name={
-                                        uncited
-                                          ? "alert-circle-outline"
-                                          : "document-text-outline"
+                                        uncited ? "alert-circle-outline" : "document-text-outline"
                                       }
                                       size={10}
                                       color={uncited ? colors.warn : colors.fgMuted}
@@ -939,9 +938,7 @@ export default function CameraScreen() {
                                     <Text
                                       style={[
                                         styles.evidenceChipMiniText,
-                                        uncited
-                                          ? styles.evidenceChipMiniTextWarn
-                                          : null,
+                                        uncited ? styles.evidenceChipMiniTextWarn : null,
                                       ]}
                                     >
                                       {evidenceChipLabel(sourceCount)}

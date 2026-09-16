@@ -1,4 +1,5 @@
 import type { PrismPacket } from "@/api/prism";
+import { FirstFindSectionGate } from "@/components/FirstFindGate";
 import { colors, radii, space, type } from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
@@ -21,69 +22,71 @@ export function NewsSection({ packet }: { packet: PrismPacket }) {
   const shown = expanded ? items : items.slice(0, PAGE);
 
   return (
-    <SectionCard
-      eyebrow="News"
-      title="What is being said"
-      subtitle={`${items.length} item${items.length === 1 ? "" : "s"} across company, industry, policy, and macro.`}
-      unavailable={unavailable}
-    >
-      {items.length === 0 ? (
-        <Text style={styles.note}>The news sweep returned nothing for this ticker.</Text>
-      ) : null}
+    <FirstFindSectionGate>
+      <SectionCard
+        eyebrow="News"
+        title="What is being said"
+        subtitle={`${items.length} item${items.length === 1 ? "" : "s"} across company, industry, policy, and macro.`}
+        unavailable={unavailable}
+      >
+        {items.length === 0 ? (
+          <Text style={styles.note}>The news sweep returned nothing for this ticker.</Text>
+        ) : null}
 
-      {shown.map((item, i) => {
-        const url = typeof item.url === "string" && item.url.startsWith("http") ? item.url : null;
-        const body = (
-          <View style={styles.item}>
-            <View style={styles.itemHead}>
-              {item.category ? <Chip label={humanize(item.category)} tone="neutral" /> : null}
-              <Text style={styles.meta} numberOfLines={1}>
-                {[item.source, item.published ? relativeAge(item.published) : null]
-                  .filter((v): v is string => !!v)
-                  .join(" · ")}
+        {shown.map((item, i) => {
+          const url = typeof item.url === "string" && item.url.startsWith("http") ? item.url : null;
+          const body = (
+            <View style={styles.item}>
+              <View style={styles.itemHead}>
+                {item.category ? <Chip label={humanize(item.category)} tone="neutral" /> : null}
+                <Text style={styles.meta} numberOfLines={1}>
+                  {[item.source, item.published ? relativeAge(item.published) : null]
+                    .filter((v): v is string => !!v)
+                    .join(" · ")}
+                </Text>
+                {url ? <Ionicons name="open-outline" size={13} color={colors.fgDim} /> : null}
+              </View>
+              <Text style={styles.title} numberOfLines={3}>
+                {item.title ?? "Untitled"}
               </Text>
-              {url ? <Ionicons name="open-outline" size={13} color={colors.fgDim} /> : null}
+              {item.summary ? (
+                <Text style={styles.summary} numberOfLines={4}>
+                  {item.summary}
+                </Text>
+              ) : null}
             </View>
-            <Text style={styles.title} numberOfLines={3}>
-              {item.title ?? "Untitled"}
-            </Text>
-            {item.summary ? (
-              <Text style={styles.summary} numberOfLines={4}>
-                {item.summary}
-              </Text>
-            ) : null}
-          </View>
-        );
-        const key = `${item.url ?? item.title ?? "item"}-${i}`;
-        if (!url) return <View key={key}>{body}</View>;
-        return (
-          <Pressable
-            key={key}
-            onPress={() => {
-              void Linking.openURL(url).catch(() => {});
-            }}
-            accessibilityRole="link"
-            accessibilityLabel={`Open: ${item.title ?? "news item"}`}
-            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-          >
-            {body}
-          </Pressable>
-        );
-      })}
+          );
+          const key = `${item.url ?? item.title ?? "item"}-${i}`;
+          if (!url) return <View key={key}>{body}</View>;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => {
+                void Linking.openURL(url).catch(() => {});
+              }}
+              accessibilityRole="link"
+              accessibilityLabel={`Open: ${item.title ?? "news item"}`}
+              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            >
+              {body}
+            </Pressable>
+          );
+        })}
 
-      {items.length > PAGE ? (
-        <Pressable
-          onPress={() => setExpanded((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? "Show fewer news items" : "Show all news items"}
-          style={({ pressed }) => [styles.more, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.moreText}>
-            {expanded ? "Show fewer" : `Show all ${items.length}`}
-          </Text>
-        </Pressable>
-      ) : null}
-    </SectionCard>
+        {items.length > PAGE ? (
+          <Pressable
+            onPress={() => setExpanded((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? "Show fewer news items" : "Show all news items"}
+            style={({ pressed }) => [styles.more, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.moreText}>
+              {expanded ? "Show fewer" : `Show all ${items.length}`}
+            </Text>
+          </Pressable>
+        ) : null}
+      </SectionCard>
+    </FirstFindSectionGate>
   );
 }
 

@@ -139,7 +139,10 @@ Comparables lead only when the name is actually private. News opens an
 in-app reader (Safari is optional).
 A one-screen first-open sheet
 (`mapvest.firstOpen.v1`) appears once and routes to Camera or Map — never a
-carousel. Mapvest Daily and Local Economy Brief both collapse behind a
+carousel. Comps, news, and the AI brief on Investable / Prism stay locked
+until the first successful identify (`mapvest.firstFind.v1` plus any
+server-side find). The lock panel reuses EmptyState and routes back to
+Camera. Price, fundamentals, and evidence stay open. Mapvest Daily and Local Economy Brief both collapse behind a
 chevron. Mapvest Daily is list-scoped: `GET /v1/watchlist/brief?listId=`
 writes the column for that list's tickers (omitted → the default list), each
 watchlist detail page mounts its own lazily (the brief for a list is only
