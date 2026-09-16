@@ -47,6 +47,8 @@ this workstream. Everything else must be clean.
 
 ## Item 1 — Gate the full feature set behind the first successful identify
 
+**Status.** Implemented in this workstream's first PR (`feat/ios-first-find-gate`).
+
 **Goal.** A first-time Finder cannot open comps, news, or the AI brief
 until they have completed at least one successful identify. The first-open
 sheet is a promise; this move makes it a ritual.

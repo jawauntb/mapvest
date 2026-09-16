@@ -1,5 +1,6 @@
 import type { PrismPacket } from "@/api/prism";
 import { CorrelationHeatmap } from "@/chartkit/prism";
+import { FirstFindSectionGate } from "@/components/FirstFindGate";
 import { colors, space, type } from "@/theme/tokens";
 import { StyleSheet, Text, View } from "react-native";
 import { fmtNumber, fmtPct, humanize, sectionUnavailable, toneForLabel } from "./format";
@@ -27,40 +28,42 @@ export function RelationalSection({ packet }: { packet: PrismPacket }) {
     .slice(0, 5);
 
   return (
-    <SectionCard
-      eyebrow="Relational"
-      title="Correlation, beta, motion"
-      subtitle={
-        relational?.reference_frame
-          ? `Reference frame: ${humanize(relational.reference_frame)}.`
-          : "Correlation and beta against the benchmark universe."
-      }
-      unavailable={unavailable}
-      right={
-        rma?.signal ? (
-          <Chip label={humanize(rma.signal)} tone={toneForLabel(rma.signal)} />
-        ) : undefined
-      }
-    >
-      <CorrelationHeatmap rows={rows} />
+    <FirstFindSectionGate>
+      <SectionCard
+        eyebrow="Relational"
+        title="Correlation, beta, motion"
+        subtitle={
+          relational?.reference_frame
+            ? `Reference frame: ${humanize(relational.reference_frame)}.`
+            : "Correlation and beta against the benchmark universe."
+        }
+        unavailable={unavailable}
+        right={
+          rma?.signal ? (
+            <Chip label={humanize(rma.signal)} tone={toneForLabel(rma.signal)} />
+          ) : undefined
+        }
+      >
+        <CorrelationHeatmap rows={rows} />
 
-      {rma ? (
-        <KeyValueRow
-          label="Relative moving average"
-          value={`${fmtNumber(rma.value, 2)}${rma.signal ? ` · ${humanize(rma.signal)}` : ""}`}
-          tone={toneForLabel(rma.signal)}
-        />
-      ) : null}
+        {rma ? (
+          <KeyValueRow
+            label="Relative moving average"
+            value={`${fmtNumber(rma.value, 2)}${rma.signal ? ` · ${humanize(rma.signal)}` : ""}`}
+            tone={toneForLabel(rma.signal)}
+          />
+        ) : null}
 
-      {impact.length > 0 ? (
-        <View style={{ gap: 2 }}>
-          <Text style={styles.blockTitle}>Largest explanatory weights</Text>
-          {impact.map((row) => (
-            <KeyValueRow key={row.symbol} label={row.symbol} value={fmtPct(row.weight, 1)} />
-          ))}
-        </View>
-      ) : null}
-    </SectionCard>
+        {impact.length > 0 ? (
+          <View style={{ gap: 2 }}>
+            <Text style={styles.blockTitle}>Largest explanatory weights</Text>
+            {impact.map((row) => (
+              <KeyValueRow key={row.symbol} label={row.symbol} value={fmtPct(row.weight, 1)} />
+            ))}
+          </View>
+        ) : null}
+      </SectionCard>
+    </FirstFindSectionGate>
   );
 }
 

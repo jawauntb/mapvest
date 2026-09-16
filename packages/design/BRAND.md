@@ -43,10 +43,9 @@ There is no mascot. No influencer. No hype account.
 ## The belonging stack (what's built, what's next)
 
 - **Entry.** The first-open sheet already exists — one screen, no
-  carousel: "See a brand. Get the ticker. Find your first one." It's a
-  reasonable first ritual. What it doesn't do yet: gate anything. The
-  next move is to hold the full feature set (comps, news, the AI brief)
-  until the first identify actually completes.
+  carousel: "See a brand. Get the ticker. Find your first one." After
+  the first successful identify, comps, news, and the AI brief unlock.
+  Until then those panels hold with "Comes with your first find."
 - **Hierarchy.** Personal progression already exists — XP, level,
   streak, badges, plus a per-user early-find bonus. What's missing is
   anything cross-user. The next move is a leaderboard built on top of
