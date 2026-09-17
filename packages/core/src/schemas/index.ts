@@ -755,6 +755,7 @@ export const PushNotificationTarget = z
     z.object({ type: z.literal("camera") }),
     z.object({ type: z.literal("universe") }),
     z.object({ type: z.literal("settings") }),
+    z.object({ type: z.literal("quests"), section: z.enum(["weekly-recap"]).optional() }),
   ])
   .superRefine((target, ctx) => {
     if (target.type !== "map") return;
@@ -1380,6 +1381,19 @@ export const QuestsResponse = z.object({
   xpGrantedToday: z.number(),
 });
 export type QuestsResponse = z.infer<typeof QuestsResponse>;
+
+/**
+ * `GET /v1/quests/weekly` payload. `cycleStart` and `cycleEnd` are ISO strings
+ * bounding the current 7-day weekly cycle (Saturday 12:00 UTC ← Sunday). Quests
+ * within the cycle are derived on read, like daily quests, and completion is
+ * verified server-side from the find stream — the client never posts a completion.
+ */
+export const WeeklyQuestsResponse = z.object({
+  cycleStart: z.string().datetime(), // ISO 8601
+  cycleEnd: z.string().datetime(), // ISO 8601
+  quests: z.array(Quest),
+});
+export type WeeklyQuestsResponse = z.infer<typeof WeeklyQuestsResponse>;
 
 // -------- territory (Universe Roadmap A6) --------
 

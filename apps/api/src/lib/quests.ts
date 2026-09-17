@@ -234,3 +234,39 @@ export function splitFindsByDay(finds: Find[], dayUtc: string): { today: Find[];
   }
   return { today, prior };
 }
+
+/**
+ * Weekly quest set for one user in one cycle: 3–4 of `QUEST_CATALOG`, chosen
+ * deterministically by hash of `userId + cycleStartDay`. Same user + same
+ * cycle → identical set every time.
+ *
+ * Returned quests are unstarted (`progress: 0`, `completed: false`) — call
+ * `completionForBaselines` to evaluate them against the find stream.
+ */
+export function weeklyQuests(userId: string, cycleStartDay: string): Quest[] {
+  const seed = hashString(`${userId}|weekly|${cycleStartDay}`);
+  // Weekly quests: 3–4 items per cycle
+  const count = 3 + (seed % 2);
+
+  const pool = QUEST_CATALOG.map((def, index) => ({ def, index }));
+  const picked: Array<{ def: QuestDef; index: number }> = [];
+  let cursor = seed;
+  while (picked.length < count && pool.length > 0) {
+    cursor = hashString(`${cursor}|${picked.length}`);
+    const [taken] = pool.splice(cursor % pool.length, 1);
+    if (taken) picked.push(taken);
+  }
+
+  // Present in catalog order so the list reads the same way every cycle.
+  return picked
+    .sort((a, b) => a.index - b.index)
+    .map(({ def }) => ({
+      id: `${cycleStartDay}:weekly:${def.kind}`,
+      kind: def.kind,
+      title: def.title,
+      xp: def.xp,
+      completed: false,
+      progress: 0,
+      target: def.target,
+    }));
+}

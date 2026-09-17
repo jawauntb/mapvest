@@ -1,8 +1,9 @@
 /**
- * Daily quests (Universe Roadmap §1 A5).
+ * Daily and weekly quests (Universe Roadmap §1 A5).
  *
  * Routes (bearer-required):
  *   GET / → QuestsResponse { quests, day, xpGrantedToday }
+ *   GET /weekly → WeeklyQuestsResponse { cycleStart, cycleEnd, quests }
  *
  * Mounted by the integrator at /v1/quests.
  *
@@ -14,18 +15,25 @@
  * The client never posts a completion (roadmap A5 acceptance: verified
  * server-side from the find stream).
  */
-import type { QuestsResponse } from "@mapvest/core";
+import type { QuestsResponse, WeeklyQuestsResponse } from "@mapvest/core";
 import { seedBrands } from "@mapvest/finance";
 import { Hono } from "hono";
 import {
   listDistinctEffectiveTickers,
   listDistinctGeohash6,
   listFindsOnDay,
+  listFindsBetween,
 } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { awardXp, utcDay } from "../lib/progress-store.js";
-import { completionForBaselines, dayQuests, sectorsOfTickers } from "../lib/quests.js";
+import {
+  completionForBaselines,
+  dayQuests,
+  sectorsOfTickers,
+  weeklyQuests,
+} from "../lib/quests.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
+import { cycleWindow } from "../lib/weeklyCycle.js";
 
 const quests = new Hono<AuthEnv>();
 quests.use("*", bearerAuth);
@@ -67,6 +75,50 @@ quests.get("/", async (c) => {
     });
 
     const resp: QuestsResponse = { quests: evaluated, day, xpGrantedToday };
+    return c.json(resp);
+  });
+});
+
+quests.get("/weekly", async (c) => {
+  return safeExecuteWithSpan("http.quests.weekly.get", async (span) => {
+    const user = c.get("user");
+    const now = new Date();
+    const { cycleStart, cycleEnd } = cycleWindow(now);
+    const cycleStartDay = utcDay(cycleStart.toISOString());
+    const cycleStartIso = cycleStart.toISOString();
+    const cycleEndIso = cycleEnd.toISOString();
+
+    // Fetch all finds during this cycle
+    const finds = await listFindsBetween(user.id, cycleStartIso, cycleEndIso);
+
+    // Get baseline tiles and sectors from before this cycle
+    const beforeCycleIso = new Date(cycleStart.getTime() - 1).toISOString();
+    const [priorTiles, priorTickers] = await Promise.all([
+      listDistinctGeohash6(user.id, beforeCycleIso),
+      listDistinctEffectiveTickers(user.id, beforeCycleIso),
+    ]);
+
+    const evaluated = completionForBaselines(
+      weeklyQuests(user.id, cycleStartDay),
+      finds,
+      new Set(priorTiles),
+      sectorsOfTickers(priorTickers, seedBrands),
+      seedBrands,
+    );
+
+    span.setAttributes({
+      user_id: user.id,
+      cycle_start: cycleStartDay,
+      quests: evaluated.length,
+      completed: evaluated.filter((q) => q.completed).length,
+      finds_in_cycle: finds.length,
+    });
+
+    const resp: WeeklyQuestsResponse = {
+      cycleStart: cycleStartIso,
+      cycleEnd: cycleEndIso,
+      quests: evaluated,
+    };
     return c.json(resp);
   });
 });
