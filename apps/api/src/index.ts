@@ -33,6 +33,7 @@ import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
 import options from "./routes/options.js";
+import companyPhotos, { photoVotes } from "./routes/photos.js";
 import prism from "./routes/prism.js";
 import progress from "./routes/progress.js";
 import proxy from "./routes/proxy.js";
@@ -72,7 +73,7 @@ app.use(
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     // X-Device-Id: anonymous per-device id sent by iOS/web clients so guest
     // usage can be metered without sign-in (Phase 8 Slice C groundwork).
-    allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id"],
+    allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id", "Idempotency-Key"],
   }),
 );
 // gzip/deflate JSON responses over 1KB (hono/compress default threshold).
@@ -147,6 +148,9 @@ app.route("/v1/graph", graph);
 // Demand-side pulse (who buys from this company) + macro sector environment.
 app.route("/v1/pulse", pulse);
 app.route("/v1/environment", environment);
+// Global first capture + photo gallery (capture economy Item 3).
+app.route("/v1/companies", companyPhotos);
+app.route("/v1/photos", photoVotes);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
