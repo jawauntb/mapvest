@@ -2,8 +2,13 @@ import type { NearbyResponse } from "@mapvest/core";
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { resolveNearbyItems } from "../lib/nearby-resolve.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
 
 const nearby = new Hono();
+// Best-effort session read (mirrors memo/news/agent): populates `user` for a
+// signed-in caller so each candidate can be tagged "seen" vs "captured"
+// against their own finds journal, without requiring sign-in to use the map.
+nearby.use("*", optionalAuth);
 
 /**
  * GET /v1/nearby?lat=&lng=&radius=&limit=
@@ -40,7 +45,7 @@ nearby.get("/", async (c) => {
     const started = performance.now();
     let items: NearbyResponse["items"];
     try {
-      ({ items } = await resolveNearbyItems({ lat, lng, radius, limit, span }));
+      ({ items } = await resolveNearbyItems({ lat, lng, radius, limit, viewerId: user?.id, span }));
     } catch (err) {
       const message = (err as Error).message;
       // Bad MOCK_PLACES config is a deploy/dev mistake, not an upstream
@@ -71,7 +76,13 @@ nearby.get("/", async (c) => {
     // hours/days server-side); a short client/CDN cache absorbs bursty
     // re-requests (e.g. map pan/zoom jitter) without serving stale results
     // for long. Only applied to this 200 path — errors above are not cached.
-    c.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    // Once a signed-in caller is attached, `state` is per-user (seen vs
+    // captured) — that response must never sit in a SHARED cache, same
+    // posture as `/v1/territory`.
+    c.header(
+      "Cache-Control",
+      user?.id ? "private, max-age=60" : "public, max-age=60, stale-while-revalidate=300",
+    );
     return c.json(resp);
   });
 });
