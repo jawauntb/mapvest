@@ -286,13 +286,6 @@ export default function DetailSheet() {
               </ChartErrorBoundary>
             ) : null}
 
-            {/* The brief and the news feed are the reason people open this
-                sheet, so they sit right under the chart. The brief stays
-                opt-in — it spends metered quota — and both keep their stage-2
-                mount so the sheet still paints before they exist. */}
-            {stage >= 2 && ticker && hasFirstFind ? (
-              <AgentOverviewBlock ticker={ticker} token={session?.token} />
-            ) : null}
 
             {stage >= 2 && ticker && hasFirstFind ? (
               <TickerNewsSection ticker={ticker} token={session?.token} />
@@ -309,30 +302,6 @@ export default function DetailSheet() {
                   token={session?.token}
                   firstFindUnlocked={hasFirstFind}
                 />
-                {hasFirstFind ? (
-                  <Pressable
-                    onPress={() => {
-                      hapticTap();
-                      setResearchOpen(true);
-                    }}
-                    style={({ pressed }) => [styles.researchBtn, pressed && { opacity: 0.85 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Research ${ticker}`}
-                  >
-                    <LinearGradient
-                      colors={colors.gradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.researchBtnGrad}
-                    >
-                      <Ionicons name="sparkles" size={18} color={colors.accentInk} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.researchBtnText}>Research…</Text>
-                        <Text style={styles.researchBtnSub}>ask follow-ups · agent tools</Text>
-                      </View>
-                    </LinearGradient>
-                  </Pressable>
-                ) : null}
                 {session?.token ? (
                   <View style={styles.badgeRow}>
                     <RobinhoodOpenBadge ticker={ticker} token={session.token} />
@@ -347,6 +316,17 @@ export default function DetailSheet() {
                   />
                 ) : null}
               </View>
+            ) : null}
+
+            {stage >= 2 && ticker && hasFirstFind ? (
+              <ResearchSection
+                ticker={ticker}
+                researchOpen={researchOpen}
+                onResearchOpen={() => {
+                  hapticTap();
+                  setResearchOpen(true);
+                }}
+              />
             ) : null}
 
             {ticker ? (
@@ -760,19 +740,22 @@ function ValueChainSection({
   );
 }
 
-function AgentOverviewBlock({
+function ResearchSection({
   ticker,
-  token,
+  researchOpen,
+  onResearchOpen,
 }: {
   ticker: string;
-  token?: string;
+  researchOpen: boolean;
+  onResearchOpen: () => void;
 }) {
-  // Lazy-load: the agent brief costs 5–15s and was the single biggest blocker
-  // on this screen. Now the page paints instantly and the user opts in via
-  // the button below. If the query was cached from a previous visit (staleTime
-  // 30min) we honor the cache and skip the button — feels the same as before.
+  const router = useRouter();
+  const { session } = useSession();
   const qc = useQueryClient();
-  const key = ["agent-overview", ticker, token ?? "anon"];
+  const sym = ticker.trim().toUpperCase();
+
+  // Full brief state management (moved from AgentOverviewBlock)
+  const key = ["agent-overview", ticker, session?.token ?? "anon"];
   const messageIdentityRef = useRef<{
     ticker: string;
     id: string;
@@ -797,7 +780,7 @@ function AgentOverviewBlock({
         const response = await agentChat(
           `Write a detailed investor overview of $${ticker} for the Investable sheet. Use Markdown with blank lines between sections. Required sections with ## headings: (1) What's the story now, (2) Business & moat, (3) Catalysts & risks, (4) Valuation & market context, (5) What to watch next. 450–750 words. Use short paragraphs and a few bullets under risks/catalysts. Cite tools/sources when used. Research-only; not advice; no trades.`,
           { ticker, clientMessageId: attempt.id },
-          { token, signal },
+          { token: session?.token, signal },
         );
         attempt.conversationId = response.conversationId ?? response.threadId;
         if (!response.pending && response.status !== "queued" && response.status !== "running") {
@@ -805,7 +788,10 @@ function AgentOverviewBlock({
         }
       }
 
-      const recovered = await waitForAgentThread(attempt.conversationId, { token, signal });
+      const recovered = await waitForAgentThread(attempt.conversationId, {
+        token: session?.token,
+        signal,
+      });
       const article = [...(recovered.thread.messages ?? [])]
         .reverse()
         .find((message) => message.role === "assistant");
@@ -818,77 +804,175 @@ function AgentOverviewBlock({
     if (overviewQ.isSuccess) messageIdentityRef.current = null;
   }, [overviewQ.isSuccess]);
 
-  if (!wantBrief) {
-    return (
-      <Section title="Full brief">
-        <Pressable
-          onPress={() => {
-            hapticSelect();
-            setWantBrief(true);
-          }}
-          style={({ pressed }) => [styles.loadBriefBtn, pressed && { opacity: 0.75 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Load full agent brief"
-        >
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.loadBriefText}>Load full brief</Text>
-            <Text style={styles.loadBriefSub}>~5–15s · fresh from the research agent</Text>
-          </View>
-          <Ionicons name="sparkles-outline" size={16} color={colors.accent} />
-        </Pressable>
-      </Section>
-    );
-  }
-
   return (
-    <Section title="Full brief">
-      {overviewQ.isLoading || overviewQ.isFetching ? (
-        <View style={{ gap: 8 }}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={styles.muted}>Writing a longer agent brief…</Text>
-        </View>
-      ) : overviewQ.isError ? (
-        <View style={{ gap: 8 }}>
-          <Text accessibilityRole="alert" style={styles.errInline}>
-            {formatResearchError(overviewQ.error, "Overview failed. Try again.")}
-          </Text>
-          <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
-            <Text style={styles.miniBtnText}>Retry overview</Text>
-          </Pressable>
-        </View>
-      ) : (
-        // `alignSelf: "stretch"` pins the block to the card's inner width so
-        // long agent prose can't push its parent wider than the ScrollView
-        // content column. Without it, RN can size a column-flex View to its
-        // intrinsic content width and let a single long line spill right.
-        <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
-          {overviewQ.data?.content &&
-          overviewQ.data.content.trim() !== overviewQ.data.error?.trim() ? (
-            <RichText text={overviewQ.data.content} />
-          ) : null}
-          {overviewQ.data?.error ? (
-            <Text accessibilityRole="alert" style={styles.errInline}>
-              {formatResearchError(
-                overviewQ.data.error,
-                "Research stopped before it could finish the brief. Try again.",
-              )}
-            </Text>
-          ) : null}
-          {(overviewQ.data?.interesting?.length ?? 0) > 0 ? (
-            <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
-              {(overviewQ.data?.interesting ?? []).slice(0, 5).map((line) => (
-                <Text key={line} style={[styles.muted, { flexShrink: 1 }]}>
-                  · {line}
-                </Text>
-              ))}
+    <View style={{ gap: 8 }}>
+      <Text style={styles.h2}>Research</Text>
+      <View style={styles.card}>
+        <View style={{ gap: 12 }}>
+          {/* Prism */}
+          <Pressable
+            onPress={onResearchOpen}
+            style={({ pressed }) => [styles.researchEntry, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Open Prism research for ${ticker}`}
+          >
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.researchEntryTitle}>Prism</Text>
+              <Text style={styles.researchEntryDesc}>
+                Quantitative posture & scenario-price read — Favorable / Balanced / Unfavorable,
+                evidence-backed. Not a call.
+              </Text>
             </View>
-          ) : null}
-          <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
-            <Text style={styles.miniBtnText}>Refresh overview</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
           </Pressable>
+
+          {/* Situate */}
+          <Pressable
+            onPress={() => {
+              hapticTap();
+              router.push({ pathname: "/situate/[ticker]", params: { ticker: sym } });
+            }}
+            style={({ pressed }) => [styles.researchEntry, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Open Situate research for ${ticker}`}
+          >
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.researchEntryTitle}>Situate</Text>
+              <Text style={styles.researchEntryDesc}>
+                Qualitative posture memo — determinants, falsifiers, what's already priced in.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+          </Pressable>
+
+          {/* Full brief */}
+          <Pressable
+            onPress={() => {
+              hapticTap();
+              setWantBrief(true);
+            }}
+            style={({ pressed }) => [styles.researchEntry, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Load full brief for ${ticker}`}
+          >
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.researchEntryTitle}>Full brief</Text>
+              <Text style={styles.researchEntryDesc}>
+                On-demand deep narrative from the research agent.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+          </Pressable>
+
+          {/* Memo */}
+          <MemoResearchEntry ticker={ticker} />
+        </View>
+      </View>
+
+      {/* Full brief content below the research index */}
+      {wantBrief && (
+        <View style={{ gap: 8 }}>
+          {overviewQ.isLoading || overviewQ.isFetching ? (
+            <View style={styles.card}>
+              <View style={{ gap: 8 }}>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={styles.muted}>Writing a longer agent brief…</Text>
+              </View>
+            </View>
+          ) : overviewQ.isError ? (
+            <View style={styles.card}>
+              <View style={{ gap: 8 }}>
+                <Text accessibilityRole="alert" style={styles.errInline}>
+                  {formatResearchError(overviewQ.error, "Overview failed. Try again.")}
+                </Text>
+                <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
+                  <Text style={styles.miniBtnText}>Retry overview</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <View style={{ gap: 10, alignSelf: "stretch", width: "100%" }}>
+                {overviewQ.data?.content &&
+                overviewQ.data.content.trim() !== overviewQ.data.error?.trim() ? (
+                  <RichText text={overviewQ.data.content} />
+                ) : null}
+                {overviewQ.data?.error ? (
+                  <Text accessibilityRole="alert" style={styles.errInline}>
+                    {formatResearchError(
+                      overviewQ.data.error,
+                      "Research stopped before it could finish the brief. Try again.",
+                    )}
+                  </Text>
+                ) : null}
+                {(overviewQ.data?.interesting?.length ?? 0) > 0 ? (
+                  <View style={{ gap: 4, alignSelf: "stretch", width: "100%" }}>
+                    {(overviewQ.data?.interesting ?? []).slice(0, 5).map((line) => (
+                      <Text key={line} style={[styles.muted, { flexShrink: 1 }]}>
+                        · {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+                <Pressable onPress={() => void overviewQ.refetch()} style={styles.miniBtn}>
+                  <Text style={styles.miniBtnText}>Refresh overview</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </View>
       )}
-    </Section>
+    </View>
+  );
+}
+
+function MemoResearchEntry({ ticker }: { ticker: string }) {
+  const { session } = useSession();
+  const qc = useQueryClient();
+  const { presentPaywall } = usePaywall();
+  const sym = ticker.trim().toUpperCase();
+  const [memo, setMemo] = useState<{ provider: string; text: string } | null>(null);
+
+  const wl = useQuery({
+    queryKey: ["watchlist", session?.token],
+    queryFn: () => (session?.token ? listWatchlist({ token: session.token }) : Promise.resolve({ items: [] })),
+    enabled: !!session?.token,
+    staleTime: 30_000,
+  });
+  const entry = wl.data?.items?.find((e) => e.ticker?.toUpperCase() === sym);
+  const savedMemo = entry?.memo ? { provider: entry.memoProvider ?? "", text: entry.memo } : null;
+  const displayMemo = memo ?? savedMemo;
+
+  const memoM = useMutation({
+    mutationFn: () => generateMemo(sym, { token: session?.token }),
+    onSuccess: (r) => {
+      setMemo({ provider: r.provider, text: r.memo });
+    },
+    onError: (e) => {
+      if (presentPaywallIfQuota(e, presentPaywall)) {
+        return;
+      }
+    },
+  });
+
+  return (
+    <Pressable
+      onPress={() => memoM.mutate()}
+      disabled={memoM.isPending}
+      style={({ pressed }) => [styles.researchEntry, pressed && { opacity: 0.85 }]}
+      accessibilityRole="button"
+      accessibilityLabel={displayMemo ? "Regenerate memo" : "Generate memo"}
+    >
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text style={styles.researchEntryTitle}>Memo</Text>
+        <Text style={styles.researchEntryDesc}>Quick structured summary.</Text>
+      </View>
+      {memoM.isPending ? (
+        <ActivityIndicator color={colors.fgMuted} size="small" />
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={colors.fgMuted} />
+      )}
+    </Pressable>
   );
 }
 
@@ -1601,4 +1685,15 @@ const styles = StyleSheet.create({
   },
   ratioLabel: { color: colors.fgDim, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
   ratioValue: { color: colors.fg, fontSize: 14, fontWeight: "700", marginTop: 3 },
+  researchEntry: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  researchEntryTitle: { color: colors.fg, fontWeight: "600", fontSize: 15 },
+  researchEntryDesc: { color: colors.fgMuted, fontSize: 12, lineHeight: 16 },
 });
