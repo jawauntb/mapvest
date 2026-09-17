@@ -45,16 +45,6 @@ export async function initDb(): Promise<void> {
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_apple_original_txn_idx
       ON users (apple_original_transaction_id)
       WHERE apple_original_transaction_id IS NOT NULL`;
-    // Foundations — public handles ("finder-<8hex>", renameable). Backfill
-    // existing rows before the NOT NULL + uniqueness constraints land.
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT`;
-    await sql`
-      UPDATE users SET handle = 'finder-' || substr(md5(random()::text || id), 1, 8)
-      WHERE handle IS NULL
-    `;
-    await sql`ALTER TABLE users ALTER COLUMN handle SET NOT NULL`;
-    await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_handle_lower_idx ON users (lower(handle))`;
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_updated_at TIMESTAMPTZ`;
     await sql`
       CREATE TABLE IF NOT EXISTS usage_events (
         id TEXT PRIMARY KEY,
@@ -134,7 +124,7 @@ export async function initDb(): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS user_watchlist_user_idx ON user_watchlist (user_id, created_at DESC)`;
     console.log(
-      "[db] postgres ready (users+handles, mcp, nearby_cache, brand_ticker_cache, research_conversations, usage_events, watchlist)",
+      "[db] postgres ready (users, mcp, nearby_cache, brand_ticker_cache, research_conversations, usage_events, watchlist)",
     );
   })();
   return initPromise;

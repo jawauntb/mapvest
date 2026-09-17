@@ -1,6 +1,4 @@
 import { clearRobinhoodMcp, fetchSettings, saveRobinhoodMcp } from "@/api/client";
-import { ApiError } from "@/api/errors";
-import { HANDLE_FORMAT, renameHandle } from "@/api/handles";
 import { useSession } from "@/auth/session";
 import { usePaywall } from "@/billing/Paywall";
 import { useEntitlements } from "@/billing/useEntitlements";
@@ -69,7 +67,6 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [handleInput, setHandleInput] = useState("");
 
   // Hooks below must stay unconditional — the tab tree keeps this screen
   // mounted (`unmountOnBlur: false`), so `session` can flip from null to set
@@ -102,18 +99,6 @@ export default function SettingsScreen() {
     onError: (e) => setStatus((e as Error).message || "Clear failed"),
   });
 
-  const renameHandleM = useMutation({
-    mutationFn: (next: string) => renameHandle(next, { token: session!.token }),
-    onSuccess: async (res) => {
-      setHandleInput("");
-      Keyboard.dismiss();
-      hapticSuccess();
-      setStatus(`Handle updated to ${res.handle}`);
-      await qc.invalidateQueries({ queryKey: ["settings", session?.token] });
-    },
-    onError: (e) => setStatus(handleRenameErrorMessage(e)),
-  });
-
   if (!session || !user) {
     return <GuestHome />;
   }
@@ -139,47 +124,6 @@ export default function SettingsScreen() {
           <Text style={styles.label}>Signed in</Text>
           <Text style={styles.value}>{user?.email ?? "—"}</Text>
           <Text style={styles.muted}>{user?.id}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardHead}>
-            <Ionicons name="at-outline" size={15} color={colors.accent} />
-            <Text style={styles.label}>Handle</Text>
-          </View>
-          <Text style={styles.muted}>
-            Your public identity — shown on leaderboards and capture badges instead of your email.
-            Rename it once every 24 hours.
-          </Text>
-          {settingsQ.isLoading ? (
-            <ActivityIndicator color={colors.fg} style={{ marginTop: 8 }} />
-          ) : (
-            <Text style={styles.value}>{settingsQ.data?.user?.handle ?? "—"}</Text>
-          )}
-          <TextInput
-            style={styles.input}
-            placeholder="lowercase-handle"
-            placeholderTextColor={colors.fgDim}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            value={handleInput}
-            onChangeText={setHandleInput}
-            maxLength={20}
-            returnKeyType="done"
-            onSubmitEditing={() => Keyboard.dismiss()}
-            blurOnSubmit
-            accessibilityLabel="New handle"
-          />
-          <PrimaryButton
-            label={renameHandleM.isPending ? "Saving…" : "Rename"}
-            busy={renameHandleM.isPending}
-            disabled={!HANDLE_FORMAT.test(handleInput.trim().toLowerCase())}
-            onPress={() => {
-              Keyboard.dismiss();
-              renameHandleM.mutate(handleInput.trim().toLowerCase());
-            }}
-            style={{ marginTop: 8, alignSelf: "stretch" }}
-          />
         </View>
 
         <PlanCard />
@@ -790,18 +734,6 @@ function GuestHome() {
       </ScrollView>
     </View>
   );
-}
-
-/** Distinct copy per rename failure — format vs. taken vs. too-soon never conflate. */
-function handleRenameErrorMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.code === "invalid_format") {
-      return "Handles are 3–20 characters: lowercase letters, numbers, and hyphens only.";
-    }
-    if (e.code === "handle_taken") return "That handle is already taken.";
-    if (e.code === "rate_limited") return "You can rename your handle once every 24 hours.";
-  }
-  return e instanceof Error ? e.message : "Could not update your handle.";
 }
 
 function planCopy(plan: string, freeForever: boolean, subscribed: boolean): string {

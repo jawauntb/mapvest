@@ -1101,14 +1101,6 @@ export const User = z.object({
   email: z.string().email(),
   createdAt: z.string(),
   scopes: z.array(z.enum(["user", "admin"])).default(["user"]),
-  /**
-   * Public handle ("finder-<8hex>", renameable to [a-z0-9-]{3,20}). The one
-   * public identity string safe to show next to a leaderboard row or a
-   * first-capture badge — never an email or raw user id. Optional here so
-   * older fixtures/tests that predate it keep typechecking; the server
-   * always populates it.
-   */
-  handle: z.string().optional(),
 });
 export type User = z.infer<typeof User>;
 
