@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  cycleWindow,
-  formatCloseCountdown,
-  formatCycleHeader,
-  isCycleCloseTick,
-  msUntilClose,
-} from "./weeklyCycle";
+import { cycleWindow, formatCloseCountdown, isCycleCloseTick, msUntilClose } from "./weeklyCycle";
 
 /** `2026-09-19` is a Saturday — the anchor used throughout these cases. */
 const SATURDAY_NOON_UTC = "2026-09-19T12:00:00.000Z";
@@ -97,20 +91,5 @@ describe("formatCloseCountdown", () => {
   test("clamps negative or non-finite input to zero rather than a negative countdown", () => {
     expect(formatCloseCountdown(-1000)).toBe("Closes in 0d 0h");
     expect(formatCloseCountdown(Number.NaN)).toBe("Closes in 0d 0h");
-  });
-});
-
-describe("formatCycleHeader", () => {
-  test("renders 'Sun MM/DD – Sat MM/DD' from a cycle window's Saturday-noon boundaries", () => {
-    const { cycleStart, cycleEnd } = cycleWindow(new Date("2026-09-16T03:00:00.000Z")); // Wednesday
-    expect(cycleStart.toISOString()).toBe(PREV_SATURDAY_NOON_UTC); // 2026-09-12 (Sat)
-    expect(cycleEnd.toISOString()).toBe(SATURDAY_NOON_UTC); // 2026-09-19 (Sat)
-    expect(formatCycleHeader(cycleStart, cycleEnd)).toBe("Sun 09/13 – Sat 09/19");
-  });
-
-  test("shifts the display start to the calendar day after cycleStart's Saturday-noon close", () => {
-    const cycleStart = new Date("2026-01-03T12:00:00.000Z"); // Saturday
-    const cycleEnd = new Date("2026-01-10T12:00:00.000Z"); // next Saturday
-    expect(formatCycleHeader(cycleStart, cycleEnd)).toBe("Sun 01/04 – Sat 01/10");
   });
 });

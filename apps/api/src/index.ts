@@ -26,7 +26,6 @@ import finds from "./routes/finds.js";
 import graph from "./routes/graph.js";
 import health from "./routes/health.js";
 import identify from "./routes/identify.js";
-import leaderboard from "./routes/leaderboard.js";
 import localBrief from "./routes/localBrief.js";
 import marketData from "./routes/market-data.js";
 import marketEvents from "./routes/market-events.js";
@@ -139,7 +138,6 @@ app.route("/v1/progress", progress);
 app.route("/v1/universe", universe);
 app.route("/v1/dex", dex);
 app.route("/v1/quests", quests);
-app.route("/v1/leaderboard", leaderboard);
 // Geohash-tile territory (completion + pioneer) and the global event window.
 app.route("/v1/territory", territory);
 app.route("/v1/events", events);

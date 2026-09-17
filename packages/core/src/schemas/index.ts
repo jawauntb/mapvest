@@ -1471,41 +1471,6 @@ export const WeeklyQuestsResponse = z.object({
 });
 export type WeeklyQuestsResponse = z.infer<typeof WeeklyQuestsResponse>;
 
-// -------- leaderboard (packages/design/HANDOFF.md Item 3) --------
-
-/**
- * One row of `GET /v1/leaderboard/weekly`. `handle` is the public identity
- * string (never an email or raw user id — see `lib/handles.ts`).
- * `earlyFindScore` is the Pioneer-bonus XP (the per-user "catch a brand
- * before others do" bonus, `PIONEER_XP` granted per tile) accumulated inside
- * the current weekly cycle — the leaderboard's ranking axis, never raw find
- * count. `rank` is 1-based. `isYou` marks the authenticated caller's own row,
- * which the route always includes even when it falls outside the requested
- * `limit`.
- */
-export const LeaderboardRow = z.object({
-  handle: z.string(),
-  earlyFindScore: z.number(),
-  rank: z.number(),
-  isYou: z.boolean(),
-});
-export type LeaderboardRow = z.infer<typeof LeaderboardRow>;
-
-/**
- * `GET /v1/leaderboard/weekly?limit=50` payload. `cycleStart`/`cycleEnd`
- * bound the same 7-day Saturday-12:00-UTC cycle as `/v1/quests/weekly`
- * (`lib/weeklyCycle.ts`). `rows` is the top `limit` finders by early-find
- * score, plus the caller's own row appended when they are not already in it
- * — so `rows` always has at least one entry with `isYou: true` for an
- * authenticated call.
- */
-export const LeaderboardResponse = z.object({
-  cycleStart: z.string().datetime(), // ISO 8601
-  cycleEnd: z.string().datetime(), // ISO 8601
-  rows: z.array(LeaderboardRow),
-});
-export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
-
 // -------- territory (Universe Roadmap A6) --------
 
 /**
