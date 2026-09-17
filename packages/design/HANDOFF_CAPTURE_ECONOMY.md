@@ -14,9 +14,17 @@ the acceptance checklist before opening a PR.
 2. [`HANDOFF.md`](./HANDOFF.md) — the prior workstream (entry gate,
    weekly quests, leaderboard, guest-convert, server rarity). Items 1,
    4, and 5 there are merged. Item 2 (weekly quest client) and Item 3
-   (leaderboard) are still open — two items below depend on them.
+   (leaderboard) are still open — items below depend on them.
 3. [`AGENTS.md`](../../AGENTS.md) — the repo's ground rules for agents.
 4. This file.
+
+**Revision note.** An earlier version of this document proposed
+deleting one of four AI-brief generators as a "consolidation." That
+move is withdrawn — see Item 5b. Mapvest keeps every research surface
+it has; the fix is navigation, not deletion. Handles are also now a
+first-class item (Item 2), not a footnote inside Item 3 — both
+`HANDOFF.md`'s leaderboard and this document's first-capture
+attribution need the same handle system, built once.
 
 ## Shipping conventions
 
@@ -105,7 +113,50 @@ Find, exactly as today."*
 
 ---
 
-## Item 2 — Global first capture + photo gallery
+## Item 2 — Public handles (single implementation, two consumers)
+
+**Status.** Firm requirement, not optional. Both this document's
+Item 3 (first-capture attribution) and `HANDOFF.md`'s Item 3
+(leaderboard) need a public handle. Build it once, here, and have
+both consume it — do not let two agents each ship their own.
+
+**Goal.** Every account gets a stable, renameable public handle
+that's safe to show next to a permanent badge or a leaderboard row —
+never an email, never a raw user ID.
+
+**Where.**
+- Server: an auto-generated handle (`"finder-<8hex>"`) at account
+  creation, unique, stored on the user record. A rename endpoint
+  validated as `[a-z0-9-]{3,20}`, uniqued server-side, rate-limited to
+  a sane cadence (e.g. once per 24h) to stop handle-squatting churn.
+- Client: a Settings row to view/rename the handle
+  (`apps/ios/app/(tabs)/settings.tsx`). Surface it anywhere a user's
+  identity is shown publicly (first-capture badge, leaderboard row).
+- Privacy: handles are public by construction (that's the point of a
+  leaderboard and an attribution badge). Do not expose email, raw
+  user ID, or precise location alongside a handle anywhere.
+
+**Acceptance.**
+- A brand-new account has a valid, unique handle with no user action
+  required.
+- Renaming enforces the format and uniqueness constraint client- and
+  server-side, with a clear conflict error on collision.
+- Both the leaderboard (`HANDOFF.md` Item 3) and first-capture badges
+  (Item 3 below) read from this single handle field — grep for a
+  second handle implementation before adding one.
+
+**Tests.**
+- Server: uniqueness constraint test (two accounts cannot land the
+  same handle); rename validation table test (valid/invalid formats,
+  taken handle).
+
+**Non-goals.**
+- No display names separate from the handle. One identity string,
+  public, renameable — not a separate "real name" field.
+
+---
+
+## Item 3 — Global first capture + photo gallery
 
 **Goal.** Every company gets a photo gallery. The first Finder to
 ever capture a company earns a permanent, company-scoped badge —
@@ -124,9 +175,11 @@ anti-fraud floor is non-negotiable before any of this ships."*
     check `packages/finance/comparable.ts` for the canonical id):
     `firstCapturedBy` (userId, ts, photoId), `captureCount`.
   - New `photo_submissions` store: `{ id, companyId, userId, photoUrl,
-    lat, lng, exifTimestamp, serverReceivedAt, score }`. Race
-    arbitration for `firstCapturedBy` is **`serverReceivedAt`**, never
-    a client-supplied timestamp.
+    lat, lng, exifTimestamp, serverReceivedAt, score, clientRequestId }`.
+    Race arbitration for `firstCapturedBy` is **`serverReceivedAt`**,
+    never a client-supplied timestamp. `clientRequestId` is an
+    idempotency key — a retried upload after a flaky network must not
+    create a second submission or spend a second credit.
   - `POST /v1/companies/:id/photos` — accepts a live-camera capture
     only (reuse whatever the identify path already uses to reject
     library picks; if it doesn't reject them today, this endpoint
@@ -155,11 +208,7 @@ anti-fraud floor is non-negotiable before any of this ships."*
     "First capture" moment (confetti-tier haptic via
     `apps/ios/src/util/haptics.ts`, not a new rarity tier — this is
     orthogonal to `DexRarity`).
-  - Public handle: depends on `HANDOFF.md` Item 3's handle work
-    (`finder-<8hex>`, renameable). If Item 3 has not shipped when this
-    item starts, add the minimal handle field yourself but use Item
-    3's exact schema/validation (`[a-z0-9-]{3,20}`) so the two don't
-    diverge.
+  - Handle: consume Item 2 above. Do not build a second one.
   - Credits: submitting a first-capture attempt spends the same
     metered identify quota surfaced today via `usePaywall` /
     `useEntitlements` (`apps/ios/src/billing/*`) — do not add a
@@ -169,6 +218,9 @@ anti-fraud floor is non-negotiable before any of this ships."*
 - Two users racing to capture the same never-captured company: the
   one whose upload the server receives first gets `firstCapturedBy`,
   regardless of on-device capture time or clock skew.
+- Retrying the same upload after a dropped connection (same
+  `clientRequestId`) never creates a second submission and never
+  double-charges quota.
 - A photo-library-sourced image is rejected outright by the endpoint,
   not just discouraged in copy.
 - A submission whose geotag doesn't match its claimed company/tile is
@@ -182,9 +234,9 @@ anti-fraud floor is non-negotiable before any of this ships."*
 **Tests.**
 - `apps/api/src/routes/photos.test.ts` (new) — race arbitration
   (two submissions, assert the earlier `serverReceivedAt` wins
-  regardless of request order in the test); geotag-mismatch
-  rejection; downvote lowers score and debits XP without touching
-  `firstCapturedBy`.
+  regardless of request order in the test); idempotent retry with the
+  same `clientRequestId`; geotag-mismatch rejection; downvote lowers
+  score and debits XP without touching `firstCapturedBy`.
 - `apps/ios/src/api/photos.test.ts` (new) — schema parse, happy and
   empty-gallery cases.
 
@@ -194,14 +246,18 @@ anti-fraud floor is non-negotiable before any of this ships."*
   quorum to mean something.
 - No new rarity tier. First capture is orthogonal to `DexRarity`, not
   a fifth tier of it.
+- No content-safety scanning (NSFW/irrelevant-image filtering) in
+  this pass. Flagged as a real gap for a follow-up item once the
+  gallery has real traffic — not blocking for v1, but do not represent
+  v1 as fully moderated.
 - No broker/order-related language anywhere on this surface — same
   refusal that governs the rest of the product.
 
 ---
 
-## Item 3 — Co-op tile uncover (the weekly raid)
+## Item 4 — Co-op tile uncover (the weekly raid)
 
-**Status.** Depends on Item 1 (seen/captured tiles) and Item 4b below
+**Status.** Depends on Item 1 (seen/captured tiles) and Item 5a below
 (repurposed Rivalries scheduler). Do not start before both exist.
 
 **Goal.** A map tile can be uncovered collectively: once N distinct
@@ -249,41 +305,14 @@ instead of new infrastructure."*
 
 ---
 
-## Item 4 — Consolidate / delete (do this alongside, not after)
+## Item 5 — Reuse dead infrastructure; keep every research tool
 
-Two cleanups the Bible's own principles already call for
-("Consistency beats detail... delete the adjective") that nobody has
-picked up. Neither depends on Items 1–3; ship whenever convenient, but
-**4b blocks Item 3**.
+Two moves. 5a is genuine cleanup (dead server plumbing, no user-facing
+loss). 5b replaces the earlier, withdrawn "delete a research surface"
+idea with the opposite: an explicit commitment to keep all of them,
+fixed with navigation instead of subtraction.
 
-### 4a — One AI-brief generator, not four
-
-**What exists today.** Four separate ways to generate a write-up on
-the same ticker: Prism's memo (`apps/ios/src/prism/MemoSection.tsx`),
-Situate's memo (`apps/ios/src/situate/MemoSection.tsx`), the detail
-sheet's "Full brief" (inline prompt at
-`apps/ios/app/detail/[id].tsx:768`), and the detail sheet's separate
-"Memo" via `generateMemo` (`apps/ios/app/detail/[id].tsx:1120-1135`,
-button at `:1153`).
-
-**Move.** Keep two registers, not four: Situate's memo (the fixed,
-posture-only structured writeup) and the detail sheet's "Full brief"
-(the on-demand deep dive from the research agent). Remove the
-`generateMemo` path and its button — it duplicates Situate's job
-through separate plumbing. Prism's own memo can stay only as long as
-Prism itself does; do not expand it.
-
-**Acceptance.** Only two ways to generate a ticker write-up remain
-reachable from the detail sheet. No dangling references to
-`generateMemo` (check `apps/ios/src/api/client.ts` for the export and
-remove it once the last caller is gone). Existing Situate/Full-brief
-tests still pass unchanged.
-
-**Non-goals.** Do not touch Prism's posture-grammar reframe — that's
-decided (`BRAND.md` § The refusal) and in progress; this item is only
-about the redundant memo path.
-
-### 4b — Repurpose Rivalries instead of building a new scheduler
+### 5a — Repurpose Rivalries instead of building a new scheduler
 
 **What exists today.** A complete weekly system — `apps/api/src/routes/rivalries.ts`,
 `apps/api/src/lib/scheduler.ts` (Saturday-noon-UTC close),
@@ -294,14 +323,14 @@ side.
 
 **Move.** Don't delete it and don't wire it up as originally scoped
 (solo weekly matchups). Repurpose its scheduler and notifier for
-Item 3's weekly co-op-tile close instead — it's the same
+Item 4's weekly co-op-tile close instead — it's the same
 Saturday-noon-UTC boundary this whole document already needs, already
 built, already tested server-side. Retarget `rivalryNotifier.ts` to
 fire on tile-uncover completion rather than matchup resolution, and
-retire the matchup-specific rows in `rivalries-store.ts` that Item 3
+retire the matchup-specific rows in `rivalries-store.ts` that Item 4
 doesn't use.
 
-**Acceptance.** Item 3 ships with no new scheduler code. The
+**Acceptance.** Item 4 ships with no new scheduler code. The
 Saturday-noon-UTC job that used to compute solo matchups now computes
 tile-uncover payouts. No orphaned matchup code paths remain reachable.
 
@@ -309,13 +338,66 @@ tile-uncover payouts. No orphaned matchup code paths remain reachable.
 alongside this. If solo rivalries turn out to be wanted later, that's
 a fresh scoped item, not a revival of this dead code.
 
+### 5b — Unify the research entry point; delete nothing
+
+**Withdrawn.** An earlier draft of this item proposed removing the
+detail sheet's `generateMemo` path as "redundant" with Situate's
+memo. That's the wrong move, and it's reversed here. Every existing
+research surface — Prism's posture and scenario-price engine,
+Situate's memo, the detail sheet's on-demand "Full brief," the
+detail sheet's `generateMemo`, comps, news, financial ratios, options
+chain, SEC filings — stays. This depth is a real part of the value
+proposition for an investor-grade user, not noise competing with the
+catch loop.
+
+**Goal instead.** The actual complaint underneath the old
+"consolidate" idea was navigation, not redundancy: four ways to
+generate a write-up on the same ticker, reachable from different,
+unlabeled places, can look like clutter even when every one of them
+does a genuinely different job. Fix that with information
+architecture, not deletion.
+
+**Where.**
+- `apps/ios/app/detail/[id].tsx` — add a single, clearly labeled
+  "Research" section that indexes every engine with one line each on
+  what it's for, instead of scattering buttons across the sheet:
+  - **Prism** — a quantitative posture and scenario-price read
+    (`Favorable` / `Balanced` / `Unfavorable`, evidence-backed — not
+    a buy/sell call).
+  - **Situate** — a qualitative posture memo: determinants,
+    falsifiers, what's already priced in.
+  - **Full brief** — an on-demand deep narrative from the research
+    agent, generated fresh.
+  - **Memo** (`generateMemo`) — the quick structured summary.
+  - Comps / News / Financial ratios / Options chain / SEC filings /
+    Evidence — the supporting data each of the above draws on.
+- No engine is removed, renamed to imply it's lesser, or hidden more
+  than one tap deep. The fix is that a user (or an investor being
+  shown the app) can immediately see there are several distinct
+  lenses on the same ticker, not four accidental duplicates.
+
+**Acceptance.**
+- All four write-up paths remain fully functional and reachable.
+- A user opening the detail sheet for the first time can tell, without
+  tapping anything, what each research surface is for.
+- No existing test for Prism, Situate, Full brief, or `generateMemo`
+  is deleted or weakened by this item.
+
+**Non-goals.**
+- Do not merge any two engines' output into one screen. They stay
+  distinct lenses, not a blended feed.
+- Do not use this item to quietly re-introduce the "cut down to two"
+  framing. If a future agent proposes deleting a research surface
+  again, that requires a new, explicit decision in `BRAND.md` — not a
+  reinterpretation of this item.
+
 ---
 
 ## Cross-cutting reminders
 
 All of `HANDOFF.md`'s reminders apply unchanged — canon language,
-the refusal, the evidence rule, two accents, motion tokens. Two more,
-specific to this workstream:
+the refusal, the evidence rule, two accents, motion tokens. Three
+more, specific to this workstream:
 
 - **Seen is not a Find.** Never let a seen entry carry confidence,
   evidence, or rarity — those are the language of a captured result.
@@ -327,30 +409,38 @@ specific to this workstream:
   *event* — who got there first. A common-tier company can still have
   an exciting, unclaimed first capture. Don't conflate the two badges
   visually or in the data model.
+- **Research depth is a pillar, not a liability.** Nothing in this
+  workstream should read as trimming Prism, Situate, comps, news,
+  financial ratios, options chain, or SEC filings. If a future item
+  looks like it's cutting one of these to reduce "clutter," that is
+  the wrong fix — the fix is navigation (5b's pattern), not removal.
 
 ## Order and dependencies
 
 - Item 1 (seen/captured) is closest to standalone — the only external
   dependency is the native widget target, which is a straightforward
   schema extension, not a blocker.
-- Item 4a (consolidate briefs) is fully standalone. Ship it anytime.
-- Item 4b (repurpose Rivalries) is standalone infrastructure work but
-  **blocks Item 3** — do it before or alongside Item 3, never after.
-- Item 2 (first capture + gallery) is the biggest lift and soft-depends
-  on `HANDOFF.md` Item 3 (public handles) for attribution copy. If
-  Item 3 is unshipped, add a minimal handle rather than block.
-- Item 3 (co-op tile) depends on Item 1 (tile seen/captured state) and
-  Item 4b (repurposed scheduler). Ship last.
+- Item 2 (handles) is standalone and should ship early — Item 3 and
+  `HANDOFF.md`'s own Item 3 (leaderboard) both need it.
+- Item 5a (repurpose Rivalries) is standalone infrastructure work but
+  **blocks Item 4** — do it before or alongside Item 4, never after.
+- Item 5b (research navigation) is fully standalone. Ship it anytime.
+- Item 3 (first capture + gallery) is the biggest lift and depends on
+  Item 2 (handles) for attribution copy.
+- Item 4 (co-op tile) depends on Item 1 (tile seen/captured state) and
+  Item 5a (repurposed scheduler). Ship last.
 
 ## Definition of done for this workstream
 
-1. Items 1–4 above are each merged to `main` behind their own PRs with
+1. Items 1–5 above are each merged to `main` behind their own PRs with
    auto-merge enabled.
 2. `bun test apps/ios/src` and `bun test apps/api/src` are green.
 3. A fresh install can: see a seen-but-uncaptured place on the map and
    the native widget, capture it, see it become the company's first
    capture (or not, if already claimed), vote on another Finder's
-   photo, and watch a shared tile flip from a co-op capture — all
-   without a single buy/sell/recommendation word anywhere in the flow.
+   photo, watch a shared tile flip from a co-op capture, and reach
+   every one of Prism/Situate/Full-brief/Memo from one clearly labeled
+   research entry point — all without a single buy/sell/recommendation
+   word anywhere in the flow.
 4. `BRAND.md`'s checklist returns "yes" on every question for each new
    surface this workstream ships.

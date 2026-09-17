@@ -144,8 +144,8 @@ move below protects that fact instead of quietly routing around it.
   above.** The Hierarchy leaderboard ranks *rate* (early across many
   catches, resets weekly). First capture ranks a *land-grab*: the
   first Finder to ever capture a given company, full stop, no reset.
-  Surfacing this needs a public handle — coordinate with the
-  leaderboard's handle work rather than shipping a second one.
+  Both need the same public handle, built once as its own item — not
+  duplicated between the leaderboard and the first-capture badge.
 - **Rank the gallery; don't vote it.** Each company gets a photo
   gallery (first capture pinned, then ranked by net score). Formal
   consensus voting (Wikipedia-style) needs more submissions per
@@ -168,6 +168,16 @@ move below protects that fact instead of quietly routing around it.
   window unlocks a shared reward. Build it on the existing tile unit
   and the existing Saturday-noon-UTC scheduler (see Handoff) instead
   of new infrastructure.
+- **Research depth is a pillar, not something to trim.** Prism,
+  Situate, comps, news, financial ratios, options chain, SEC filings
+  — all of it stays. An investor-grade Finder values exactly this
+  depth; a real conversation on the record made that concrete ("does
+  your app make recommendations... that would be useful for retail
+  investors" — the honest answer is yes, via Prism's posture grammar,
+  evidence-backed, never a bare call). Where several research
+  surfaces on the same ticker look like clutter, fix it with a clearly
+  labeled entry point that indexes what each one is for. Never fix it
+  by deleting one.
 
 See `HANDOFF_CAPTURE_ECONOMY.md` for the shippable breakdown. Every
 rule in this section binds that document the same way the rest of
