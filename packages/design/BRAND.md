@@ -50,17 +50,18 @@ There is no mascot. No influencer. No hype account.
   streak, badges, plus a per-user early-find bonus. What's missing is
   anything cross-user. The next move is a leaderboard built on top of
   what's already tracked, ranked on early finds specifically, not raw
-  count.
+  count. (This is a *rate* ranking — early across many catches, weekly
+  reset. It is a different axis from first capture below, which is a
+  *permanent, per-company* land-grab. Ship both; do not merge them.)
 - **Rituals.** Daily quests already ship. A full weekly system —
   closing Saturday noon UTC — exists on the server and is completely
   unwired to the app. The cheapest real move on this whole document is
   wiring up what's already built before designing anything new.
-- **Shaming (soft).** Confidence bands already exist (`High` /
-  `Medium` / `Low`) and are visible on the result pill. Today they
-  render with identical neutral styling, and a result card's color
-  comes from category, not confidence. The move: give a low-confidence
-  result a visibly less-certain look so sharing one unchecked reads as
-  careless instead of clever.
+- **Shaming (soft).** Done. A `low`-confidence identify switches the
+  result card's border to a dashed warn tone, tints the confidence
+  pill, and prints an explicit "treat as a lead, not a conclusion"
+  note. A shared low-confidence card now reads as tentative, not
+  solid.
 - **Exit.** For anyone signed in, exit cost already exists — accounts
   tied to a magic link, and finds, XP, level, and streak all live on
   the server and survive a reinstall. Guests are asked to sign in at
@@ -94,24 +95,24 @@ Canon (already user-facing):
 Proposals (not canon yet — don't ship as copy until earned):
 
 - *aisle alpha*, *tell*, *miss*, *the room*, *the tape*, *the
-  cartographer*.
+  cartographer*, *seen* (a place on the map, not yet a Find), *first
+  capture* (the permanent per-company land-grab — see below).
 
 ## Mechanics — evidence rule
 
 The loop matches the build: capture → identify → confidence → then
 comps, news, the AI brief → then save or share. The evidence rule is
-not fully true yet.
+now true everywhere it applies:
 
-- The **primary** result always carries an evidence card, even a
-  flagged warning when sources are empty. Correct.
-- A **secondary "also found"** result shows a ticker with no evidence
-  card at all. Not yet correct.
-- The **detail screen** buries evidence in a section collapsed at the
-  bottom. Not yet correct.
+- The **primary** result carries an evidence card, even a flagged
+  warning when sources are empty.
+- A **secondary "also found"** result carries a compact `Evidence · N`
+  chip (or "No citations" in warn tone).
+- The **detail screen**'s evidence section is `defaultOpen` — no extra
+  tap to see where a number came from.
 
-To make "never a ticker without evidence" true everywhere, evidence
-must travel with every result — primary and secondary — and stop
-being collapsed by default.
+"Never a ticker without evidence" holds. Any new surface that renders
+a ticker inherits this rule from day one — see the checklist.
 
 ## Chance — rarity as the moment-of-catch signal
 
@@ -126,6 +127,51 @@ already exists, at the moment of the catch, on the result card itself.
 `POST /v1/identify` now stamps `rarity` on each Investable; `GET /v1/finds`
 stamps it on each journal row. The camera result shows rare and legendary
 in place; common stays off the primary card and appears on universe rows.
+
+## The capture economy (open moves)
+
+The camera is the only spawn mechanic in Mapvest, and that is the
+whole moat. A map can place a coordinate; it cannot know that the
+store-brand soda in someone's cart traces to a public parent. Every
+move below protects that fact instead of quietly routing around it.
+
+- **Proximity reveals; it never catches.** Walking near a resolvable
+  place surfaces it on the map — free, no quota spent. A Find still
+  only happens through capture. Two states, one already canon: a
+  *seen* place (proposal, not shipped copy yet) is on the map but not
+  yet a Find; a *captured* place is a Find, exactly as today.
+- **First capture is a second, permanent axis — not the leaderboard
+  above.** The Hierarchy leaderboard ranks *rate* (early across many
+  catches, resets weekly). First capture ranks a *land-grab*: the
+  first Finder to ever capture a given company, full stop, no reset.
+  Surfacing this needs a public handle — coordinate with the
+  leaderboard's handle work rather than shipping a second one.
+- **Rank the gallery; don't vote it.** Each company gets a photo
+  gallery (first capture pinned, then ranked by net score). Formal
+  consensus voting (Wikipedia-style) needs more submissions per
+  company than the product has today to mean anything — revisit once
+  galleries are dense.
+- **The anti-fraud floor is non-negotiable before any of this ships.**
+  Capture stays live-camera-only — no photo-library upload feeds a
+  first-capture claim. A submission's geotag and EXIF must match the
+  claimed location. A tie is broken by server receipt time, never a
+  client clock. A downvote costs the submitter XP and buries the
+  photo in the gallery; it can never strip an already-granted
+  first-capture badge — that would turn downvotes into a way to steal
+  someone else's catch.
+- **Credits fund the race.** A first-capture attempt spends the same
+  metered identify quota as any capture. That gives the paid tier a
+  reason to spend, not hoard — this product's monetization angle
+  should live here, not in a separate upsell.
+- **The co-op moment is the raid.** A map tile can be uncovered
+  together — several distinct Finders capturing inside it within a
+  window unlocks a shared reward. Build it on the existing tile unit
+  and the existing Saturday-noon-UTC scheduler (see Handoff) instead
+  of new infrastructure.
+
+See `HANDOFF_CAPTURE_ECONOMY.md` for the shippable breakdown. Every
+rule in this section binds that document the same way the rest of
+this Bible binds `HANDOFF.md`.
 
 ## Aesthetic
 
