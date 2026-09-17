@@ -103,10 +103,6 @@ export function widgetNearbyCandidates(
       confidence: sources.length > 0 ? (investable?.confidence ?? "low") : "low",
       sources,
       distanceM: haversineMeters(origin, item.place.location),
-      // Carried through unchanged — an older `NearbyItem` payload with no
-      // `state` at all simply omits it here too (see widgetSnapshot's
-      // `WidgetNearbyCandidate.state` doc).
-      ...(item.state ? { state: item.state } : {}),
     };
   });
 }

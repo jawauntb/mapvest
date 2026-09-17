@@ -909,7 +909,7 @@ export function confirmApplePurchase(
 // -------- settings --------
 
 export type SettingsResponse = {
-  user: { id: string; email: string; scopes: string[]; handle?: string };
+  user: { id: string; email: string; scopes: string[] };
   robinhoodMcp:
     | { configured: true; fingerprint: string; last4: string; updatedAt: string }
     | { configured: false };

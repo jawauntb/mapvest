@@ -20,16 +20,3 @@ export function hapticSuccess() {
 export function hapticWarn() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 }
-
-/**
- * Distinct "confetti-tier" moment for a company's global first capture
- * (capture economy Item 3) — a heavier double-pulse, deliberately more than
- * `hapticSuccess`, and never used for the existing rarity chip (first
- * capture is orthogonal to `DexRarity`, not a fifth tier of it).
- */
-export function hapticFirstCapture() {
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  setTimeout(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-  }, 120);
-}

@@ -7,7 +7,6 @@ import { awardXp } from "../src/lib/progress-store.js";
 import {
   PIONEER_XP,
   TILE_PRECISION,
-  TILE_UNCOVER_THRESHOLD,
   completion,
   isPioneer,
   tileBounds,
@@ -159,14 +158,12 @@ describe("TerritoryResponse shape", () => {
           confidence: "high" as const,
         },
       ],
-      coop: { contributors: 2, threshold: TILE_UNCOVER_THRESHOLD, uncovered: false },
     };
     const parsed = TerritoryResponse.parse(payload);
     expect(parsed.tile).toBe(tile);
     expect(parsed.investablesTotal).toBe(3);
     expect(parsed.found).toBe(1);
     expect(parsed.pioneer).toBe(true);
-    expect(parsed.coop).toEqual({ contributors: 2, threshold: TILE_UNCOVER_THRESHOLD, uncovered: false });
   });
 
   test("an uncitable tile carries an empty sources array, not an invented one", () => {
@@ -176,7 +173,6 @@ describe("TerritoryResponse shape", () => {
       found: 0,
       pioneer: true,
       sources: [],
-      coop: { contributors: 0, threshold: TILE_UNCOVER_THRESHOLD, uncovered: false },
     });
     expect(parsed.sources).toEqual([]);
   });

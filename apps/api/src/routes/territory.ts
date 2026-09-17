@@ -28,9 +28,7 @@ import { Hono } from "hono";
 import { findsInTile, listDistinctEffectiveTickers } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { resolveNearbyItems } from "../lib/nearby-resolve.js";
-import { getTileProgress } from "../lib/tile-progress-store.js";
 import { TILE_RADIUS_M, completion, isPioneer, tileCenter, tileFor } from "../lib/territory.js";
-import { cycleWindow } from "../lib/weeklyCycle.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 /** How many places the tile lookup asks the cascade for. */
@@ -99,11 +97,9 @@ territory.get("/", async (c) => {
       sources.push(...investable.sources);
     }
 
-    const cycleStart = cycleWindow().cycleStart.toISOString();
-    const [journalTickers, tileFinds, coop] = await Promise.all([
+    const [journalTickers, tileFinds] = await Promise.all([
       listDistinctEffectiveTickers(user.id),
       findsInTile(user.id, tile),
-      getTileProgress(tile, cycleStart),
     ]);
 
     const { investablesTotal, found } = completion(investableTickers, journalTickers);
@@ -115,8 +111,6 @@ territory.get("/", async (c) => {
       pioneer,
       tile_finds: tileFinds.length,
       sources_count: Math.min(sources.length, MAX_SOURCES),
-      coop_contributors: coop.contributors,
-      coop_uncovered: coop.uncovered,
     });
 
     const resp: TerritoryResponse = {
@@ -125,14 +119,6 @@ territory.get("/", async (c) => {
       found,
       pioneer,
       sources: dedupeSources(sources),
-      // Co-op tile uncover (Universe Roadmap §4 Item 4 — "the weekly raid").
-      // Shared per-tile state, not per-user: visible to anyone viewing this
-      // tile, contributor or not.
-      coop: {
-        contributors: coop.contributors,
-        threshold: coop.threshold,
-        uncovered: coop.uncovered,
-      },
     };
     // Same cache posture as `/v1/nearby`: the places + brand join behind the
     // denominator moves on the order of hours, but `found`/`pioneer` are
