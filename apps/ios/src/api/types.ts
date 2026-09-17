@@ -593,6 +593,13 @@ export const TerritoryResponse = z.object({
   found: z.number(),
   pioneer: z.boolean(),
   sources: z.array(Source),
+  // Co-op tile uncover / "weekly raid" (Universe Roadmap §4 Item 4) — shared
+  // per-tile state, not per-user.
+  coop: z.object({
+    contributors: z.number(),
+    threshold: z.number(),
+    uncovered: z.boolean(),
+  }),
 });
 export type TerritoryResponse = z.infer<typeof TerritoryResponse>;
 

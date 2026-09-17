@@ -16,6 +16,8 @@ import { recordFind } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onIdentifyFinished } from "../lib/notifiers/imageNotifier.js";
 import { sanitizeOcrString } from "../lib/sanitize.js";
+import { recordTileCapture } from "../lib/tile-progress-store.js";
+import { tileFor } from "../lib/territory.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
@@ -277,6 +279,14 @@ identify.post("/", async (c) => {
           lng: location?.lng,
           foundPrice: top.quote?.price,
         }).catch(() => {});
+        // Co-op tile uncover (Universe Roadmap §4 Item 4 — "the weekly
+        // raid"). Same capture-recording moment as the journal entry above,
+        // not a second path: any located catch counts this Finder toward
+        // this tile's distinct-contributor count for the current weekly
+        // cycle, regardless of which company it was.
+        if (location) {
+          recordTileCapture(user.id, tileFor(location.lat, location.lng)).catch(() => {});
+        }
       }
     }
     const resp: IdentifyResponse = { identification, investables };
