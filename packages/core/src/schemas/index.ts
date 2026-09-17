@@ -1519,6 +1519,13 @@ export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
  * The counts come from a live places + brand join, which is a finance-shaped
  * answer, so it carries `sources: Source[]` (AGENTS.md §6) — an uncitable
  * lookup returns fewer sources, never an invented one.
+ *
+ * `coop` is the co-op tile uncover / "weekly raid" state (Universe Roadmap §4
+ * Item 4): `contributors` distinct Finders have captured something in this
+ * tile so far this weekly cycle, `threshold` is how many it takes to flip,
+ * and `uncovered` is true once it has. Shared, per-tile state — never
+ * per-user — so it reads the same for anyone viewing the tile, contributor
+ * or not.
  */
 export const TerritoryResponse = z.object({
   tile: z.string(), // geohash-6
@@ -1526,6 +1533,11 @@ export const TerritoryResponse = z.object({
   found: z.number(),
   pioneer: z.boolean(),
   sources: z.array(Source),
+  coop: z.object({
+    contributors: z.number(),
+    threshold: z.number(),
+    uncovered: z.boolean(),
+  }),
 });
 export type TerritoryResponse = z.infer<typeof TerritoryResponse>;
 

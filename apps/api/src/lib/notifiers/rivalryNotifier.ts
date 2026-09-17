@@ -1,12 +1,29 @@
 /**
- * Rivalry weekly-close notifier (Universe Roadmap §3 C6).
+ * Rivalry weekly-close notifier (Universe Roadmap §3 C6) — RETARGETED.
+ *
+ * `packages/design/HANDOFF_CAPTURE_ECONOMY.md` Item 5a: this file's live
+ * production trigger has moved from the Saturday-12:00-UTC matchup close
+ * below to `notifyTileUncovered` at the bottom of the file — the co-op
+ * tile-uncover completion push (Item 4, "the weekly raid"), fired
+ * event-driven by `tile-progress-store.ts` the instant a tile flips, never
+ * on a schedule. `scheduler.ts` no longer wires `runRivalryWeeklyClose` into
+ * its Saturday tick; matchup resolution is retired as a running mechanic,
+ * per the Bible's explicit non-goal against reviving solo-matchup rivalries.
+ *
+ * The functions below this note are the pre-existing solo-matchup scoring
+ * this file used to run every week. They are left in place — untouched,
+ * still covered by `apps/api/tests/rivalries.test.ts` — because
+ * `rivalries-store.ts` and the still-mounted `/v1/rivalries` route (zero
+ * client surface; see PR #93's Known Gaps) are out of this item's scope to
+ * retire. That is a deliberate, called-out known gap for a future cleanup
+ * item, not an oversight.
  *
  * A rivalry is a solo weekly matchup between one of the user's finds and a
- * comparable (NVDA vs AMD). Once a week this runner closes every open round:
- * it reads five trading days of provider closes for both tickers, scores the
- * round on percentage change, updates the running record, grants XP when a
- * pre-registered pick was right, and sends exactly one push per rivalry per
- * week.
+ * comparable (NVDA vs AMD). This runner used to close every open round each
+ * week: it reads five trading days of provider closes for both tickers,
+ * scores the round on percentage change, updates the running record, grants
+ * XP when a pre-registered pick was right, and sends exactly one push per
+ * rivalry per week.
  *
  * Framing (roadmap §4, non-negotiable): this is a collection and comprehension
  * mechanic. There is no opponent user, no position, no prediction market. No
@@ -51,6 +68,7 @@ import {
   nextMondayUtc,
   recordResult,
 } from "../rivalries-store.js";
+import { tileCenter } from "../territory.js";
 
 /** XP for a correct pre-registered pick. */
 export const RIVALRY_PICK_XP = 30;
@@ -306,4 +324,79 @@ export async function runRivalryWeeklyClose(now: Date = new Date()): Promise<{
   }
 
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Co-op tile uncover — the weekly raid (Universe Roadmap §4 Item 4). This
+// file's RETARGETED trigger — see the file-level docstring. Event-driven from
+// `tile-progress-store.ts` the instant a tile flips; never scheduled.
+// ---------------------------------------------------------------------------
+
+/** Durable dedupe slot for one tile's co-op completion push. */
+export function tileUncoverDedupeSlot(tile: string): string {
+  return `tile_uncover:${tile}`;
+}
+
+/** Push title: the moment itself, not a specific company. Pure. */
+export function tileUncoverPushTitle(): string {
+  return "Tile uncovered";
+}
+
+/**
+ * Push body. Collection/raid framing only — reports what the group did and
+ * this recipient's own share, never an action. Pure so the copy is
+ * assertable in tests, same posture as `rivalryPushBody`.
+ */
+export function tileUncoverPushBody(params: { contributorsCount: number; xp: number }): string {
+  const { contributorsCount, xp } = params;
+  return `${contributorsCount} Finders captured together this week and uncovered the tile — you earned +${xp} XP.`;
+}
+
+/**
+ * Fire the co-op tile-uncover completion push: one push per contributor,
+ * each seeing their own share of the split reward. Called by
+ * `tile-progress-store.ts`'s `settleUncover` exactly once per (tile, cycle),
+ * right after the XP split is awarded — never from a scheduler tick.
+ *
+ * Per-contributor delivery is isolated (mirrors `runRivalryWeeklyClose`'s
+ * per-user try/catch): one contributor's push failure, missing tokens, or
+ * product mute must never block another contributor's delivery.
+ */
+export async function notifyTileUncovered(params: {
+  tile: string;
+  cycleStart: string;
+  rewards: ReadonlyArray<{ userId: string; xp: number }>;
+}): Promise<{ pushesSent: number }> {
+  const { tile, cycleStart, rewards } = params;
+  const contributorsCount = rewards.length;
+  const center = tileCenter(tile);
+  let pushesSent = 0;
+  // `PushNotificationTarget`'s "map" variant requires an identity (placeId,
+  // ticker, or lat/lng); a tile-uncover push has neither placeId nor ticker,
+  // so an undecodable tile (defensive — `tileFor` always produces a
+  // decodable geohash) has no valid target to send at all.
+  if (!center) return { pushesSent };
+
+  for (const { userId, xp } of rewards) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const tokens = await listTokensForUser(userId);
+      const deliveryTokens = tokens.filter(pushNotificationsEnabled);
+      if (deliveryTokens.length === 0) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const result = await deliverPush({
+        tokens: deliveryTokens,
+        dedupe: [{ slot: tileUncoverDedupeSlot(tile), key: cycleStart, ttlMs: DEDUPE_TTL_MS }],
+        title: tileUncoverPushTitle(),
+        body: tileUncoverPushBody({ contributorsCount, xp }),
+        data: { kind: "tile_uncover", tile, cycleStart, xp },
+        target: { type: "map", lat: center.lat, lng: center.lng, reason: "Your co-op tile uncovered" },
+      });
+      if (result.successes > 0) pushesSent += 1;
+    } catch {
+      // Per-contributor isolation — one failure must not sink the rest.
+    }
+  }
+
+  return { pushesSent };
 }

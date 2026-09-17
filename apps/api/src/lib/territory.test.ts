@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Find } from "@mapvest/core";
-import { candidateState, isPioneer, tileFor } from "./territory.js";
+import { TILE_UNCOVER_THRESHOLD, candidateState, isPioneer, splitTileReward, tileFor } from "./territory.js";
 
 /** A block in lower Manhattan — arbitrary, just needs to be a stable tile. */
 const LAT = 40.7128;
@@ -65,5 +65,52 @@ describe("candidateState", () => {
       "captured",
     );
     expect(isPioneer(TILE, priorFinds)).toBe(false);
+  });
+});
+
+describe("splitTileReward (co-op tile uncover — the weekly raid)", () => {
+  test("an evenly divisible pool splits equally", () => {
+    const split = splitTileReward(100, ["a", "b", "c", "d", "e"]);
+    expect([...split.values()]).toEqual([20, 20, 20, 20, 20]);
+  });
+
+  test("a pool that does not divide evenly pays its remainder to the earliest contributors, losing nothing", () => {
+    // 47 / 5 = 9 base, remainder 2 — "a" and "b" (earliest) get 10, the rest get 9.
+    const contributors = ["a", "b", "c", "d", "e"];
+    const split = splitTileReward(47, contributors);
+    expect(split.get("a")).toBe(10);
+    expect(split.get("b")).toBe(10);
+    expect(split.get("c")).toBe(9);
+    expect(split.get("d")).toBe(9);
+    expect(split.get("e")).toBe(9);
+    const total = [...split.values()].reduce((sum, xp) => sum + xp, 0);
+    expect(total).toBe(47); // exact — no XP lost to rounding
+  });
+
+  test("order matters only for who gets the extra point, never for the total", () => {
+    const forward = splitTileReward(11, ["a", "b", "c"]);
+    const backward = splitTileReward(11, ["c", "b", "a"]);
+    // base=3, remainder=2: whoever is earliest gets the +1.
+    expect(forward.get("a")).toBe(4);
+    expect(forward.get("b")).toBe(4);
+    expect(forward.get("c")).toBe(3);
+    expect(backward.get("c")).toBe(4);
+    expect(backward.get("b")).toBe(4);
+    expect(backward.get("a")).toBe(3);
+    const total = (split: Map<string, number>) => [...split.values()].reduce((a, b) => a + b, 0);
+    expect(total(forward)).toBe(11);
+    expect(total(backward)).toBe(11);
+  });
+
+  test("a single contributor takes the whole pool", () => {
+    expect(splitTileReward(7, ["solo"]).get("solo")).toBe(7);
+  });
+
+  test("no contributors splits nothing", () => {
+    expect(splitTileReward(100, []).size).toBe(0);
+  });
+
+  test("the threshold is exactly 5 distinct Finders", () => {
+    expect(TILE_UNCOVER_THRESHOLD).toBe(5);
   });
 });
