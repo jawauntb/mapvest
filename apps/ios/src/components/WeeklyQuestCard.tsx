@@ -1,20 +1,24 @@
 import { fetchWeeklyQuests } from "@/api/quests";
 import { colors, fonts, radii, type } from "@/theme/tokens";
+import { hapticSelect } from "@/util/haptics";
 import { formatCloseCountdown, msUntilClose } from "@/util/weeklyCycle";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * Weekly quest card for the home screen. Shows quests for the current 7-day
  * cycle (Sunday–Saturday, closes Saturday 12:00 UTC), with progress per quest,
- * a countdown to close, and a reserved spot for the leaderboard chip.
+ * a countdown to close, and a "This week" chip that opens the weekly
+ * leaderboard (`/leaderboard`, packages/design/HANDOFF.md Item 3).
  *
  * Mounted on home.tsx between DailyBriefCard and TopMoversCard; gated on
  * session?.token so guests see no weekly surface.
  */
 export function WeeklyQuestCard({ token }: { token: string }) {
+  const router = useRouter();
   const [countdown, setCountdown] = useState("Closes in — —");
 
   const weeklyQ = useQuery({
@@ -58,8 +62,18 @@ export function WeeklyQuestCard({ token }: { token: string }) {
           <Text style={styles.cycleLabel}>{cycleLabel}</Text>
           <Text style={styles.countdown}>{countdown}</Text>
         </View>
-        {/* Reserved for leaderboard "This week" chip — do not populate here */}
-        <View style={styles.chipReserved} />
+        <Pressable
+          onPress={() => {
+            hapticSelect();
+            router.push("/leaderboard");
+          }}
+          style={styles.chip}
+          accessibilityRole="button"
+          accessibilityLabel="Open this week's leaderboard"
+        >
+          <Ionicons name="trophy-outline" size={14} color={colors.accent} />
+          <Text style={styles.chipText}>This week</Text>
+        </Pressable>
       </View>
 
       {/* Quest rows */}
@@ -135,13 +149,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: "500",
   },
-  chipReserved: {
-    width: 88,
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     height: 28,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderStyle: "dashed",
+    borderColor: colors.accentMuted,
+    paddingHorizontal: 12,
+  },
+  chipText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
   },
   questsContainer: {
     gap: 0,
