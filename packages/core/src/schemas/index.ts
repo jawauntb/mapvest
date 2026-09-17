@@ -222,6 +222,82 @@ export const RecordFindsRequest = z.object({
 });
 export type RecordFindsRequest = z.infer<typeof RecordFindsRequest>;
 
+// -------- photo gallery + global first capture (capture economy Item 3) --------
+
+/**
+ * Attribution for the permanent, company-scoped "first ever capture" badge.
+ * `photoId` points at the winning `PhotoSubmission`; `at` is that photo's
+ * `serverReceivedAt` — the race-arbitration key, never a client timestamp.
+ * Once set this is immutable from every path except the capture race itself
+ * (a downvote, in particular, can never touch it).
+ */
+export const FirstCapturedBy = z.object({
+  userId: z.string(),
+  handle: z.string().optional(),
+  at: z.string(), // ISO — serverReceivedAt of the winning photo
+  photoId: z.string(),
+});
+export type FirstCapturedBy = z.infer<typeof FirstCapturedBy>;
+
+/**
+ * One live-camera photo submitted to a company's gallery. `serverReceivedAt`
+ * is stamped by the server at receipt — it is the sole race-arbitration key
+ * for `firstCapturedBy`. `isFirstCapture` is computed on read (true for
+ * exactly the one submission `firstCapturedBy.photoId` names).
+ */
+export const PhotoSubmission = z.object({
+  id: z.string(),
+  companyId: z.string(),
+  userId: z.string(),
+  handle: z.string().optional(),
+  photoUrl: z.string(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  exifTimestamp: z.string().optional(),
+  serverReceivedAt: z.string(), // ISO
+  score: z.number(),
+  isFirstCapture: z.boolean(),
+  createdAt: z.string(), // ISO
+});
+export type PhotoSubmission = z.infer<typeof PhotoSubmission>;
+
+/** POST /v1/companies/:id/photos response. */
+export const PhotoCaptureResponse = z.object({
+  photo: PhotoSubmission,
+  isFirstCapture: z.boolean(),
+  firstCapturedBy: FirstCapturedBy.nullable(),
+  captureCount: z.number(),
+});
+export type PhotoCaptureResponse = z.infer<typeof PhotoCaptureResponse>;
+
+/**
+ * GET /v1/companies/:id/photos response. `photos` is pre-sorted:
+ * isFirstCapture first, then score DESC, then createdAt ASC as tiebreak —
+ * the whole ranking system for v1 (no canonical-image voting yet).
+ */
+export const PhotoGalleryResponse = z.object({
+  companyId: z.string(),
+  firstCapturedBy: FirstCapturedBy.nullable(),
+  captureCount: z.number(),
+  photos: z.array(PhotoSubmission),
+});
+export type PhotoGalleryResponse = z.infer<typeof PhotoGalleryResponse>;
+
+export const PhotoVoteDirection = z.enum(["up", "down"]);
+export type PhotoVoteDirection = z.infer<typeof PhotoVoteDirection>;
+
+/** POST /v1/photos/:id/vote request. */
+export const PhotoVoteRequest = z.object({
+  direction: PhotoVoteDirection,
+});
+export type PhotoVoteRequest = z.infer<typeof PhotoVoteRequest>;
+
+/** POST /v1/photos/:id/vote response. */
+export const PhotoVoteResponse = z.object({
+  photo: PhotoSubmission,
+});
+export type PhotoVoteResponse = z.infer<typeof PhotoVoteResponse>;
+
 export const NearbyRequest = z.object({
   lat: z.number(),
   lng: z.number(),
@@ -229,6 +305,17 @@ export const NearbyRequest = z.object({
   limit: z.number().default(25),
 });
 export type NearbyRequest = z.infer<typeof NearbyRequest>;
+
+/**
+ * "seen" — resolvable, and the caller has walked near it, but never
+ * photographed it: on the map/widget, no quota spent, no Find. "captured" —
+ * the caller already has a matching Find in this tile; a normal catch,
+ * exactly as today. Proximity reveals; it never catches (BRAND.md §The
+ * capture economy). Older payloads omit this field entirely — treat absence
+ * the same as "seen".
+ */
+export const NearbyItemState = z.enum(["seen", "captured"]);
+export type NearbyItemState = z.infer<typeof NearbyItemState>;
 
 export const NearbyItem = z.object({
   place: z.object({
@@ -238,6 +325,7 @@ export const NearbyItem = z.object({
     types: z.array(z.string()).default([]),
   }),
   investable: Investable.optional(),
+  state: NearbyItemState.optional(),
 });
 export type NearbyItem = z.infer<typeof NearbyItem>;
 
@@ -743,6 +831,7 @@ export const PushNotificationTarget = z
     z.object({ type: z.literal("camera") }),
     z.object({ type: z.literal("universe") }),
     z.object({ type: z.literal("settings") }),
+    z.object({ type: z.literal("quests"), section: z.enum(["weekly-recap"]).optional() }),
   ])
   .superRefine((target, ctx) => {
     if (target.type !== "map") return;
@@ -1101,6 +1190,14 @@ export const User = z.object({
   email: z.string().email(),
   createdAt: z.string(),
   scopes: z.array(z.enum(["user", "admin"])).default(["user"]),
+  /**
+   * Public handle ("finder-<8hex>", renameable to [a-z0-9-]{3,20}). The one
+   * public identity string safe to show next to a leaderboard row or a
+   * first-capture badge — never an email or raw user id. Optional here so
+   * older fixtures/tests that predate it keep typechecking; the server
+   * always populates it.
+   */
+  handle: z.string().optional(),
 });
 export type User = z.infer<typeof User>;
 
@@ -1361,6 +1458,54 @@ export const QuestsResponse = z.object({
 });
 export type QuestsResponse = z.infer<typeof QuestsResponse>;
 
+/**
+ * `GET /v1/quests/weekly` payload. `cycleStart` and `cycleEnd` are ISO strings
+ * bounding the current 7-day weekly cycle (Saturday 12:00 UTC ← Sunday). Quests
+ * within the cycle are derived on read, like daily quests, and completion is
+ * verified server-side from the find stream — the client never posts a completion.
+ */
+export const WeeklyQuestsResponse = z.object({
+  cycleStart: z.string().datetime(), // ISO 8601
+  cycleEnd: z.string().datetime(), // ISO 8601
+  quests: z.array(Quest),
+});
+export type WeeklyQuestsResponse = z.infer<typeof WeeklyQuestsResponse>;
+
+// -------- leaderboard (packages/design/HANDOFF.md Item 3) --------
+
+/**
+ * One row of `GET /v1/leaderboard/weekly`. `handle` is the public identity
+ * string (never an email or raw user id — see `lib/handles.ts`).
+ * `earlyFindScore` is the Pioneer-bonus XP (the per-user "catch a brand
+ * before others do" bonus, `PIONEER_XP` granted per tile) accumulated inside
+ * the current weekly cycle — the leaderboard's ranking axis, never raw find
+ * count. `rank` is 1-based. `isYou` marks the authenticated caller's own row,
+ * which the route always includes even when it falls outside the requested
+ * `limit`.
+ */
+export const LeaderboardRow = z.object({
+  handle: z.string(),
+  earlyFindScore: z.number(),
+  rank: z.number(),
+  isYou: z.boolean(),
+});
+export type LeaderboardRow = z.infer<typeof LeaderboardRow>;
+
+/**
+ * `GET /v1/leaderboard/weekly?limit=50` payload. `cycleStart`/`cycleEnd`
+ * bound the same 7-day Saturday-12:00-UTC cycle as `/v1/quests/weekly`
+ * (`lib/weeklyCycle.ts`). `rows` is the top `limit` finders by early-find
+ * score, plus the caller's own row appended when they are not already in it
+ * — so `rows` always has at least one entry with `isYou: true` for an
+ * authenticated call.
+ */
+export const LeaderboardResponse = z.object({
+  cycleStart: z.string().datetime(), // ISO 8601
+  cycleEnd: z.string().datetime(), // ISO 8601
+  rows: z.array(LeaderboardRow),
+});
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
+
 // -------- territory (Universe Roadmap A6) --------
 
 /**
@@ -1374,6 +1519,13 @@ export type QuestsResponse = z.infer<typeof QuestsResponse>;
  * The counts come from a live places + brand join, which is a finance-shaped
  * answer, so it carries `sources: Source[]` (AGENTS.md §6) — an uncitable
  * lookup returns fewer sources, never an invented one.
+ *
+ * `coop` is the co-op tile uncover / "weekly raid" state (Universe Roadmap §4
+ * Item 4): `contributors` distinct Finders have captured something in this
+ * tile so far this weekly cycle, `threshold` is how many it takes to flip,
+ * and `uncovered` is true once it has. Shared, per-tile state — never
+ * per-user — so it reads the same for anyone viewing the tile, contributor
+ * or not.
  */
 export const TerritoryResponse = z.object({
   tile: z.string(), // geohash-6
@@ -1381,6 +1533,11 @@ export const TerritoryResponse = z.object({
   found: z.number(),
   pioneer: z.boolean(),
   sources: z.array(Source),
+  coop: z.object({
+    contributors: z.number(),
+    threshold: z.number(),
+    uncovered: z.boolean(),
+  }),
 });
 export type TerritoryResponse = z.infer<typeof TerritoryResponse>;
 

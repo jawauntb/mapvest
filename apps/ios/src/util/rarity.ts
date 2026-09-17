@@ -41,6 +41,7 @@ export function resolvedFindRarity(find: {
   rarity?: string;
   isPublic?: boolean;
   comparable?: string;
+  ticker?: string;
 }): SurfacedRarity | null {
   const fromServer = asRarity(find.rarity);
   if (fromServer) return fromServer;

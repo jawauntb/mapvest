@@ -19,15 +19,24 @@
  *   - Every 5min: watchlist mover scan (±5% intraday).
  *   - Every 15min (offset to :07): find-evolution scan — finds up +10/25/50/
  *     100% since their `found_price`, one push per find per tier ever.
- *   - Saturday 12:00 **UTC**: `runRivalryWeeklyClose()` — scores each open
- *     weekly matchup off the week's five settled sessions.
+ *
+ * RETARGETED (`packages/design/HANDOFF_CAPTURE_ECONOMY.md` Item 5a): this
+ * scheduler used to run a Saturday-12:00-UTC `runRivalryWeeklyClose()` tick
+ * scoring solo weekly matchups. That schedule is retired — the co-op tile
+ * uncover (Universe Roadmap §4 Item 4, "the weekly raid") this cadence was
+ * repurposed for is event-driven instead: it fires the instant a tile's
+ * distinct-Finder count crosses `TILE_UNCOVER_THRESHOLD`
+ * (`tile-progress-store.ts`, hooked into `routes/identify.ts`'s existing
+ * `recordFind` call), never on a schedule tick. `weeklyCycle.ts`'s shared
+ * Saturday-12:00-UTC boundary still bounds each cycle's contributor window
+ * (the same boundary weekly quests and the leaderboard use) — nothing here
+ * needs to recompute or re-anchor it, so no new schedule was added in its
+ * place.
  *
  * All schedules fire on wall-clock alignment (not "every N minutes from
  * start"): a check on each 1-minute tick reads `new Date()` and fires the
  * per-schedule work when the current hour/minute matches. This keeps the
- * behavior stable across process restarts. Every schedule reads server-local
- * time except the rivalry close, which is UTC-anchored to match its
- * `mondayUtc(...)` week key.
+ * behavior stable across process restarts.
  */
 import { generateLocalBrief } from "./local-brief-generator.js";
 import { safeExecuteWithSpan } from "./logfire.js";
@@ -36,7 +45,6 @@ import { runFindEvolutionScan } from "./notifiers/findEvolutionNotifier.js";
 import { onLocalBriefGenerated } from "./notifiers/localBriefNotifier.js";
 import { runWatchlistMoverScan } from "./notifiers/moverNotifier.js";
 import { runPriceAlertScan } from "./notifiers/priceAlertsNotifier.js";
-import { runRivalryWeeklyClose } from "./notifiers/rivalryNotifier.js";
 import { onUserMovedFar } from "./notifiers/uncaughtNearbyNotifier.js";
 import { type PushToken, listTokensForEvent, updatePrefs } from "./push-tokens-store.js";
 import { generateWatchlistBrief } from "./watchlist-brief.js";
@@ -270,19 +278,6 @@ async function runDailyBriefTick(): Promise<void> {
   });
 }
 
-async function runRivalryCloseTick(): Promise<void> {
-  return safeExecuteWithSpan("scheduler.rivalry_close", async (span) => {
-    const result = await runRivalryWeeklyClose();
-    span.setAttributes({
-      rivalries_scanned: result.rivalriesScanned,
-      rounds_closed: result.roundsClosed,
-      pushes_sent: result.pushesSent,
-      xp_grants: result.xpGrants,
-      skipped_no_data: result.skippedNoData,
-    });
-  });
-}
-
 async function runFindEvolutionTick(): Promise<void> {
   return safeExecuteWithSpan("scheduler.find_evolution", async (span) => {
     const result = await runFindEvolutionScan();
@@ -340,15 +335,9 @@ export function startPushScheduler(): void {
     if (hour === 7 && minute === 0) {
       fireOncePerHour("daily_brief", now, runDailyBriefTick);
     }
-    // Saturday 12:00 UTC: rivalry weekly close. Day and hour are read in UTC
-    // (not server-local like the schedules above) because the round's week
-    // key is `mondayUtc(...)` — anchoring the fire to the same clock keeps
-    // one close per rivalry per calendar week wherever the API is deployed.
-    // Noon Saturday UTC is comfortably after Friday's US close, so all five
-    // sessions of the round have settled daily bars.
-    if (now.getUTCDay() === 6 && now.getUTCHours() === 12 && now.getUTCMinutes() === 0) {
-      fireOncePerMinute("rivalry_close", now, runRivalryCloseTick);
-    }
+    // No Saturday-12:00-UTC tick here — see the file-level "RETARGETED" note.
+    // The co-op tile uncover it was repurposed for fires event-driven from
+    // `tile-progress-store.ts`, not from this loop.
   };
 
   timer = setInterval(tick, TICK_MS);
