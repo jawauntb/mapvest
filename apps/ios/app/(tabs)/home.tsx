@@ -15,6 +15,7 @@ import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
 import { BacktestCard } from "@/components/BacktestCard";
 import { DailyBriefCard } from "@/components/DailyBriefCard";
+import { WeeklyQuestCard } from "@/components/WeeklyQuestCard";
 import { EmptyState } from "@/components/EmptyState";
 import { LocalEconomyBriefCard } from "@/components/LocalEconomyBriefCard";
 import { ScalePressable } from "@/components/ScalePressable";
@@ -637,6 +638,7 @@ export default function HomeScreen() {
                       listId={selectedListId ?? undefined}
                     />
                   </View>
+                  <WeeklyQuestCard token={session.token} />
                   <TopMoversCard
                     items={rawItems}
                     quotes={quotes}
