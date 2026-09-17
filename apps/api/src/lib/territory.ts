@@ -163,44 +163,6 @@ export function candidateState(
 }
 
 /**
- * Distinct Finders required inside a tile, in one weekly cycle, to flip it —
- * the co-op tile uncover / "weekly raid" (Universe Roadmap §4 Item 4,
- * `packages/design/HANDOFF_CAPTURE_ECONOMY.md` Item 4). Tunable; the counting
- * and split logic below never assume this specific value.
- */
-export const TILE_UNCOVER_THRESHOLD = 5;
-
-/** Shared XP pool split among a tile's contributors the moment it uncovers. */
-export const TILE_UNCOVER_XP_POOL = 100;
-
-/**
- * Split `pool` whole XP among `contributorIds` — ordered earliest-qualifying-
- * capture-first — with zero rounding loss: every contributor gets
- * `floor(pool / n)`, and the earliest `pool mod n` of them get one extra XP
- * apiece, so the amounts sum to exactly `pool` for any `pool`/`n` combination.
- * Pure: same inputs, same split, every time.
- *
- * `contributorIds` must already be de-duplicated and ordered by the caller
- * (`tile-progress-store.ts` orders by earliest recorded capture time, tied by
- * userId for determinism) — this function only decides the amounts.
- */
-export function splitTileReward(
-  pool: number,
-  contributorIds: readonly string[],
-): Map<string, number> {
-  const out = new Map<string, number>();
-  const n = contributorIds.length;
-  if (n <= 0) return out;
-  const wholePool = Math.max(0, Math.trunc(pool));
-  const base = Math.floor(wholePool / n);
-  const remainder = wholePool % n;
-  contributorIds.forEach((id, index) => {
-    out.set(id, base + (index < remainder ? 1 : 0));
-  });
-  return out;
-}
-
-/**
  * Neighborhood completion: "6 of 11 investable brands found in this tile".
  *
  * `investableTickers` are the distinct public tickers the nearby cascade

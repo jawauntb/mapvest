@@ -10,7 +10,6 @@ import {
 import type { NearbyItem } from "@/api/types";
 import { useSession } from "@/auth/session";
 import { ChatAboutButton } from "@/components/ChatAboutButton";
-import { CoopTileBadge } from "@/components/CoopTileBadge";
 import { findsQueryKey } from "@/finds/queryKeys";
 import { LocationContextNotice } from "@/location/LocationContextNotice";
 import {
@@ -351,17 +350,6 @@ export default function MapScreen() {
       setNotificationNotice({
         kind: "missing",
         message: `Centered near ${label ?? ticker ?? "the company"}, but nearby results could not refresh.`,
-      });
-      return;
-    }
-    // A push with no company identity at all — e.g. the co-op tile-uncover
-    // completion push, which targets a map location, not a place/ticker —
-    // has nothing to match against `items`. Its `reason` already says what
-    // happened, so just surface that instead of the generic "not found" copy.
-    if (!placeId && !ticker) {
-      setNotificationNotice({
-        kind: "matched",
-        message: reason ?? "Centered on your notification.",
       });
       return;
     }
@@ -741,9 +729,6 @@ export default function MapScreen() {
           busy={isLocating}
           onAction={handleLocationAction}
         />
-        {session?.token ? (
-          <CoopTileBadge lat={region.latitude} lng={region.longitude} token={session.token} />
-        ) : null}
         {nearbyQuery.isFetching || quotesQuery.isFetching ? (
           <BlurView intensity={40} tint="dark" style={styles.loadingPill}>
             <ActivityIndicator color={colors.fg} size="small" />
