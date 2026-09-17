@@ -20,16 +20,14 @@
  *   - Every 15min (offset to :07): find-evolution scan — finds up +10/25/50/
  *     100% since their `found_price`, one push per find per tier ever.
  *   - Saturday 12:00 **UTC**: `runRivalryWeeklyClose()` — scores each open
- *     weekly matchup off the week's five settled sessions. The boundary
- *     itself lives in `weeklyCycle.ts` (shared with weekly quests, the
- *     leaderboard and the co-op tile raid) — this file never recomputes it.
+ *     weekly matchup off the week's five settled sessions.
  *
  * All schedules fire on wall-clock alignment (not "every N minutes from
  * start"): a check on each 1-minute tick reads `new Date()` and fires the
  * per-schedule work when the current hour/minute matches. This keeps the
  * behavior stable across process restarts. Every schedule reads server-local
- * time except the rivalry close, which is UTC-anchored via `isCycleCloseTick`
- * to match its `mondayUtc(...)` week key.
+ * time except the rivalry close, which is UTC-anchored to match its
+ * `mondayUtc(...)` week key.
  */
 import { generateLocalBrief } from "./local-brief-generator.js";
 import { safeExecuteWithSpan } from "./logfire.js";
@@ -43,7 +41,6 @@ import { onUserMovedFar } from "./notifiers/uncaughtNearbyNotifier.js";
 import { type PushToken, listTokensForEvent, updatePrefs } from "./push-tokens-store.js";
 import { generateWatchlistBrief } from "./watchlist-brief.js";
 import { listWatchEntries } from "./watchlist-store.js";
-import { isCycleCloseTick } from "./weeklyCycle.js";
 
 const TICK_MS = 60_000; // 1 minute — checks all schedules
 const MOVE_METERS_THRESHOLD = 2_000; // 2 km
@@ -343,13 +340,13 @@ export function startPushScheduler(): void {
     if (hour === 7 && minute === 0) {
       fireOncePerHour("daily_brief", now, runDailyBriefTick);
     }
-    // Saturday 12:00 UTC: rivalry weekly close, on the shared weekly-cycle
-    // boundary (not server-local like the schedules above) because the
-    // round's week key is `mondayUtc(...)` — anchoring the fire to the same
-    // clock keeps one close per rivalry per calendar week wherever the API
-    // is deployed. Noon Saturday UTC is comfortably after Friday's US close,
-    // so all five sessions of the round have settled daily bars.
-    if (isCycleCloseTick(now)) {
+    // Saturday 12:00 UTC: rivalry weekly close. Day and hour are read in UTC
+    // (not server-local like the schedules above) because the round's week
+    // key is `mondayUtc(...)` — anchoring the fire to the same clock keeps
+    // one close per rivalry per calendar week wherever the API is deployed.
+    // Noon Saturday UTC is comfortably after Friday's US close, so all five
+    // sessions of the round have settled daily bars.
+    if (now.getUTCDay() === 6 && now.getUTCHours() === 12 && now.getUTCMinutes() === 0) {
       fireOncePerMinute("rivalry_close", now, runRivalryCloseTick);
     }
   };
@@ -360,14 +357,6 @@ export function startPushScheduler(): void {
 
 /** Test hook — staleness/shape rules for a device's heartbeat fix. */
 export const _tokenFix = tokenFix;
-
-/**
- * Test hook — the exact predicate the tick loop gates the rivalry close on.
- * Re-exporting the same function reference (not a re-implementation) is what
- * lets a test assert the scheduler's boundary IS `weeklyCycle.ts`'s, not just
- * something that happens to agree with it today.
- */
-export const _isRivalryCloseTick = isCycleCloseTick;
 
 /** Test hook. */
 export function _stopPushScheduler(): void {

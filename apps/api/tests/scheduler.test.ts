@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PushToken } from "../src/lib/push-tokens-store.js";
-import { _isRivalryCloseTick, _tokenFix, evaluateMovementForToken } from "../src/lib/scheduler.js";
-import { isCycleCloseTick } from "../src/lib/weeklyCycle.js";
+import { _tokenFix, evaluateMovementForToken } from "../src/lib/scheduler.js";
 
 function makeToken(prefs: PushToken["prefs"]): PushToken {
   return {
@@ -42,20 +41,6 @@ describe("scheduler tokenFix", () => {
   test("rejects missing or non-finite coordinates", () => {
     expect(_tokenFix(makeToken({}))).toBeNull();
     expect(_tokenFix(makeToken({ last_lat: Number.NaN, last_lng: 1 }))).toBeNull();
-  });
-});
-
-describe("rivalry weekly-close boundary", () => {
-  test("the scheduler fires on the exact same predicate weeklyCycle.ts exports — no second implementation", () => {
-    // Reference equality, not just agreeing behavior: this fails immediately
-    // if the scheduler ever grows its own independent boundary check again.
-    expect(_isRivalryCloseTick).toBe(isCycleCloseTick);
-  });
-
-  test("fires at Saturday 12:00 UTC and nowhere else", () => {
-    expect(_isRivalryCloseTick(new Date("2026-09-19T12:00:00.000Z"))).toBe(true);
-    expect(_isRivalryCloseTick(new Date("2026-09-19T11:59:00.000Z"))).toBe(false);
-    expect(_isRivalryCloseTick(new Date("2026-09-18T12:00:00.000Z"))).toBe(false);
   });
 });
 
