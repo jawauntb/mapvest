@@ -701,7 +701,6 @@ export const PushNotificationTarget = z
     z.object({ type: z.literal("camera") }),
     z.object({ type: z.literal("universe") }),
     z.object({ type: z.literal("settings") }),
-    z.object({ type: z.literal("quests"), section: z.enum(["weekly-recap"]).optional() }),
   ])
   .superRefine((target, ctx) => {
     if (target.type !== "map") return;

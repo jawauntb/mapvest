@@ -1,6 +1,5 @@
 import { recordFinds } from "@/api/finds";
 import type { FetchOpts } from "@/api/http";
-import type { DexRarity } from "@/api/types";
 import { DeviceEventEmitter } from "react-native";
 import {
   type GuestFindDraft,
@@ -81,7 +80,7 @@ export async function noteGuestForeground(input: {
 
 async function maybeEmitGuestPrompt(input: {
   findsThisSession: number;
-  latestRarity: DexRarity | null;
+  latestRarity: GuestFindDraft["rarity"] | null;
   daysSinceLastFind: number | null;
   now: number;
 }): Promise<GuestPromptMoment | null> {
