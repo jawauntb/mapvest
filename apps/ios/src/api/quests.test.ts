@@ -25,7 +25,7 @@ describe("weekly quests API", () => {
       expect(response.cycleStart).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(response.cycleEnd).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(Array.isArray(response.quests)).toBe(true);
-      expect(response.quests[0].kind).toBe("catch_any");
+      expect(response.quests[0]?.kind).toBe("catch_any");
     });
 
     it("response structure includes progress tracking", () => {
@@ -55,10 +55,10 @@ describe("weekly quests API", () => {
       };
 
       expect(response.quests).toHaveLength(2);
-      expect(response.quests[0].completed).toBe(true);
-      expect(response.quests[0].progress).toBe(1);
-      expect(response.quests[1].completed).toBe(false);
-      expect(response.quests[1].progress).toBe(0);
+      expect(response.quests[0]?.completed).toBe(true);
+      expect(response.quests[0]?.progress).toBe(1);
+      expect(response.quests[1]?.completed).toBe(false);
+      expect(response.quests[1]?.progress).toBe(0);
     });
 
     it("quest kinds are all valid types", () => {

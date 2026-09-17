@@ -1,8 +1,10 @@
-import type { LeaderboardResponse, LeaderboardRow } from "@mapvest/core";
 import { z } from "zod";
 import type { FetchOpts } from "./http";
 
-export type { LeaderboardResponse, LeaderboardRow };
+// Local re-declaration of @mapvest/core's LeaderboardResponse/LeaderboardRow
+// so Metro/tsc don't need to resolve the workspace package (apps/ios is
+// intentionally not a bun workspace member — see apps/ios/README.md). Keep
+// in lockstep with packages/core/src/schemas/index.ts's LeaderboardResponse.
 
 /**
  * Weekly leaderboard (packages/design/HANDOFF.md Item 3 — "the early
@@ -25,15 +27,17 @@ export async function fetchWeeklyLeaderboard(
 }
 
 /** Schema for testing leaderboard response parsing. */
+export const LeaderboardRowSchema = z.object({
+  handle: z.string(),
+  earlyFindScore: z.number(),
+  rank: z.number(),
+  isYou: z.boolean(),
+});
+export type LeaderboardRow = z.infer<typeof LeaderboardRowSchema>;
+
 export const LeaderboardResponseSchema = z.object({
   cycleStart: z.string().datetime(),
   cycleEnd: z.string().datetime(),
-  rows: z.array(
-    z.object({
-      handle: z.string(),
-      earlyFindScore: z.number(),
-      rank: z.number(),
-      isYou: z.boolean(),
-    }),
-  ),
+  rows: z.array(LeaderboardRowSchema),
 });
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponseSchema>;

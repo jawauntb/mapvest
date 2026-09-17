@@ -6,13 +6,12 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fonts, radii, type } from "@/theme/tokens";
 import { AppTopBar } from "@/components/AppTopBar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 /**
  * Weekly recap screen shown after a weekly-close notification. Displays:
