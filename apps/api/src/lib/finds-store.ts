@@ -494,40 +494,6 @@ export async function listFindsOnDay(userId: string, dayUtc: string): Promise<St
 }
 
 /**
- * Finds recorded between two ISO timestamps (inclusive). Used for weekly-cycle
- * quest evaluation and other multi-day windows.
- */
-export async function listFindsBetween(
-  userId: string,
-  startIso: string,
-  endIso: string,
-): Promise<StoredFind[]> {
-  await ensureTable();
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  if (dbEnabled()) {
-    const sql = getSql();
-    if (sql) {
-      const rows = await sql`
-        SELECT id, brand, ticker, is_public, comparable, confidence,
-               lat, lng, found_price, geohash6, created_at
-        FROM user_finds
-        WHERE user_id = ${userId}
-          AND created_at >= ${start}
-          AND created_at <= ${end}
-        ORDER BY created_at DESC
-      `;
-      return uniqueFindsNewestFirst(
-        (rows as Array<Parameters<typeof rowToFind>[0]>).map(rowToFind),
-      );
-    }
-  }
-  return uniqueFindsNewestFirst(
-    memBucket(userId).filter((find) => find.createdAt >= startIso && find.createdAt <= endIso),
-  );
-}
-
-/**
  * Stamp `geohash6` on pre-column rows and claim `pioneer:{tile}` so the next
  * catch in an already-visited neighborhood does not collect a false bonus
  * (Universe Roadmap §6). Idempotent: `awardXp` no-ops on a claimed key.

@@ -125,15 +125,6 @@ function parsePushNotificationTarget(value: unknown): PushNotificationTarget | n
     case "universe":
     case "settings":
       return { type: target.type };
-    case "quests": {
-      if (
-        target.section !== undefined &&
-        target.section !== "weekly-recap"
-      ) {
-        return null;
-      }
-      return { type: "quests", ...(target.section ? { section: target.section } : {}) };
-    }
     default:
       return null;
   }
@@ -245,7 +236,5 @@ export function pathFromPushDelivery(
       return "/universe";
     case "settings":
       return "/(tabs)/settings";
-    case "quests":
-      return `/quests/weekly-recap${query({ section: target.section })}`;
   }
 }
