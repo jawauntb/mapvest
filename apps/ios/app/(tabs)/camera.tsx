@@ -1,4 +1,5 @@
 import { type Quote, addToWatchlist, identifyPhoto } from "@/api/client";
+import { clientRequestIdFor, submitCompanyPhoto } from "@/api/photos";
 import type { Confidence, IdentifyResponse, Investable, LatLng } from "@/api/types";
 import { noteGuestIdentify } from "@/auth/guestConvert";
 import { authSavePath } from "@/auth/saveContinuation";
@@ -30,7 +31,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { enqueuePhoto, queueScopeForUser } from "@/queue/photoQueue";
 import { useNetworkSync } from "@/queue/useNetworkSync";
 import { colors, radii, type } from "@/theme/tokens";
-import { hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
+import { hapticFirstCapture, hapticSelect, hapticSuccess, hapticTap } from "@/util/haptics";
 import { pickFromLibrary } from "@/util/pickImage";
 import {
   evidenceChipLabel,
@@ -141,6 +142,15 @@ export default function CameraScreen() {
   // <PhotoAnnotator> full-screen seeded with the frozen photo; its Scan
   // re-runs identify with roi + hint. Cancel returns to the result card.
   const [pendingUriValue, setPendingUri] = useState<string | null>(null);
+  // Global first capture (capture economy Item 3) — set once a fresh
+  // live-camera catch's fire-and-forget gallery submission comes back with
+  // isFirstCapture. Distinct from the existing rarity chip: this is a
+  // property of the EVENT (who got there first), not of the company.
+  const [firstCaptureNoteValue, setFirstCaptureNote] = useState<string | null>(null);
+  // Which path produced the current frozen photo — only a live camera
+  // capture may ever be submitted to a company's gallery (the server also
+  // enforces this; this ref is what lets the client decide whether to try).
+  const captureSourceRef = useRef<"camera" | "library" | null>(null);
   const stateBelongsToActiveIdentity =
     stateScope === activeScope && stateAuthGeneration === authGeneration;
   // The account transition effect below clears this state after commit. These
@@ -151,6 +161,7 @@ export default function CameraScreen() {
   const queuedNote = stateBelongsToActiveIdentity ? queuedNoteValue : null;
   const savedNote = stateBelongsToActiveIdentity ? savedNoteValue : null;
   const pendingUri = stateBelongsToActiveIdentity ? pendingUriValue : null;
+  const firstCaptureNote = stateBelongsToActiveIdentity ? firstCaptureNoteValue : null;
   // Leave room for the fixed capture/retake controls even on an iPhone SE;
   // the one outer result scroller owns vertical movement for the whole card.
   const resultRegionMaxHeight = Math.max(260, Math.min(480, Math.round(windowHeight * 0.54)));
@@ -232,6 +243,7 @@ export default function CameraScreen() {
     setBusy(false);
     setErr(null);
     setResult(null);
+    setFirstCaptureNote(null);
     persistCamera({ frozenUri: null, err: null }, activeScopeRef.current);
   }, [persistCamera]);
 
@@ -320,6 +332,7 @@ export default function CameraScreen() {
     setResult(null);
     setQueuedNote(null);
     setSavedNote(null);
+    setFirstCaptureNote(null);
     return operation;
   }
 
@@ -359,6 +372,7 @@ export default function CameraScreen() {
       return;
     }
     hapticTap();
+    captureSourceRef.current = "camera";
     const operation = startIdentifyOperation();
     try {
       const photo = await captureStill(cam, { readySince: readySinceRef.current });
@@ -376,6 +390,7 @@ export default function CameraScreen() {
   async function pickLibrary() {
     if (busy) return;
     hapticTap();
+    captureSourceRef.current = "library";
     const operation = startIdentifyOperation();
     try {
       const uri = await pickFromLibrary();
@@ -469,6 +484,36 @@ export default function CameraScreen() {
           markFindRefreshPending(operation.sessionToken);
         }
         if (resp.investables.length > 0) hapticSuccess();
+
+        // Global first capture + photo gallery (capture economy Item 3):
+        // every successful LIVE-CAMERA catch also submits that same photo
+        // to the company's gallery, fire-and-forget — spends the SAME
+        // metered identify quota (no second currency), never blocks or
+        // fails the primary identify flow. A library pick is never
+        // submitted; the server rejects it outright anyway.
+        const submitterToken = operation.sessionToken;
+        const gallerySubject = resp.investables[0];
+        if (captureSourceRef.current === "camera" && submitterToken && gallerySubject) {
+          const top = gallerySubject;
+          const companyId = investableTicker(top) ?? top.brand.name;
+          void (async () => {
+            try {
+              const clientRequestId = await clientRequestIdFor(args.imageUri);
+              const capture = await submitCompanyPhoto(
+                companyId,
+                { imageUri: args.imageUri, location, clientRequestId },
+                { token: submitterToken },
+              );
+              if (!isCurrentIdentifyOperation(operation) || !capture.isFirstCapture) return;
+              hapticFirstCapture();
+              setFirstCaptureNote(top.brand.name);
+            } catch {
+              // Best-effort — the primary identify already succeeded; a
+              // gallery-submission failure (offline, quota, geotag) must
+              // never surface as an identify error.
+            }
+          })();
+        }
       } catch (e) {
         if (!isCurrentIdentifyOperation(operation)) return;
         if (presentPaywallIfQuota(e, presentPaywall)) {
@@ -499,6 +544,8 @@ export default function CameraScreen() {
     setErr(null);
     setQueuedNote(null);
     setSavedNote(null);
+    setFirstCaptureNote(null);
+    captureSourceRef.current = null;
     readyRef.current = false;
     readySinceRef.current = null;
     persistCamera({
@@ -795,6 +842,18 @@ export default function CameraScreen() {
                         {ticker ? ticker : "Private"}
                         {top.brand.sector ? ` · ${top.brand.sector}` : ""}
                       </Text>
+                      {firstCaptureNote ? (
+                        <View
+                          style={styles.firstCaptureBanner}
+                          accessibilityRole="text"
+                          accessibilityLabel={`First capture — you're the first Finder to catch ${firstCaptureNote}`}
+                        >
+                          <Ionicons name="flag" size={14} color={colors.accent} />
+                          <Text style={styles.firstCaptureBannerText}>
+                            First capture — you're the first Finder to catch {firstCaptureNote}.
+                          </Text>
+                        </View>
+                      ) : null}
                       {top.confidence === "low" ? (
                         <View style={styles.lowConfNote}>
                           <Ionicons name="alert-circle-outline" size={14} color={colors.warn} />
@@ -1447,6 +1506,27 @@ const styles = StyleSheet.create({
   resultCardLowConfidence: {
     borderStyle: "dashed",
     borderColor: colors.warn,
+  },
+  // Global first capture (capture economy Item 3) — jade-accented, distinct
+  // from the amber low-confidence note and from the rarityChip above: first
+  // capture is a property of the event, never a rarity tier.
+  firstCaptureBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 8,
+    padding: 8,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(20, 196, 166, 0.14)",
+    borderColor: colors.accent,
+    borderWidth: 1,
+  },
+  firstCaptureBannerText: {
+    color: colors.accent,
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
+    fontWeight: "700",
   },
   lowConfNote: {
     flexDirection: "row",

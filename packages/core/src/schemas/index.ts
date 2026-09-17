@@ -222,6 +222,82 @@ export const RecordFindsRequest = z.object({
 });
 export type RecordFindsRequest = z.infer<typeof RecordFindsRequest>;
 
+// -------- photo gallery + global first capture (capture economy Item 3) --------
+
+/**
+ * Attribution for the permanent, company-scoped "first ever capture" badge.
+ * `photoId` points at the winning `PhotoSubmission`; `at` is that photo's
+ * `serverReceivedAt` — the race-arbitration key, never a client timestamp.
+ * Once set this is immutable from every path except the capture race itself
+ * (a downvote, in particular, can never touch it).
+ */
+export const FirstCapturedBy = z.object({
+  userId: z.string(),
+  handle: z.string().optional(),
+  at: z.string(), // ISO — serverReceivedAt of the winning photo
+  photoId: z.string(),
+});
+export type FirstCapturedBy = z.infer<typeof FirstCapturedBy>;
+
+/**
+ * One live-camera photo submitted to a company's gallery. `serverReceivedAt`
+ * is stamped by the server at receipt — it is the sole race-arbitration key
+ * for `firstCapturedBy`. `isFirstCapture` is computed on read (true for
+ * exactly the one submission `firstCapturedBy.photoId` names).
+ */
+export const PhotoSubmission = z.object({
+  id: z.string(),
+  companyId: z.string(),
+  userId: z.string(),
+  handle: z.string().optional(),
+  photoUrl: z.string(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  exifTimestamp: z.string().optional(),
+  serverReceivedAt: z.string(), // ISO
+  score: z.number(),
+  isFirstCapture: z.boolean(),
+  createdAt: z.string(), // ISO
+});
+export type PhotoSubmission = z.infer<typeof PhotoSubmission>;
+
+/** POST /v1/companies/:id/photos response. */
+export const PhotoCaptureResponse = z.object({
+  photo: PhotoSubmission,
+  isFirstCapture: z.boolean(),
+  firstCapturedBy: FirstCapturedBy.nullable(),
+  captureCount: z.number(),
+});
+export type PhotoCaptureResponse = z.infer<typeof PhotoCaptureResponse>;
+
+/**
+ * GET /v1/companies/:id/photos response. `photos` is pre-sorted:
+ * isFirstCapture first, then score DESC, then createdAt ASC as tiebreak —
+ * the whole ranking system for v1 (no canonical-image voting yet).
+ */
+export const PhotoGalleryResponse = z.object({
+  companyId: z.string(),
+  firstCapturedBy: FirstCapturedBy.nullable(),
+  captureCount: z.number(),
+  photos: z.array(PhotoSubmission),
+});
+export type PhotoGalleryResponse = z.infer<typeof PhotoGalleryResponse>;
+
+export const PhotoVoteDirection = z.enum(["up", "down"]);
+export type PhotoVoteDirection = z.infer<typeof PhotoVoteDirection>;
+
+/** POST /v1/photos/:id/vote request. */
+export const PhotoVoteRequest = z.object({
+  direction: PhotoVoteDirection,
+});
+export type PhotoVoteRequest = z.infer<typeof PhotoVoteRequest>;
+
+/** POST /v1/photos/:id/vote response. */
+export const PhotoVoteResponse = z.object({
+  photo: PhotoSubmission,
+});
+export type PhotoVoteResponse = z.infer<typeof PhotoVoteResponse>;
+
 export const NearbyRequest = z.object({
   lat: z.number(),
   lng: z.number(),

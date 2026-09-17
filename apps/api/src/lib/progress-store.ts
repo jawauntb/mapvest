@@ -484,6 +484,50 @@ export async function awardBadge(userId: string, badge: string, xp: number): Pro
 }
 
 /**
+ * Direct, non-idempotent XP debit — the photo-gallery downvote path (capture
+ * economy Item 3, packages/design/HANDOFF_CAPTURE_ECONOMY.md) costs a
+ * submitter XP every time one of their photos is downvoted. Unlike
+ * `awardXp`/`awardBadge` this is NOT a one-time grant behind `user_xp_grants`
+ * — repeat downvotes debit repeatedly, by design — so it never touches that
+ * ledger. Clamped at 0: a pile of downvotes can zero a user's XP but never
+ * push it negative. On Postgres this is an atomic in-place decrement (same
+ * posture as `applyGrantAtomic`); the memory fallback is a plain
+ * read-modify-write, safe because that path is single-threaded.
+ */
+export async function debitXp(userId: string, amount: number): Promise<void> {
+  const cost = Math.max(0, Math.trunc(amount));
+  if (cost <= 0) return;
+  await ensureTable();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      await sql`
+        INSERT INTO user_progress (
+          user_id, xp, level, streak_days, streak_freezes, last_find_day, badges, updated_at
+        ) VALUES (${userId}, 0, 1, 0, 0, NULL, '[]'::jsonb, now())
+        ON CONFLICT (user_id) DO NOTHING
+      `;
+      await sql`
+        UPDATE user_progress SET
+          xp = GREATEST(0, xp - ${cost}),
+          level = FLOOR(SQRT(GREATEST(0, xp - ${cost}) / 100.0)) + 1,
+          updated_at = now()
+        WHERE user_id = ${userId}
+      `;
+      return;
+    }
+  }
+  const current = await getProgress(userId);
+  const nextXp = Math.max(0, current.xp - cost);
+  await persist(userId, {
+    ...current,
+    xp: nextXp,
+    level: levelForXp(nextXp),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
  * Award a find: load-or-default the row, apply the pure rule for the find's
  * UTC day, persist. Called fire-and-forget from `recordFind` — a progression
  * write must never fail an identify.

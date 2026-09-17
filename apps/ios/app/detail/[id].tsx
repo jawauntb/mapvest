@@ -15,6 +15,7 @@ import {
   waitForAgentThread,
 } from "@/api/client";
 import { formatResearchError, shouldRetryQuery } from "@/api/errors";
+import { type PhotoSubmission, fetchCompanyGallery, voteOnCompanyPhoto } from "@/api/photos";
 import { coerceResolve, looksLikeTicker, routeParam } from "@/api/resolveFallback";
 import type { Comparable, EtfExposure, ResolveComparableResponse, Source } from "@/api/types";
 import { authSavePath } from "@/auth/saveContinuation";
@@ -45,6 +46,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -418,6 +420,10 @@ export default function DetailSheet() {
             >
               <EvidenceSection sources={dedupedSources} showTitle={false} />
             </CollapsibleSection>
+
+            {/* Global first capture + photo gallery (capture economy Item 3).
+                Every company gets one — public, not gated behind hasFirstFind. */}
+            <GallerySection companyId={brand} token={session?.token} />
           </>
         ) : null}
       </ScrollView>
@@ -1481,6 +1487,144 @@ function WatchlistActions({
   );
 }
 
+/** "Sep 17, 2026" — same short-date convention as `formatEvidenceFetchedAt`. */
+function formatCaptureDate(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return new Date(ms).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Global first capture + photo gallery (capture economy Item 3,
+ * packages/design/HANDOFF_CAPTURE_ECONOMY.md). Every company gets a gallery;
+ * the first Finder to ever capture it keeps a permanent badge here. Public —
+ * this section renders (and its data loads) whether or not the viewer is
+ * signed in; only voting requires a session.
+ */
+function GallerySection({ companyId, token }: { companyId: string; token?: string }) {
+  const qc = useQueryClient();
+  const galleryKey = ["photo-gallery", companyId];
+  const galleryQ = useQuery({
+    queryKey: galleryKey,
+    enabled: !!companyId,
+    queryFn: () => fetchCompanyGallery(companyId),
+    staleTime: 30_000,
+  });
+
+  const voteM = useMutation({
+    mutationFn: (args: { photoId: string; direction: "up" | "down" }) =>
+      voteOnCompanyPhoto(args.photoId, args.direction, { token: token! }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: galleryKey }),
+  });
+
+  const photos = galleryQ.data?.photos ?? [];
+
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={styles.h2}>Gallery{photos.length ? ` · ${photos.length}` : ""}</Text>
+      <View style={styles.card}>
+        {galleryQ.isLoading ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.muted}>Loading gallery…</Text>
+          </View>
+        ) : galleryQ.isError ? (
+          <Text style={styles.muted}>Gallery unavailable right now.</Text>
+        ) : photos.length === 0 ? (
+          // Mirrors EvidenceSection's zero-sources treatment — a clear,
+          // explicit empty state, never a blank screen.
+          <View
+            accessible
+            accessibilityLabel="No captures yet for this company"
+            style={styles.galleryEmpty}
+          >
+            <Ionicons name="camera-outline" size={18} color={colors.warn} />
+            <View style={styles.galleryEmptyCopy}>
+              <Text style={styles.galleryEmptyTitle}>No captures yet</Text>
+              <Text style={styles.galleryEmptyText}>
+                Be the first Finder to capture this company with the camera.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {photos.map((p) => (
+              <GalleryPhotoRow
+                key={p.id}
+                photo={p}
+                canVote={!p.isFirstCapture && !!token}
+                voting={voteM.isPending && voteM.variables?.photoId === p.id}
+                onVote={(direction) => voteM.mutate({ photoId: p.id, direction })}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function GalleryPhotoRow({
+  photo,
+  canVote,
+  voting,
+  onVote,
+}: {
+  photo: PhotoSubmission;
+  canVote: boolean;
+  voting: boolean;
+  onVote: (direction: "up" | "down") => void;
+}) {
+  const handle = photo.handle ? `@${photo.handle}` : "a Finder";
+  return (
+    <View style={styles.galleryRow}>
+      <Image source={{ uri: photo.photoUrl }} style={styles.galleryThumb} />
+      <View style={{ flex: 1, gap: 4 }}>
+        {photo.isFirstCapture ? (
+          <View style={styles.firstCaptureChip}>
+            <Ionicons name="flag" size={11} color={colors.accent} />
+            <Text style={styles.firstCaptureChipText} numberOfLines={2}>
+              First captured by {handle}, {formatCaptureDate(photo.createdAt)}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.gallerySubmitter} numberOfLines={1}>
+            {handle} · {formatCaptureDate(photo.createdAt)}
+          </Text>
+        )}
+        <Text style={styles.galleryScore}>Score {photo.score}</Text>
+      </View>
+      {canVote ? (
+        <View style={styles.galleryVoteCol}>
+          <Pressable
+            onPress={() => onVote("up")}
+            disabled={voting}
+            accessibilityRole="button"
+            accessibilityLabel="Upvote this capture"
+            style={({ pressed }) => [styles.galleryVoteBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="arrow-up" size={16} color={colors.accent} />
+          </Pressable>
+          <Pressable
+            onPress={() => onVote("down")}
+            disabled={voting}
+            accessibilityRole="button"
+            accessibilityLabel="Downvote this capture"
+            style={({ pressed }) => [styles.galleryVoteBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="arrow-down" size={16} color={colors.fgMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function dedupeSources(list: Source[]): Source[] {
   const seen = new Set<string>();
   const out: Source[] = [];
@@ -1696,4 +1840,57 @@ const styles = StyleSheet.create({
   },
   researchEntryTitle: { color: colors.fg, fontWeight: "600", fontSize: 15 },
   researchEntryDesc: { color: colors.fgMuted, fontSize: 12, lineHeight: 16 },
+  // Mirrors EvidenceSection's own zero-sources empty state (colors.warn
+  // border, icon + title + text) — this file keeps its own copy since that
+  // component's styles aren't exported.
+  galleryEmpty: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.warn,
+    backgroundColor: colors.bgSunken,
+    padding: 10,
+  },
+  galleryEmptyCopy: { flex: 1, gap: 2 },
+  galleryEmptyTitle: { color: colors.fg, ...type.label, fontSize: 13 },
+  galleryEmptyText: { color: colors.fgMuted, ...type.caption, fontSize: 11 },
+  galleryRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  galleryThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSunken,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  // Jade-accented, matching the camera result card's first-capture banner —
+  // a property of the event, never the DexRarity chip's tier language.
+  firstCaptureChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(20, 196, 166, 0.14)",
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  firstCaptureChipText: { color: colors.accent, fontSize: 11, fontWeight: "700", flexShrink: 1 },
+  gallerySubmitter: { color: colors.fgMuted, fontSize: 12, fontWeight: "600" },
+  galleryScore: { color: colors.fgDim, fontSize: 11 },
+  galleryVoteCol: { gap: 4, alignItems: "center" },
+  galleryVoteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgGlass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
 });
