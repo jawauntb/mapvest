@@ -26,6 +26,7 @@ import finds from "./routes/finds.js";
 import graph from "./routes/graph.js";
 import health from "./routes/health.js";
 import identify from "./routes/identify.js";
+import leaderboard from "./routes/leaderboard.js";
 import localBrief from "./routes/localBrief.js";
 import marketData from "./routes/market-data.js";
 import marketEvents from "./routes/market-events.js";
@@ -33,6 +34,7 @@ import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
 import options from "./routes/options.js";
+import companyPhotos, { photoVotes } from "./routes/photos.js";
 import prism from "./routes/prism.js";
 import progress from "./routes/progress.js";
 import proxy from "./routes/proxy.js";
@@ -72,7 +74,7 @@ app.use(
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     // X-Device-Id: anonymous per-device id sent by iOS/web clients so guest
     // usage can be metered without sign-in (Phase 8 Slice C groundwork).
-    allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id"],
+    allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id", "Idempotency-Key"],
   }),
 );
 // gzip/deflate JSON responses over 1KB (hono/compress default threshold).
@@ -137,6 +139,7 @@ app.route("/v1/progress", progress);
 app.route("/v1/universe", universe);
 app.route("/v1/dex", dex);
 app.route("/v1/quests", quests);
+app.route("/v1/leaderboard", leaderboard);
 // Geohash-tile territory (completion + pioneer) and the global event window.
 app.route("/v1/territory", territory);
 app.route("/v1/events", events);
@@ -147,6 +150,9 @@ app.route("/v1/graph", graph);
 // Demand-side pulse (who buys from this company) + macro sector environment.
 app.route("/v1/pulse", pulse);
 app.route("/v1/environment", environment);
+// Global first capture + photo gallery (capture economy Item 3).
+app.route("/v1/companies", companyPhotos);
+app.route("/v1/photos", photoVotes);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
