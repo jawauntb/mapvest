@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import type { NearbyResponse } from "@mapvest/core";
 import { resolveTicker } from "@mapvest/finance";
 import { readBrandTickerCacheMany, writeBrandTickerCache } from "./brand-ticker-cache.js";
+import { listFinds } from "./finds-store.js";
 import type { Span } from "./logfire.js";
 import { readNearbyPlacesCache, writeNearbyPlacesCache } from "./nearby-cache.js";
+import { candidateState, tileFor } from "./territory.js";
 
 /**
  * Shared nearby-places → investable resolution used by both `/v1/nearby`
@@ -385,6 +387,14 @@ export type ResolveNearbyArgs = {
   lng: number;
   radius: number;
   limit: number;
+  /**
+   * The signed-in caller, when known — used only to tag each candidate
+   * "seen" | "captured" against their own finds journal (see `state` on
+   * `NearbyItem`). Omitted for guests/unauthenticated callers, in which
+   * case every candidate is tagged "seen" — proximity never fabricates a
+   * capture it cannot verify.
+   */
+  viewerId?: string;
   /** Optional span to annotate — same shape used by `safeExecuteWithSpan` callers. */
   span?: Span;
 };
@@ -408,6 +418,7 @@ export async function resolveNearbyItems({
   lng,
   radius,
   limit,
+  viewerId,
   span,
 }: ResolveNearbyArgs): Promise<ResolveNearbyResult> {
   const mockPath = process.env.MOCK_PLACES;
@@ -506,6 +517,14 @@ export async function resolveNearbyItems({
     }),
   );
 
+  // "seen vs captured" (Universe Roadmap — the capture economy): tag every
+  // candidate against the caller's own finds journal, never anyone else's.
+  // A guest/unauthenticated caller (no `viewerId`) gets "seen" across the
+  // board — proximity never fabricates a capture it cannot verify, and a
+  // finds-store failure degrades the same way rather than throwing, so a
+  // journal outage never turns into a false capture or a crash.
+  const viewerFinds = viewerId ? await listFinds(viewerId, 500).catch(() => []) : [];
+
   const items: NearbyResponse["items"] = resolved.map(({ p, brand, sources }) => ({
     place: placeFromResult(p),
     investable: brand.isPublic
@@ -526,6 +545,13 @@ export async function resolveNearbyItems({
                 ],
         }
       : undefined,
+    state: viewerId
+      ? candidateState(
+          { brand: brand.name, ticker: brand.ticker?.symbol },
+          tileFor(p.geometry.location.lat, p.geometry.location.lng),
+          viewerFinds,
+        )
+      : "seen",
   }));
 
   return { items, placesSource };

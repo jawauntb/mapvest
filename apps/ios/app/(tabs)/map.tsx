@@ -32,6 +32,7 @@ import { openChatAbout } from "@/nav/chatAbout";
 import { matchNotificationMapTarget } from "@/notif/mapTarget";
 import { colors, motion, radii } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
+import { investablePinColor } from "@/util/sectors";
 import { useWidgetDiscoverySync } from "@/widgets/widgetDiscoverySync";
 import { readLastLocationForWidgets, saveLastLocationForWidgets } from "@/widgets/widgetLocation";
 import { Ionicons } from "@expo/vector-icons";
@@ -642,8 +643,14 @@ export default function MapScreen() {
           const hasTicker = !!pin;
           const revealed = focusedPlaceId === item.place.id;
           const showChip = shouldShowChip(item, mapItems, region, focusedPlaceId, brandTickers);
-          // Silhouette: investable, but missing from the finds journal.
-          const uncaught = pin ? !caughtTickers.has(pin.symbol) : false;
+          // Seen vs captured: the server already knows whether this exact
+          // place has a matching Find of ours in its tile. "seen" always
+          // renders the outline/greyed silhouette — proximity reveals, it
+          // never catches — regardless of what the client's own journal
+          // says. Older payloads with no `state` fall back to the prior,
+          // client-only "uncaught" read (ticker missing from the journal).
+          const seen = item.state === "seen";
+          const uncaught = seen || (pin ? !caughtTickers.has(pin.symbol) : false);
           return (
             <Marker
               key={item.place.id}
@@ -657,7 +664,7 @@ export default function MapScreen() {
               accessibilityLabel={
                 pin
                   ? `${item.place.name} — ${pin.isPublic ? "" : "comparable "}${pin.symbol}${
-                      uncaught ? " — not caught yet" : ""
+                      seen ? " — seen, not captured yet" : uncaught ? " — not caught yet" : ""
                     }`
                   : item.place.name
               }
@@ -988,7 +995,8 @@ function NearbySheet({
             const quote = pin ? quotes[pin.symbol] : undefined;
             const up = (quote?.change ?? 0) >= 0;
             const focused = focusedPlaceId === item.place.id;
-            const uncaught = pin ? !caughtTickers.has(pin.symbol) : false;
+            const seen = item.state === "seen";
+            const uncaught = seen || (pin ? !caughtTickers.has(pin.symbol) : false);
             return (
               <Pressable
                 key={item.place.id}
@@ -1006,7 +1014,7 @@ function NearbySheet({
                     numberOfLines={1}
                   >
                     {pin ? `${pin.isPublic ? "$" : "≈"}${pin.symbol}` : "Tap to look up"}
-                    {uncaught ? " · uncaught" : ""}
+                    {seen ? " · seen" : uncaught ? " · uncaught" : ""}
                   </Text>
                 </View>
                 {quote ? (
@@ -1233,24 +1241,22 @@ function TickerPin({
   );
 }
 
+/** Pin accent — the same sector-color convention used everywhere else on the
+ * map (list, universe, watchlists): `apps/ios/src/util/sectors.ts`. */
 function pinColor(item: NearbyItem): string {
   const inv = item.investable;
   if (!inv) return "gray";
-  if (inv.brand.isPublic || inv.brand.ticker?.symbol) {
-    const sector = (inv.brand.sector ?? "").toLowerCase();
-    if (sector.includes("tech") || sector.includes("communication")) return "blue";
-    if (sector.includes("health")) return "rose";
-    if (sector.includes("energy")) return "yellow";
-    if (sector.includes("financ")) return "gold";
-    if (sector.includes("staple") || sector.includes("defensive")) return "green";
-    if (sector.includes("discretionary") || sector.includes("cyclical")) return "orange";
-    return "green";
-  }
-  if (inv.comparables.length > 0 || inv.etfs.length > 0) return "orange";
-  return "red";
+  return investablePinColor({
+    isPublic: inv.brand.isPublic || !!inv.brand.ticker?.symbol,
+    sector: inv.brand.sector,
+    hasComps: inv.comparables.length > 0 || inv.etfs.length > 0,
+  });
 }
 
+/** `pinColor` returns either a named bucket ("gray") or a real color from
+ * `sectors.ts` (hex or hsl fallback) — pass the latter straight through. */
 function accentHex(name: string): string {
+  if (name.startsWith("#") || name.startsWith("hsl(")) return name;
   switch (name) {
     case "blue":
       return colors.accent2;

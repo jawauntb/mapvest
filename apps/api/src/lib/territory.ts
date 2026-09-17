@@ -124,6 +124,44 @@ function normalizeTicker(input: string | undefined | null): string | null {
   return t.length > 0 ? t : null;
 }
 
+/** "seen" — resolvable, not yet caught here. "captured" — a Find already exists in this tile. */
+export type CandidateState = "seen" | "captured";
+
+/** The identity fields `candidateState` matches on — same shape as a `Find`. */
+export type CandidateIdentity = { brand: string; ticker?: string | null; comparable?: string | null };
+
+/** Effective identity: ticker, else comparable, else brand — matches `findIdentityKey`. */
+function candidateIdentityKey(input: CandidateIdentity): string {
+  return normalizeTicker(input.ticker) ?? normalizeTicker(input.comparable) ?? input.brand.trim().toUpperCase();
+}
+
+/**
+ * "seen vs captured" (Universe Roadmap — the capture economy). Proximity
+ * reveals a resolvable place for free; only a photograph turns it into a
+ * Find. A candidate is "captured" when `priorFinds` already holds a Find
+ * in this exact tile whose effective identity (ticker, else comparable,
+ * else brand) matches this candidate's — otherwise it is merely "seen".
+ *
+ * Finds without coordinates belong to no tile (`tileOfFind`) and can never
+ * count toward a capture, same rule `isPioneer` uses. Never mutates or
+ * reads anything beyond its arguments — a `SeenEntry` is not a Find and is
+ * never granted XP, rarity, or Pioneer credit by this function or its
+ * caller.
+ */
+export function candidateState(
+  candidate: CandidateIdentity,
+  tile: string,
+  priorFinds: readonly Find[],
+): CandidateState {
+  const target = tile.trim().toLowerCase();
+  if (!target) return "seen";
+  const key = candidateIdentityKey(candidate);
+  for (const find of priorFinds) {
+    if (tileOfFind(find) === target && candidateIdentityKey(find) === key) return "captured";
+  }
+  return "seen";
+}
+
 /**
  * Neighborhood completion: "6 of 11 investable brands found in this tile".
  *

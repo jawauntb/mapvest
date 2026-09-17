@@ -1,4 +1,4 @@
-import type { Confidence, Source } from "@/api/types";
+import type { Confidence, NearbyItemState, Source } from "@/api/types";
 
 export const WIDGET_DISCOVERY_SNAPSHOT_VERSION = 1 as const;
 export const WIDGET_DISCOVERY_MAX_CARDS = 6;
@@ -23,6 +23,13 @@ export type WidgetDiscoveryCard = {
   distanceM?: number;
   isPublic: boolean;
   caught: boolean;
+  /**
+   * Seen vs captured (proximity reveals; it never catches). Carried through
+   * from the matching `NearbyItem.state` unchanged — not derived from
+   * `caught`, which reflects the finds journal rather than this exact
+   * tile. Absent on older payloads; treat absence the same as "seen".
+   */
+  state?: NearbyItemState;
   confidence: Confidence;
   sources: Source[];
   relevance: string;
@@ -67,6 +74,8 @@ export type WidgetNearbyCandidate = {
   isPublic?: boolean;
   confidence?: Confidence;
   sources?: Source[];
+  /** Seen vs captured, straight from `NearbyItem.state`. See `WidgetDiscoveryCard.state`. */
+  state?: NearbyItemState;
 };
 
 export type WidgetFindIdentity = { ticker?: string; comparable?: string };
@@ -178,6 +187,7 @@ function rankedCards(
       ...(distanceM !== undefined ? { distanceM: Math.round(distanceM) } : {}),
       isPublic: candidate.isPublic !== false,
       caught,
+      ...(candidate.state ? { state: candidate.state } : {}),
       confidence: sources.length === 0 ? "low" : (candidate.confidence ?? "low"),
       sources,
       relevance: relevanceFor(candidate, caught),
@@ -427,9 +437,11 @@ export function parseWidgetDiscoverySnapshot(
     cardTickers.add(ticker);
     const sector = card.sector === undefined ? undefined : stringValue(card.sector, 80);
     const distanceM = card.distanceM === undefined ? undefined : finiteNumber(card.distanceM);
+    const state = card.state;
     if (
       (card.sector !== undefined && !sector) ||
-      (card.distanceM !== undefined && distanceM === undefined)
+      (card.distanceM !== undefined && distanceM === undefined) ||
+      (card.state !== undefined && state !== "seen" && state !== "captured")
     )
       return null;
     cards.push({
@@ -444,6 +456,7 @@ export function parseWidgetDiscoverySnapshot(
       sources: sources as Source[],
       ...(sector ? { sector } : {}),
       ...(distanceM !== undefined ? { distanceM } : {}),
+      ...(state === "seen" || state === "captured" ? { state } : {}),
     });
   }
   const snapshotIdValue = stringValue(value.snapshotId, 256);
