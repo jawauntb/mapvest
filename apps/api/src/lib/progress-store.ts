@@ -54,9 +54,12 @@ const MS_PER_DAY = 86_400_000;
 
 // userId -> progress row (fallback when POSTGRES_URL is unset).
 const memory = new Map<string, UserProgress>();
-// userId -> claimed grant keys (fallback when POSTGRES_URL is unset). This is
-// the memory twin of `user_xp_grants`' primary key.
-const memoryGrants = new Map<string, Set<string>>();
+// userId -> grantKey -> {xp, createdAt} (fallback when POSTGRES_URL is
+// unset). This is the memory twin of the `user_xp_grants` table — it carries
+// the same columns `claimGrant` writes to Postgres so a cycle-windowed read
+// like `earlyFindScores` behaves identically on both backends.
+type MemoryGrant = { xp: number; createdAt: string };
+const memoryGrants = new Map<string, Map<string, MemoryGrant>>();
 
 /** The zero row for a user who has never recorded a find. */
 export function defaultProgress(): UserProgress {
@@ -286,6 +289,13 @@ async function ensureTable(): Promise<void> {
     CREATE INDEX IF NOT EXISTS user_xp_grants_user_idx
       ON user_xp_grants (user_id, created_at DESC)
   `;
+  // Backs `earlyFindScores`'s cycle-windowed scan over Pioneer grants only —
+  // a partial index so quest/badge/rivalry grant traffic never bloats it.
+  await sql`
+    CREATE INDEX IF NOT EXISTS user_xp_grants_pioneer_idx
+      ON user_xp_grants (created_at)
+      WHERE grant_key LIKE 'pioneer:%'
+  `;
   tableEnsured = true;
 }
 
@@ -401,11 +411,11 @@ async function claimGrant(userId: string, grantKey: string, xp: number): Promise
   }
   let claimed = memoryGrants.get(userId);
   if (!claimed) {
-    claimed = new Set<string>();
+    claimed = new Map<string, MemoryGrant>();
     memoryGrants.set(userId, claimed);
   }
   if (claimed.has(grantKey)) return false;
-  claimed.add(grantKey);
+  claimed.set(grantKey, { xp: Math.max(0, Math.trunc(xp)), createdAt: new Date().toISOString() });
   return true;
 }
 
@@ -552,4 +562,66 @@ export async function bumpProgressOnFind(
   }
   const next = applyFindWithMultiplier(current, utcDay(createdAtIso), multiplier);
   await persist(userId, next);
+}
+
+/** The grant-key prefix `finds-store.ts` uses for the Pioneer bonus (`pioneer:<geohash6>`). */
+const PIONEER_GRANT_PREFIX = "pioneer:";
+
+export type EarlyFindScoreRow = { userId: string; score: number };
+
+/**
+ * Per-user early-find score for the weekly leaderboard (packages/design/
+ * HANDOFF.md Item 3): the sum of Pioneer-bonus XP grants (`PIONEER_XP`,
+ * `pioneer:<geohash6>` grant keys — see `territory.ts` and `finds-store.ts`)
+ * recorded inside `[cycleStart, cycleEnd)`. This reads the existing
+ * `user_xp_grants` idempotency ledger directly; it never recomputes or
+ * duplicates the bonus, and never touches quest/badge/rivalry grants (their
+ * keys don't share this prefix). Ranking on this — not on raw find count —
+ * is the leaderboard's whole point (BRAND.md "the early spotter").
+ *
+ * Returns one row per user who earned at least one Pioneer grant in the
+ * window; a user with none simply has no row (the caller adds their own
+ * zero-score row when building the response).
+ */
+export async function earlyFindScores(
+  cycleStart: Date,
+  cycleEnd: Date,
+): Promise<EarlyFindScoreRow[]> {
+  await ensureTable();
+  if (dbEnabled()) {
+    const sql = getSql();
+    if (sql) {
+      const rows = await sql`
+        SELECT user_id, COALESCE(SUM(xp), 0)::int AS score
+        FROM user_xp_grants
+        WHERE grant_key LIKE ${`${PIONEER_GRANT_PREFIX}%`}
+          AND created_at >= ${cycleStart}
+          AND created_at < ${cycleEnd}
+        GROUP BY user_id
+      `;
+      return (rows as Array<{ user_id: string; score: number }>).map((r) => ({
+        userId: r.user_id,
+        score: Number(r.score),
+      }));
+    }
+  }
+  const startMs = cycleStart.getTime();
+  const endMs = cycleEnd.getTime();
+  const out: EarlyFindScoreRow[] = [];
+  for (const [userId, grants] of memoryGrants) {
+    let score = 0;
+    for (const [grantKey, grant] of grants) {
+      if (!grantKey.startsWith(PIONEER_GRANT_PREFIX)) continue;
+      const t = Date.parse(grant.createdAt);
+      if (t >= startMs && t < endMs) score += grant.xp;
+    }
+    if (score > 0) out.push({ userId, score });
+  }
+  return out;
+}
+
+/** Test-only: clear both progress backends between isolated test runs. */
+export function __resetProgressStore(): void {
+  memory.clear();
+  memoryGrants.clear();
 }

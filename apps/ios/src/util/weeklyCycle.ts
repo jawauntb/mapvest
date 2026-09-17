@@ -90,3 +90,27 @@ export function formatCloseCountdown(msRemaining: number): string {
   const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
   return `Closes in ${days}d ${hours}h`;
 }
+
+const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** `"Sun 09/15"` — UTC weekday + zero-padded month/day, never device-local. */
+function formatCycleBoundary(d: Date): string {
+  const weekday = WEEKDAY_ABBR[d.getUTCDay()];
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${weekday} ${month}/${day}`;
+}
+
+/**
+ * `"Sun 09/15 – Sat 09/21"` header copy for a weekly-cycle window
+ * (`cycleWindow`'s `{cycleStart, cycleEnd}`). `cycleStart` sits at Saturday
+ * 12:00 UTC — the *close* of the prior cycle — so the human week is
+ * understood to begin the calendar day after it (Sunday); `cycleEnd` is
+ * already Saturday 12:00 UTC and needs no shift. Used by the weekly quest
+ * card and the leaderboard so both surfaces read the same header for the
+ * same cycle.
+ */
+export function formatCycleHeader(cycleStart: Date, cycleEnd: Date): string {
+  const displayStart = new Date(cycleStart.getTime() + 24 * 60 * 60 * 1000);
+  return `${formatCycleBoundary(displayStart)} – ${formatCycleBoundary(cycleEnd)}`;
+}
