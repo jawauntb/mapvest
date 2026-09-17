@@ -50,19 +50,11 @@ struct DiscoveryHeader: View {
 
 struct DiscoveryStatusPill: View {
     let caught: Bool
-    /// Seen vs captured (proximity reveals; it never catches). `nil` on an
-    /// older snapshot falls back to the prior caught-only wording below.
-    var state: WidgetCandidateState? = nil
-
-    private var label: String {
-        if state == .seen { return "SEEN" }
-        return caught ? "CAUGHT" : "UNCOVERED"
-    }
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: caught ? "checkmark.circle.fill" : "circle.dashed")
-            Text(label)
+            Text(caught ? "CAUGHT" : "UNCOVERED")
         }
         .font(.caption2.weight(.black))
         .foregroundColor(caught ? .mapvestFg : .mapvestAccent)
@@ -85,7 +77,7 @@ struct PrimaryDiscoveryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 4 : 7) {
             HStack {
-                DiscoveryStatusPill(caught: card.caught, state: card.state)
+                DiscoveryStatusPill(caught: card.caught)
                 Spacer(minLength: 4)
                 Image(systemName: "arrow.up.right")
                     .font(.caption2.weight(.bold))
@@ -139,7 +131,7 @@ struct PrimaryDiscoveryCard: View {
                 )
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(card.statusText) company, \(card.name), \(card.tickerAccessibilityText), \(widgetDistanceText(card.distanceM)). \(card.relevance). \(card.evidenceText)")
+        .accessibilityLabel("\(card.caught ? "Caught" : "Uncovered") company, \(card.name), \(card.tickerAccessibilityText), \(widgetDistanceText(card.distanceM)). \(card.relevance). \(card.evidenceText)")
         .accessibilityHint("Opens company details in Mapvest")
     }
 }
@@ -255,7 +247,7 @@ struct CompactDiscoveryRow: View {
                     .font(.caption.weight(.bold))
                     .foregroundColor(.mapvestFg)
                     .lineLimit(1)
-                Text("\(card.statusText) · \(widgetDistanceText(card.distanceM)) · \(card.evidenceText)")
+                Text("\(card.caught ? "Caught" : "Uncovered") · \(widgetDistanceText(card.distanceM)) · \(card.evidenceText)")
                     .font(.caption2)
                     .foregroundColor(.mapvestFgMuted)
                     .lineLimit(1)
@@ -267,7 +259,7 @@ struct CompactDiscoveryRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(card.statusText) company, \(card.name), \(card.tickerAccessibilityText), \(widgetDistanceText(card.distanceM)). \(card.evidenceText)")
+        .accessibilityLabel("\(card.caught ? "Caught" : "Uncovered") company, \(card.name), \(card.tickerAccessibilityText), \(widgetDistanceText(card.distanceM)). \(card.evidenceText)")
         .accessibilityHint("Opens company details in Mapvest")
     }
 }

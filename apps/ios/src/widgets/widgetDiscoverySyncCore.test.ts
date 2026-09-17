@@ -4,7 +4,6 @@ import { deviceOriginContext } from "@/location/locationContext";
 import {
   type WidgetDiscoverySyncDependencies,
   synchronizeWidgetDiscovery,
-  widgetNearbyCandidates,
 } from "./widgetDiscoverySyncCore";
 import type { WidgetDiscoverySnapshotV1, WidgetSnapshotScope } from "./widgetSnapshot";
 
@@ -158,29 +157,5 @@ describe("widget discovery synchronization", () => {
     });
     expect(await synchronizeWidgetDiscovery(args, dependencies)).toBe(false);
     expect(writes).toHaveLength(0);
-  });
-});
-
-// Seen vs captured (proximity reveals; it never catches) — the builder must
-// carry `NearbyItem.state` through to `WidgetNearbyCandidate.state`
-// unchanged: present when the server sent it, absent when it didn't.
-describe("widgetNearbyCandidates", () => {
-  const origin = { lat: 40, lng: -74 };
-
-  test("carries state through unchanged when present", () => {
-    const seenItem: NearbyItem = { ...item, state: "seen" };
-    const capturedItem: NearbyItem = { ...item, state: "captured" };
-    const [seenCandidate, capturedCandidate] = widgetNearbyCandidates(
-      [seenItem, capturedItem],
-      origin,
-    );
-    expect(seenCandidate?.state).toBe("seen");
-    expect(capturedCandidate?.state).toBe("captured");
-  });
-
-  test("omits state when absent — an older payload with no field at all", () => {
-    const [candidate] = widgetNearbyCandidates([item], origin);
-    expect(candidate).toBeDefined();
-    expect("state" in (candidate as object)).toBe(false);
   });
 });

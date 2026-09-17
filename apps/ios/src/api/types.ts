@@ -169,17 +169,6 @@ export const NearbyRequest = z.object({
 });
 export type NearbyRequest = z.infer<typeof NearbyRequest>;
 
-/**
- * "seen" — resolvable, and the caller has walked near it, but never
- * photographed it: on the map/widget, no quota spent, no Find. "captured" —
- * the caller already has a matching Find in this tile; a normal catch,
- * exactly as today. Proximity reveals; it never catches (BRAND.md §The
- * capture economy). Older payloads omit this field entirely — treat absence
- * the same as "seen".
- */
-export const NearbyItemState = z.enum(["seen", "captured"]);
-export type NearbyItemState = z.infer<typeof NearbyItemState>;
-
 export const NearbyItem = z.object({
   place: z.object({
     id: z.string(),
@@ -188,7 +177,6 @@ export const NearbyItem = z.object({
     types: z.array(z.string()).default([]),
   }),
   investable: Investable.optional(),
-  state: NearbyItemState.optional(),
 });
 export type NearbyItem = z.infer<typeof NearbyItem>;
 
@@ -196,19 +184,6 @@ export const NearbyResponse = z.object({
   items: z.array(NearbyItem),
 });
 export type NearbyResponse = z.infer<typeof NearbyResponse>;
-
-/**
- * A place proximity has revealed but the camera hasn't — NOT a Find. Carries
- * no confidence, no evidence, no rarity; those are the language of a
- * captured result. See BRAND.md §The capture economy / seen vs captured.
- */
-export const SeenEntry = z.object({
-  ownerId: z.string(),
-  companyId: z.string(),
-  tile: z.string(),
-  firstSeenAt: z.string(),
-});
-export type SeenEntry = z.infer<typeof SeenEntry>;
 
 export const ResolveComparableRequest = z.object({
   brand: z.string(),

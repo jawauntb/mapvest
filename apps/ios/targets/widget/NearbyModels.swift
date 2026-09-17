@@ -53,16 +53,6 @@ enum WidgetConfidence: String, Codable {
     case low
 }
 
-/// Seen vs captured (proximity reveals; it never catches — BRAND.md §The
-/// capture economy). "seen": resolvable, on the map, but no Find yet.
-/// "captured": a Find already exists for this exact place. Optional on
-/// `WidgetDiscoveryCard` so an older snapshot with no field at all still
-/// decodes — see `isValidWidgetSnapshot`, which never requires it.
-enum WidgetCandidateState: String, Codable {
-    case seen
-    case captured
-}
-
 enum WidgetSourceProvider: String, Codable {
     case exa
     case openrouter
@@ -96,10 +86,6 @@ struct WidgetDiscoveryCard: Codable, Identifiable {
     let distanceM: Double?
     let isPublic: Bool
     let caught: Bool
-    /// Seen vs captured, carried through unchanged from the RN-side
-    /// `WidgetDiscoveryCard.state`. `nil` on an older snapshot — render it
-    /// the same as `caught`-only, never as a crash or a false capture.
-    let state: WidgetCandidateState?
     let confidence: WidgetConfidence
     let sources: [WidgetSource]
     let relevance: String
@@ -114,15 +100,6 @@ struct WidgetDiscoveryCard: Codable, Identifiable {
         let sourceText = sources.count == 1 ? "1 source" : "\(sources.count) sources"
         let trust = "\(confidence.rawValue.capitalized) confidence · \(sourceText)"
         return isPublic ? trust : "Comparable · \(trust)"
-    }
-
-    /// "Seen" wins whenever the server says so — proximity reveals it, but
-    /// the camera hasn't touched it yet, regardless of what this device's
-    /// own journal happens to say via `caught`. `nil` `state` (an older
-    /// snapshot) falls back to the prior caught-only wording.
-    var statusText: String {
-        if state == .seen { return "Seen" }
-        return caught ? "Caught" : "Uncovered"
     }
 }
 
@@ -365,9 +342,9 @@ extension WidgetDiscoverySnapshotV1 {
         expiresAt: widgetDateFormatter.string(from: Date().addingTimeInterval(21_600)),
         location: WidgetSnapshotLocation(status: .fresh, source: .demo, label: "Sample preview"),
         cards: [
-            WidgetDiscoveryCard(id: "JPM", name: "JPMorgan Chase", ticker: "JPM", sector: "Financials", distanceM: 120, isPublic: true, caught: false, state: .seen, confidence: .high, sources: [.preview], relevance: "Uncovered Financials company", deepLink: "mapvest:///detail/JPM"),
-            WidgetDiscoveryCard(id: "SBUX", name: "Starbucks", ticker: "SBUX", sector: "Consumer", distanceM: 260, isPublic: true, caught: true, state: .captured, confidence: .high, sources: [.preview], relevance: "Caught in your Universe", deepLink: "mapvest:///detail/SBUX"),
-            WidgetDiscoveryCard(id: "NKE", name: "Nike", ticker: "NKE", sector: "Consumer", distanceM: 410, isPublic: true, caught: false, state: .seen, confidence: .medium, sources: [.preview], relevance: "Uncovered Consumer company", deepLink: "mapvest:///detail/NKE")
+            WidgetDiscoveryCard(id: "JPM", name: "JPMorgan Chase", ticker: "JPM", sector: "Financials", distanceM: 120, isPublic: true, caught: false, confidence: .high, sources: [.preview], relevance: "Uncovered Financials company", deepLink: "mapvest:///detail/JPM"),
+            WidgetDiscoveryCard(id: "SBUX", name: "Starbucks", ticker: "SBUX", sector: "Consumer", distanceM: 260, isPublic: true, caught: true, confidence: .high, sources: [.preview], relevance: "Caught in your Universe", deepLink: "mapvest:///detail/SBUX"),
+            WidgetDiscoveryCard(id: "NKE", name: "Nike", ticker: "NKE", sector: "Consumer", distanceM: 410, isPublic: true, caught: false, confidence: .medium, sources: [.preview], relevance: "Uncovered Consumer company", deepLink: "mapvest:///detail/NKE")
         ],
         quest: WidgetQuestSnapshot(id: "preview", title: "Catch one nearby company", progress: 1, target: 2, completed: false, xp: 25, deepLink: "mapvest:///universe"),
         dex: WidgetDexSnapshot(found: 8, total: 42, tilesVisited: 3, deepLink: "mapvest:///universe"),
