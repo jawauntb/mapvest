@@ -1,0 +1,107 @@
+# Uploads an already-inspected EAS build to App Store Connect without
+# rebuilding it. The production pipeline does this as its last step, but a full
+# ios-eas-production run costs ~30 minutes and one of the plan's iOS builds, so
+# submission problems are diagnosed and re-driven from here against a build that
+# already exists.
+name: ios-testflight-submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      eas_build_id:
+        type: string
+        required: true
+        description: Exact inspected EAS build UUID to upload.
+      manifest_path:
+        type: string
+        required: true
+        default: apps/ios/release/v0.1.0.json
+        description: Checked-in immutable release manifest.
+      manifest_hash:
+        type: string
+        required: true
+        description: Validated release-manifest SHA-256.
+      source_commit_sha:
+        type: string
+        required: true
+        description: Full merged main SHA the build was made from.
+
+concurrency:
+  group: ios-testflight-submit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: upload exact build to App Store Connect
+    runs-on: ubuntu-latest
+    environment: ios-production-release
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install iOS dependencies
+        # eas resolves apps/ios/app.json, whose config plugins are looked up in
+        # node_modules; without them eas exits with a bare "command failed".
+        working-directory: apps/ios
+        run: npm ci --no-workspaces
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 22.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Validate the release binding this build claims
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_HASH: ${{ inputs.manifest_hash }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MANIFEST_PATH" =~ ^apps/ios/release/v[0-9]+\.[0-9]+\.[0-9]+\.json$ ]]
+          compare_status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SOURCE_COMMIT_SHA" --jq '.status')"
+          [[ "$compare_status" == "behind" || "$compare_status" == "identical" ]]
+          bun apps/ios/scripts/release-manifest.ts validate-request \
+            "$MANIFEST_PATH" "$MANIFEST_HASH" "$SOURCE_COMMIT_SHA" "$SOURCE_COMMIT_SHA"
+
+      - name: Upload the exact build to App Store Connect
+        shell: bash
+        working-directory: apps/ios
+        env:
+          EAS_BUILD_ID: ${{ inputs.eas_build_id }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/eas-submit.out"
+          err="$RUNNER_TEMP/eas-submit.err"
+          # Both streams are captured and always printed: with --json the
+          # structured result goes to stdout and the human-readable reason to
+          # stderr, so redirecting either one silently discards the only
+          # explanation of a failure.
+          set +e
+          eas submit --platform ios --id "$EAS_BUILD_ID" \
+            --profile production --non-interactive --json > "$out" 2> "$err"
+          status=$?
+          set -e
+          echo "--- eas submit stdout ---"
+          cat "$out" || true
+          echo "--- eas submit stderr ---"
+          cat "$err" || true
+          if [[ $status -ne 0 ]]; then
+            echo "::error::eas submit exited $status; see both streams above."
+            exit $status
+          fi
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' "$out" 2>/dev/null || true
