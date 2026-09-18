@@ -372,6 +372,9 @@ describe("TerritoryResponse", () => {
     found: 6,
     pioneer: true,
     sources: [source],
+    // Co-op tile uncover (Universe Roadmap §4 Item 4) — shared, per-tile
+    // state, always present on a real response (see routes/territory.ts).
+    coop: { contributors: 3, threshold: 5, uncovered: false },
   };
 
   test("parses tile completion", () => {
@@ -386,6 +389,7 @@ describe("TerritoryResponse", () => {
       found: 0,
       pioneer: false,
       sources: [],
+      coop: { contributors: 0, threshold: 5, uncovered: false },
     });
     expect(fresh.found).toBe(0);
     expect(fresh.pioneer).toBe(false);
