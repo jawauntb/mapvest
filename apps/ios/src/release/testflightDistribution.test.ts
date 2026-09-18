@@ -174,7 +174,7 @@ describe("manifest-bound TestFlight distribution", () => {
     const source = await Bun.file(githubProductionWorkflowUrl).text();
     expect(source).toContain("mapvest-ios-inspected-");
     expect(source).toContain(".eas/workflows/testflight-distribute.yml");
-    expect(source).toContain('--input "build_id=$EAS_BUILD_ID"');
+    expect(source).toContain('eas submit --platform ios --id "$EAS_BUILD_ID"');
     expect(source.indexOf("  inspect_candidate:")).toBeLessThan(
       source.indexOf("  distribute_candidate:"),
     );
