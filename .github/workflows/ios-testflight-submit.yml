@@ -87,13 +87,14 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/eas-submit.out"
           err="$RUNNER_TEMP/eas-submit.err"
-          # Both streams are captured and always printed: with --json the
-          # structured result goes to stdout and the human-readable reason to
-          # stderr, so redirecting either one silently discards the only
+          # `eas submit` has no --json flag; passing one makes it exit 1 with
+          # "Nonexistent flag: --json" before doing any work. Both streams are
+          # captured and always printed because eas splits its output across
+          # them, so redirecting either one alone can discard the only
           # explanation of a failure.
           set +e
           eas submit --platform ios --id "$EAS_BUILD_ID" \
-            --profile production --non-interactive --json > "$out" 2> "$err"
+            --profile production --non-interactive > "$out" 2> "$err"
           status=$?
           set -e
           echo "--- eas submit stdout ---"
@@ -104,4 +105,3 @@ jobs:
             echo "::error::eas submit exited $status; see both streams above."
             exit $status
           fi
-          jq -r 'to_entries[] | "\(.key)=\(.value)"' "$out" 2>/dev/null || true
