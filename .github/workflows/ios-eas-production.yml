@@ -488,24 +488,27 @@ jobs:
         working-directory: apps/ios
         env:
           EAS_BUILD_ID: ${{ steps.candidate.outputs.eas_build_id }}
+          WHAT_TO_TEST: ${{ steps.candidate.outputs.what_to_test }}
         run: |
           set -euo pipefail
           # The EAS `testflight` job that takes a build_id is paid-plan only, so
           # this uploads the already-inspected build with EAS Submit, which every
-          # plan includes. That lands the exact binary in App Store Connect but
-          # assigns no external group and carries no changelog; the manifest-owned
-          # group and what-to-test copy are applied against the resulting ASC
-          # build by ios-testflight-recovery.yml, whose `testflight` job takes an
-          # asc_build_id and is free-plan eligible.
-          submission="$RUNNER_TEMP/eas-submission.json"
+          # plan includes. --what-to-test carries the manifest-owned copy, so the
+          # only thing still missing is the manifest's external group, which
+          # ios-testflight-recovery.yml applies against the resulting ASC build
+          # via a `testflight` job that takes an asc_build_id (free-plan
+          # eligible). --groups is internal-only and so cannot serve for it.
+          submission="$RUNNER_TEMP/eas-submission.out"
           submission_err="$RUNNER_TEMP/eas-submission.err"
-          # Both streams are captured and always printed before any exit check:
-          # with --json the structured result goes to stdout and the
-          # human-readable reason to stderr, so redirecting stdout alone and
-          # letting `set -e` fire discards the only explanation of a failure.
+          # `eas submit` has no --json flag; passing one makes it exit 1 with
+          # "Nonexistent flag: --json" before doing any work. Both streams are
+          # captured and always printed before the exit check because eas
+          # splits its output across them, so redirecting either one alone can
+          # discard the only explanation of a failure.
           set +e
           eas submit --platform ios --id "$EAS_BUILD_ID" \
-            --profile production --non-interactive --json \
+            --profile production --non-interactive --wait \
+            --what-to-test "$WHAT_TO_TEST" \
             > "$submission" 2> "$submission_err"
           submit_status=$?
           set -e
@@ -518,13 +521,14 @@ jobs:
             exit $submit_status
           fi
           # The upload above is the irreversible part; if it succeeded, never
-          # fail the job over the shape of its JSON. Fall back to this run as
-          # the evidence reference so a schema change can't strand a build that
-          # is already in App Store Connect.
-          submission_id="$(jq -r '.id // .submissionId // empty' "$submission" 2>/dev/null || true)"
+          # fail the job over how the output happens to be worded. eas prints a
+          # submission details URL, so take the id from there when it is there
+          # and fall back to this run otherwise.
+          submission_id="$(cat "$submission" "$submission_err" \
+            | grep -oE 'submissions/[0-9a-fA-F-]{36}' | head -1 | cut -d/ -f2 || true)"
           if [[ -z "$submission_id" ]]; then
             submission_id="github-actions://$GITHUB_REPOSITORY/runs/$GITHUB_RUN_ID#eas_submit"
-            echo "::warning::Could not read a submission ID from eas submit --json; recorded $submission_id instead."
+            echo "::warning::Could not read a submission ID from eas submit output; recorded $submission_id instead."
           fi
           echo "eas_submission_id=$submission_id" >> "$GITHUB_OUTPUT"
 
