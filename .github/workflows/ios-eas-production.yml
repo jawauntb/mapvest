@@ -327,6 +327,13 @@ jobs:
         with:
           ref: ${{ needs.release_gate.outputs.source_commit_sha }}
 
+      - name: Install iOS dependencies
+        # Every eas command below resolves apps/ios/app.json, whose config
+        # plugins are looked up in node_modules. Without them eas exits
+        # immediately with a bare "command failed" and no plugin named.
+        working-directory: apps/ios
+        run: npm ci --no-workspaces
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
@@ -427,6 +434,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Install iOS dependencies
+        # Same app.json config-plugin resolution the inspect job needs, for the
+        # eas workflow:run/status calls that dispatch the TestFlight release.
+        working-directory: apps/ios
+        run: npm ci --no-workspaces
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
