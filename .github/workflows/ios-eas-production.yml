@@ -482,68 +482,54 @@ jobs:
             echo "MAPVEST_COPY"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Distribute only the inspected EAS build UUID
+      - name: Upload only the inspected EAS build UUID to App Store Connect
         id: distribution
         shell: bash
         working-directory: apps/ios
         env:
           EAS_BUILD_ID: ${{ steps.candidate.outputs.eas_build_id }}
-          MANIFEST_HASH: ${{ needs.release_gate.outputs.manifest_hash }}
-          SOURCE_COMMIT_SHA: ${{ needs.release_gate.outputs.source_commit_sha }}
-          TESTFLIGHT_GROUP: ${{ steps.candidate.outputs.testflight_group }}
-          WHAT_TO_TEST: ${{ steps.candidate.outputs.what_to_test }}
         run: |
           set -euo pipefail
-          list_distribution_runs() {
-            local destination="$1"
-            if ! eas workflow:runs --workflow testflight-distribute.yml --json --limit 100 \
-              > "$destination"; then
-              eas workflow:runs --json --limit 100 | jq \
-                '[.[] | select(.workflowFileName == "testflight-distribute.yml")]' \
-                > "$destination"
-            fi
-          }
-          before="$RUNNER_TEMP/distribution-runs-before.json"
-          list_distribution_runs "$before"
-          set +e
-          dispatch="$(eas workflow:run .eas/workflows/testflight-distribute.yml \
-            --input "build_id=$EAS_BUILD_ID" \
-            --input "manifest_hash=$MANIFEST_HASH" \
-            --input "source_commit_sha=$SOURCE_COMMIT_SHA" \
-            --input "what_to_test=$WHAT_TO_TEST" \
-            --input "testflight_group=$TESTFLIGHT_GROUP" \
-            --json --no-wait --non-interactive)"
-          dispatch_status=$?
-          set -e
-          run_id="$(jq -r '.id // empty' <<<"$dispatch" 2>/dev/null || true)"
-          if [[ -z "$run_id" ]]; then
-            after="$RUNNER_TEMP/distribution-runs-after.json"
-            for attempt in 1 2 3 4 5; do
-              list_distribution_runs "$after"
-              run_id="$(jq -r --slurpfile before "$before" '
-                [.[].id] - [$before[0][].id] | if length == 1 then .[0] else empty end
-              ' "$after")"
-              [[ -n "$run_id" ]] && break
-              sleep 2
-            done
+          # The EAS `testflight` job that takes a build_id is paid-plan only, so
+          # this uploads the already-inspected build with EAS Submit, which every
+          # plan includes. That lands the exact binary in App Store Connect but
+          # assigns no external group and carries no changelog; the manifest-owned
+          # group and what-to-test copy are applied against the resulting ASC
+          # build by ios-testflight-recovery.yml, whose `testflight` job takes an
+          # asc_build_id and is free-plan eligible.
+          submission="$RUNNER_TEMP/eas-submission.json"
+          eas submit --platform ios --id "$EAS_BUILD_ID" \
+            --profile production --non-interactive --json > "$submission"
+          # Printed so the exact submission shape is recoverable from the log
+          # when resolving the ASC build ID for the distribution step.
+          cat "$submission"
+          # The upload above is the irreversible part; if it succeeded, never
+          # fail the job over the shape of its JSON. Fall back to this run as
+          # the evidence reference so a schema change can't strand a build that
+          # is already in App Store Connect.
+          submission_id="$(jq -r '.id // .submissionId // empty' "$submission" 2>/dev/null || true)"
+          if [[ -z "$submission_id" ]]; then
+            submission_id="github-actions://$GITHUB_REPOSITORY/runs/$GITHUB_RUN_ID#eas_submit"
+            echo "::warning::Could not read a submission ID from eas submit --json; recorded $submission_id instead."
           fi
-          if [[ -z "$run_id" ]]; then
-            echo "::error::Could not identify exactly one TestFlight distribution run after dispatch exit $dispatch_status."
-            exit 1
-          fi
-          echo "$run_id" > "$RUNNER_TEMP/testflight-distribution-run-id"
-          eas workflow:status "$run_id" --wait --json --non-interactive
-          echo "eas_run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "eas_submission_id=$submission_id" >> "$GITHUB_OUTPUT"
 
-      - name: Publish final distributed candidate evidence
+      - name: Publish final uploaded candidate evidence
         shell: bash
         env:
-          DISTRIBUTION_RUN_ID: ${{ steps.distribution.outputs.eas_run_id }}
+          SUBMISSION_ID: ${{ steps.distribution.outputs.eas_submission_id }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/mapvest-ios-candidate"
-          jq --arg run_id "$DISTRIBUTION_RUN_ID" \
-            '. + {testFlightWorkflowRunId: $run_id, testFlightDistribution: "passed"}' \
+          # testFlightDistribution stays short of "passed" on purpose: the binary
+          # is in App Store Connect but is not yet distributed to the manifest's
+          # external group, so the App Store ledger must refuse to bootstrap from
+          # this evidence until ios-testflight-recovery.yml completes that step.
+          jq --arg submission_id "$SUBMISSION_ID" \
+            '. + {
+               testFlightWorkflowRunId: $submission_id,
+               testFlightDistribution: "uploaded_pending_external_group"
+             }' \
             "$RUNNER_TEMP/mapvest-ios-inspected/candidate-evidence.json" \
             > "$RUNNER_TEMP/mapvest-ios-candidate/candidate-evidence.json"
 

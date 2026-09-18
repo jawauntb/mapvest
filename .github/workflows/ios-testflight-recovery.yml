@@ -51,6 +51,13 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install iOS dependencies
+        # The eas commands below resolve apps/ios/app.json, whose config plugins
+        # are looked up in node_modules; without them eas exits immediately with
+        # a bare "command failed" and never names the unresolved plugin.
+        working-directory: apps/ios
+        run: npm ci --no-workspaces
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
