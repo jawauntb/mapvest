@@ -29,6 +29,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install apps/ios dependencies
+        # apps/ios is intentionally excluded from the bun workspace (Expo's
+        # Metro resolver breaks against bun's hoisted .bun/ symlink layout —
+        # see apps/ios/README.md), so the root `bun install` above never
+        # gives it a node_modules. The root-level `bun test` below still
+        # discovers and runs apps/ios/src/**/*.test.ts, so without this step
+        # any of those files that import an npm package directly (zod, etc.)
+        # fail to resolve it in CI even though it passes locally after a
+        # developer runs this same command by hand.
+        run: cd apps/ios && npm install --no-workspaces
+
       - name: Run tests (must pass)
         run: bun test
 
