@@ -32,6 +32,7 @@ import {
   sectorSeries,
 } from "@mapvest/finance";
 import { enrichTicker, toSource } from "@mapvest/search";
+import { callOpenRouterCascade, stripToJsonObject } from "./openrouter-client.js";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /** Hard wall-clock cap on the whole Exa fanout. */
@@ -261,75 +262,31 @@ function cleanStrings(value: unknown, max: number): string[] {
     .slice(0, max);
 }
 
-async function requestOpenRouter(
-  model: string,
-  apiKey: string,
-  baseUrl: string,
-  userContent: string,
-): Promise<LLMOutput> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://mapvest.app",
-        "X-Title": "Mapvest",
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" as const },
-        temperature: 0.3,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
-    const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = j.choices?.[0]?.message?.content ?? "{}";
-    const stripped = raw
-      .replace(/^\s*```(?:json|JSON)?\s*/, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
-    const first = stripped.indexOf("{");
-    const last = stripped.lastIndexOf("}");
-    const slice = first !== -1 && last > first ? stripped.slice(first, last + 1) : stripped;
-    const parsed = JSON.parse(slice) as Partial<LLMOutput>;
-    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
-    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
-    if (!headline || !body) {
-      throw new Error("LLM returned unexpected shape (headline and body are required)");
-    }
-    return {
-      headline,
-      body,
-      tailwinds: cleanStrings(parsed.tailwinds, MAX_FORCES),
-      headwinds: cleanStrings(parsed.headwinds, MAX_FORCES),
-    };
-  } finally {
-    clearTimeout(timer);
+function parseLLMOutput(raw: string): LLMOutput {
+  const parsed = JSON.parse(stripToJsonObject(raw)) as Partial<LLMOutput>;
+  const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+  const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+  if (!headline || !body) {
+    throw new Error("LLM returned unexpected shape (headline and body are required)");
   }
+  return {
+    headline,
+    body,
+    tailwinds: cleanStrings(parsed.tailwinds, MAX_FORCES),
+    headwinds: cleanStrings(parsed.headwinds, MAX_FORCES),
+  };
 }
 
 async function callOpenRouter(userContent: string): Promise<LLMOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
-  let lastErr: unknown;
-  for (const model of [PRIMARY_MODEL, ...FALLBACK_MODELS]) {
-    try {
-      return await requestOpenRouter(model, apiKey, baseUrl, userContent);
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[environment-brief] model ${model} failed, trying next:`, err);
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  return callOpenRouterCascade({
+    models: [PRIMARY_MODEL, ...FALLBACK_MODELS],
+    systemPrompt: SYSTEM_PROMPT,
+    userContent,
+    temperature: 0.3,
+    timeoutMs: OPENROUTER_TIMEOUT_MS,
+    parse: parseLLMOutput,
+    logPrefix: "[environment-brief]",
+  });
 }
 
 // ---------------- Public API ----------------
