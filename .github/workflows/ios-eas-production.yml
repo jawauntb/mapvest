@@ -498,11 +498,25 @@ jobs:
           # build by ios-testflight-recovery.yml, whose `testflight` job takes an
           # asc_build_id and is free-plan eligible.
           submission="$RUNNER_TEMP/eas-submission.json"
+          submission_err="$RUNNER_TEMP/eas-submission.err"
+          # Both streams are captured and always printed before any exit check:
+          # with --json the structured result goes to stdout and the
+          # human-readable reason to stderr, so redirecting stdout alone and
+          # letting `set -e` fire discards the only explanation of a failure.
+          set +e
           eas submit --platform ios --id "$EAS_BUILD_ID" \
-            --profile production --non-interactive --json > "$submission"
-          # Printed so the exact submission shape is recoverable from the log
-          # when resolving the ASC build ID for the distribution step.
-          cat "$submission"
+            --profile production --non-interactive --json \
+            > "$submission" 2> "$submission_err"
+          submit_status=$?
+          set -e
+          echo "--- eas submit stdout ---"
+          cat "$submission" || true
+          echo "--- eas submit stderr ---"
+          cat "$submission_err" || true
+          if [[ $submit_status -ne 0 ]]; then
+            echo "::error::eas submit exited $submit_status; see both streams above."
+            exit $submit_status
+          fi
           # The upload above is the irreversible part; if it succeeded, never
           # fail the job over the shape of its JSON. Fall back to this run as
           # the evidence reference so a schema change can't strand a build that
