@@ -46,6 +46,7 @@ import {
   generateEnvironmentBrief,
 } from "./environment-brief-generator.js";
 import { marketDataSource } from "./marketDataSource.js";
+import { callOpenRouterCascade, stripToJsonObject } from "./openrouter-client.js";
 
 /** Max edges handed to the model as value-chain evidence. */
 const MAX_EDGES = 12;
@@ -271,16 +272,9 @@ function optionalText(value: unknown): string | undefined {
  */
 export function parseSynthesis(raw: string): ParsedSynthesis | null {
   if (typeof raw !== "string") return null;
-  const stripped = raw
-    .replace(/^\s*```(?:json|JSON)?\s*/, "")
-    .replace(/\s*```\s*$/, "")
-    .trim();
-  const first = stripped.indexOf("{");
-  const last = stripped.lastIndexOf("}");
-  const slice = first !== -1 && last > first ? stripped.slice(first, last + 1) : stripped;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(slice);
+    parsed = JSON.parse(stripToJsonObject(raw));
   } catch {
     return null;
   }
@@ -376,58 +370,22 @@ async function gatherRatios(
 
 // ---------------- I/O: model ----------------
 
-async function requestOpenRouter(
-  model: string,
-  apiKey: string,
-  baseUrl: string,
-  userContent: string,
-): Promise<ParsedSynthesis> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://mapvest.app",
-        "X-Title": "Mapvest",
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" as const },
-        temperature: 0.2,
-        messages: [
-          { role: "system", content: SYNTHESIS_SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenRouter ${model} ${res.status}`);
-    const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const parsed = parseSynthesis(j.choices?.[0]?.message?.content ?? "");
-    if (!parsed) throw new Error(`OpenRouter ${model} returned an unparseable synthesis memo`);
-    return parsed;
-  } finally {
-    clearTimeout(timer);
-  }
+function parseLLMOutput(raw: string): ParsedSynthesis {
+  const parsed = parseSynthesis(raw);
+  if (!parsed) throw new Error("OpenRouter returned an unparseable synthesis memo");
+  return parsed;
 }
 
 async function callOpenRouter(userContent: string): Promise<ParsedSynthesis> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY missing (Doppler)");
-  let lastErr: unknown;
-  for (const model of [PRIMARY_MODEL, ...FALLBACK_MODELS]) {
-    try {
-      return await requestOpenRouter(model, apiKey, baseUrl, userContent);
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[synthesis-memo] model ${model} failed, trying next:`, err);
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  return callOpenRouterCascade({
+    models: [PRIMARY_MODEL, ...FALLBACK_MODELS],
+    systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
+    userContent,
+    temperature: 0.2,
+    timeoutMs: OPENROUTER_TIMEOUT_MS,
+    parse: parseLLMOutput,
+    logPrefix: "[synthesis-memo]",
+  });
 }
 
 // ---------------- Public API ----------------
