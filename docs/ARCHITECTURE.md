@@ -152,7 +152,18 @@ chevron. Mapvest Daily is list-scoped: `GET /v1/watchlist/brief?listId=`
 writes the column for that list's tickers (omitted → the default list), each
 watchlist detail page mounts its own lazily (the brief for a list is only
 generated when its page is opened), and Home's card follows the selected
-list chip. Any list can be promoted to default — tap the ★ in a watchlist
+list chip. Under the brief, each watchlist detail page also mounts a
+"Headlines" card fed by `GET /v1/watchlist/headlines?listId=` — the same
+per-ticker headline batch the brief is written from, newest first. Headlines
+there and on `GET /v1/news` may carry an optional `jev_materiality`
+`{ level: noise|minor|material, score, confidence }` tag from ONE batched Jev
+call per page (`apps/api/src/lib/headline-materiality.ts`, memoized 15 min
+per headline url + content hash). The key is absent — never null — when Jev
+is unconfigured, errored, or below 0.55 confidence, and both endpoints accept
+`?materiality=<level>` which keeps items at or above that level **plus every
+unscored item**, so a Jev outage can never hide news. Clients render the tag
+as a "Material · 82%" pill and offer a "Material only" toggle only once
+something on the page is scored. Any list can be promoted to default — tap the ★ in a watchlist
 detail page's header, or tap ••• on any row on the Watchlists screen (a
 long-press shortcut still works too), then "Make default"; `POST
 /v1/watchlist/lists/:id/default` demotes the old default in the same call.

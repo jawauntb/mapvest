@@ -162,35 +162,48 @@ const NEWS_PER_TICKER_LIMIT = 2;
 const NEWS_TOTAL_LIMIT = 8;
 const NEWS_TIMEOUT_MS = 2_000;
 
-async function fetchTopHeadlinesForTicker(ticker: string): Promise<NewsItem[]> {
+async function fetchTopHeadlinesForTicker(
+  ticker: string,
+  perTicker: number = NEWS_PER_TICKER_LIMIT,
+): Promise<NewsItem[]> {
   try {
     const result = await Promise.race<{ items: NewsItem[] } | null>([
-      fetchTickerNews(ticker, NEWS_PER_TICKER_LIMIT),
+      fetchTickerNews(ticker, perTicker),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), NEWS_TIMEOUT_MS)),
     ]);
     if (!result) return [];
-    return result.items.slice(0, NEWS_PER_TICKER_LIMIT);
+    return result.items.slice(0, perTicker);
   } catch {
     return [];
   }
 }
 
-async function collectHeadlines(
+export type WatchlistHeadlineRow = { ticker: string; items: NewsItem[] };
+
+/**
+ * Best-effort headlines for every ticker on a watchlist, capped at `totalLimit`
+ * overall and distributed round-robin so each ticker gets at least one before
+ * any ticker gets a second. Exported for `GET /v1/watchlist/headlines`, which
+ * serves the same batch to clients that the daily brief reads internally; the
+ * brief keeps the tighter defaults its prompt budget was sized for.
+ */
+export async function collectHeadlines(
   tickers: string[],
-): Promise<Array<{ ticker: string; items: NewsItem[] }>> {
+  limits: { perTicker?: number; totalLimit?: number } = {},
+): Promise<WatchlistHeadlineRow[]> {
+  const perTicker = limits.perTicker ?? NEWS_PER_TICKER_LIMIT;
+  const totalLimit = limits.totalLimit ?? NEWS_TOTAL_LIMIT;
   const results = await Promise.all(
     tickers.map(async (ticker) => ({
       ticker,
-      items: await fetchTopHeadlinesForTicker(ticker),
+      items: await fetchTopHeadlinesForTicker(ticker, perTicker),
     })),
   );
-  // Cap total headlines at NEWS_TOTAL_LIMIT, distributed round-robin so
-  // each ticker gets at least one before any second headline is added.
   let total = 0;
-  const capped: Array<{ ticker: string; items: NewsItem[] }> = [];
-  for (let pass = 0; pass < NEWS_PER_TICKER_LIMIT && total < NEWS_TOTAL_LIMIT; pass++) {
+  const capped: WatchlistHeadlineRow[] = [];
+  for (let pass = 0; pass < perTicker && total < totalLimit; pass++) {
     for (const row of results) {
-      if (total >= NEWS_TOTAL_LIMIT) break;
+      if (total >= totalLimit) break;
       const item = row.items[pass];
       if (!item) continue;
       const bucket = capped.find((b) => b.ticker === row.ticker);

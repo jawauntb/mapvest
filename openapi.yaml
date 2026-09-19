@@ -1241,6 +1241,11 @@ components:
             - brand
             - confidence
             - sources
+        state:
+          type: string
+          enum:
+            - seen
+            - captured
       required:
         - place
     NearbyResponse:
@@ -1503,6 +1508,11 @@ components:
                   - brand
                   - confidence
                   - sources
+              state:
+                type: string
+                enum:
+                  - seen
+                  - captured
             required:
               - place
       required:
@@ -3451,6 +3461,18 @@ components:
                 - settings
           required:
             - type
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - quests
+            section:
+              type: string
+              enum:
+                - weekly-recap
+          required:
+            - type
     PushNotificationDelivery:
       type: object
       properties:
@@ -3578,6 +3600,18 @@ components:
                   type: string
                   enum:
                     - settings
+              required:
+                - type
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - quests
+                section:
+                  type: string
+                  enum:
+                    - weekly-recap
               required:
                 - type
       required:
@@ -4684,6 +4718,8 @@ components:
               - admin
           default:
             - user
+        handle:
+          type: string
       required:
         - id
         - email
@@ -5341,12 +5377,26 @@ components:
               - provider
               - fetchedAt
               - confidence
+        coop:
+          type: object
+          properties:
+            contributors:
+              type: number
+            threshold:
+              type: number
+            uncovered:
+              type: boolean
+          required:
+            - contributors
+            - threshold
+            - uncovered
       required:
         - tile
         - investablesTotal
         - found
         - pioneer
         - sources
+        - coop
     ActiveEvent:
       type: object
       properties:
@@ -6401,6 +6451,34 @@ components:
                     type:
                       - string
                       - "null"
+                  citation_type:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - sec_xbrl
+                          - sec_filing
+                          - sec_trend_pack
+                          - sec_earnings_section
+                          - earnings_calendar
+                          - exa
+                      source:
+                        type: string
+                        enum:
+                          - regex
+                          - jev
+                      confidence:
+                        type:
+                          - number
+                          - "null"
+                        minimum: 0
+                        maximum: 1
+                    required:
+                      - type
+                      - source
                 required:
                   - id
             model:
@@ -6670,6 +6748,34 @@ components:
                 type:
                   - string
                   - "null"
+              citation_type:
+                type:
+                  - object
+                  - "null"
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - sec_xbrl
+                      - sec_filing
+                      - sec_trend_pack
+                      - sec_earnings_section
+                      - earnings_calendar
+                      - exa
+                  source:
+                    type: string
+                    enum:
+                      - regex
+                      - jev
+                  confidence:
+                    type:
+                      - number
+                      - "null"
+                    minimum: 0
+                    maximum: 1
+                required:
+                  - type
+                  - source
             required:
               - id
           default: []
@@ -7033,6 +7139,34 @@ components:
                     type:
                       - string
                       - "null"
+                  citation_type:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - sec_xbrl
+                          - sec_filing
+                          - sec_trend_pack
+                          - sec_earnings_section
+                          - earnings_calendar
+                          - exa
+                      source:
+                        type: string
+                        enum:
+                          - regex
+                          - jev
+                      confidence:
+                        type:
+                          - number
+                          - "null"
+                        minimum: 0
+                        maximum: 1
+                    required:
+                      - type
+                      - source
                 required:
                   - id
             zones:
@@ -7319,6 +7453,34 @@ components:
                 type:
                   - string
                   - "null"
+              citation_type:
+                type:
+                  - object
+                  - "null"
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - sec_xbrl
+                      - sec_filing
+                      - sec_trend_pack
+                      - sec_earnings_section
+                      - earnings_calendar
+                      - exa
+                  source:
+                    type: string
+                    enum:
+                      - regex
+                      - jev
+                  confidence:
+                    type:
+                      - number
+                      - "null"
+                    minimum: 0
+                    maximum: 1
+                required:
+                  - type
+                  - source
             required:
               - id
           default: []
