@@ -43,9 +43,11 @@ import push from "./routes/push.js";
 import quests from "./routes/quests.js";
 import quoteHistory from "./routes/quote-history.js";
 import quote from "./routes/quote.js";
+import rating from "./routes/rating.js";
 import resolve from "./routes/resolve.js";
 import rivalries from "./routes/rivalries.js";
 import robinhood from "./routes/robinhood.js";
+import search from "./routes/search.js";
 import sessionRoutes from "./routes/session.js";
 import settings from "./routes/settings.js";
 import situate from "./routes/situate.js";
@@ -118,6 +120,10 @@ app.route("/v1/situate", situate);
 app.route("/v1/research", situate);
 app.route("/v1/chart", chart);
 app.route("/v1/analysis", analysis);
+// Jev hero-chip rating (one batched call over cached + cheap evidence).
+app.route("/v1/rating", rating);
+// Search-box intent routing (ticker | brand | place | question).
+app.route("/v1/search", search);
 app.route("/v1/cockpit", cockpit);
 // Price alerts (user-authored triggers). Wins /v1/alerts.
 app.route("/v1/alerts", priceAlerts);

@@ -39,7 +39,9 @@ import {
   saveRobinhoodMcp,
   setSession as saveSession,
   startPortal,
+  verdictLabel,
   verifyCode,
+  worthALook,
 } from "@/lib/mapvest-api";
 import { providerPresentationLabel } from "@/lib/provider-presentation";
 import { TESTFLIGHT_URL } from "@/lib/site";
@@ -765,6 +767,13 @@ function IdentifyTab() {
           .filter(Boolean)
           .slice(0, 3);
         const hrefTicker = ticker ?? comps[0] ?? inv.brand.name;
+        // Jev snap verdict — absent when unscored, so the row is unchanged then.
+        const verdict = verdictLabel(inv.verdict, {
+          ticker,
+          comparable: comps[0],
+          etf: inv.etfs?.[0]?.ticker,
+        });
+        const hot = worthALook(inv.verdict);
         return (
           <Link
             key={key}
@@ -793,6 +802,20 @@ function IdentifyTab() {
                   `no public ticker · confidence ${inv.confidence}`
                 )}
               </div>
+              {verdict ? (
+                <div className="app-row-sub">
+                  <span className={`app-verdict${hot ? " app-verdict-hot" : ""}`}>
+                    {verdict}
+                    {inv.verdict?.watchlisted ? " · on your list" : ""}
+                  </span>
+                  {hot && !inv.verdict?.watchlisted ? (
+                    <span className="app-verdict-cta">
+                      {" "}
+                      Worth a look — save it from the ticker page.
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <span className="app-chevron">›</span>
           </Link>

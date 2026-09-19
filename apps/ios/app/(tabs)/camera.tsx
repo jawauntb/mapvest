@@ -40,6 +40,7 @@ import {
   resolvedRarity,
   shouldShowRarityChip,
 } from "@/util/rarity";
+import { verdictChipLabel, worthALook } from "@/util/rating";
 import { sectorColor } from "@/util/sectors";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
@@ -590,6 +591,15 @@ export default function CameraScreen() {
   // the local Investable re-declaration doesn't carry the field yet.
   const quote = top ? (top as Investable & { quote?: Quote }).quote : undefined;
   const meaning = meaningLine(top);
+  // Jev snap verdict (additive `verdict` on the Investable; absent = unscored).
+  const verdictLabel = verdictChipLabel(top?.verdict, {
+    ticker: top?.brand.ticker?.symbol,
+    comparable: top?.comparables?.[0]?.ticker,
+    etf: top?.etfs?.[0]?.ticker,
+  });
+  const verdictHot = worthALook(top?.verdict);
+  /** Emphasize the Save CTA: Jev says worth a look and it is not already on the list. */
+  const saveHot = verdictHot && !top?.verdict?.watchlisted;
 
   async function onSave() {
     if (!ticker || !top) return;
@@ -856,6 +866,29 @@ export default function CameraScreen() {
                         {ticker ? ticker : "Private"}
                         {top.brand.sector ? ` · ${top.brand.sector}` : ""}
                       </Text>
+                      {verdictLabel ? (
+                        <View
+                          style={[styles.verdictChip, verdictHot && styles.verdictChipHot]}
+                          accessibilityLabel={`Verdict: ${verdictLabel}${
+                            verdictHot ? ". Worth a closer look." : ""
+                          }`}
+                        >
+                          <Ionicons
+                            name={verdictHot ? "flash-outline" : "git-branch-outline"}
+                            size={11}
+                            color={verdictHot ? colors.accent : colors.fgMuted}
+                          />
+                          <Text
+                            style={[
+                              styles.verdictChipText,
+                              verdictHot && styles.verdictChipTextHot,
+                            ]}
+                          >
+                            {verdictLabel}
+                            {top.verdict?.watchlisted ? " · on your list" : ""}
+                          </Text>
+                        </View>
+                      ) : null}
                       {firstCaptureNote ? (
                         <View
                           style={styles.firstCaptureBanner}
@@ -1057,15 +1090,27 @@ export default function CameraScreen() {
                   <View style={styles.cardActions}>
                     {ticker ? (
                       <Pressable
-                        style={[styles.miniBtn, authSaveNavigationPending && { opacity: 0.55 }]}
+                        style={[
+                          styles.miniBtn,
+                          // Jev says this one is worth a closer look → the
+                          // existing Save CTA is emphasized, not a new button.
+                          saveHot && styles.miniBtnHot,
+                          authSaveNavigationPending && { opacity: 0.55 },
+                        ]}
                         onPress={() => void onSave()}
                         disabled={authSaveNavigationPending}
                         accessibilityRole="button"
                         accessibilityState={{ disabled: authSaveNavigationPending }}
                         accessibilityLabel={`Save ${ticker} to watchlist`}
                       >
-                        <Ionicons name="star-outline" size={13} color={colors.accent} />
-                        <Text style={styles.miniBtnText}>Save</Text>
+                        <Ionicons
+                          name={saveHot ? "star" : "star-outline"}
+                          size={13}
+                          color={saveHot ? colors.accentInk : colors.accent}
+                        />
+                        <Text style={[styles.miniBtnText, saveHot && styles.miniBtnTextHot]}>
+                          {saveHot ? "Save · worth a look" : "Save"}
+                        </Text>
                       </Pressable>
                     ) : null}
                     {top ? (
@@ -1646,6 +1691,26 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   miniBtnText: { color: colors.fg, fontSize: 13, fontWeight: "600" },
+  miniBtnHot: { backgroundColor: colors.accent, borderColor: colors.accent },
+  miniBtnTextHot: { color: colors.accentInk, fontWeight: "800" },
+  // Jev snap verdict chip — same glass pill as the confidence pill; accent
+  // only when the verdict says the find is worth a closer look.
+  verdictChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    marginTop: 6,
+    backgroundColor: colors.bgGlass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  verdictChipHot: { borderColor: colors.accent, backgroundColor: "rgba(20, 196, 166, 0.14)" },
+  verdictChipText: { color: colors.fgMuted, ...type.caption },
+  verdictChipTextHot: { color: colors.accent },
   queued: { color: colors.warn, fontSize: 12, marginTop: 4 },
   err: { color: colors.danger, fontSize: 12, marginTop: 4 },
   msg: { color: colors.fg, padding: 24, textAlign: "center" },

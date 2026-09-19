@@ -373,6 +373,72 @@ export function fetchAnalysis(ticker: string, opts: FetchOpts = {}): Promise<Ana
   return jsonFetch(`/v1/analysis/${encodeURIComponent(ticker)}`, { method: "GET" }, opts);
 }
 
+// -------- Jev hero-chip rating (keep lockstep with packages/core RatingResponse) --------
+
+export type RatingAction = "strong_buy" | "buy" | "hold" | "sell" | "strong_sell";
+export type RatingDriverName =
+  | "valuation"
+  | "momentum"
+  | "fundamentals"
+  | "narrative"
+  | "macro"
+  | "local_demand"
+  | "peer_forecast";
+
+export type RatingDriver = {
+  name: RatingDriverName;
+  direction: "up" | "down" | "flat";
+  weight: number;
+};
+
+export type RatingEvidence = { source: string; summary: string; ref?: string };
+
+export type RatingResponse = {
+  ticker: string;
+  status: "ok" | "insufficient_signal";
+  /** PrismRecommendation-shaped; `null` when `status` is `insufficient_signal`. */
+  rating: {
+    action: RatingAction;
+    strength: "strong" | "normal" | "weak";
+    conviction: number;
+    one_line: string;
+  } | null;
+  probabilities: Record<RatingAction, number> | null;
+  confidence: number;
+  drivers: RatingDriver[];
+  evidence: RatingEvidence[];
+  inputs_used: string[];
+  as_of: string;
+  disclaimer: string;
+};
+
+/**
+ * `GET /v1/rating/:ticker`. Never 5xx for a missing signal — an unratable
+ * ticker is a 200 with `status: "insufficient_signal"`; callers render the
+ * muted "Not enough signal yet" state, not an error.
+ */
+export function fetchRating(ticker: string, opts: FetchOpts = {}): Promise<RatingResponse> {
+  return jsonFetch(`/v1/rating/${encodeURIComponent(ticker)}`, { method: "GET" }, opts);
+}
+
+// -------- Search intent routing (keep lockstep with packages/core SearchIntentResponse) --------
+
+export type SearchIntentResponse = {
+  intent: "ticker" | "brand" | "place" | "question";
+  probability: number;
+  resolved: { symbol?: string; brand?: string; placeQuery?: string };
+  route: { screen: "detail" | "map" | "research"; params: Record<string, string> };
+  method: "deterministic" | "jev" | "fallback";
+};
+
+/** `POST /v1/search/intent`. Fails open server-side to `intent: "ticker"`. */
+export function searchIntent(
+  input: { q: string; lat?: number; lng?: number },
+  opts: FetchOpts = {},
+): Promise<SearchIntentResponse> {
+  return jsonFetch("/v1/search/intent", { method: "POST", body: JSON.stringify(input) }, opts);
+}
+
 export type CockpitRow = {
   rank?: number;
   ticker: string;

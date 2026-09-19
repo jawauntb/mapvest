@@ -93,6 +93,32 @@ export const Quote = z.object({
 });
 export type Quote = z.infer<typeof Quote>;
 
+/**
+ * How a snapped brand is investable: `direct` (the brand itself is listed),
+ * `parent` (listed through a parent company), `proxy` (only via a comparable
+ * or an ETF with real exposure), or `none`.
+ */
+export const InvestableExposure = z.enum(["direct", "parent", "proxy", "none"]);
+export type InvestableExposure = z.infer<typeof InvestableExposure>;
+
+/**
+ * Jev's verdict on one identify detection — ONE batched `systemone` call per
+ * identify response (`apps/api/src/lib/identify-verdict.ts`). Additive and
+ * optional: the key is absent (never null) when Jev is unconfigured, errored,
+ * timed out, or answered below 0.55 confidence, and the rest of the
+ * `Investable` is exactly what it was before. `probability` is Jev's
+ * probability on the chosen `exposure`; `worth_a_look` is a calibrated 0..1
+ * "worth a closer look" signal (clients emphasize the watchlist CTA at >= 0.7);
+ * `watchlisted` is set only when the caller is signed in.
+ */
+export const InvestableVerdict = z.object({
+  exposure: InvestableExposure,
+  probability: z.number().min(0).max(1),
+  worth_a_look: z.number().min(0).max(1),
+  watchlisted: z.boolean().optional(),
+});
+export type InvestableVerdict = z.infer<typeof InvestableVerdict>;
+
 export const Investable = z.object({
   brand: Brand,
   comparables: z.array(Comparable).default([]),
@@ -102,6 +128,8 @@ export const Investable = z.object({
   quote: Quote.optional(),
   /** Present on identify once the server stamps `rarityForFind`. Older payloads omit it. */
   rarity: DexRarity.optional(),
+  /** Jev exposure verdict; absent when unscored (fail-open). */
+  verdict: InvestableVerdict.optional(),
 });
 export type Investable = z.infer<typeof Investable>;
 
@@ -2487,3 +2515,123 @@ export const SituateChatResponse = z
   })
   .passthrough();
 export type SituateChatResponse = z.infer<typeof SituateChatResponse>;
+
+// -------- Jev signals: rating / search intent --------
+
+/** The evidence families the rating can weigh. */
+export const RatingDriverName = z.enum([
+  "valuation",
+  "momentum",
+  "fundamentals",
+  "narrative",
+  "macro",
+  "local_demand",
+  "peer_forecast",
+]);
+export type RatingDriverName = z.infer<typeof RatingDriverName>;
+
+export const RatingDriverDirection = z.enum(["up", "down", "flat"]);
+export type RatingDriverDirection = z.infer<typeof RatingDriverDirection>;
+
+/**
+ * One driver behind a rating. `direction` is Jev's calibrated read of whether
+ * that evidence family argues up or down for the stock; `weight` (0..1) is how
+ * far from coin-flip that read was. Drivers are ordered primary-first.
+ */
+export const RatingDriver = z.object({
+  name: RatingDriverName,
+  direction: RatingDriverDirection,
+  weight: z.number().min(0).max(1),
+});
+export type RatingDriver = z.infer<typeof RatingDriver>;
+
+/** One evidence source that fed the rating; `ref` is a URL or upstream path when there is one. */
+export const RatingEvidence = z.object({
+  source: z.string(),
+  summary: z.string(),
+  ref: z.string().optional(),
+});
+export type RatingEvidence = z.infer<typeof RatingEvidence>;
+
+/** Jev's probability mass over the five actions; sums to ~1. */
+export const RatingProbabilities = z.object({
+  strong_sell: z.number().min(0).max(1),
+  sell: z.number().min(0).max(1),
+  hold: z.number().min(0).max(1),
+  buy: z.number().min(0).max(1),
+  strong_buy: z.number().min(0).max(1),
+});
+export type RatingProbabilities = z.infer<typeof RatingProbabilities>;
+
+export const RatingStatus = z.enum(["ok", "insufficient_signal"]);
+export type RatingStatus = z.infer<typeof RatingStatus>;
+
+/** Fixed disclaimer carried on every `GET /v1/rating/{ticker}` response. */
+export const RATING_DISCLAIMER = "AI-generated research signal, not investment advice.";
+
+/**
+ * `GET /v1/rating/{ticker}` — the hero-chip rating. Assembled from whatever
+ * cheap or already-cached evidence exists for the ticker (quote + history,
+ * ratios, cached synthesis memo, cached demand pulse, cached environment
+ * brief, stored Prism/Situate packets, material headlines, the underlying
+ * peer forecast) and ONE batched Jev call. `rating` is `PrismRecommendation`-
+ * shaped so the same chip renders both; its `one_line` is built
+ * deterministically from `drivers`, never model prose. `status` is
+ * `insufficient_signal` (and `rating`/`probabilities` are `null`) when fewer
+ * than two evidence sources resolved, Jev was unavailable, or its confidence
+ * was below 0.55 — the response shape is otherwise identical. Research-only
+ * output: never advice.
+ */
+export const RatingResponse = z.object({
+  ticker: z.string(),
+  status: RatingStatus,
+  rating: PrismRecommendation.nullable(),
+  probabilities: RatingProbabilities.nullable(),
+  /** Jev's confidence on the rating; `0` when there is no rating. */
+  confidence: z.number().min(0).max(1),
+  drivers: z.array(RatingDriver),
+  evidence: z.array(RatingEvidence),
+  /** Evidence source ids that resolved, e.g. `["quote", "ratios", "headlines"]`. */
+  inputs_used: z.array(z.string()),
+  as_of: z.string(),
+  disclaimer: z.string(),
+});
+export type RatingResponse = z.infer<typeof RatingResponse>;
+
+export const SearchIntentName = z.enum(["ticker", "brand", "place", "question"]);
+export type SearchIntentName = z.infer<typeof SearchIntentName>;
+
+export const SearchIntentScreen = z.enum(["detail", "map", "research"]);
+export type SearchIntentScreen = z.infer<typeof SearchIntentScreen>;
+
+/** `POST /v1/search/intent` body. `lat`/`lng` only bias the place heuristics. */
+export const SearchIntentRequest = z.object({
+  q: z.string().trim().min(1).max(200),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+export type SearchIntentRequest = z.infer<typeof SearchIntentRequest>;
+
+/**
+ * `POST /v1/search/intent` response. A cheap deterministic pass (ticker shape
+ * + live quote, the brand seed, place words) decides most queries; only the
+ * ambiguous remainder goes to one Jev `choice`, and any failure falls open to
+ * `intent: "ticker"` with today's behavior. `route` is what the client should
+ * navigate to: `detail` `{ id }`, `map` `{ q }`, or `research` `{ q }`.
+ */
+export const SearchIntentResponse = z.object({
+  intent: SearchIntentName,
+  probability: z.number().min(0).max(1),
+  resolved: z.object({
+    symbol: z.string().optional(),
+    brand: z.string().optional(),
+    placeQuery: z.string().optional(),
+  }),
+  route: z.object({
+    screen: SearchIntentScreen,
+    params: z.record(z.string()),
+  }),
+  /** How the intent was decided — `deterministic`, `jev`, or `fallback` (fail-open). */
+  method: z.enum(["deterministic", "jev", "fallback"]),
+});
+export type SearchIntentResponse = z.infer<typeof SearchIntentResponse>;

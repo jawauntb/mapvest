@@ -207,6 +207,66 @@ error, per the device `.ips` logs — not a chart/native-view bug):
   `queryFn` threw on every Home mount and is the same class of fatal JS
   error that aborted TestFlight.
 
+## Jev signals: rating, snap verdict, search intent
+
+Three more Jev "System 1" call sites sit beside headline materiality. All of
+them share one contract: **fail open** (no `JEV_API_KEY`, any error or
+timeout, or confidence below 0.55 → the optional field/section is omitted and
+the response shape is otherwise unchanged), **one batched `systemone` call per
+request**, bounded context, and an in-process TTL cache.
+`scripts/jev-candidate-scan.ts` lists every call site.
+
+- **Rating** — `GET /v1/rating/:ticker` → `RatingResponse`
+  (`apps/api/src/lib/rating.ts`). The evidence packet is assembled in parallel
+  from sources that are either cheap and live (quote + 3-month history stats
+  via the market-data router, financial ratios, the headline batch filtered to
+  material headlines, the stored Prism recommendation / Situate posture read
+  from `/summary`, and the sibling Underlying service's
+  `GET /api/tabular/peer-forecast/:ticker?horizon=3` — a TabICL v2 peer
+  forecast, treated as absent on any non-200) or already cached in-process
+  (synthesis memo, demand pulse, environment brief — never generated here, so
+  the rating never spends a build). Each source has a ~3s timeout and drops
+  out on failure. Jev then answers ONE request: a `score` over
+  `strong_sell < sell < hold < buy < strong_buy`, a `choice` for the primary
+  driver (`valuation | momentum | fundamentals | narrative | macro |
+  local_demand | peer_forecast`, only among drivers present), and one `noul`
+  per driver ("does this evidence argue UP?"). `rating` is
+  `PrismRecommendation`-shaped: `conviction` = Jev confidence, `strength`
+  from the probability margin (≥0.25 strong, ≥0.10 normal, else weak), and
+  `one_line` composed **deterministically** from the drivers
+  ("Buy · momentum + fundamentals; macro headwind") — never model prose.
+  `status: "insufficient_signal"` with `rating: null` when fewer than two
+  sources resolved, Jev failed, or confidence < 0.55. Cached one hour per
+  ticker (five minutes for an insufficient result). Every response carries
+  `disclaimer: "AI-generated research signal, not investment advice."`
+  Clients render it as the hero chip at the top of Investable ("BUY · 72%";
+  tap to expand drivers, evidence sources, disclaimer; "Not enough signal
+  yet" when insufficient).
+- **Snap → investable verdict** — `POST /v1/identify` may attach
+  `verdict: { exposure: direct|parent|proxy|none, probability, worth_a_look,
+  watchlisted? }` to each `Investable` (`apps/api/src/lib/identify-verdict.ts`).
+  One batched call across all detections (≤20) with the resolution as state
+  (brand, parent, ticker, comparables, ETFs, rarity, and — for signed-in
+  callers, read within 500 ms — whether the ticker is already on their
+  watchlist); per detection a `choice` over the exposure and a `noul` "worth
+  a closer look". Cached 15 minutes per resolution content hash; the identify
+  response never waits on Jev longer than 4 s. The camera result card shows
+  "Investable via parent · NKE · 88%" / "Proxy exposure via XLY" and
+  emphasizes Save when `worth_a_look >= 0.7`.
+- **Search intent** — `POST /v1/search/intent { q, lat?, lng? }` →
+  `SearchIntentResponse { intent, probability, resolved, route, method }`
+  (`apps/api/src/lib/search-intent.ts`). Deterministic first: cashtag or
+  ticker shape + a live-quote probe (1.5 s) → `ticker`; a `brands.json` seed
+  hit (direct, then longest substring) → `brand` with its ticker; an explicit
+  locator ("near me", "nearby", …) or venue words / geo hint → `place`;
+  question shape → `question`. Only the ambiguous remainder asks Jev one
+  `choice`; any failure falls open to `intent: "ticker"` with today's
+  behavior (`route.screen: "detail"` for the raw text). Cached five minutes
+  per normalized query. Home search calls it on submit and routes to
+  `/detail/{id}`, the Map tab (`q`), or the Research composer pre-filled with
+  the question; a debounced hint under the box previews the intent while
+  typing.
+
 ## Layering rules
 
 - `apps/*` may import `packages/*`.

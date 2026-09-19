@@ -79,6 +79,22 @@ export const Comparable = z.object({
 });
 export type Comparable = z.infer<typeof Comparable>;
 
+/**
+ * Jev's verdict on one identify detection (keep lockstep with packages/core).
+ * ABSENT — never null — when the server could not score it, so an older or
+ * degraded server renders exactly as before.
+ */
+export const InvestableExposure = z.enum(["direct", "parent", "proxy", "none"]);
+export type InvestableExposure = z.infer<typeof InvestableExposure>;
+
+export const InvestableVerdict = z.object({
+  exposure: InvestableExposure,
+  probability: z.number().min(0).max(1),
+  worth_a_look: z.number().min(0).max(1),
+  watchlisted: z.boolean().optional(),
+});
+export type InvestableVerdict = z.infer<typeof InvestableVerdict>;
+
 export const Investable = z.object({
   brand: Brand,
   comparables: z.array(Comparable).default([]),
@@ -86,6 +102,7 @@ export const Investable = z.object({
   confidence: Confidence,
   sources: z.array(Source),
   rarity: DexRarity.optional(),
+  verdict: InvestableVerdict.optional(),
 });
 export type Investable = z.infer<typeof Investable>;
 

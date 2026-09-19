@@ -23,7 +23,9 @@ export type ChatSeed =
       label: string;
       center?: { lat: number; lng: number };
       nearby: Array<{ ticker?: string; name: string; distanceMeters?: number }>;
-    };
+    }
+  /** A free-form question typed into search — the draft is the question itself. */
+  | { kind: "question"; text: string };
 
 /**
  * Base64-encode a UTF-8 string in a way that works whether Buffer is
@@ -106,6 +108,8 @@ export function seedToDraft(seed: ChatSeed): string {
       const parts = seed.nearby.map((n) => `$${n.ticker || n.name}`);
       return `What's investable in this area? ${seed.label}. Nearby: ${parts.join(", ")}`;
     }
+    case "question":
+      return seed.text.trim();
     default:
       // Exhaustiveness guard — new kinds should fail loudly at type-check
       // time, not silently render an empty draft at runtime.

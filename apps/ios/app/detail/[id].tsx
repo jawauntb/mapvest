@@ -5,6 +5,7 @@ import {
   fetchAnalysis,
   fetchFinancialRatios,
   fetchQuote,
+  fetchRating,
   generateMemo,
   listWatchlist,
   openInRobinhood,
@@ -27,6 +28,7 @@ import { EvidenceSection } from "@/components/EvidenceSection";
 import { FirstFindLockedPanel } from "@/components/FirstFindGate";
 import { OptionsChainSection } from "@/components/OptionsChainSection";
 import { OrbitView } from "@/components/OrbitView";
+import { RatingChip } from "@/components/RatingChip";
 import { RichText } from "@/components/RichText";
 import { SetAlertButton } from "@/components/SetAlertButton";
 import { TickerNewsSection } from "@/components/TickerNewsSection";
@@ -119,6 +121,17 @@ export default function DetailSheet() {
     enabled: !!ticker && stage >= 1,
     queryFn: () => fetchFinancialRatios(ticker!, { token: session?.token }),
     staleTime: 30 * 60_000,
+  });
+
+  // Jev hero-chip rating. Server caches an hour per ticker; `retry: false`
+  // plus reading `.data` only means an outage (or an older API without the
+  // route) leaves the header exactly as it was — the chip simply never mounts.
+  const ratingQ = useQuery({
+    queryKey: ["rating", ticker],
+    enabled: !!ticker,
+    queryFn: () => fetchRating(ticker!, { token: session?.token }),
+    staleTime: 30 * 60_000,
+    retry: false,
   });
 
   const secQ = useQuery({
@@ -233,6 +246,11 @@ export default function DetailSheet() {
         {!identityLoading ? (
           <>
             <View>
+              {ticker ? (
+                <View style={styles.ratingRow}>
+                  <RatingChip rating={ratingQ.data} loading={ratingQ.isLoading} />
+                </View>
+              ) : null}
               <Text style={styles.h1}>{listedTicker ?? data.brand.name}</Text>
               {companyName ? <Text style={styles.sub}>{companyName}</Text> : null}
               <Text style={styles.sub}>
@@ -287,7 +305,6 @@ export default function DetailSheet() {
                 <ChartsSection ticker={ticker} token={session?.token} />
               </ChartErrorBoundary>
             ) : null}
-
 
             {stage >= 2 && ticker && hasFirstFind ? (
               <TickerNewsSection ticker={ticker} token={session?.token} />
@@ -941,7 +958,8 @@ function MemoResearchEntry({ ticker }: { ticker: string }) {
 
   const wl = useQuery({
     queryKey: ["watchlist", session?.token],
-    queryFn: () => (session?.token ? listWatchlist({ token: session.token }) : Promise.resolve({ items: [] })),
+    queryFn: () =>
+      session?.token ? listWatchlist({ token: session.token }) : Promise.resolve({ items: [] }),
     enabled: !!session?.token,
     staleTime: 30_000,
   });
@@ -1661,6 +1679,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   h1: { color: colors.fg, ...type.h1, fontSize: 28 },
+  ratingRow: { marginBottom: 10 },
   h2: { color: colors.fg, ...type.label, fontSize: 15 },
   sub: { color: colors.fgMuted, marginTop: 4 },
   muted: { color: colors.fgMuted, fontSize: 13 },

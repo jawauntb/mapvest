@@ -17,15 +17,20 @@ import {
   getFinancialRatios,
   getMarketEvents,
   getQuote,
+  getRating,
   getTickerNews,
   getToken,
   isMaterialOrUnscored,
   listWatchlist,
   materialityLabel,
   openInRobinhood,
+  ratingDriverLabel,
+  ratingLabel,
+  ratingTone,
   removeFromWatchlist,
   resolveComparable,
   saveMemoToWatchlist,
+  searchIntent,
 } from "@/lib/mapvest-api";
 import {
   providerPresentationLabel,
@@ -42,6 +47,82 @@ import { ResearchPanel } from "../../ResearchPanel";
 
 type Resolved = Awaited<ReturnType<typeof resolveComparable>>;
 type Quote = NonNullable<Awaited<ReturnType<typeof getQuote>>["quote"]>;
+type Rating = Awaited<ReturnType<typeof getRating>>;
+type SearchIntent = Awaited<ReturnType<typeof searchIntent>>;
+
+const RATING_SOURCE_LABEL: Record<string, string> = {
+  quote: "Price & momentum",
+  ratios: "Financial ratios",
+  synthesis_memo: "Synthesis memo",
+  demand_pulse: "Demand pulse",
+  environment_brief: "Sector environment",
+  prism: "Prism packet",
+  situate: "Situate packet",
+  headlines: "Material headlines",
+  peer_forecast: "Peer forecast (TabICL)",
+};
+
+/**
+ * Hero rating chip ("BUY · 72%"): click to expand drivers, evidence sources,
+ * and the disclaimer. `insufficient_signal` renders the muted "Not enough
+ * signal yet" pill; no response at all renders nothing, so an older API or
+ * an outage leaves the hero exactly as it was.
+ */
+function RatingChip({ rating }: { rating: Rating | null }) {
+  const [open, setOpen] = useState(false);
+  if (!rating) return null;
+  const label = ratingLabel(rating);
+  const tone = ratingTone(rating);
+  return (
+    <div className="app-rating">
+      <button
+        type="button"
+        className={`app-rating-pill app-rating-${tone}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={rating.rating?.one_line ?? "Not enough signal yet"}
+      >
+        {label ?? "Not enough signal yet"} <span aria-hidden="true">{open ? "▴" : "▾"}</span>
+      </button>
+      {label && rating.rating?.one_line ? (
+        <span className="app-rating-line">{rating.rating.one_line}</span>
+      ) : null}
+      {open ? (
+        <div className="app-rating-panel">
+          {rating.drivers.length > 0 ? (
+            <div>
+              <div className="app-rating-h">Drivers</div>
+              <ul className="app-rating-list">
+                {rating.drivers.map((d) => (
+                  <li key={d.name}>{ratingDriverLabel(d)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div>
+            <div className="app-rating-h">Evidence</div>
+            {rating.evidence.length > 0 ? (
+              <ul className="app-rating-list">
+                {rating.evidence.map((e) => (
+                  <li key={e.source}>
+                    <strong>{RATING_SOURCE_LABEL[e.source] ?? e.source}</strong> — {e.summary}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="app-muted">
+                {rating.status === "insufficient_signal"
+                  ? "Fewer than two evidence sources resolved for this ticker."
+                  : "No evidence sources recorded."}
+              </p>
+            )}
+          </div>
+          <p className="app-rating-disc">{rating.disclaimer}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const CHART_CHIPS = [
   { id: "auction", label: "Auction" },
@@ -165,6 +246,10 @@ export default function TickerDetail() {
   const overviewLoadGenerationRef = useRef(0);
   const overviewAbortRef = useRef<AbortController | null>(null);
   const [rhLink, setRhLink] = useState<string | null>(null);
+  const [rating, setRating] = useState<Rating | null>(null);
+  // Search-intent note for a non-ticker entry path (brand text, a question, a
+  // place typed into the URL): tells the user where that text really leads.
+  const [intentNote, setIntentNote] = useState<SearchIntent | null>(null);
   const [marketNews, setMarketNews] = useState<Awaited<ReturnType<typeof getTickerNews>> | null>(
     null,
   );
@@ -250,7 +335,23 @@ export default function TickerDetail() {
     setRhLink(null);
     setMarketNews(null);
     setMarketEvents(null);
+    setRating(null);
+    setIntentNote(null);
     setChartTicker(urlTicker);
+
+    // Entry-path intent for non-ticker text: adopt a resolved symbol early
+    // (so the chart paints before resolve-comparable returns) and surface a
+    // note when the text is really a question or a place. Fail-open: any
+    // error leaves the page exactly as before.
+    if (!urlTicker) {
+      searchIntent({ q: symbolOrBrand })
+        .then((res) => {
+          if (res.method === "fallback") return;
+          if (res.intent === "question" || res.intent === "place") setIntentNote(res);
+          if (res.resolved.symbol) setChartTicker((prev) => prev ?? res.resolved.symbol ?? null);
+        })
+        .catch(() => {});
+    }
 
     resolveComparable(symbolOrBrand)
       .then((r) => {
@@ -322,6 +423,21 @@ export default function TickerDetail() {
     }
     void loadChart(chartTicker, chartType, period, interval);
   }, [chartTicker, chartType, period, interval, tab, loadChart]);
+
+  useEffect(() => {
+    if (!chartTicker) return;
+    let active = true;
+    // Jev hero rating — server-cached an hour per ticker; a 200
+    // `insufficient_signal` is the muted state, any error is simply no chip.
+    getRating(chartTicker)
+      .then((r) => {
+        if (active) setRating(r);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [chartTicker]);
 
   useEffect(() => {
     if (!chartTicker) return;
@@ -543,6 +659,18 @@ export default function TickerDetail() {
       ) : null}
 
       <header className="app-detail-hero">
+        {chartTicker ? <RatingChip rating={rating} /> : null}
+        {intentNote ? (
+          <p className="app-intent-note">
+            {intentNote.intent === "question"
+              ? "That reads like a question — "
+              : "That reads like a place — "}
+            <Link href="/app" className="app-link">
+              {intentNote.intent === "question" ? "ask Research" : "open Nearby"}
+            </Link>
+            .
+          </p>
+        ) : null}
         <h1>{brand.name}</h1>
         <p className="app-sub">
           {ticker ? (
