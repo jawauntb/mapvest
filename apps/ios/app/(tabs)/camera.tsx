@@ -173,13 +173,16 @@ export default function CameraScreen() {
     );
   }
 
-  // Drop stale ready flag when CameraView unmounts (tab blur / frozen frame).
+  // Drop stale ready flag only when CameraView actually unmounts (tab blur).
+  // Freezing the frame after a capture no longer unmounts the view (see the
+  // render below), so it must not clear readiness — the native session is
+  // still live underneath, just paused via `active`.
   useEffect(() => {
-    if (!focused || frozenUri) {
+    if (!focused) {
       readyRef.current = false;
       readySinceRef.current = null;
     }
-  }, [focused, frozenUri]);
+  }, [focused]);
 
   // Coerce the identify response into overlay detections. If the API already
   // returns `detections` (forward-compat path), use them; otherwise synthesize
@@ -546,8 +549,9 @@ export default function CameraScreen() {
     setSavedNote(null);
     setFirstCaptureNote(null);
     captureSourceRef.current = null;
-    readyRef.current = false;
-    readySinceRef.current = null;
+    // CameraView stays mounted through a freeze/retake cycle (see the render
+    // below) — it was never torn down, so readiness carries over and the
+    // next capture does not have to wait on a fresh onCameraReady.
     persistCamera({
       frozenUri: null,
       result: null,
@@ -657,9 +661,6 @@ export default function CameraScreen() {
     setPendingUri(frozenUri);
   }
 
-  // Only mount while focused so blurred tabs cannot hold the camera session.
-  const showLivePreview = focused && !frozenUri;
-
   // Full-screen Refine annotator. Returning early keeps the CameraView
   // unmounted while it's up, which frees the AVFoundation session.
   if (pendingUri) {
@@ -675,18 +676,28 @@ export default function CameraScreen() {
     );
   }
 
+  // CameraView stays mounted for as long as the tab is focused, including
+  // while a frozen frame is on screen — only unmount on tab blur (below) or
+  // the Refine annotator (above). Previously this branched on `!frozenUri`
+  // too, so every single capture unmounted-and-remounted the CameraView,
+  // tearing down and recreating the native AVCaptureSession each time. That
+  // teardown/recreate cycle does not reliably fire onCameraReady again on a
+  // real device, so the very next capture attempt (and every one after it)
+  // got stuck reporting "Camera still starting" until the app was force-
+  // quit and reopened. `active` already exists precisely to pause the
+  // preview without releasing the session — use that instead of unmounting,
+  // and paint the frozen photo on top of the (paused) live view rather than
+  // replacing it in the tree.
   return (
     <View style={styles.root} onLayout={onPreviewLayout}>
-      {frozenUri ? (
-        <Image source={{ uri: frozenUri }} style={StyleSheet.absoluteFillObject} />
-      ) : showLivePreview ? (
+      {focused ? (
         <CameraView
           ref={(r) => {
             cameraRef.current = r;
           }}
           style={StyleSheet.absoluteFillObject}
           facing="back"
-          active={focused && !frozenUri}
+          active={!frozenUri}
           onCameraReady={() => {
             readyRef.current = true;
             readySinceRef.current = Date.now();
@@ -702,6 +713,9 @@ export default function CameraScreen() {
           <Text style={styles.msg}>Opening camera…</Text>
         </View>
       )}
+      {frozenUri ? (
+        <Image source={{ uri: frozenUri }} style={StyleSheet.absoluteFillObject} />
+      ) : null}
       {frozenUri && detections.length > 0 ? (
         <CameraDetectionOverlay detections={detections} containerSize={previewSize} />
       ) : null}
