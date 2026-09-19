@@ -1812,6 +1812,33 @@ export const PrismKeyDeterminant = z
   .passthrough();
 export type PrismKeyDeterminant = z.infer<typeof PrismKeyDeterminant>;
 
+/**
+ * The engine's classification of what kind of document a memo citation points
+ * at. Additive and optional on every citation row: the engine attaches it only
+ * when it could classify the row (its regex ladder, else one batched Jev
+ * `choice` call), and leaves the key off entirely when the type is unknown or
+ * Jev was unavailable. `source: "regex"` is authoritative and carries
+ * `confidence: null`; `source: "jev"` carries Jev's confidence (>= 0.55).
+ */
+export const CitationTypeName = z.enum([
+  "sec_xbrl",
+  "sec_filing",
+  "sec_trend_pack",
+  "sec_earnings_section",
+  "earnings_calendar",
+  "exa",
+]);
+export type CitationTypeName = z.infer<typeof CitationTypeName>;
+
+export const CitationType = z
+  .object({
+    type: CitationTypeName,
+    source: z.enum(["regex", "jev"]),
+    confidence: z.number().min(0).max(1).nullable().optional(),
+  })
+  .passthrough();
+export type CitationType = z.infer<typeof CitationType>;
+
 /** A memo claim tied back to a packet section or a fetched document. */
 export const PrismCitation = z
   .object({
@@ -1820,6 +1847,8 @@ export const PrismCitation = z
     source: z.string().nullable().optional(),
     /** `null` for a citation that points at a packet section rather than a document. */
     url: z.string().nullable().optional(),
+    /** Engine-side document-type classification; absent when unknown. */
+    citation_type: CitationType.nullable().optional(),
   })
   .passthrough();
 export type PrismCitation = z.infer<typeof PrismCitation>;
@@ -2241,6 +2270,8 @@ export const SituateCitation = z
     version: z.string().nullable().optional(),
     /** `null` for a citation that points at a module rather than a document. */
     url: z.string().nullable().optional(),
+    /** Engine-side document-type classification; absent when unknown. */
+    citation_type: CitationType.nullable().optional(),
   })
   .passthrough();
 export type SituateCitation = z.infer<typeof SituateCitation>;

@@ -3,6 +3,7 @@ import {
   SituateBuildRequest,
   SituateChatRequest,
   SituateChatResponse,
+  SituateCitation,
   SituateOddsHorizon,
   SituatePacket,
   SituatePosture,
@@ -281,6 +282,52 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+describe("situate citation_type (engine annotation passthrough)", () => {
+  const annotated = {
+    id: "c2",
+    claim: "10-K risk factors flag export controls",
+    module: "filings",
+    version: "1.0.0",
+    url: "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/nvda-20250126.htm",
+    citation_type: { type: "sec_filing", source: "regex", confidence: null },
+  };
+
+  test("SituateCitation accepts the additive citation_type and rows without it", () => {
+    const parsed = SituateCitation.parse(annotated);
+    expect(parsed.citation_type).toEqual({ type: "sec_filing", source: "regex", confidence: null });
+    const bare = SituateCitation.parse({ id: "c1", claim: "SPY beta 1.31", module: "exposure" });
+    expect("citation_type" in bare).toBe(false);
+    expect(
+      SituateCitation.safeParse({
+        ...annotated,
+        citation_type: { type: "sec_filing", source: "oracle", confidence: 0.9 },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("GET /v1/situate/:ticker passes citation_type through the packet untouched", async () => {
+    const withAnnotation = packet("NVDA");
+    (withAnnotation.memo as { citations: unknown[] }).citations = [
+      { id: "c1", claim: "SPY beta 1.31", module: "exposure", version: "1.0.0" },
+      annotated,
+    ];
+    stubFetch([], (url) =>
+      url === `${ENGINE}/api/situate/NVDA` ? Response.json(withAnnotation) : undefined,
+    );
+    const res = await app.fetch(request("/situate/NVDA"));
+    expect(res.status).toBe(200);
+    const body = SituatePacket.parse(await res.json());
+    const citations = body.memo?.citations ?? [];
+    expect(citations).toHaveLength(2);
+    expect("citation_type" in citations[0]!).toBe(false);
+    expect(citations[1]?.citation_type).toEqual({
+      type: "sec_filing",
+      source: "regex",
+      confidence: null,
+    });
+  });
 });
 
 describe("situate schemas", () => {

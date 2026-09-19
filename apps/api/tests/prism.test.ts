@@ -3,6 +3,7 @@ import {
   PrismBuildRequest,
   PrismChatRequest,
   PrismChatResponse,
+  PrismCitation,
   PrismPacket,
   PrismRecommendation,
   PrismSummary,
@@ -211,6 +212,59 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+describe("prism citation_type (engine annotation passthrough)", () => {
+  const annotated = {
+    id: "c2",
+    claim: "Q1 FY2027 revenue $137,237M",
+    source: "SEC XBRL",
+    url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=NVDA",
+    citation_type: { type: "sec_xbrl", source: "jev", confidence: 0.82 },
+  };
+
+  test("PrismCitation accepts the additive citation_type and still accepts rows without it", () => {
+    const parsed = PrismCitation.parse(annotated);
+    expect(parsed.citation_type).toEqual({ type: "sec_xbrl", source: "jev", confidence: 0.82 });
+    const bare = PrismCitation.parse({ id: "c1", claim: "VIX at 17.2", source: "fred" });
+    expect("citation_type" in bare).toBe(false);
+    const regex = PrismCitation.parse({
+      ...annotated,
+      citation_type: { type: "sec_filing", source: "regex", confidence: null },
+    });
+    expect(regex.citation_type?.confidence).toBeNull();
+  });
+
+  test("an unknown citation_type name fails the row, so the engine vocabulary stays pinned", () => {
+    expect(
+      PrismCitation.safeParse({
+        ...annotated,
+        citation_type: { type: "carrier_pigeon", source: "jev", confidence: 0.9 },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("GET /v1/prism/:ticker passes citation_type through the packet untouched", async () => {
+    const withAnnotation = packet("NVDA");
+    (withAnnotation.memo as { citations: unknown[] }).citations = [
+      { id: "c1", claim: "VIX at 17.2", source: "fred" },
+      annotated,
+    ];
+    stubFetch([], (url) =>
+      url === `${ENGINE}/api/prism/NVDA` ? Response.json(withAnnotation) : undefined,
+    );
+    const res = await app.fetch(request("/prism/NVDA"));
+    expect(res.status).toBe(200);
+    const body = PrismPacket.parse(await res.json());
+    const citations = body.memo?.citations ?? [];
+    expect(citations).toHaveLength(2);
+    expect("citation_type" in citations[0]!).toBe(false);
+    expect(citations[1]?.citation_type).toEqual({
+      type: "sec_xbrl",
+      source: "jev",
+      confidence: 0.82,
+    });
+  });
 });
 
 describe("prism schemas", () => {

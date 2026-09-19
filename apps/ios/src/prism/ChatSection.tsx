@@ -160,7 +160,14 @@ function TurnCitations({ turn }: { turn: PrismChatTurn }) {
   return (
     <View style={styles.citationBlock}>
       {shown.map((c) => (
-        <CitationRow key={c.id} id={c.id} claim={c.claim} source={c.source} url={c.url} />
+        <CitationRow
+          key={c.id}
+          id={c.id}
+          claim={c.claim}
+          source={c.source}
+          url={c.url}
+          citationType={c.citation_type}
+        />
       ))}
       {citations.length > INLINE_CITATIONS ? (
         <Pressable

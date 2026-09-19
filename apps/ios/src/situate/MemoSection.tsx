@@ -134,6 +134,7 @@ export function MemoSection({ packet }: { packet: SituatePacket }) {
                   : null
               }
               url={citation.url}
+              citationType={citation.citation_type}
             />
           ))}
         </View>

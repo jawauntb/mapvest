@@ -193,6 +193,28 @@ Mapvest's `Source.provider` enum: the engine names its own upstreams
 rather than remapping into an enum it does not own. Nothing is ever
 zero-filled — AGENTS.md §2.4.
 
+### Citation types
+
+Each `memo.citations[]` row (and each chat turn's `citations[]`) may carry an
+additive `citation_type` the engine attaches when it could classify the cited
+document:
+
+```
+"citation_type": { "type": "sec_xbrl" | "sec_filing" | "sec_trend_pack" |
+                   "sec_earnings_section" | "earnings_calendar" | "exa",
+                   "source": "regex" | "jev",
+                   "confidence": <0..1> | null }
+```
+
+`source: "regex"` is an authoritative rule match (`confidence: null`);
+`source: "jev"` is a Jev classification and carries its confidence, always
+≥ 0.55. The key is **absent** when the type is unknown or Jev was unavailable —
+the row's own `source` string is untouched either way. Mapvest passes the
+annotation through verbatim (`CitationType` in `packages/core`); the iOS memo
+and chat citation rows render it as a small "SEC XBRL"-style badge that, when
+tapped, says how it was decided ("Matched by rule (regex)" or "Classified by
+Jev · 82% confidence"). The landing site does not render memo citations.
+
 ## Errors
 
 | Status | `code` | Meaning |

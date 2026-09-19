@@ -60,6 +60,11 @@ The Mapvest proxy passes the packet through **verbatim** and does not
 re-validate the analytical sections, so a schema addition upstream never 502s a
 client — the zod contract in `packages/core` is what clients parse against.
 
+Each `memo.citations[]` row (and each chat turn's `citations[]`) may carry an
+additive `citation_type` — `{ type, source: "regex" | "jev", confidence }` —
+the engine's classification of the cited document, absent when unknown. Same
+shape and rendering as Prism's; see "Citation types" in `docs/PRISM.md`.
+
 ### Sections at a glance
 
 | Section | What it holds |

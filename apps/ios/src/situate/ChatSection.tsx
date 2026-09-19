@@ -140,6 +140,7 @@ function TurnCitations({ turn }: { turn: SituateChatTurn }) {
           claim={c.claim}
           source={c.module ? `${c.module}${c.version ? ` · v${c.version}` : ""}` : null}
           url={c.url}
+          citationType={c.citation_type}
         />
       ))}
       {citations.length > INLINE_CITATIONS ? (

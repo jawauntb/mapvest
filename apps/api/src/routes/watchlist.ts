@@ -1,7 +1,14 @@
 import { getQuote, resolveComparable } from "@mapvest/finance";
 import { Hono } from "hono";
+import {
+  type JevMateriality,
+  filterByMateriality,
+  parseMaterialityFloor,
+  scoreHeadlineMateriality,
+} from "../lib/headline-materiality.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import { OUTAGE_BRIEF, generateWatchlistBrief } from "../lib/watchlist-brief.js";
+import type { NewsItem } from "../lib/news-source.js";
+import { OUTAGE_BRIEF, collectHeadlines, generateWatchlistBrief } from "../lib/watchlist-brief.js";
 import {
   type WatchEntry,
   attachWatchMemo,
@@ -287,6 +294,84 @@ watchlist.get("/brief", async (c) => {
         generatedAt: new Date().toISOString(),
       });
     }
+  });
+});
+
+/** One row of the watchlist headline feed; `jev_materiality` is optional (rule 1). */
+export type WatchlistHeadline = NewsItem & {
+  ticker: string;
+  jev_materiality?: JevMateriality;
+};
+
+/** Headlines per ticker / overall for the client-facing feed. */
+const HEADLINES_PER_TICKER = 3;
+const HEADLINES_TOTAL_LIMIT = 30;
+
+/**
+ * GET /v1/watchlist/headlines[?listId=<id>][&materiality=material]
+ *   → { items: WatchlistHeadline[], tickers: string[], materiality, generatedAt }
+ *
+ * The same per-ticker headline batch the daily brief reads internally, served
+ * to clients as a feed, newest first. Each item may carry an optional
+ * `jev_materiality` `{ level, score, confidence }` tag from ONE batched Jev
+ * call per page (lib/headline-materiality.ts); the key is absent when Jev is
+ * unconfigured, errored, or unsure. `?materiality=` keeps items at or above
+ * that level plus every unscored item — a Jev outage can never empty the feed.
+ * Never 500s: a news failure yields an empty `items` array.
+ */
+watchlist.get("/headlines", async (c) => {
+  return safeExecuteWithSpan("http.watchlist.headlines", async (span) => {
+    const user = c.get("user");
+    const listIdParam = c.req.query("listId");
+    const floor = parseMaterialityFloor(c.req.query("materiality"));
+    const entries = await listWatchEntries(user.id, listIdParam || undefined);
+    const tickers = entries.map((e) => e.ticker);
+    span.setAttributes({
+      user_id: user.id,
+      list_id: listIdParam ?? "default",
+      items_count: entries.length,
+      materiality: floor ?? "none",
+    });
+
+    let items: WatchlistHeadline[] = [];
+    try {
+      const rows = await collectHeadlines(tickers, {
+        perTicker: HEADLINES_PER_TICKER,
+        totalLimit: HEADLINES_TOTAL_LIMIT,
+      });
+      items = rows.flatMap((row) => row.items.map((it) => ({ ...it, ticker: row.ticker })));
+    } catch (err) {
+      span.recordException(err);
+      items = [];
+    }
+    items.sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0));
+
+    const tags = await scoreHeadlineMateriality(
+      items.map((it) => ({
+        id: `${it.ticker}::${it.url}`,
+        ticker: it.ticker,
+        title: it.title,
+        source: it.source,
+        publishedAt: it.publishedAt,
+      })),
+      tickers,
+    );
+    const tagged = items.map((it) => {
+      const tag = tags[`${it.ticker}::${it.url}`];
+      return tag ? { ...it, jev_materiality: tag } : it;
+    });
+    const filtered = filterByMateriality(tagged, floor);
+    span.setAttributes({
+      headline_count: items.length,
+      scored_count: Object.keys(tags).length,
+      returned_count: filtered.length,
+    });
+    return c.json({
+      items: filtered,
+      tickers,
+      materiality: floor,
+      generatedAt: new Date().toISOString(),
+    });
   });
 });
 

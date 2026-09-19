@@ -19,7 +19,9 @@ import {
   getQuote,
   getTickerNews,
   getToken,
+  isMaterialOrUnscored,
   listWatchlist,
+  materialityLabel,
   openInRobinhood,
   removeFromWatchlist,
   resolveComparable,
@@ -170,6 +172,14 @@ export default function TickerDetail() {
     ReturnType<typeof getMarketEvents>
   > | null>(null);
   const [marketFeedLoading, setMarketFeedLoading] = useState(false);
+  // "Material only" — client-side, keeps unscored headlines (a Jev outage
+  // never hides news). Only offered once something on the page is scored.
+  const [materialOnly, setMaterialOnly] = useState(false);
+  const anyScored = !!marketNews?.items.some((item) => item.jev_materiality);
+  const visibleNews =
+    materialOnly && anyScored
+      ? (marketNews?.items ?? []).filter(isMaterialOrUnscored)
+      : (marketNews?.items ?? []);
 
   const authed = !!getToken();
 
@@ -778,10 +788,26 @@ export default function TickerDetail() {
 
           {ticker ? (
             <section className="app-panel">
-              <h2>News &amp; catalysts</h2>
+              <div className="app-panel-head">
+                <h2>News &amp; catalysts</h2>
+                {anyScored ? (
+                  <button
+                    type="button"
+                    className={`app-chip ${materialOnly ? "app-chip-active" : ""}`}
+                    aria-pressed={materialOnly}
+                    onClick={() => setMaterialOnly((v) => !v)}
+                  >
+                    Material only
+                  </button>
+                ) : null}
+              </div>
               {marketFeedLoading ? <p className="app-muted">Loading market events…</p> : null}
-              {!marketFeedLoading && !marketNews?.items.length && !marketEvents?.events.length ? (
-                <p className="app-muted">No recent headlines or corporate events.</p>
+              {!marketFeedLoading && !visibleNews.length && !marketEvents?.events.length ? (
+                <p className="app-muted">
+                  {materialOnly && marketNews?.items.length
+                    ? "Nothing material right now."
+                    : "No recent headlines or corporate events."}
+                </p>
               ) : (
                 <div style={{ display: "grid", gap: "0.7rem" }}>
                   {marketEvents?.events.map((event, index) => (
@@ -800,7 +826,7 @@ export default function TickerDetail() {
                       </span>
                     </a>
                   ))}
-                  {marketNews?.items.map((item, index) => (
+                  {visibleNews.map((item, index) => (
                     <a
                       className="app-link"
                       href={item.url}
@@ -812,6 +838,17 @@ export default function TickerDetail() {
                       <span className="app-muted">
                         {providerPresentationLabel(item.source)} ·{" "}
                         {sourceHostPresentationLabel(item.url)}
+                        {item.jev_materiality ? (
+                          <>
+                            {" "}
+                            <span
+                              className={`app-materiality app-materiality-${item.jev_materiality.level}`}
+                              title={`Jev materiality · ${Math.round(item.jev_materiality.confidence * 100)}% confidence`}
+                            >
+                              {materialityLabel(item.jev_materiality)}
+                            </span>
+                          </>
+                        ) : null}
                       </span>
                     </a>
                   ))}

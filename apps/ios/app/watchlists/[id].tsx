@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
+import { WatchlistHeadlinesCard } from "@/components/WatchlistHeadlinesCard";
 import { colors, elevation, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { sectorColor } from "@/util/sectors";
@@ -299,6 +300,12 @@ export default function WatchlistDetailScreen() {
                   list until the user actually opens it. */}
               {session?.token && tickers.length > 0 ? (
                 <DailyBriefCard token={session.token} tickers={tickers} listId={listId} />
+              ) : null}
+
+              {/* The tape the brief was written from: every ticker's latest
+                  headlines, Jev-tagged for materiality where possible. */}
+              {session?.token && tickers.length > 0 ? (
+                <WatchlistHeadlinesCard token={session.token} tickers={tickers} listId={listId} />
               ) : null}
 
               <Text style={styles.sectionTitle}>Tickers</Text>

@@ -1,9 +1,16 @@
 import { colors, radii, space, type } from "@/theme/tokens";
+import {
+  type CitationType,
+  citationTypeDetail,
+  citationTypeLabel,
+  citationTypeOf,
+} from "@/util/citationType";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { type ReactNode, createContext, useContext, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   StyleSheet,
@@ -185,24 +192,33 @@ export function CitationRow({
   claim,
   source,
   url,
+  citationType,
 }: {
   id: string;
   claim?: string | null;
   source?: string | null;
   url?: string | null;
+  /** Engine `citation_type` annotation; `null`/absent renders no badge. */
+  citationType?: CitationType | null;
 }) {
   const href = typeof url === "string" && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
   const text = typeof claim === "string" && claim.trim() ? claim.trim() : null;
+  const kind = citationTypeOf({ citation_type: citationType });
   const body = (
     <View style={styles.citationRow}>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.citationClaim}>
           <Text style={styles.citationId}>[{id}]</Text> {text ?? "No claim text on this citation."}
         </Text>
-        {source ? (
-          <Text style={styles.citationSource} numberOfLines={1}>
-            {source}
-          </Text>
+        {source || kind ? (
+          <View style={styles.citationMeta}>
+            {source ? (
+              <Text style={[styles.citationSource, { flexShrink: 1 }]} numberOfLines={1}>
+                {source}
+              </Text>
+            ) : null}
+            {kind ? <CitationTypeBadge kind={kind} /> : null}
+          </View>
         ) : null}
       </View>
       {href ? (
@@ -226,6 +242,35 @@ export function CitationRow({
       style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >
       {body}
+    </Pressable>
+  );
+}
+
+/**
+ * "SEC XBRL" badge on a citation. Tapping shows how it was decided — an
+ * authoritative rule match, or a Jev classification with its confidence —
+ * so the reader can weigh a machine-labelled source appropriately.
+ */
+function CitationTypeBadge({ kind }: { kind: CitationType }) {
+  const label = citationTypeLabel(kind);
+  const detail = citationTypeDetail(kind);
+  return (
+    <Pressable
+      onPress={() => Alert.alert(label, detail)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`Source type ${label}. ${detail}`}
+      style={({ pressed }) => [
+        styles.citationBadge,
+        kind.source === "jev" && styles.citationBadgeJev,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      <Text
+        style={[styles.citationBadgeText, kind.source === "jev" && styles.citationBadgeTextJev]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -385,6 +430,23 @@ const styles = StyleSheet.create({
   citationClaim: { color: colors.fgMuted, fontSize: 12.5, lineHeight: 18 },
   citationId: { color: colors.fg, fontWeight: "800" },
   citationSource: { color: PRISM_DIM, fontSize: 10.5, lineHeight: 15 },
+  citationMeta: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  citationBadge: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bgSunken,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  citationBadgeJev: { borderColor: colors.accentMuted },
+  citationBadgeText: {
+    color: colors.fgMuted,
+    fontSize: 9.5,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  citationBadgeTextJev: { color: colors.accent },
   segment: {
     flexDirection: "row",
     backgroundColor: colors.bgSunken,

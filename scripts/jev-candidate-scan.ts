@@ -39,10 +39,19 @@ type Candidate = { id: string; description: string };
 /**
  * Known LLM call sites as of the Jev integration (2026-09). The four prose
  * generators and the vision classifier are the call sites that existed when
- * this script was written; the watchlist pre-filter is the one Jev call site
- * this same integration added. Extend this list as new call sites appear.
+ * this script was written; the watchlist pre-filter and the headline
+ * materiality scorer are the Jev call sites the integration has added since.
+ * (Memo `citation_type` badges are NOT a Mapvest call site: the sibling
+ * underlying-analyzer-reboot engine classifies citations and Mapvest only
+ * passes the annotation through — see docs/PRISM.md "Citation types".)
+ * Extend this list as new call sites appear.
  */
 const CANDIDATES: Candidate[] = [
+  {
+    id: "headline-materiality",
+    description:
+      "apps/api/src/lib/headline-materiality.ts — for a page of headlines (GET /v1/news for one ticker, GET /v1/watchlist/headlines across a watchlist) asks ONE batched systemone request with one `choice` question per headline over {noise, minor, material}, given the headline title/source/ticker and the watchlist tickers as state. Emits an optional per-item jev_materiality {level, score, confidence} tag, omitted below 0.55 confidence or on any failure, memoized 15 minutes per headline. A bounded three-way classification over already-gathered context.",
+  },
   {
     id: "environment-brief-generator",
     description:
