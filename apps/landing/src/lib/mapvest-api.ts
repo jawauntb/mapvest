@@ -481,6 +481,142 @@ export function getAnalysis(ticker: string) {
   return req<AnalysisSnapshot>(`/v1/analysis/${encodeURIComponent(ticker)}`);
 }
 
+// ---- Jev signals (keep lockstep with packages/core) ----
+
+export type RatingAction = "strong_buy" | "buy" | "hold" | "sell" | "strong_sell";
+export type RatingDriverName =
+  | "valuation"
+  | "momentum"
+  | "fundamentals"
+  | "narrative"
+  | "macro"
+  | "local_demand"
+  | "peer_forecast";
+
+export type RatingDriver = {
+  name: RatingDriverName;
+  direction: "up" | "down" | "flat";
+  weight: number;
+};
+
+export type RatingResponse = {
+  ticker: string;
+  status: "ok" | "insufficient_signal";
+  rating: {
+    action: RatingAction;
+    strength: "strong" | "normal" | "weak";
+    conviction: number;
+    one_line: string;
+  } | null;
+  probabilities: Record<RatingAction, number> | null;
+  confidence: number;
+  drivers: RatingDriver[];
+  evidence: Array<{ source: string; summary: string; ref?: string }>;
+  inputs_used: string[];
+  as_of: string;
+  disclaimer: string;
+};
+
+/** `GET /v1/rating/:ticker` — a 200 `insufficient_signal` is the muted state, not an error. */
+export function getRating(ticker: string) {
+  return req<RatingResponse>(`/v1/rating/${encodeURIComponent(ticker)}`);
+}
+
+const RATING_ACTION_LABEL: Record<RatingAction, string> = {
+  strong_buy: "STRONG BUY",
+  buy: "BUY",
+  hold: "HOLD",
+  sell: "SELL",
+  strong_sell: "STRONG SELL",
+};
+
+/** `"BUY · 72%"`, or `null` when the API had no rating to give. */
+export function ratingLabel(r: RatingResponse | null | undefined): string | null {
+  if (!r || r.status !== "ok" || !r.rating) return null;
+  return `${RATING_ACTION_LABEL[r.rating.action]} · ${Math.round(r.rating.conviction * 100)}%`;
+}
+
+/** `up` / `down` / `neutral` / `muted` — drives the chip's CSS modifier. */
+export function ratingTone(
+  r: RatingResponse | null | undefined,
+): "up" | "down" | "neutral" | "muted" {
+  if (!r || r.status !== "ok" || !r.rating) return "muted";
+  if (r.rating.action === "buy" || r.rating.action === "strong_buy") return "up";
+  if (r.rating.action === "sell" || r.rating.action === "strong_sell") return "down";
+  return "neutral";
+}
+
+const RATING_DRIVER_LABEL: Record<RatingDriverName, string> = {
+  valuation: "Valuation",
+  momentum: "Momentum",
+  fundamentals: "Fundamentals",
+  narrative: "News flow",
+  macro: "Macro",
+  local_demand: "Demand pulse",
+  peer_forecast: "Peer forecast",
+};
+
+/** `"Momentum ↑ · 64%"` */
+export function ratingDriverLabel(d: RatingDriver): string {
+  const glyph = d.direction === "up" ? "↑" : d.direction === "down" ? "↓" : "→";
+  return `${RATING_DRIVER_LABEL[d.name] ?? d.name} ${glyph} · ${Math.round(d.weight * 100)}%`;
+}
+
+export type InvestableVerdict = {
+  exposure: "direct" | "parent" | "proxy" | "none";
+  probability: number;
+  worth_a_look: number;
+  watchlisted?: boolean;
+};
+
+/** Clients emphasize the watchlist CTA at or above this. */
+export const WORTH_A_LOOK_AT = 0.7;
+
+/** `"Investable via parent · NKE · 88%"` / `"Proxy exposure via XLY · 70%"`; `null` when unscored. */
+export function verdictLabel(
+  verdict: InvestableVerdict | null | undefined,
+  ctx: { ticker?: string; comparable?: string; etf?: string },
+): string | null {
+  if (!verdict) return null;
+  const pct = `${Math.round(verdict.probability * 100)}%`;
+  switch (verdict.exposure) {
+    case "direct":
+      return ctx.ticker ? `Direct · ${ctx.ticker} · ${pct}` : `Directly investable · ${pct}`;
+    case "parent":
+      return ctx.ticker
+        ? `Investable via parent · ${ctx.ticker} · ${pct}`
+        : `Investable via parent · ${pct}`;
+    case "proxy": {
+      const via = ctx.comparable ?? ctx.etf;
+      return via ? `Proxy exposure via ${via} · ${pct}` : `Proxy exposure · ${pct}`;
+    }
+    case "none":
+      return `No public exposure · ${pct}`;
+    default:
+      return null;
+  }
+}
+
+export function worthALook(verdict: InvestableVerdict | null | undefined): boolean {
+  return !!verdict && verdict.worth_a_look >= WORTH_A_LOOK_AT && verdict.exposure !== "none";
+}
+
+export type SearchIntentResponse = {
+  intent: "ticker" | "brand" | "place" | "question";
+  probability: number;
+  resolved: { symbol?: string; brand?: string; placeQuery?: string };
+  route: { screen: "detail" | "map" | "research"; params: Record<string, string> };
+  method: "deterministic" | "jev" | "fallback";
+};
+
+/** `POST /v1/search/intent` — fails open server-side to `intent: "ticker"`. */
+export function searchIntent(input: { q: string; lat?: number; lng?: number }) {
+  return req<SearchIntentResponse>("/v1/search/intent", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export type CockpitRow = {
   rank?: number;
   ticker: string;
@@ -756,7 +892,10 @@ export async function identifyImage(file: File, location?: { lat: number; lng: n
         sector?: string;
       };
       comparables?: Array<{ ticker: string; name?: string; score?: number }>;
+      etfs?: Array<{ ticker: string; name?: string; weight?: number }>;
       confidence: "high" | "medium" | "low";
+      /** Jev snap verdict — ABSENT (never null) when unscored; render nothing then. */
+      verdict?: InvestableVerdict;
     }>;
   };
 }

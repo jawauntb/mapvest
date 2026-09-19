@@ -39,14 +39,30 @@ type Candidate = { id: string; description: string };
 /**
  * Known LLM call sites as of the Jev integration (2026-09). The four prose
  * generators and the vision classifier are the call sites that existed when
- * this script was written; the watchlist pre-filter and the headline
- * materiality scorer are the Jev call sites the integration has added since.
+ * this script was written; the watchlist pre-filter, the headline
+ * materiality scorer, the hero-chip rating, the identify verdict, and the
+ * search-intent router are the Jev call sites the integration has added since.
  * (Memo `citation_type` badges are NOT a Mapvest call site: the sibling
  * underlying-analyzer-reboot engine classifies citations and Mapvest only
  * passes the annotation through — see docs/PRISM.md "Citation types".)
  * Extend this list as new call sites appear.
  */
 const CANDIDATES: Candidate[] = [
+  {
+    id: "rating",
+    description:
+      "apps/api/src/lib/rating.ts — for GET /v1/rating/:ticker, gathers an evidence packet (quote + 3-month history stats, financial ratios, the cached synthesis memo's binding constraint / demand durability / pricing power, the cached demand pulse, the cached environment brief, the stored Prism recommendation and Situate posture, material headlines, the underlying peer forecast) and asks ONE batched systemone request: a `score` over strong_sell < sell < hold < buy < strong_buy, a `choice` for the primary driver among the drivers present, and one `noul` per driver ('does this evidence argue UP?'). Emits a PrismRecommendation-shaped rating whose one_line is composed deterministically from the drivers; insufficient_signal below 0.55 confidence or with fewer than two sources; cached one hour per ticker. A bounded rubric score plus bounded yes/no reads over already-gathered context.",
+  },
+  {
+    id: "identify-verdict",
+    description:
+      "apps/api/src/lib/identify-verdict.ts — after POST /v1/identify resolves each photographed brand to a ticker / parent / comparables / ETFs, asks ONE batched systemone request with, per detection, a `choice` over how the brand is investable {direct, parent, proxy, none} and a `noul` 'worth a closer look?'. Emits an optional per-Investable verdict {exposure, probability, worth_a_look, watchlisted?}, omitted below 0.55 confidence or on any failure, memoized 15 minutes per resolution content hash. A four-way classification plus a calibrated yes/no over structured resolution data.",
+  },
+  {
+    id: "search-intent",
+    description:
+      "apps/api/src/lib/search-intent.ts — for POST /v1/search/intent, a deterministic pass (cashtag / ticker shape + live quote, the brands.json seed, explicit locators and venue words, question shape) decides most queries; only the ambiguous remainder asks ONE systemone `choice` over {ticker, brand, place, question} with the query text and a few boolean hints as state. Falls open to intent 'ticker' (today's behavior) on any failure or low confidence; cached five minutes per normalized query. A single-choice classification over a short string.",
+  },
   {
     id: "headline-materiality",
     description:

@@ -82,6 +82,8 @@ export default function MapScreen() {
   const router = useRouter();
   const mapPanInProgress = useRef(false);
   const params = useLocalSearchParams<{
+    /** Place query handed over by Home search (`/v1/search/intent` → map). */
+    q?: string | string[];
     lat?: string | string[];
     lng?: string | string[];
     source?: string | string[];
@@ -137,6 +139,17 @@ export default function MapScreen() {
     message: string;
   } | null>(null);
   const handledNotificationTargetRef = useRef<string | null>(null);
+
+  // Home search → Map hand-off: surface the place query in the same notice
+  // strip a notification target uses, so the user sees what they asked for
+  // over the nearby results. Consumed once per distinct query.
+  const handledSearchQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    const q = (Array.isArray(params.q) ? params.q[0] : params.q)?.trim();
+    if (!q || handledSearchQueryRef.current === q) return;
+    handledSearchQueryRef.current = q;
+    setNotificationNotice({ kind: "matched", message: `Nearby results for "${q}".` });
+  }, [params.q]);
 
   const publishLocationContext = useCallback(
     (next: LocationContextState, cameraUpdate?: CameraUpdateMode) => {

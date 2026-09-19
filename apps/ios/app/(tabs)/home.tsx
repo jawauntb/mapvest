@@ -1,5 +1,6 @@
 import {
   type Quote,
+  type SearchIntentResponse,
   type WatchEntry,
   type WatchlistSummary,
   fetchProgress,
@@ -9,20 +10,22 @@ import {
   listWatchlist,
   listWatchlists,
   removeFromWatchlist,
+  searchIntent,
 } from "@/api/client";
 import { listFinds, resolveStreakDays } from "@/api/finds";
 import { useSession } from "@/auth/session";
 import { AppTopBar } from "@/components/AppTopBar";
 import { BacktestCard } from "@/components/BacktestCard";
 import { DailyBriefCard } from "@/components/DailyBriefCard";
-import { WeeklyQuestCard } from "@/components/WeeklyQuestCard";
 import { EmptyState } from "@/components/EmptyState";
 import { LocalEconomyBriefCard } from "@/components/LocalEconomyBriefCard";
 import { ScalePressable } from "@/components/ScalePressable";
 import { ScreenFade } from "@/components/ScreenFade";
 import { SkeletonList } from "@/components/Skeleton";
+import { WeeklyQuestCard } from "@/components/WeeklyQuestCard";
 import { refreshFindSurfacesOnFocus } from "@/finds/focusRefresh";
 import { findsQueryKey } from "@/finds/queryKeys";
+import { openChatAbout } from "@/nav/chatAbout";
 import { colors, elevation, fonts, radii, type } from "@/theme/tokens";
 import { hapticSelect } from "@/util/haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -82,6 +85,23 @@ function isTickerShape(raw: string): boolean {
   return /^[A-Z][A-Z0-9.]{0,5}$/.test(raw.trim().toUpperCase().replace(/^\$/, ""));
 }
 
+/** Tiny intent preview under the search box: "Brand → $NKE", "Place → Map", … */
+function intentHintLabel(res: SearchIntentResponse | undefined): string | null {
+  if (!res || res.method === "fallback") return null;
+  switch (res.intent) {
+    case "ticker":
+      return res.resolved.symbol ? `Ticker → $${res.resolved.symbol}` : "Ticker";
+    case "brand":
+      return res.resolved.symbol ? `Brand → $${res.resolved.symbol}` : "Brand → Investable";
+    case "place":
+      return "Place → Map";
+    case "question":
+      return "Question → Research";
+    default:
+      return null;
+  }
+}
+
 /** Whole dollars past $1,000 — matches the counterfactual line on universe.tsx. */
 function universeMoney(n: number): string {
   const decimals = Math.abs(n) < 1000 ? 2 : 0;
@@ -118,6 +138,8 @@ export default function HomeScreen() {
   const [tickerQuery, setTickerQuery] = useState("");
   /** Debounced copy of tickerQuery — drives live quote suggestions. */
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  /** True while a submit is waiting on `/v1/search/intent`. */
+  const [searchBusy, setSearchBusy] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("added");
   const [wlCollapsed, setWlCollapsed] = useState(false);
   // `null` = "All lists" (server default-list scoping).
@@ -269,6 +291,18 @@ export default function HomeScreen() {
     retry: false,
   });
 
+  // Intent hint while typing — debounced, non-blocking, never gates submit.
+  // Only for text the live-quote path does not already cover.
+  const intentHintEnabled = debouncedQuery.length >= 3 && !liveSearchEnabled;
+  const intentQ = useQuery({
+    queryKey: ["search-intent", debouncedQuery],
+    queryFn: () => searchIntent({ q: debouncedQuery }, { token: session?.token }),
+    enabled: intentHintEnabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const intentHint = intentHintEnabled ? intentHintLabel(intentQ.data) : null;
+
   const searchSuggestions = useMemo(() => {
     if (!debouncedQuery) return [];
     const q = debouncedQuery.toLowerCase();
@@ -372,6 +406,63 @@ export default function HomeScreen() {
     if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(sym)) return;
     setTickerQuery("");
     router.push(`/detail/${encodeURIComponent(sym)}`);
+  }
+
+  /**
+   * Navigate for a resolved search intent. `null` (timeout / older API) is
+   * today's behavior: open the detail sheet for the text, which resolves
+   * brands itself.
+   */
+  function routeIntent(res: SearchIntentResponse | null, text: string) {
+    setTickerQuery("");
+    if (!res) {
+      router.push(`/detail/${encodeURIComponent(text)}`);
+      return;
+    }
+    switch (res.route.screen) {
+      case "map": {
+        const q = res.route.params.q ?? res.resolved.placeQuery ?? text;
+        router.push(`/(tabs)/map?q=${encodeURIComponent(q)}` as never);
+        return;
+      }
+      case "research":
+        openChatAbout(router, { kind: "question", text: res.route.params.q ?? text });
+        return;
+      default:
+        router.push(`/detail/${encodeURIComponent(res.route.params.id ?? text)}`);
+    }
+  }
+
+  /**
+   * Submit path for the search box. A ticker the live quote already confirmed
+   * skips the round trip; everything else asks `/v1/search/intent` (bounded
+   * to 3 s) and routes to Investable, the Map tab, or the Research composer.
+   */
+  async function submitSearch(raw: string) {
+    const text = raw.trim();
+    if (!text) return;
+    const sym = text.toUpperCase().replace(/^\$/, "");
+    if (
+      isTickerShape(text) &&
+      (text.startsWith("$") || (sym === debouncedQuery && liveQuoteQ.data?.quote))
+    ) {
+      openTicker(sym);
+      return;
+    }
+    setSearchBusy(true);
+    try {
+      const res = await Promise.race<SearchIntentResponse | null>([
+        searchIntent({ q: text }, { token: session?.token }).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]);
+      if (!res && isTickerShape(text)) {
+        openTicker(sym);
+        return;
+      }
+      routeIntent(res, text);
+    } finally {
+      setSearchBusy(false);
+    }
   }
 
   return (
@@ -555,10 +646,10 @@ export default function HomeScreen() {
                     value={tickerQuery}
                     onChangeText={setTickerQuery}
                     returnKeyType="search"
-                    onSubmitEditing={() => openTicker(tickerQuery)}
-                    accessibilityLabel="Find ticker"
+                    onSubmitEditing={() => void submitSearch(tickerQuery)}
+                    accessibilityLabel="Search tickers, brands, places, or ask a question"
                   />
-                  {liveQuoteQ.isFetching ? (
+                  {liveQuoteQ.isFetching || searchBusy ? (
                     <ActivityIndicator
                       size="small"
                       color={colors.fgDim}
@@ -568,14 +659,19 @@ export default function HomeScreen() {
                 </View>
                 <Pressable
                   style={[styles.goBtn, !tickerQuery.trim() && { opacity: 0.4 }]}
-                  disabled={!tickerQuery.trim()}
-                  onPress={() => openTicker(tickerQuery)}
+                  disabled={!tickerQuery.trim() || searchBusy}
+                  onPress={() => void submitSearch(tickerQuery)}
                   accessibilityRole="button"
-                  accessibilityLabel="Go to ticker"
+                  accessibilityLabel="Go"
                 >
                   <Ionicons name="arrow-forward" size={18} color={colors.accentInk} />
                 </Pressable>
               </View>
+              {intentHint ? (
+                <Text style={styles.intentHint} accessibilityLiveRegion="polite">
+                  {intentHint}
+                </Text>
+              ) : null}
 
               {searchSuggestions.length > 0 ? (
                 <View style={styles.suggestPanel}>
@@ -767,9 +863,9 @@ export default function HomeScreen() {
               {!session?.token ? (
                 <View style={styles.guestHint}>
                   <Text style={styles.guestHintText}>
-                    You can point and walk without an account. Sign in once you find something
-                    worth keeping — your universe, streak, and level all live on your account from
-                    that moment on.
+                    You can point and walk without an account. Sign in once you find something worth
+                    keeping — your universe, streak, and level all live on your account from that
+                    moment on.
                   </Text>
                   <Pressable
                     onPress={() => router.push("/auth")}
@@ -979,6 +1075,13 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
     marginBottom: 14,
+  },
+  intentHint: {
+    color: colors.fgDim,
+    fontSize: 12,
+    paddingHorizontal: 20,
+    marginTop: -8,
+    marginBottom: 10,
   },
   searchWrap: {
     flex: 1,
