@@ -13,11 +13,13 @@ import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
 import { stampIdentifyInvestables } from "../lib/dex.js";
 import { recordFind } from "../lib/finds-store.js";
+import { attachInvestableVerdicts } from "../lib/identify-verdict.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onIdentifyFinished } from "../lib/notifiers/imageNotifier.js";
 import { sanitizeOcrString } from "../lib/sanitize.js";
-import { recordTileCapture } from "../lib/tile-progress-store.js";
 import { tileFor } from "../lib/territory.js";
+import { recordTileCapture } from "../lib/tile-progress-store.js";
+import { type WatchEntry, listWatchEntries } from "../lib/watchlist-store.js";
 import type { AuthEnv } from "../middleware/bearerAuth.js";
 import { identifyGuards } from "../middleware/identifyGuards.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
@@ -54,6 +56,27 @@ async function bestEffortQuote(symbol: string, timeoutMs = 500): Promise<Quote |
     ]);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Best-effort set of the caller's default-list tickers, bounded to
+ * `timeoutMs`. Only feeds the Jev verdict's `watchlisted` flag — a slow or
+ * failed read yields `undefined` and the verdict simply omits the flag.
+ */
+async function bestEffortWatchlist(
+  userId: string,
+  timeoutMs = 500,
+): Promise<ReadonlySet<string> | undefined> {
+  try {
+    const entries = await Promise.race<WatchEntry[] | null>([
+      listWatchEntries(userId),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    if (!entries) return undefined;
+    return new Set(entries.map((e) => e.ticker.toUpperCase()));
+  } catch {
+    return undefined;
   }
 }
 
@@ -252,12 +275,20 @@ identify.post("/", async (c) => {
         };
       }),
     );
-    const investables: Investable[] = stampIdentifyInvestables(
+    const stamped: Investable[] = stampIdentifyInvestables(
       resolvedInvestables.filter((i): i is Investable => i !== null),
       seedBrands,
     );
+    // Jev exposure verdict per detection — ONE batched call, fail-open, cached.
+    // The caller's watchlist is only consulted when it is cheap (signed in,
+    // bounded read); anonymous callers get a verdict without `watchlisted`.
+    const watchlist = user?.id ? await bestEffortWatchlist(user.id) : undefined;
+    const investables = await attachInvestableVerdicts(stamped, { watchlist });
 
-    span.setAttribute("investables_count", investables.length);
+    span.setAttributes({
+      investables_count: investables.length,
+      verdict_count: investables.filter((i) => i.verdict).length,
+    });
     // Fire-and-forget push (opted-in authenticated users only). Picks the
     // first investable's brand + ticker (if any) so the notification carries
     // enough context for deep-linking.

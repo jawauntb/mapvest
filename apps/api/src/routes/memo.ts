@@ -163,6 +163,20 @@ function readSynthesisCache(ticker: string): SynthesisMemoResponse | null {
   return hit.memo;
 }
 
+/**
+ * Read-only view of the synthesis cache for other signals (the `/v1/rating`
+ * evidence packet). Never generates: a ticker without a cached memo is `null`.
+ */
+export function readSynthesisMemoCache(ticker: string): SynthesisMemoResponse | null {
+  return readSynthesisCache(ticker.trim().toUpperCase());
+}
+
+/** Test-only: seed the synthesis cache without spending a model call. */
+export function _seedSynthesisMemoCache(memo: SynthesisMemoResponse): void {
+  const key = memo.ticker.trim().toUpperCase();
+  synthesisCache.set(key, { memo, expiresAt: Date.now() + SYNTHESIS_TTL_MS });
+}
+
 /** Test-only. Public callers should not reach in. */
 export function _clearSynthesisMemoCache(): void {
   synthesisCache.clear();

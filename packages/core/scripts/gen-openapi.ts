@@ -179,6 +179,13 @@ const S = {
   SituateBuildRequest: component("SituateBuildRequest", raw.SituateBuildRequest),
   SituateChatRequest: component("SituateChatRequest", raw.SituateChatRequest),
   SituateChatResponse: component("SituateChatResponse", raw.SituateChatResponse),
+  InvestableVerdict: component("InvestableVerdict", raw.InvestableVerdict),
+  RatingDriver: component("RatingDriver", raw.RatingDriver),
+  RatingEvidence: component("RatingEvidence", raw.RatingEvidence),
+  RatingProbabilities: component("RatingProbabilities", raw.RatingProbabilities),
+  RatingResponse: component("RatingResponse", raw.RatingResponse),
+  SearchIntentRequest: component("SearchIntentRequest", raw.SearchIntentRequest),
+  SearchIntentResponse: component("SearchIntentResponse", raw.SearchIntentResponse),
 };
 
 // -------- shared error envelope --------
@@ -948,6 +955,52 @@ registry.registerPath({
     200: {
       description: "Analysis snapshot.",
       content: { "application/json": { schema: S.AnalysisSnapshot } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/rating/{ticker}",
+  summary: "Jev hero-chip rating",
+  description:
+    "Research-signal rating for one ticker, assembled from cheap or already-cached evidence (quote + recent history, financial ratios, the cached synthesis memo, cached demand pulse, cached environment brief, stored Prism/Situate packets, material headlines, and the sibling Underlying service's `/api/tabular/peer-forecast`) and ONE batched Jev `systemone` call: a `score` over strong_sell..strong_buy, a `choice` for the primary driver, and one `noul` per driver. Never triggers a Prism/Situate/synthesis build. `rating` is `PrismRecommendation`-shaped; `one_line` is composed deterministically from `drivers`. Returns 200 with `status: \"insufficient_signal\"` and `rating: null` when fewer than two sources resolved, Jev is unavailable, or its confidence is below 0.55 — never a 5xx for a missing optional signal. Memoized in-process for one hour per ticker. Public, same auth posture as `/v1/analysis`. Every response carries the disclaimer `AI-generated research signal, not investment advice.`",
+  tags: ["finance"],
+  request: {
+    params: z.object({
+      ticker: z.string().openapi({
+        param: { name: "ticker", in: "path" },
+        example: "NVDA",
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Rating (or an insufficient_signal envelope of the same shape).",
+      content: { "application/json": { schema: S.RatingResponse } },
+    },
+    ...errorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/search/intent",
+  summary: "Search-box intent routing",
+  description:
+    "Decides whether free text means a ticker, a brand, a place, or a question and where the client should navigate. A deterministic first pass (cashtag or ticker shape + live-quote check, the `brands.json` seed, explicit locators and venue words) settles most queries; only the ambiguous remainder goes to one Jev `choice`, and any Jev failure, low confidence, or missing key falls open to `intent: \"ticker\"` with today's behavior (open the detail sheet for the text). Memoized 5 minutes per normalized query. Public.",
+  tags: ["finance"],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.SearchIntentRequest } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Intent + route.",
+      content: { "application/json": { schema: S.SearchIntentResponse } },
     },
     ...errorResponses,
   },
