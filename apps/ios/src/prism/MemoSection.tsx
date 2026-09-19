@@ -89,6 +89,7 @@ export function MemoSection({ packet }: { packet: PrismPacket }) {
                 claim={citation.claim}
                 source={citation.source}
                 url={citation.url}
+                citationType={citation.citation_type}
               />
             ))}
           </View>

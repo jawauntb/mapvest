@@ -230,12 +230,39 @@ export function getQuote(symbol: string) {
   return req<{ quote?: Quote; error?: string }>(`/v1/quote?symbol=${encodeURIComponent(symbol)}`);
 }
 
+export type MaterialityLevel = "noise" | "minor" | "material";
+
+/**
+ * Jev materiality tag on a headline. ABSENT (not null) when the API could not
+ * score the item — a missing tag is "unknown", never "noise", so any
+ * "material only" filter must keep untagged items.
+ */
+export type JevMateriality = {
+  level: MaterialityLevel;
+  /** 0..1 position on the noise→material axis. */
+  score: number;
+  /** 0..1, always >= 0.55 when present. */
+  confidence: number;
+};
+
 export type NewsItem = {
   title: string;
   url: string;
   source: string;
   publishedAt: string;
+  jev_materiality?: JevMateriality;
 };
+
+/** `Material · 82%` — badge copy for a tagged headline. */
+export function materialityLabel(tag: JevMateriality): string {
+  const level = tag.level.charAt(0).toUpperCase() + tag.level.slice(1);
+  return `${level} · ${Math.round(tag.confidence * 100)}%`;
+}
+
+/** "Material only" predicate: material, or not scored at all. */
+export function isMaterialOrUnscored(item: { jev_materiality?: JevMateriality }): boolean {
+  return !item.jev_materiality || item.jev_materiality.level === "material";
+}
 
 export type MarketEvent = {
   ticker: string;
@@ -249,9 +276,12 @@ export type MarketEvent = {
 };
 
 export function getTickerNews(symbol: string, limit = 6) {
-  return req<{ items: NewsItem[]; provider: string; ts: string }>(
-    `/v1/news?ticker=${encodeURIComponent(symbol)}&limit=${Math.min(25, Math.max(1, limit))}`,
-  );
+  return req<{
+    items: NewsItem[];
+    provider: string;
+    ts: string;
+    materiality?: MaterialityLevel | null;
+  }>(`/v1/news?ticker=${encodeURIComponent(symbol)}&limit=${Math.min(25, Math.max(1, limit))}`);
 }
 
 export function getMarketEvents(symbol: string, limit = 8) {

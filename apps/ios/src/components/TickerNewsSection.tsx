@@ -1,9 +1,11 @@
 import { type MarketEvent, fetchMarketEvents } from "@/api/market-events";
 import { type NewsItem, fetchTickerNews } from "@/api/news";
 import { InAppReader } from "@/components/InAppReader";
+import { MaterialOnlyToggle, MaterialityBadge } from "@/components/MaterialityBadge";
 import { neutralizeProviderMetadata, providerName } from "@/evidence/presentation";
 import { colors, radii, type as typography } from "@/theme/tokens";
 import { hapticTap } from "@/util/haptics";
+import { hasAnyScored, isMaterialOrUnscored, materialityOf } from "@/util/materiality";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -27,6 +29,11 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
  *
  * The news endpoint already returns an empty `items` array on upstream failure,
  * so the "nothing to show" branch covers real outages too.
+ *
+ * Headlines may carry a Jev `jev_materiality` tag, rendered as a
+ * "Material · 82%" pill. A "Material only" toggle appears once anything on the
+ * page is scored; it filters client-side and always keeps unscored headlines,
+ * so a Jev outage never hides news.
  */
 export function TickerNewsSection({
   ticker,
@@ -56,9 +63,15 @@ export function TickerNewsSection({
     queryFn: () => fetchMarketEvents(ticker, { token, limit: 8 }),
   });
 
-  const items = useMemo<NewsItem[]>(() => q.data?.items ?? [], [q.data]);
+  const allItems = useMemo<NewsItem[]>(() => q.data?.items ?? [], [q.data]);
   const events = useMemo<MarketEvent[]>(() => eventsQ.data?.events ?? [], [eventsQ.data]);
   const [reader, setReader] = useState<ReaderTarget | null>(null);
+  const [materialOnly, setMaterialOnly] = useState(false);
+  const anyScored = useMemo(() => hasAnyScored(allItems), [allItems]);
+  const items = useMemo(
+    () => (materialOnly && anyScored ? allItems.filter(isMaterialOrUnscored) : allItems),
+    [allItems, materialOnly, anyScored],
+  );
 
   const total = events.length + items.length;
   // Keep the existing news skeleton: spin while headlines load, unless events
@@ -72,7 +85,10 @@ export function TickerNewsSection({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.h2}>News &amp; catalysts</Text>
+      <View style={styles.head}>
+        <Text style={styles.h2}>News &amp; catalysts</Text>
+        {anyScored ? <MaterialOnlyToggle value={materialOnly} onChange={setMaterialOnly} /> : null}
+      </View>
       <View style={styles.card}>
         {showSkeleton ? (
           <ActivityIndicator color={colors.fg} />
@@ -80,7 +96,9 @@ export function TickerNewsSection({
           <Text style={styles.muted}>
             {q.isError && eventsQ.isError
               ? "News unavailable."
-              : "No recent headlines or corporate events."}
+              : materialOnly && allItems.length > 0
+                ? "Nothing material right now."
+                : "No recent headlines or corporate events."}
           </Text>
         ) : (
           <View style={styles.list}>
@@ -238,9 +256,12 @@ function NewsRow({
         <Text style={styles.title} numberOfLines={3}>
           {item.title}
         </Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {source} · {formatRelative(item.publishedAt)}
-        </Text>
+        <View style={styles.eventMeta}>
+          <Text style={styles.meta} numberOfLines={1}>
+            {source} · {formatRelative(item.publishedAt)}
+          </Text>
+          <MaterialityBadge tag={materialityOf(item)} />
+        </View>
       </View>
       <Ionicons
         name="book-outline"
@@ -310,7 +331,8 @@ function formatRelative(iso: string): string {
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
-  h2: { ...typography.h2, color: colors.fg },
+  head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  h2: { ...typography.h2, color: colors.fg, flexShrink: 1 },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radii.lg,

@@ -1,5 +1,6 @@
 import { getDeviceId } from "@/util/deviceId";
 import { API_URL } from "@/util/env";
+import type { JevMateriality, MaterialityLevel } from "@/util/materiality";
 
 /**
  * Per-ticker news feed. Intentionally standalone — does NOT import from
@@ -15,12 +16,29 @@ export type NewsItem = {
   source: string;
   /** ISO 8601 timestamp. */
   publishedAt: string;
+  /**
+   * Jev materiality tag. ABSENT when the server could not score the headline
+   * (no key, error, low confidence) — never treat a missing tag as "noise".
+   */
+  jev_materiality?: JevMateriality;
 };
 
 export type NewsResponse = {
   items: NewsItem[];
   provider: string;
   ts: string;
+  /** The `?materiality=` floor the server applied; `null`/absent when none. */
+  materiality?: MaterialityLevel | null;
+};
+
+/** One row of `GET /v1/watchlist/headlines`: a headline plus the ticker it belongs to. */
+export type WatchlistHeadline = NewsItem & { ticker: string };
+
+export type WatchlistHeadlinesResponse = {
+  items: WatchlistHeadline[];
+  tickers: string[];
+  materiality?: MaterialityLevel | null;
+  generatedAt: string;
 };
 
 type FetchOpts = {
@@ -88,13 +106,33 @@ export function fetchNewsRead(url: string, opts: FetchOpts = {}): Promise<NewsRe
 
 export function fetchTickerNews(
   ticker: string,
-  opts: FetchOpts & { limit?: number } = {},
+  opts: FetchOpts & { limit?: number; materiality?: MaterialityLevel } = {},
 ): Promise<NewsResponse> {
   const params = new URLSearchParams({ ticker });
   if (typeof opts.limit === "number" && opts.limit > 0) {
     params.set("limit", String(Math.min(25, Math.floor(opts.limit))));
   }
+  if (opts.materiality) params.set("materiality", opts.materiality);
   return jsonGet<NewsResponse>(`/v1/news?${params.toString()}`, {
+    token: opts.token,
+    signal: opts.signal,
+  });
+}
+
+/**
+ * Headlines across every ticker on a watchlist (`GET /v1/watchlist/headlines`),
+ * newest first, each optionally tagged with `jev_materiality`. Requires a
+ * session. `listId` omitted → the user's default list. A 200 with an empty
+ * `items` array means the news provider had nothing — render an empty state.
+ */
+export function fetchWatchlistHeadlines(
+  opts: FetchOpts & { listId?: string; materiality?: MaterialityLevel },
+): Promise<WatchlistHeadlinesResponse> {
+  const params = new URLSearchParams();
+  if (opts.listId) params.set("listId", opts.listId);
+  if (opts.materiality) params.set("materiality", opts.materiality);
+  const qs = params.toString();
+  return jsonGet<WatchlistHeadlinesResponse>(`/v1/watchlist/headlines${qs ? `?${qs}` : ""}`, {
     token: opts.token,
     signal: opts.signal,
   });

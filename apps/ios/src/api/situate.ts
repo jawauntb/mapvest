@@ -22,6 +22,7 @@
  * packet from an older or newer engine still parses into something renderable.
  * Unknown keys survive (we cast the JSON rather than stripping it).
  */
+import type { CitationType } from "@/util/citationType";
 import { API_URL } from "@/util/env";
 import { ApiError } from "./errors";
 import { apiFetch } from "./http";
@@ -330,6 +331,12 @@ export type SituateCitation = {
   module?: string | null;
   version?: string | null;
   url?: string | null;
+  /**
+   * The engine's classification of the cited document (see
+   * `src/util/citationType.ts`). Absent when unknown — never render a
+   * placeholder for a missing one.
+   */
+  citation_type?: CitationType | null;
 };
 
 export type SituateMemo = {
