@@ -120,7 +120,7 @@ describe("manifest-bound TestFlight distribution", () => {
     expect(manifest.release.testFlightGroup).toBe("friend-testers");
     expect(distributionJob.params?.submit_beta_review).toBe(true);
     expect(distributionJob.params?.changelog).toBe("${{ inputs.what_to_test }}");
-    expect(manifest.copy.testFlightWhatToTest).toContain("Mapvest beta");
+    expect(manifest.copy.testFlightWhatToTest).toContain("Mapvest —");
   });
 
   test("recovers only one explicit ASC build under the same manifest binding", async () => {
