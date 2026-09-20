@@ -6,7 +6,7 @@ import {
 } from "../../scripts/release-ledger";
 
 const manifestPath = new URL("../../release/v0.1.0.json", import.meta.url).pathname;
-const manifestHash = "sha256:a2824a5fc31fdf616d857f480f3f3ba27385f55312eeb69062bc63e37eab2b0e";
+const manifestHash = "sha256:cba800989ca2b9872e2a58ba619e90081aaccc09df8de0e52aafe2e79326b5dd";
 const sourceCommitSha = "1234567890abcdef1234567890abcdef12345678";
 
 function candidate(overrides: Partial<CandidateEvidence> = {}): CandidateEvidence {
