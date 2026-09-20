@@ -31,10 +31,10 @@ describe("versioned release manifest", () => {
     expect(renderReleaseCopy(manifest, "app-store-whats-new")).toBe(manifest.copy.appStoreWhatsNew);
     expect(renderReleaseCopy(manifest, "app-review")).toBe(manifest.copy.appReviewNotes);
     expect(renderReleaseCopy(manifest, "testflight")).toContain(
-      "Weekly Quests, the Leaderboard, first captures, and the co-op raid",
+      "camera reliability fix, stock ratings, and smarter search",
     );
     expect(renderReleaseCopy(manifest, "app-store-whats-new")).toContain(
-      "Weekly Quests and a Leaderboard ranked on who spots a company first",
+      "a rating at the top of every company page",
     );
   });
 
