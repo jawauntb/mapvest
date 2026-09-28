@@ -2,6 +2,7 @@ import { getQuote } from "@mapvest/finance";
 import { Hono } from "hono";
 import { CACHE_SHORT } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { normalizeTicker } from "../lib/string-utils.js";
 
 const quote = new Hono();
 
@@ -15,12 +16,12 @@ const quote = new Hono();
  */
 quote.get("/", async (c) => {
   return safeExecuteWithSpan("http.quote", async (span) => {
-    const symbol = (c.req.query("symbol") ?? "").trim();
+    const symbol = normalizeTicker(c.req.query("symbol"));
     if (!symbol) {
       span.setAttribute("error.kind", "missing_symbol");
       return c.json({ error: "symbol required" }, 400);
     }
-    span.setAttribute("symbol", symbol.toUpperCase());
+    span.setAttribute("symbol", symbol);
 
     const started = performance.now();
     const q = await getQuote(symbol);
