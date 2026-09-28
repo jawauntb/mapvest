@@ -11,6 +11,7 @@ import {
   getDerivationAutoresearch,
   getDerivationResearchMemo,
 } from "../lib/derivation.js";
+import { CACHE_NO_CACHE } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { onAgentResponseReady } from "../lib/notifiers/agentNotifier.js";
 import { prismSummaryForPrompt } from "../lib/prism.js";
@@ -584,7 +585,7 @@ agent.post("/stream", optionalAuth, agentChatQuota, async (c) => {
   }
 
   c.header("X-Accel-Buffering", "no");
-  c.header("Cache-Control", "no-cache, no-transform");
+  c.header("Cache-Control", CACHE_NO_CACHE);
   return streamSSE(c, async (sse) => {
     const session = createSseSession(sse);
     try {

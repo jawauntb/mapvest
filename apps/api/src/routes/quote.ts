@@ -1,5 +1,6 @@
 import { getQuote } from "@mapvest/finance";
 import { Hono } from "hono";
+import { CACHE_SHORT } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const quote = new Hono();
@@ -36,7 +37,7 @@ quote.get("/", async (c) => {
     // client/CDN cache is safe and absorbs bursty re-requests (e.g. a
     // watchlist screen re-fetching the same symbol) without serving
     // meaningfully stale prices.
-    c.header("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
+    c.header("Cache-Control", CACHE_SHORT);
     return c.json({ quote: q });
   });
 });

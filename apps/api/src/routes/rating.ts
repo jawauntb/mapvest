@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { CACHE_MEDIUM_LONG } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { buildRating, readRatingCache } from "../lib/rating.js";
 import { isTicker } from "../lib/underlying.js";
@@ -32,7 +33,7 @@ rating.get("/:ticker", async (c) => {
       confidence: result.confidence,
       inputs: result.inputs_used.join(","),
     });
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
+    c.header("Cache-Control", CACHE_MEDIUM_LONG);
     return c.json(result);
   });
 });

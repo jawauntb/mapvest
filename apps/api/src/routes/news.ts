@@ -5,6 +5,7 @@ import {
   parseMaterialityFloor,
   scoreHeadlineMateriality,
 } from "../lib/headline-materiality.js";
+import { CACHE_60S, CACHE_MEDIUM } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { fetchArticle } from "../lib/news-read.js";
 import { type NewsItem, fetchTickerNews } from "../lib/news-source.js";
@@ -83,7 +84,7 @@ news.get("/", optionalAuth, async (c) => {
     // Same caching envelope as /v1/quote: news moves slowly at the per-
     // minute scale but we still want to soak up bursty re-fetches from
     // the detail screen without slamming the upstream provider.
-    c.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    c.header("Cache-Control", CACHE_60S);
     return c.json({
       items: filtered,
       provider,
@@ -106,7 +107,7 @@ news.get("/read", optionalAuth, async (c) => {
       has_text: article.text.length > 0,
       read_error: article.error ?? "",
     });
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+    c.header("Cache-Control", CACHE_MEDIUM);
     return c.json(article);
   });
 });

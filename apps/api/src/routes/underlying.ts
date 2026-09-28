@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { CACHE_MEDIUM, DEFERRED_TO_V02, LINK_OUT_SUFFIX } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const underlying = new Hono();
@@ -28,15 +29,15 @@ underlying.get("/", (c) => {
       brand: brand ?? "",
       sector: sector ?? "",
       link_out: "the-underlying-analyzer-reboot",
-      deferred_to: "v0.2",
+      deferred_to: DEFERRED_TO_V02,
     });
     // Static link-out scaffold — the response is a pure function of the
     // query string with no I/O, so it is safe to cache for longer than the
     // dynamic routes.
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+    c.header("Cache-Control", CACHE_MEDIUM);
     return c.json({
       linkOut: "https://underlying-terminal-production.up.railway.app/",
-      note: "underlying-analyzer link-out — live sibling instance",
+      note: "underlying-analyzer" + LINK_OUT_SUFFIX,
       brand,
       sector,
     });
