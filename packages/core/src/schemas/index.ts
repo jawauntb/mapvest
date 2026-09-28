@@ -2635,3 +2635,166 @@ export const SearchIntentResponse = z.object({
   method: z.enum(["deterministic", "jev", "fallback"]),
 });
 export type SearchIntentResponse = z.infer<typeof SearchIntentResponse>;
+
+// -------- MCP tools (constellation) --------
+
+/**
+ * The Mapvest MCP server (`POST /mcp`, apps/api/src/lib/mcp-tools.ts) offers a
+ * few read-only tools to the other sites' agents (the "constellation": the
+ * lattice animals, Reflect-Search, Admissible, Underlying Analyzer, the
+ * Derivation console). Each tool's arguments and result are zod schemas here.
+ *
+ * Arguments are `.strict()`: a stray key (a `url`, a `userId`) is refused,
+ * never ignored, so no tool can be handed an address or an identity. A result
+ * is parsed before it goes out, so a caller reads exactly what is declared
+ * here. A result that names a ticker or a brand carries `sources` (AGENTS.md §6)
+ * and, when it cannot cite one, `confidence: "low"`.
+ */
+
+/** The longest free text a tool takes: the same 200 characters `SearchIntentRequest.q` allows. */
+export const MCP_TEXT_MAX_CHARS = 200;
+/** A ticker, with an optional leading `$`; `isTicker` in the API is the format check. */
+export const MCP_TICKER_MAX_CHARS = 8;
+/** The longest question `ask_lattice_animals` sends; the lattice tool clips at the same length. */
+export const MCP_QUESTION_MAX_CHARS = 600;
+
+/** `search_intent` arguments. */
+export const McpSearchIntentArgs = z
+  .object({ query: z.string().trim().min(1).max(MCP_TEXT_MAX_CHARS) })
+  .strict();
+export type McpSearchIntentArgs = z.infer<typeof McpSearchIntentArgs>;
+
+/**
+ * `search_intent` result: `SearchIntentResponse` without the app-navigation
+ * `route`, plus what the reading rests on. `sources` is the brand seed for a
+ * brand's ticker, or the market-data provider that confirmed a typed ticker
+ * is listed (never a price). A `ticker` or `brand` reading with no cited
+ * source is `confidence: "low"`, as is a `fallback` reading.
+ */
+export const McpSearchIntentResult = z.object({
+  /** The text that was read, whitespace folded. */
+  query: z.string(),
+  intent: SearchIntentName,
+  probability: z.number().min(0).max(1),
+  method: SearchIntentResponse.shape.method,
+  resolved: SearchIntentResponse.shape.resolved,
+  sources: z.array(Source),
+  confidence: Confidence,
+  /** A plain-language caveat when the reading is thin; absent otherwise. */
+  note: z.string().optional(),
+});
+export type McpSearchIntentResult = z.infer<typeof McpSearchIntentResult>;
+
+/** `brand_lookup` arguments. */
+export const McpBrandLookupArgs = z
+  .object({ brand: z.string().trim().min(1).max(MCP_TEXT_MAX_CHARS) })
+  .strict();
+export type McpBrandLookupArgs = z.infer<typeof McpBrandLookupArgs>;
+
+/** `exact`: the text is a seed key. `contained`: a seed key (4+ characters) appears inside the text. */
+export const McpBrandMatchKind = z.enum(["exact", "contained"]);
+export type McpBrandMatchKind = z.infer<typeof McpBrandMatchKind>;
+
+/**
+ * `brand_lookup` result, from the curated `brands.json` seed only (no
+ * network). `found: false` means the brand is not in the seed, not that it is
+ * private or unlisted; it carries no source and `confidence: "low"`.
+ */
+export const McpBrandLookupResult = z.object({
+  /** The text that was looked up, whitespace folded. */
+  query: z.string(),
+  found: z.boolean(),
+  match: z
+    .object({
+      kind: McpBrandMatchKind,
+      /** The seed key that matched. */
+      key: z.string(),
+      ticker: z.string(),
+      exchange: z.string(),
+      parent: z.string(),
+      sector: z.string().optional(),
+    })
+    .nullable(),
+  sources: z.array(Source),
+  confidence: Confidence,
+  note: z.string().optional(),
+});
+export type McpBrandLookupResult = z.infer<typeof McpBrandLookupResult>;
+
+/** `rating` arguments. The value is checked against the ticker shape by `isTicker` in the API. */
+export const McpRatingArgs = z
+  .object({
+    ticker: z
+      .string()
+      .trim()
+      .min(1, "a ticker symbol is required, such as MCD")
+      .max(
+        MCP_TICKER_MAX_CHARS,
+        `not a ticker symbol: at most ${MCP_TICKER_MAX_CHARS} characters, such as MCD or BRK.B`,
+      ),
+  })
+  .strict();
+export type McpRatingArgs = z.infer<typeof McpRatingArgs>;
+
+/**
+ * `rating` result: `RatingResponse` as `GET /v1/rating/{ticker}` returns it
+ * (disclaimer verbatim; `insufficient_signal` with `rating: null` passed
+ * through, never turned into a hold), except that the free-text `summary` of
+ * evidence that restates licensed market data (`quote`, `ratios`) is replaced
+ * by a withheld notice. `note` says so when it applies.
+ */
+export const McpRatingResult = RatingResponse.extend({
+  note: z.string().optional(),
+});
+export type McpRatingResult = z.infer<typeof McpRatingResult>;
+
+/** `ask_lattice_animals` arguments: the question shape of the hub's own `ask_the_minds`. */
+export const McpAskLatticeArgs = z
+  .object({
+    question: z.string().trim().min(1).max(MCP_QUESTION_MAX_CHARS),
+    to: z.enum(["field", "app", "connectome"]).optional(),
+  })
+  .strict();
+export type McpAskLatticeArgs = z.infer<typeof McpAskLatticeArgs>;
+
+/** One JSON-RPC 2.0 message as `POST /mcp` reads it; no `id` means a notification (`202`, no body). */
+export const McpJsonRpcRequest = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number()]).optional(),
+  /** `initialize`, `ping`, `tools/list`, `tools/call`, or a `notifications/*`. */
+  method: z.string(),
+  params: z.record(z.unknown()).optional(),
+});
+export type McpJsonRpcRequest = z.infer<typeof McpJsonRpcRequest>;
+
+/**
+ * The JSON-RPC reply. Every MCP failure is one of these (never the API's flat
+ * `{ error }`): `-32600` invalid request or batch or unreadable body, `-32601`
+ * unknown method, `-32602` unknown tool, `-32000` not a POST or unknown peer,
+ * `-32001` relay too deep, `-32002` too many relayed calls, `-32003` peer silent.
+ * A tool that fails is a result with `isError: true`, not one of these.
+ */
+export const McpJsonRpcResponse = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number()]).nullable(),
+  result: z.record(z.unknown()).optional(),
+  error: z.object({ code: z.number().int(), message: z.string() }).optional(),
+});
+export type McpJsonRpcResponse = z.infer<typeof McpJsonRpcResponse>;
+
+/** `GET /.well-known/mcp.json` (also `/.well-known/mcp/server-card.json`): where everything is. */
+export const McpManifest = z.object({
+  name: z.string(),
+  title: z.string(),
+  description: z.string(),
+  version: z.string(),
+  endpoint: z.string().url(),
+  transport: z.literal("streamable-http"),
+  stateless: z.literal(true),
+  auth: z.literal("none"),
+  protocolVersions: z.array(z.string()),
+  tools: z.array(z.object({ name: z.string(), description: z.string(), readOnly: z.boolean() })),
+  peers: z.array(z.object({ name: z.string(), endpoint: z.string().url(), about: z.string() })),
+  hop: z.object({ max: z.number().int(), headers: z.array(z.string()) }),
+});
+export type McpManifest = z.infer<typeof McpManifest>;
