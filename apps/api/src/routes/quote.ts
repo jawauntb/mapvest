@@ -2,7 +2,7 @@ import { getQuote } from "@mapvest/finance";
 import { Hono } from "hono";
 import { CACHE_SHORT } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
-import { normalizeTicker } from "../lib/string-utils.js";
+import { elapsedMs, normalizeTicker } from "../lib/string-utils.js";
 
 const quote = new Hono();
 
@@ -25,9 +25,8 @@ quote.get("/", async (c) => {
 
     const started = performance.now();
     const q = await getQuote(symbol);
-    const latencyMs = Math.round(performance.now() - started);
     span.setAttributes({
-      latency_ms: latencyMs,
+      latency_ms: elapsedMs(started),
       quote_hit: q !== null,
     });
 

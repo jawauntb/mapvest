@@ -1,6 +1,17 @@
 /**
- * Shared string utility functions to reduce code duplication.
+ * Shared utility functions to reduce code duplication across routes and lib files.
+ * Includes string normalization and telemetry helpers.
  */
+
+// Telemetry & Performance
+
+/**
+ * Measure elapsed time in milliseconds since `startTime` from performance.now().
+ * Useful for span telemetry: `span.setAttribute("latency_ms", elapsedMs(started))`
+ */
+export function elapsedMs(startTime: number): number {
+  return Math.round(performance.now() - startTime);
+}
 
 /**
  * Normalize a ticker symbol: trim whitespace and convert to uppercase.
