@@ -186,6 +186,16 @@ const S = {
   RatingResponse: component("RatingResponse", raw.RatingResponse),
   SearchIntentRequest: component("SearchIntentRequest", raw.SearchIntentRequest),
   SearchIntentResponse: component("SearchIntentResponse", raw.SearchIntentResponse),
+  McpSearchIntentArgs: component("McpSearchIntentArgs", raw.McpSearchIntentArgs),
+  McpSearchIntentResult: component("McpSearchIntentResult", raw.McpSearchIntentResult),
+  McpBrandLookupArgs: component("McpBrandLookupArgs", raw.McpBrandLookupArgs),
+  McpBrandLookupResult: component("McpBrandLookupResult", raw.McpBrandLookupResult),
+  McpRatingArgs: component("McpRatingArgs", raw.McpRatingArgs),
+  McpRatingResult: component("McpRatingResult", raw.McpRatingResult),
+  McpAskLatticeArgs: component("McpAskLatticeArgs", raw.McpAskLatticeArgs),
+  McpJsonRpcRequest: component("McpJsonRpcRequest", raw.McpJsonRpcRequest),
+  McpJsonRpcResponse: component("McpJsonRpcResponse", raw.McpJsonRpcResponse),
+  McpManifest: component("McpManifest", raw.McpManifest),
 };
 
 // -------- shared error envelope --------
@@ -1005,6 +1015,93 @@ registry.registerPath({
     ...errorResponses,
   },
 });
+
+// -------- MCP (constellation member `mapvest`) --------
+// Root paths, not /v1. Public, read-only, JSON-RPC errors of their own (never the
+// API's `{ error }`); see apps/api/src/lib/mcp-tools.ts and docs/ARCHITECTURE.md.
+
+const mcpJsonRpc = (description: string) => ({
+  description,
+  content: { "application/json": { schema: S.McpJsonRpcResponse } },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/mcp",
+  summary: "Mapvest MCP server (JSON-RPC 2.0, Streamable HTTP, stateless)",
+  description:
+    "Mapvest as a member of the constellation (the lattice animals, Reflect-Search, Admissible, Underlying Analyzer, the Derivation console). One JSON-RPC 2.0 message per POST, one JSON reply: `initialize` (echoes a protocol version it knows, else the newest), `ping`, `tools/list`, `tools/call`. A notification gets `202` and no body; a batch or an unreadable or oversize (64 kB) body is `400` `-32600`; `GET` and `DELETE` are `405` with `Allow: POST` (no stream, no session). No auth. Every tool is read-only and public: `search_intent` (`McpSearchIntentArgs` -> `McpSearchIntentResult`), `rating` (`McpRatingArgs` -> `McpRatingResult`), `brand_lookup` (`McpBrandLookupArgs` -> `McpBrandLookupResult`) and `ask_lattice_animals` (`McpAskLatticeArgs`, relayed to the lattice hub). A tool result is JSON text in `result.content[0].text`; a tool that cannot do its job is `result.isError: true`, not a JSON-RPC error; an unknown tool is `-32602`. Nothing that carries licensed market data (quote, history, financials, options, market data, market events), a user, or a model spend is offered. Every result names where it sat on the chain in `result._meta.constellation` (`{ server, hop, path }`). The hop rule: a call carries `x-mcp-hop` and `x-mcp-path`; this site calls out only while the hop is under 2, sends hop + 1 with its name added, and refuses a relaying tool at the limit as an error result beginning `too-deep`. Beyond the global rate limit each address may make 40 tool calls a minute. Tools answer within about 7 s (Bun closes a silent connection at 10 s); a slower one returns an error result.",
+  tags: ["mcp"],
+  security: [],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.McpJsonRpcRequest } },
+    },
+  },
+  responses: {
+    200: mcpJsonRpc(
+      "A JSON-RPC result, or a JSON-RPC error with HTTP 200 (unknown tool or method).",
+    ),
+    202: { description: "A notification: accepted, no body." },
+    400: mcpJsonRpc(
+      "Invalid request: a batch, not JSON-RPC 2.0, or a body that is unreadable or over 64 kB.",
+    ),
+    405: mcpJsonRpc(
+      "Not a POST (GET and DELETE): `Allow: POST`; this server keeps no stream or session.",
+    ),
+    429: flatErrorResponse(
+      "The API's global rate limit (300 requests a minute per session, device or address).",
+    ),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/mcp/{peer}",
+  summary: "Another member's own MCP, relayed one hop deeper",
+  description:
+    "The JSON-RPC message goes to that member as it is, with `x-mcp-hop` + 1 and this site's name added to `x-mcp-path`, and its reply comes back. `peer` must be a name in this site's registry (today `lattice`, the hub; its address is the operator's `LATTICE_MCP_URL`, never a caller's): any other name is `404` `-32000`. A peer with no usable address is `-32000` \"not configured\"; a relay that arrives at the hop limit is `-32001`; too many relayed calls in a day is `-32002`; a peer that does not answer is `-32003`. The wait is capped at 8 s. `GET` is `405`.",
+  tags: ["mcp"],
+  security: [],
+  request: {
+    params: z.object({
+      peer: z.string().openapi({ param: { name: "peer", in: "path" }, example: "lattice" }),
+    }),
+    body: {
+      required: true,
+      content: { "application/json": { schema: S.McpJsonRpcRequest } },
+    },
+  },
+  responses: {
+    200: mcpJsonRpc("The peer's own JSON-RPC reply, or a relay error (`-32000` to `-32003`)."),
+    202: { description: "A relayed notification: forwarded, no body." },
+    400: mcpJsonRpc("Invalid request: a batch or not JSON-RPC 2.0."),
+    404: mcpJsonRpc("No such peer: the name is not in this site's registry."),
+    405: mcpJsonRpc("Not a POST: `Allow: POST`."),
+    429: flatErrorResponse(
+      "The API's global rate limit (300 requests a minute per session, device or address).",
+    ),
+  },
+});
+
+for (const path of ["/.well-known/mcp.json", "/.well-known/mcp/server-card.json"]) {
+  registry.registerPath({
+    method: "get",
+    path,
+    summary: "Where the MCP is: name, endpoint, tools, peers, hop limit",
+    description:
+      "The manifest a client, another member, or the lattice animal's embed reads to learn this server's address (`endpoint` is `MCP_PUBLIC_ORIGIN` + `/mcp`, the operator's setting, never the request's Host), its tools (`readOnly`), its peers (`/mcp/<peer>`) and the hop rule. Cached five minutes; `access-control-allow-origin: *`. Also served at `/.well-known/mcp/server-card.json`.",
+    tags: ["mcp"],
+    security: [],
+    responses: {
+      200: {
+        description: "The manifest.",
+        content: { "application/json": { schema: S.McpManifest } },
+      },
+    },
+  });
+}
 
 registry.registerPath({
   method: "get",
@@ -1986,6 +2083,11 @@ const document = generator.generateDocument({
       name: "situate",
       description:
         "Situate — the single-name research engine (reforms Prism), proxied from the sibling Underlying service. Situates a stock: exposure, per-horizon odds, options-implied distribution, and what the business is saying; posture not buy/sell. Also served at `/v1/research`.",
+    },
+    {
+      name: "mcp",
+      description:
+        "Mapvest as an MCP server in the constellation: JSON-RPC over `POST /mcp`, relays at `POST /mcp/{peer}`, the manifest at `/.well-known/mcp.json`. Public and read-only; root paths, not /v1.",
     },
     { name: "admin", description: "Requires the `admin` scope" },
   ],

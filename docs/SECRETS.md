@@ -48,6 +48,9 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `DERIVATION_RESEARCH_SERVICE_TOKEN` | Derivation Doppler/Railway | Server-only bearer used by Mapvest's research proxy; never expose it to web or iOS |
 | `RESEARCH_CONSOLE_FORWARDED_HOST` | Optional trusted proxy/front-door host | Set only when Mapvest intentionally reaches Console through that proxy. Omit it for direct local or Railway-to-Railway calls; Mapvest does not infer a front door from the Console origin. |
 | `RESEARCH_CONSOLE_SERVICE_TOKEN_READ` / `_MUTATE` | Derivation Doppler/Railway | Legacy aliases retained during rollout; `_READ` is recovery-only, while `/api/explore` requires the primary or `_MUTATE` credential |
+| `MCP_PUBLIC_ORIGIN` | Mapvest configuration | Non-secret, optional. The origin the MCP manifest (`/.well-known/mcp.json`) advertises, so `endpoint` is `<origin>/mcp`. Defaults to `https://api-production-4b27.up.railway.app`; set it only if the public address changes. |
+| `LATTICE_MCP_URL` | Lattice animals (the constellation hub) | Non-secret, optional. The hub's MCP address, used by `POST /mcp/lattice` and the `ask_lattice_animals` tool. https only, no credentials in the URL. Defaults to `https://latticeanimal-production.up.railway.app/mcp`. |
+| `MCP_ALLOW_LOCAL` | Mapvest configuration | Non-secret, optional. `1` lets a peer address be plain http on loopback (a laptop or a test). Leave it unset in production. |
 
 ### Massive market data
 
@@ -60,6 +63,17 @@ quote/history fallback. The plan and freshness variables are optional reporting
 metadata only; this repository does not require or invent any `MASSIVE_*_PLAN`
 values. The five shared S3 variables are reserved for future flat-file ingestion
 and are not required by the REST adapter.
+
+### MCP (constellation)
+
+`POST /mcp` needs no key and holds none: it is public and read-only, and it
+calls the lattice hub without credentials. The three `MCP_*` / `LATTICE_MCP_URL`
+values above are settings, not secrets, and every one has a working default.
+Peer addresses are the operator's alone (never a caller's), https only, with no
+credentials in the URL. The tools call the same in-process functions as the REST
+routes, so they use the keys those already use (`JEV_API_KEY` for `rating` and
+the ambiguous part of `search_intent`, the market-data keys for the listing
+check); with no `JEV_API_KEY` `rating` answers `insufficient_signal`.
 
 ### App Store Connect (StoreKit)
 

@@ -37,6 +37,8 @@ tags:
     description: Prism (working name "ubermemo") — the full-stack memo engine, proxied from the sibling Underlying service. Also served at `/v1/ubermemo`.
   - name: situate
     description: "Situate — the single-name research engine (reforms Prism), proxied from the sibling Underlying service. Situates a stock: exposure, per-horizon odds, options-implied distribution, and what the business is saying; posture not buy/sell. Also served at `/v1/research`."
+  - name: mcp
+    description: "Mapvest as an MCP server in the constellation: JSON-RPC over `POST /mcp`, relays at `POST /mcp/{peer}`, the manifest at `/.well-known/mcp.json`. Public and read-only; root paths, not /v1."
   - name: admin
     description: Requires the `admin` scope
 security:
@@ -7889,6 +7891,483 @@ components:
         - resolved
         - route
         - method
+    McpSearchIntentArgs:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - query
+      additionalProperties: false
+    McpSearchIntentResult:
+      type: object
+      properties:
+        query:
+          type: string
+        intent:
+          type: string
+          enum:
+            - ticker
+            - brand
+            - place
+            - question
+        probability:
+          type: number
+          minimum: 0
+          maximum: 1
+        method:
+          type: string
+          enum:
+            - deterministic
+            - jev
+            - fallback
+        resolved:
+          type: object
+          properties:
+            symbol:
+              type: string
+            brand:
+              type: string
+            placeQuery:
+              type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - fred
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        note:
+          type: string
+      required:
+        - query
+        - intent
+        - probability
+        - method
+        - resolved
+        - sources
+        - confidence
+    McpBrandLookupArgs:
+      type: object
+      properties:
+        brand:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - brand
+      additionalProperties: false
+    McpBrandLookupResult:
+      type: object
+      properties:
+        query:
+          type: string
+        found:
+          type: boolean
+        match:
+          type:
+            - object
+            - "null"
+          properties:
+            kind:
+              type: string
+              enum:
+                - exact
+                - contained
+            key:
+              type: string
+            ticker:
+              type: string
+            exchange:
+              type: string
+            parent:
+              type: string
+            sector:
+              type: string
+          required:
+            - kind
+            - key
+            - ticker
+            - exchange
+            - parent
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                enum:
+                  - exa
+                  - openrouter
+                  - gemini
+                  - massive
+                  - yahoo
+                  - polygon
+                  - sec
+                  - fred
+                  - manual
+              url:
+                type: string
+                format: uri
+              fetchedAt:
+                type: string
+              confidence:
+                type: string
+                enum:
+                  - high
+                  - medium
+                  - low
+            required:
+              - provider
+              - fetchedAt
+              - confidence
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        note:
+          type: string
+      required:
+        - query
+        - found
+        - match
+        - sources
+        - confidence
+    McpRatingArgs:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 8
+      required:
+        - ticker
+      additionalProperties: false
+    McpRatingResult:
+      type: object
+      properties:
+        ticker:
+          type: string
+        status:
+          type: string
+          enum:
+            - ok
+            - insufficient_signal
+        rating:
+          type:
+            - object
+            - "null"
+          properties:
+            action:
+              type: string
+              enum:
+                - strong_buy
+                - buy
+                - hold
+                - sell
+                - strong_sell
+            strength:
+              type: string
+              enum:
+                - strong
+                - normal
+                - weak
+            conviction:
+              type: number
+              minimum: 0
+              maximum: 1
+            one_line:
+              type: string
+          required:
+            - action
+            - strength
+            - conviction
+            - one_line
+          additionalProperties: false
+        probabilities:
+          type:
+            - object
+            - "null"
+          properties:
+            strong_sell:
+              type: number
+              minimum: 0
+              maximum: 1
+            sell:
+              type: number
+              minimum: 0
+              maximum: 1
+            hold:
+              type: number
+              minimum: 0
+              maximum: 1
+            buy:
+              type: number
+              minimum: 0
+              maximum: 1
+            strong_buy:
+              type: number
+              minimum: 0
+              maximum: 1
+          required:
+            - strong_sell
+            - sell
+            - hold
+            - buy
+            - strong_buy
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        drivers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                enum:
+                  - valuation
+                  - momentum
+                  - fundamentals
+                  - narrative
+                  - macro
+                  - local_demand
+                  - peer_forecast
+              direction:
+                type: string
+                enum:
+                  - up
+                  - down
+                  - flat
+              weight:
+                type: number
+                minimum: 0
+                maximum: 1
+            required:
+              - name
+              - direction
+              - weight
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              summary:
+                type: string
+              ref:
+                type: string
+            required:
+              - source
+              - summary
+        inputs_used:
+          type: array
+          items:
+            type: string
+        as_of:
+          type: string
+        disclaimer:
+          type: string
+        note:
+          type: string
+      required:
+        - ticker
+        - status
+        - rating
+        - probabilities
+        - confidence
+        - drivers
+        - evidence
+        - inputs_used
+        - as_of
+        - disclaimer
+    McpAskLatticeArgs:
+      type: object
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 600
+        to:
+          type: string
+          enum:
+            - field
+            - app
+            - connectome
+      required:
+        - question
+      additionalProperties: false
+    McpJsonRpcRequest:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum:
+            - "2.0"
+        id:
+          anyOf:
+            - type: string
+            - type: number
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: {}
+      required:
+        - jsonrpc
+        - method
+    McpJsonRpcResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum:
+            - "2.0"
+        id:
+          anyOf:
+            - type: string
+            - type: number
+            - type: "null"
+        result:
+          type: object
+          additionalProperties: {}
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
+          required:
+            - code
+            - message
+      required:
+        - jsonrpc
+        - id
+    McpManifest:
+      type: object
+      properties:
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        endpoint:
+          type: string
+          format: uri
+        transport:
+          type: string
+          enum:
+            - streamable-http
+        stateless:
+          type: boolean
+          enum:
+            - true
+        auth:
+          type: string
+          enum:
+            - none
+        protocolVersions:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              readOnly:
+                type: boolean
+            required:
+              - name
+              - description
+              - readOnly
+        peers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              endpoint:
+                type: string
+                format: uri
+              about:
+                type: string
+            required:
+              - name
+              - endpoint
+              - about
+        hop:
+          type: object
+          properties:
+            max:
+              type: integer
+            headers:
+              type: array
+              items:
+                type: string
+          required:
+            - max
+            - headers
+      required:
+        - name
+        - title
+        - description
+        - version
+        - endpoint
+        - transport
+        - stateless
+        - auth
+        - protocolVersions
+        - tools
+        - peers
+        - hop
     ErrorResponse:
       type: object
       properties:
@@ -10118,6 +10597,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /mcp:
+    post:
+      summary: Mapvest MCP server (JSON-RPC 2.0, Streamable HTTP, stateless)
+      description: "Mapvest as a member of the constellation (the lattice animals, Reflect-Search, Admissible, Underlying Analyzer, the Derivation console). One JSON-RPC 2.0 message per POST, one JSON reply: `initialize` (echoes a protocol version it knows, else the newest), `ping`, `tools/list`, `tools/call`. A notification gets `202` and no body; a batch or an unreadable or oversize (64 kB) body is `400` `-32600`; `GET` and `DELETE` are `405` with `Allow: POST` (no stream, no session). No auth. Every tool is read-only and public: `search_intent` (`McpSearchIntentArgs` -> `McpSearchIntentResult`), `rating` (`McpRatingArgs` -> `McpRatingResult`), `brand_lookup` (`McpBrandLookupArgs` -> `McpBrandLookupResult`) and `ask_lattice_animals` (`McpAskLatticeArgs`, relayed to the lattice hub). A tool result is JSON text in `result.content[0].text`; a tool that cannot do its job is `result.isError: true`, not a JSON-RPC error; an unknown tool is `-32602`. Nothing that carries licensed market data (quote, history, financials, options, market data, market events), a user, or a model spend is offered. Every result names where it sat on the chain in `result._meta.constellation` (`{ server, hop, path }`). The hop rule: a call carries `x-mcp-hop` and `x-mcp-path`; this site calls out only while the hop is under 2, sends hop + 1 with its name added, and refuses a relaying tool at the limit as an error result beginning `too-deep`. Beyond the global rate limit each address may make 40 tool calls a minute. Tools answer within about 7 s (Bun closes a silent connection at 10 s); a slower one returns an error result."
+      tags:
+        - mcp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpJsonRpcRequest"
+      responses:
+        "200":
+          description: A JSON-RPC result, or a JSON-RPC error with HTTP 200 (unknown tool or method).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "202":
+          description: "A notification: accepted, no body."
+        "400":
+          description: "Invalid request: a batch, not JSON-RPC 2.0, or a body that is unreadable or over 64 kB."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "405":
+          description: "Not a POST (GET and DELETE): `Allow: POST`; this server keeps no stream or session."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "429":
+          description: The API's global rate limit (300 requests a minute per session, device or address).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+  /mcp/{peer}:
+    post:
+      summary: Another member's own MCP, relayed one hop deeper
+      description: "The JSON-RPC message goes to that member as it is, with `x-mcp-hop` + 1 and this site's name added to `x-mcp-path`, and its reply comes back. `peer` must be a name in this site's registry (today `lattice`, the hub; its address is the operator's `LATTICE_MCP_URL`, never a caller's): any other name is `404` `-32000`. A peer with no usable address is `-32000` \"not configured\"; a relay that arrives at the hop limit is `-32001`; too many relayed calls in a day is `-32002`; a peer that does not answer is `-32003`. The wait is capped at 8 s. `GET` is `405`."
+      tags:
+        - mcp
+      security: []
+      parameters:
+        - schema:
+            type: string
+            example: lattice
+          required: true
+          name: peer
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpJsonRpcRequest"
+      responses:
+        "200":
+          description: The peer's own JSON-RPC reply, or a relay error (`-32000` to `-32003`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "202":
+          description: "A relayed notification: forwarded, no body."
+        "400":
+          description: "Invalid request: a batch or not JSON-RPC 2.0."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "404":
+          description: "No such peer: the name is not in this site's registry."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "405":
+          description: "Not a POST: `Allow: POST`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpJsonRpcResponse"
+        "429":
+          description: The API's global rate limit (300 requests a minute per session, device or address).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+  /.well-known/mcp.json:
+    get:
+      summary: "Where the MCP is: name, endpoint, tools, peers, hop limit"
+      description: "The manifest a client, another member, or the lattice animal's embed reads to learn this server's address (`endpoint` is `MCP_PUBLIC_ORIGIN` + `/mcp`, the operator's setting, never the request's Host), its tools (`readOnly`), its peers (`/mcp/<peer>`) and the hop rule. Cached five minutes; `access-control-allow-origin: *`. Also served at `/.well-known/mcp/server-card.json`."
+      tags:
+        - mcp
+      security: []
+      responses:
+        "200":
+          description: The manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpManifest"
+  /.well-known/mcp/server-card.json:
+    get:
+      summary: "Where the MCP is: name, endpoint, tools, peers, hop limit"
+      description: "The manifest a client, another member, or the lattice animal's embed reads to learn this server's address (`endpoint` is `MCP_PUBLIC_ORIGIN` + `/mcp`, the operator's setting, never the request's Host), its tools (`readOnly`), its peers (`/mcp/<peer>`) and the hop rule. Cached five minutes; `access-control-allow-origin: *`. Also served at `/.well-known/mcp/server-card.json`."
+      tags:
+        - mcp
+      security: []
+      responses:
+        "200":
+          description: The manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpManifest"
   /v1/graph/{ticker}:
     get:
       summary: Company value-chain graph

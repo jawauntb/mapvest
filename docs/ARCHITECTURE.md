@@ -267,6 +267,95 @@ request**, bounded context, and an in-process TTL cache.
   the question; a debounced hint under the box previews the intent while
   typing.
 
+## MCP: Mapvest in the constellation
+
+Mapvest is one member of a small constellation of sites (the lattice animals,
+Reflect-Search, Admissible, Underlying Analyzer, the Derivation console) whose
+MCP servers can call one another's and be called by them. The contract
+(endpoints, the hop rule, the registry, the conformance vectors) is the lattice
+animals' `docs/constellation.md`. Mapvest carries the shared library
+`apps/api/src/lib/mcp-lite.mjs` (types in `mcp-lite.d.mts`) **verbatim** and
+answers the same 26 vectors (`apps/api/tests/mcp-vectors.test.ts` runs
+`tests/fixtures/constellation-vectors.json`; both files and the library are
+pinned by hash, so an edit or a formatter pass fails the test). Biome ignores
+the three copies for the same reason. Nothing here is a second implementation
+of the protocol: `apps/api/src/routes/mcp.ts` mounts the library,
+`apps/api/src/lib/mcp-tools.ts` is the tools.
+
+- **Routes** (root paths, not `/v1`; public, no auth, stateless).
+  `POST /mcp` is this site's tools: one JSON-RPC 2.0 message per POST, one JSON
+  reply (`initialize`, `ping`, `tools/list`, `tools/call`; a notification is
+  `202`; `GET` and `DELETE` are `405` with `Allow: POST`). `POST /mcp/lattice`
+  relays a message to the lattice hub's own MCP, one hop deeper. `GET
+  /.well-known/mcp.json` (also `/.well-known/mcp/server-card.json`) says where
+  everything is: the endpoint, the tools with `readOnly`, the peers, the hop
+  limit. Every failure on these paths is a JSON-RPC error (`-32600` for a batch
+  or an unreadable body, `-32602` for an unknown tool, `-32001` for a relay at
+  the limit), never the API's flat `{ error }`; a tool that cannot do its job
+  is a result with `isError: true` instead. Every tool result carries
+  `_meta.constellation = { server, hop, path }`. The global rate limiter still
+  counts these calls; the library adds 40 tool calls a minute per address.
+- **Tools** (all read-only; arguments are `.strict()` zod schemas and results
+  are parsed before they go out: `Mcp*` in `packages/core/src/schemas`).
+  They call the in-process functions the REST routes call, never HTTP.
+  - `search_intent { query }` — `resolveSearchIntent`: is the text a ticker, a
+    brand, a place or a question, and what does it resolve to. Returns
+    `intent`, `probability`, `method`, `resolved`, `sources`, `confidence`
+    (the REST `route` is app navigation and is left out).
+  - `brand_lookup { brand }` — `seedLookup` over `brands.json`, no network:
+    ticker, exchange, parent, sector. `found: false` means only that the seed
+    lacks the brand.
+  - `rating { ticker }` — `buildRating`: the research-signal rating, drivers
+    and evidence, with the disclaimer verbatim (`AI-generated research signal,
+    not investment advice.`). `insufficient_signal` (no `JEV_API_KEY`, fewer
+    than two sources, low confidence) is passed through as no rating, never
+    turned into a hold.
+  - `ask_lattice_animals { question, to? }` — the library's relay tool: asks
+    the lattice hub's `ask_the_minds`. Arguments are checked here first, so an
+    empty question or a stray key never goes out.
+- **Sources and confidence.** A result that names a ticker or a brand says
+  what it rests on (`sources`, section 6 of `AGENTS.md`). A brand's ticker
+  cites the curated seed (`manual`); a typed ticker cites the market-data
+  provider that confirmed it is listed (provider and time, never a price); a
+  reading with nothing to cite, or a fail-open guess, is `confidence: "low"`
+  with a note. Nothing invents a price, a rating or a ticker.
+- **Not offered.** Quote, quote history, financials, options, market data and
+  market events (licensed upstream data whose redistribution terms are
+  unverified, so `rating` also lists its `quote` and `ratios` evidence by name
+  and withholds their summaries, which restate prices and ratios); every
+  bearer, optional-auth or metered route and anything with a user id (identify,
+  memo, graph, pulse, environment, agent, finds, watchlist, settings,
+  robinhood, billing, push, alerts, photos); resolve-comparable and the Prism
+  and Situate generators (each spends on a model); images and other binary
+  data. No tool takes a URL or an address. A call to any of them is `-32602`.
+- **The hop rule.** Every call between sites carries `x-mcp-hop` and
+  `x-mcp-path`. Mapvest calls out only while the hop is under 2, sends hop + 1
+  with its own name added, and at the limit refuses a relaying tool as an
+  error result beginning `too-deep` (a relay path answers `-32001`); pure tools
+  still answer. The registry is the operator's: `lattice` is the only peer, its
+  address is `LATTICE_MCP_URL` (default: the hub's public address), https only,
+  no redirects, and plain http on loopback only when `MCP_ALLOW_LOCAL=1`.
+  Anything else is not in the registry (`404`), and a peer with no usable
+  address is listed as not configured, never guessed.
+- **Bounds.** Bun closes a connection that has been silent for 10 s, so every
+  tool answers inside 7 s and the wait for another site is capped at 8 s. A
+  `rating` that is slower (nine sources at 3 s each, then Jev) is cut off with
+  an error result while its computation carries on into the one-hour cache, so
+  the retry is instant. A fresh rating is the one tool that can spend upstream,
+  so a process computes at most 200 a UTC day for MCP callers (a cached one is
+  free and does not count). `ask_lattice_animals` waits at most 8 s for the hub;
+  a slower answer comes back as `did not answer (timeout)`.
+- **Configuration** (all optional, none secret; see `docs/SECRETS.md`).
+  `MCP_PUBLIC_ORIGIN` is the origin the manifest advertises (default
+  `https://api-production-4b27.up.railway.app`, so `endpoint` is
+  `<origin>/mcp`; never taken from the request's `Host`), `LATTICE_MCP_URL` is
+  the hub's MCP address, `MCP_ALLOW_LOCAL=1` allows a loopback peer for a
+  laptop or a test.
+- **Wire contract.** `openapi.yaml` documents the four MCP routes and the
+  `Mcp*` schemas (tag `mcp`); a tool result is JSON text in
+  `result.content[0].text`, at most 8000 characters (the library clips), and
+  every result here is well under that.
+
 ## Layering rules
 
 - `apps/*` may import `packages/*`.
