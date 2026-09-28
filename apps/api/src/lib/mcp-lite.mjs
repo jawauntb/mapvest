@@ -366,7 +366,7 @@ export function createMcp({
   async function handle({ method = "GET", path = "/", headers = {}, body, ip = "", origin: o = origin } = {}) {
     const p = String(path).replace(/\/+$/, "") || "/";
     if (p === "/.well-known/mcp.json" || p === "/.well-known/mcp/server-card.json") {
-      if (method !== "GET") return { status: 405, headers: { allow: "GET" }, json: fail(null, -32000, "GET the manifest") };
+      if (method !== "GET" && method !== "HEAD") return { status: 405, headers: { allow: "GET, HEAD" }, json: fail(null, -32000, "GET the manifest") };
       return { status: 200, headers: { "access-control-allow-origin": "*", "cache-control": "public, max-age=300" }, json: buildManifest({ name, title, description, version, origin: o, base, tools: list, peers: net.list() }) };
     }
     const cors_ = cors ? { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, mcp-protocol-version, x-mcp-hop, x-mcp-path", "access-control-allow-methods": "POST, OPTIONS" } : {};
@@ -385,14 +385,48 @@ export function createMcp({
     return { status, headers: cors_, json };
   }
 
+  // A Request's body as text, refusing (null) anything over `max` bytes without
+  // reading the rest: the declared length first, then a stream that stops.
+  async function readCapped(request, max) {
+    const declared = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > max) return null;
+    const reader = request.body && request.body.getReader ? request.body.getReader() : null;
+    if (!reader) { const raw = await request.text(); return raw.length > max ? null : raw; }
+    const dec = new TextDecoder();
+    let out = "", size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > max) { try { await reader.cancel(); } catch { /* already closed */ } return null; }
+      out += dec.decode(value, { stream: true });
+    }
+    return out + dec.decode();
+  }
+
   const originOf = (req) => origin || `${(req.headers["x-forwarded-proto"] || req.protocol || "http").toString().split(",")[0]}://${req.headers["x-forwarded-host"] || (req.get && req.get("host")) || req.headers.host || "localhost"}`;
-  async function readBody(req) {
-    if (req.body !== undefined) return req.body;
-    if (req.method !== "POST") return undefined;
-    const chunks = [];
-    let size = 0;
-    for await (const c of req) { size += c.length; if (size > BODY_MAX) return null; chunks.push(c); }
-    try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { return null; }
+  // The request's body as JSON, or null if it is missing, malformed, or over
+  // the cap. Over the cap it stops reading and leaves the connection alone (an
+  // early exit from `for await` would destroy the socket, and Express would
+  // then throw on req.ip); express() closes the connection after the reply.
+  function readBody(req) {
+    if (req.body !== undefined) return Promise.resolve(req.body);
+    if (req.method !== "POST") return Promise.resolve(undefined);
+    const declared = Number(req.headers && req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > BODY_MAX) { req.__mcpRefused = true; return Promise.resolve(null); }
+    return new Promise((resolve) => {
+      const chunks = [];
+      let size = 0, done = false;
+      const finish = (v) => { if (done) return; done = true; if (typeof req.removeListener === "function") req.removeListener("data", onData); resolve(v); };
+      const onData = (c) => {
+        size += c.length;
+        if (size > BODY_MAX) { req.__mcpRefused = true; req.pause(); finish(null); } else chunks.push(c);
+      };
+      req.on("data", onData);
+      req.once("end", () => { try { finish(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { finish(null); } });
+      req.once("error", () => finish(null));
+      req.once("close", () => finish(null));
+    });
   }
 
   return {
@@ -405,10 +439,25 @@ export function createMcp({
     // static handler and any catch-all. Needs no body parser of its own.
     express(app) {
       const h = async (req, res) => {
-        const out = await handle({ method: req.method, path: req.path, headers: req.headers, body: await readBody(req), ip: req.ip || (req.socket && req.socket.remoteAddress) || "", origin: originOf(req) });
-        if (!out) return res.status(404).end();
-        for (const [k, v] of Object.entries(out.headers || {})) res.set(k, v);
-        return out.json === undefined || out.json === null ? res.status(out.status).end() : res.status(out.status).json(out.json);
+        // Nothing here may throw: an async Express 4 handler that rejects is an
+        // unhandled rejection, and that ends the process.
+        try {
+          let ip = "";
+          try { ip = req.ip || (req.socket && req.socket.remoteAddress) || ""; } catch { /* no socket */ }
+          const origin = originOf(req);
+          const body = await readBody(req);
+          const out = await handle({ method: req.method, path: req.path, headers: req.headers, body, ip, origin });
+          if (!out) return res.status(404).end();
+          for (const [k, v] of Object.entries(out.headers || {})) res.set(k, v);
+          if (req.__mcpRefused) {
+            // A refused body may still be arriving: answer, then close the connection.
+            res.set("connection", "close");
+            res.on("finish", () => { try { req.destroy(); } catch { /* already gone */ } });
+          }
+          return out.json === undefined || out.json === null ? res.status(out.status).end() : res.status(out.status).json(out.json);
+        } catch {
+          try { if (!res.headersSent) res.status(500).end(); } catch { /* the socket is gone */ }
+        }
       };
       app.all(base, h);
       app.all(`${base}/:peer`, h);
@@ -421,8 +470,8 @@ export function createMcp({
       const url = new URL(request.url);
       let body;
       if (request.method === "POST") {
-        const raw = await request.text();
-        try { body = raw.length > BODY_MAX ? null : JSON.parse(raw); } catch { body = null; }
+        const raw = await readCapped(request, BODY_MAX);
+        try { body = raw === null ? null : JSON.parse(raw); } catch { body = null; }
       }
       // The platform's proxy appends the address it saw: the last entry (one
       // trusted hop, as Express's `trust proxy: 1`).
@@ -430,7 +479,7 @@ export function createMcp({
       const out = await handle({ method: request.method, path: url.pathname, headers: request.headers, body, ip: fwd, origin: origin || url.origin });
       if (!out) return null;
       const h = new Headers(out.headers || {});
-      if (out.json === undefined || out.json === null) return new Response(null, { status: out.status, headers: h });
+      if (out.json === undefined || out.json === null || request.method === "HEAD") return new Response(null, { status: out.status, headers: h });
       h.set("content-type", "application/json");
       return new Response(JSON.stringify(out.json), { status: out.status, headers: h });
     },
@@ -454,6 +503,12 @@ export function latticeTool({ peer = "lattice", name = "ask_lattice_animals" } =
     },
     readOnly: true,
     relay: true,
-    run: async (args, ctx) => relayResult(await ctx.call(peer, "ask_the_minds", { question: clip(args && args.question, 600), ...(args && args.to ? { to: String(args.to) } : {}) }), "the lattice animals"),
+    run: async (args, ctx) => {
+      const question = args && typeof args.question === "string" ? args.question.trim() : "";
+      if (!question) return { text: "ask something: a question of 1 to 600 characters", isError: true };
+      const to = args.to;
+      if (to !== undefined && !["field", "app", "connectome"].includes(to)) return { text: "to must be field, app or connectome", isError: true };
+      return relayResult(await ctx.call(peer, "ask_the_minds", { question: clip(question, 600), ...(to ? { to } : {}) }), "the lattice animals");
+    },
   };
 }
