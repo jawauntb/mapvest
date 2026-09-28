@@ -2,14 +2,12 @@ import type { Session, User } from "@mapvest/core";
 import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { z } from "zod";
+import { MAGIC_LINK_TTL_SEC, SESSION_TTL_SEC } from "../lib/constants.js";
 import { isDev, sessionSigningKey } from "../lib/env.js";
 import { consumePendingLink, findOrCreateUserByEmail, storePendingLink } from "../lib/store.js";
 import { type AuthEnv, bearerAuth } from "../middleware/bearerAuth.js";
 
 const auth = new Hono<AuthEnv>();
-
-const MAGIC_LINK_TTL_SEC = 10 * 60; // 10 min
-const SESSION_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
 
 const RequestMagicLinkBody = z.object({
   email: z.string().email(),

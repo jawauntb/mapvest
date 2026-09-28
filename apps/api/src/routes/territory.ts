@@ -25,6 +25,7 @@
  */
 import type { Source, TerritoryResponse } from "@mapvest/core";
 import { Hono } from "hono";
+import { CACHE_PRIVATE_60S } from "../lib/constants.js";
 import { findsInTile, listDistinctEffectiveTickers } from "../lib/finds-store.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { resolveNearbyItems } from "../lib/nearby-resolve.js";
@@ -137,7 +138,7 @@ territory.get("/", async (c) => {
     // Same cache posture as `/v1/nearby`: the places + brand join behind the
     // denominator moves on the order of hours, but `found`/`pioneer` are
     // per-user, so this must never be cached by a shared CDN.
-    c.header("Cache-Control", "private, max-age=60");
+    c.header("Cache-Control", CACHE_PRIVATE_60S);
     return c.json(resp);
   });
 });

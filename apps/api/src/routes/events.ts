@@ -13,6 +13,7 @@
  */
 import type { EventsResponse } from "@mapvest/core";
 import { Hono } from "hono";
+import { CACHE_60S } from "../lib/constants.js";
 import { activeEvent } from "../lib/events.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
@@ -30,7 +31,7 @@ events.get("/current", async (c) => {
     const resp: EventsResponse = { active };
     // The window only changes at a UTC day boundary; a short cache absorbs
     // the client polling it on every app foreground.
-    c.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    c.header("Cache-Control", CACHE_60S);
     return c.json(resp);
   });
 });

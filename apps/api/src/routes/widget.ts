@@ -1,6 +1,7 @@
 import type { WidgetNearbyResponse } from "@mapvest/core";
 import { getQuote } from "@mapvest/finance";
 import { Hono } from "hono";
+import { CACHE_120S, CACHE_MEDIUM_LONG } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { distanceM, resolveNearbyItems } from "../lib/nearby-resolve.js";
 
@@ -103,7 +104,7 @@ widget.get("/nearby", async (c) => {
     span.setAttributes({ items_count: resp.items.length, quotes_count: quotes.size });
     // Widgets refresh on their own timeline (minutes, not seconds) — a
     // slightly longer cache than /v1/nearby is safe and saves upstream calls.
-    c.header("Cache-Control", "public, max-age=120, stale-while-revalidate=300");
+    c.header("Cache-Control", CACHE_120S);
     return c.json(resp);
   });
 });
@@ -189,7 +190,7 @@ widget.get("/map-snapshot", async (c) => {
     const buf = await res.arrayBuffer();
     span.setAttributes({ items_count: items.length, bytes: buf.byteLength });
     c.header("Content-Type", "image/png");
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
+    c.header("Cache-Control", CACHE_MEDIUM_LONG);
     return c.body(buf);
   });
 });

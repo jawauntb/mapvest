@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { initDb } from "./lib/db.js";
 import { MCP_IDLE_TIMEOUT_S } from "./lib/mcp-tools.js";
 import { startPushScheduler } from "./lib/scheduler.js";
+import { CORS_HEADERS, CORS_METHODS, CORS_ORIGINS } from "./lib/constants.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { printRedactedRequestLog } from "./middleware/pushLogRedaction.js";
 import { rateLimit } from "./middleware/rateLimit.js";
@@ -74,11 +75,11 @@ app.use("*", logger(printRedactedRequestLog));
 app.use(
   "*",
   cors({
-    origin: "*",
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    origin: CORS_ORIGINS,
+    allowMethods: [...CORS_METHODS],
     // X-Device-Id: anonymous per-device id sent by iOS/web clients so guest
     // usage can be metered without sign-in (Phase 8 Slice C groundwork).
-    allowHeaders: ["Authorization", "Content-Type", "Accept", "X-Device-Id", "Idempotency-Key"],
+    allowHeaders: [...CORS_HEADERS],
   }),
 );
 // gzip/deflate JSON responses over 1KB (hono/compress default threshold).

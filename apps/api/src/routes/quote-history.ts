@@ -9,6 +9,7 @@ import {
 } from "@mapvest/finance";
 import { Hono } from "hono";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
+import { elapsedMs } from "../lib/string-utils.js";
 import { marketDataSource } from "../lib/marketDataSource.js";
 
 const quoteHistory = new Hono();
@@ -48,9 +49,8 @@ quoteHistory.get("/", async (c) => {
 
     const started = performance.now();
     const result = await getHistoricalClosesWithProvider(symbol, lookback, interval);
-    const latencyMs = Math.round(performance.now() - started);
     span.setAttributes({
-      latency_ms: latencyMs,
+      latency_ms: elapsedMs(started),
       history_hit: !!result?.value && result.value.length > 0,
       points: result?.value?.length ?? 0,
     });

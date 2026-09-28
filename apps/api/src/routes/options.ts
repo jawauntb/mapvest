@@ -8,6 +8,7 @@ import {
   getOptionsChain,
 } from "@mapvest/finance";
 import { type Context, Hono } from "hono";
+import { CACHE_MEDIUM_VERY_LONG } from "../lib/constants.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { marketDataSource } from "../lib/marketDataSource.js";
 import { parseMarketDate } from "../lib/marketDataValidation.js";
@@ -88,7 +89,7 @@ options.get("/", (c) => {
     // Static link-out scaffold — the response is a pure function of the
     // query string with no I/O, so it is safe to cache for longer than the
     // dynamic routes.
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+    c.header("Cache-Control", CACHE_MEDIUM_VERY_LONG);
     return c.json({
       ticker,
       linkOut: "https://github.com/jawauntb/option_derivation",

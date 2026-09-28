@@ -23,6 +23,7 @@
 import type { DexRarity, DexRarityCounts, DexSector, Find, Investable } from "@mapvest/core";
 import { canonicalSector } from "@mapvest/finance";
 import { encodeGeohash } from "./geohash.js";
+import { normalizeTicker } from "./string-utils.js";
 
 /**
  * Structural shape of a seed map, so callers can inject `seedBrands` from
@@ -36,13 +37,6 @@ export type DexSeed = Record<string, DexSeedEntry>;
 
 /** Bucket used for seed entries whose sector is missing or unrecognized. */
 export const UNKNOWN_SECTOR = "Unknown";
-
-/** Uppercase + trim a ticker so seed/find comparisons are symmetric. */
-function normalizeTicker(input: string | undefined | null): string | null {
-  if (!input) return null;
-  const t = input.trim().toUpperCase();
-  return t.length > 0 ? t : null;
-}
 
 /** Canonical GICS sector for a seed entry, falling back to `UNKNOWN_SECTOR`. */
 function sectorOf(entry: DexSeedEntry): string {

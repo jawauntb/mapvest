@@ -21,16 +21,13 @@
 import type { CompanyEdge, CompanyEdgeType, Source } from "@mapvest/core";
 import type { CompanyEdgeInput } from "@mapvest/finance";
 import { dbEnabled, getSql, initDb } from "./db.js";
+import { normalizeUppercase } from "./string-utils.js";
 
 /** Memory fallback keeps edges for at most this many tickers. */
 const MEMORY_TICKER_CAP = 200;
 
 // srcTicker -> edges, insertion-ordered (oldest-inserted ticker evicted first).
 const memory = new Map<string, CompanyEdge[]>();
-
-function normalizeTicker(srcTicker: string): string {
-  return srcTicker.trim().toUpperCase();
-}
 
 function memPut(key: string, edges: CompanyEdge[]): void {
   if (!memory.has(key)) {
@@ -116,7 +113,7 @@ export async function replaceEdges(
   edges: CompanyEdgeInput[],
 ): Promise<CompanyEdge[]> {
   await ensureTable();
-  const key = normalizeTicker(srcTicker);
+  const key = normalizeUppercase(srcTicker);
   const createdAt = new Date().toISOString();
   const stored: CompanyEdge[] = edges.map((e) => ({
     id: crypto.randomUUID(),
@@ -164,7 +161,7 @@ export async function replaceEdges(
 /** All stored edges for a ticker, newest batch first. */
 export async function listEdges(srcTicker: string): Promise<CompanyEdge[]> {
   await ensureTable();
-  const key = normalizeTicker(srcTicker);
+  const key = normalizeUppercase(srcTicker);
   if (dbEnabled()) {
     const sql = getSql();
     if (sql) {
