@@ -30,6 +30,7 @@ import leaderboard from "./routes/leaderboard.js";
 import localBrief from "./routes/localBrief.js";
 import marketData from "./routes/market-data.js";
 import marketEvents from "./routes/market-events.js";
+import mcpRoutes from "./routes/mcp.js";
 import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
@@ -159,6 +160,9 @@ app.route("/v1/environment", environment);
 // Global first capture + photo gallery (capture economy Item 3).
 app.route("/v1/companies", companyPhotos);
 app.route("/v1/photos", photoVotes);
+// The constellation's MCP: POST /mcp, POST /mcp/<peer>, GET /.well-known/mcp.json.
+// Root paths (not /v1); read-only, public, JSON-RPC errors of its own.
+app.route("/", mcpRoutes);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
