@@ -3,6 +3,7 @@ import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { initDb } from "./lib/db.js";
+import { MCP_IDLE_TIMEOUT_S } from "./lib/mcp-tools.js";
 import { startPushScheduler } from "./lib/scheduler.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import { printRedactedRequestLog } from "./middleware/pushLogRedaction.js";
@@ -30,6 +31,7 @@ import leaderboard from "./routes/leaderboard.js";
 import localBrief from "./routes/localBrief.js";
 import marketData from "./routes/market-data.js";
 import marketEvents from "./routes/market-events.js";
+import mcpRoutes from "./routes/mcp.js";
 import memo from "./routes/memo.js";
 import nearby from "./routes/nearby.js";
 import news from "./routes/news.js";
@@ -159,6 +161,9 @@ app.route("/v1/environment", environment);
 // Global first capture + photo gallery (capture economy Item 3).
 app.route("/v1/companies", companyPhotos);
 app.route("/v1/photos", photoVotes);
+// The constellation's MCP: POST /mcp, POST /mcp/<peer>, GET /.well-known/mcp.json.
+// Root paths (not /v1); read-only, public, JSON-RPC errors of its own.
+app.route("/", mcpRoutes);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
@@ -170,4 +175,8 @@ const port = Number(process.env.PORT ?? 3001);
 console.log(`[api] listening on :${port}`);
 
 export { app };
-export default { port, fetch: app.fetch };
+// `idleTimeout`: Bun's default closes a connection idle for 10 s (a cut at 12 s).
+// The MCP relays to the lattice animals, whose answers take 5 to 20 s, so the
+// server allows longer (see MCP_IDLE_TIMEOUT_S, which also says what Bun does
+// and does not cut). It is Bun's per-server setting: every route gets it.
+export default { port, fetch: app.fetch, idleTimeout: MCP_IDLE_TIMEOUT_S };

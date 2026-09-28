@@ -303,3 +303,31 @@ the game board (constellations). Filings stay proxied via `underlying-terminal`;
 **Acceptance**: `GET /v1/graph/NVDA` returns cited supplier + buyer edges,
 cache-hit on second call; synthesis memo cites ≥1 upstream and ≥1 downstream
 fact and degrades to a plain memo when the graph is empty.
+
+---
+
+## Phase 13 — Constellation MCP
+
+Mapvest as a member of the constellation (the lattice animals, Reflect-Search,
+Admissible, Underlying Analyzer, the Derivation console): a few honest,
+read-only tools other sites' agents can call, and a way to call the lattice
+animals back. Contract: the lattice animals' `docs/constellation.md`. Detail:
+`docs/ARCHITECTURE.md` "MCP: Mapvest in the constellation".
+
+- [x] Vendor `mcp-lite` (`apps/api/src/lib/mcp-lite.mjs` + `mcp-lite.d.mts`) and the conformance vectors verbatim (Biome ignores them); `mcp-vectors.test.ts` runs all 26 and pins the three files by hash
+- [x] `POST /mcp`, `POST /mcp/lattice`, `GET /.well-known/mcp.json` (+ `/.well-known/mcp/server-card.json`) at the root, with JSON-RPC errors of their own (`apps/api/src/routes/mcp.ts`)
+- [x] Tools, in-process and zod-validated (`Mcp*` in `packages/core`): `search_intent`, `brand_lookup`, `rating`, `ask_lattice_animals`
+- [x] Honest by construction: results cite `sources` or say `confidence: "low"`; `insufficient_signal` is passed through, never a hold; the rating disclaimer is verbatim
+- [x] Not offered: licensed market data (`rating` withholds its `quote`/`ratios` evidence summaries), bearer/metered routes, user ids, model-spending generators, binaries; no tool takes a URL
+- [x] Bounded: `search_intent` and `rating` keep a 7 s budget; the hub wait is the library's 25 s (the animals take 5 to 20 s), so the API's Bun server sets `idleTimeout: 30` (Bun's 10 s default closes an idle connection; measured on Bun 1.2.23 to 1.3.13 it spares a POST with a body, so this is a guard); fresh ratings capped per UTC day; per-address limit
+- [x] `openapi.yaml` and `postman.json` regenerated with the MCP routes and schemas
+- [x] `docs/ARCHITECTURE.md`, `docs/SECRETS.md`, `.env.example` (`MCP_PUBLIC_ORIGIN`, `LATTICE_MCP_URL`, `MCP_ALLOW_LOCAL`)
+- [ ] Deploy (merge to `main`; Railway must actually receive it: `deploy.yml` no-ops without `RAILWAY_WEBHOOK`) and set `MCP_PUBLIC_ORIGIN` only if the public origin differs from the default
+- [ ] Verify on the live API: `initialize`, `tools/list` and a `tools/call` on `POST /mcp`; `GET /mcp` is 405; the lattice hub lists `mapvest` and `POST /mcp/lattice` reaches it
+- [ ] Decide whether a browser may call `/mcp` cross-origin (would add `mcp-protocol-version`, `x-mcp-hop`, `x-mcp-path` to the API's CORS allow-headers; server-to-server callers need nothing)
+
+**Acceptance**: `initialize`, `tools/list` and `tools/call` answer on `POST /mcp`
+and the 26 constellation vectors pass; `GET /mcp` is 405 with a JSON-RPC body;
+`tools/call quote` is `-32602`; `rating` with no scoring key says
+`insufficient_signal`, not a rating; at `x-mcp-hop: 2` `ask_lattice_animals` is
+refused as `too-deep` and nothing leaves the process.

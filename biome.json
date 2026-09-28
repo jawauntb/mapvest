@@ -3,7 +3,17 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["node_modules", "dist", ".next", ".expo", "build", "postman.json"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      ".next",
+      ".expo",
+      "build",
+      "postman.json",
+      "apps/api/src/lib/mcp-lite.mjs",
+      "apps/api/src/lib/mcp-lite.d.mts",
+      "apps/api/tests/fixtures/constellation-vectors.json"
+    ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": {
