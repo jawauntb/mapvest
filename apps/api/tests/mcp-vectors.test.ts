@@ -151,7 +151,7 @@ describe("constellation vectors (every member answers these the same way)", () =
 
 describe("the vendored copies are verbatim", () => {
   // A member's copy of the library is verbatim (docs/constellation.md). These
-  // are the SHA-256 of lattice-animal's files at commit 1489f5d, so a stray
+  // are the SHA-256 of lattice-animal's files at commit fe9400a, so a stray
   // edit or a formatter pass fails here. To take a newer library, copy all
   // three files from lattice-animal (lib/mcp-lite.mjs, lib/mcp-lite.d.mts,
   // tests/fixtures/constellation-vectors.json), `cmp` them, and update these.
@@ -162,7 +162,7 @@ describe("the vendored copies are verbatim", () => {
 
   test("mcp-lite.mjs", () => {
     expect(sha256("../src/lib/mcp-lite.mjs")).toBe(
-      "85d747a53372942b9aba592417c26903095d5121464f246979a8ef28da4d1090",
+      "0cd88641832a24e31cfd877742a0886e48099c3c12c109de08833e3664be60cf",
     );
   });
 

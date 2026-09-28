@@ -42,8 +42,12 @@ const REPLY_MAX = 256 * 1024;
 const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
 const oneLine = (s, n) => clip(String(s == null ? "" : s).replace(/\s+/g, " ").trim(), n);
 const text = (t, isError = false) => ({ content: [{ type: "text", text: clip(t, TEXT_MAX) }], ...(isError ? { isError: true } : {}) });
+// A JSON-RPC id is a string or a number. Anything else is refused as an invalid request, and an error
+// reply never echoes a value that is not one (a deeply nested id would overflow the reply's own JSON.stringify).
+const validId = (id) => typeof id === "string" || (typeof id === "number" && Number.isFinite(id));
+const idGiven = (m) => !!m && m.id !== undefined && m.id !== null;
 const ok = (id, result) => ({ jsonrpc: "2.0", id, result });
-const fail = (id, code, message) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+const fail = (id, code, message) => ({ jsonrpc: "2.0", id: validId(id) ? id : null, error: { code, message } });
 
 // ---- the hop rule -----------------------------------------------------------
 
@@ -250,6 +254,7 @@ export function createPeers({ self = "", peers = {}, post = plainPost, allowLoca
     // Resolves [status, body] where body is the peer's own JSON-RPC reply.
     async relay(name, message, ctx = {}) {
       const p = reg.get(String(name || "").toLowerCase());
+      if (idGiven(message) && !validId(message.id)) return [400, fail(null, -32600, "invalid request: id must be a string or a number")];
       const id = message && message.id !== undefined ? message.id : null;
       if (!p) return [404, fail(id, -32000, "no such peer")];
       if (!p.url) return [200, fail(id, -32000, `${p.name} is not configured on this site`)];
@@ -330,6 +335,7 @@ export function createMcp({
   async function rpc(m, ctx) {
     if (Array.isArray(m)) return [400, fail(null, -32600, "batches are not supported")];
     if (!m || m.jsonrpc !== "2.0" || typeof m.method !== "string") return [400, fail(m && m.id, -32600, "invalid request")];
+    if (idGiven(m) && !validId(m.id)) return [400, fail(null, -32600, "invalid request: id must be a string or a number")];
     if (m.id === undefined || m.id === null) return [202, null]; // a notification
     const p = m.params && typeof m.params === "object" ? m.params : {};
     try {
