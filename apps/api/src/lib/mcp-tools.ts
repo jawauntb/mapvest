@@ -83,17 +83,31 @@ export const MCP_SERVER_VERSION = "0.1.0";
 export const MCP_DEFAULT_ORIGIN = "https://api-production-4b27.up.railway.app";
 
 /**
- * Bun closes a connection that has been silent for 10 s (`idleTimeout`'s
- * default) and a JSON-RPC reply is silent until its tool is done, so every
- * tool answers inside this budget whatever it is waiting on. `rating` can run
- * past it (nine sources at 3 s each, then a Jev call of up to 8 s): it is cut
- * off here with an error result, while the computation carries on and lands in
- * its one-hour cache, so the retry is instant. A call to another site
- * (`ask_lattice_animals`, `/mcp/<peer>`) is capped at `MCP_PEER_TIMEOUT_MS`
- * for the same reason; the library's own default there is 25 s.
+ * Seconds the API's Bun server lets a connection sit idle (`idleTimeout` in
+ * the default export of apps/api/src/index.ts). Bun's default is 10, counted
+ * in 4 s steps, so a cut lands at 12 s; the lattice animals take 5 to 20 s to
+ * answer. Measured on Bun 1.2.23, 1.3.11 and 1.3.13: the cut applies to a
+ * request that carries no body (a GET, an empty POST) and does not apply to a
+ * POST that does, which every MCP call is, even at 70 s. So today this setting
+ * is a guard, not the thing that lets a slow answer through; it is raised
+ * because it is Bun's documented knob and that behaviour is Bun's to change.
+ * It is per server, so it applies to every route: a slow GET now gets about
+ * 32 s (the 4 s steps again), not 12. It must stay above the longest wait a
+ * tool or a relay makes: the library's own wait for another site
+ * (`ask_lattice_animals`, `/mcp/<peer>`) is 25 s, and a test pins that.
+ */
+export const MCP_IDLE_TIMEOUT_S = 30;
+
+/**
+ * The quick tools (`search_intent`, `rating`) answer inside this budget, so a
+ * slow upstream never holds a connection or leaves a caller waiting on a tool
+ * that is meant to be fast. `rating` can run past it (nine sources at 3 s each,
+ * then a Jev call of up to 8 s): it is cut off here with an error result, while
+ * the computation carries on and lands in its one-hour cache, so the retry is
+ * instant. The server's idle timeout above is a separate matter and does not
+ * bound them.
  */
 export const MCP_TOOL_DEADLINE_MS = 7_000;
-export const MCP_PEER_TIMEOUT_MS = 8_000;
 
 /**
  * Ratings this process will compute per UTC day for MCP callers. A rating is
@@ -556,7 +570,8 @@ export function buildMapvestMcp(
       },
     },
     allowLocal: env.MCP_ALLOW_LOCAL === "1",
-    timeoutMs: MCP_PEER_TIMEOUT_MS,
+    // No `timeoutMs`: the wait for another site is the library's own 25 s,
+    // which the server's idle timeout (MCP_IDLE_TIMEOUT_S) is set above.
     ...(opts.post ? { post: opts.post } : {}),
     tools: mapvestTools(opts.deps),
   });

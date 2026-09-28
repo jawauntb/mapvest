@@ -319,7 +319,7 @@ animals back. Contract: the lattice animals' `docs/constellation.md`. Detail:
 - [x] Tools, in-process and zod-validated (`Mcp*` in `packages/core`): `search_intent`, `brand_lookup`, `rating`, `ask_lattice_animals`
 - [x] Honest by construction: results cite `sources` or say `confidence: "low"`; `insufficient_signal` is passed through, never a hold; the rating disclaimer is verbatim
 - [x] Not offered: licensed market data (`rating` withholds its `quote`/`ratios` evidence summaries), bearer/metered routes, user ids, model-spending generators, binaries; no tool takes a URL
-- [x] Bounded: every tool under ~7 s (Bun's 10 s idle timeout), the hub wait capped at 8 s, fresh ratings capped per UTC day, per-address limit
+- [x] Bounded: `search_intent` and `rating` keep a 7 s budget; the hub wait is the library's 25 s (the animals take 5 to 20 s), so the API's Bun server sets `idleTimeout: 30` (Bun's 10 s default closes an idle connection; measured on Bun 1.2.23 to 1.3.13 it spares a POST with a body, so this is a guard); fresh ratings capped per UTC day; per-address limit
 - [x] `openapi.yaml` and `postman.json` regenerated with the MCP routes and schemas
 - [x] `docs/ARCHITECTURE.md`, `docs/SECRETS.md`, `.env.example` (`MCP_PUBLIC_ORIGIN`, `LATTICE_MCP_URL`, `MCP_ALLOW_LOCAL`)
 - [ ] Deploy (merge to `main`; Railway must actually receive it: `deploy.yml` no-ops without `RAILWAY_WEBHOOK`) and set `MCP_PUBLIC_ORIGIN` only if the public origin differs from the default

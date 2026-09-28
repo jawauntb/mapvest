@@ -5,7 +5,8 @@ process.env.SESSION_SIGNING_KEY = "test-session-signing-key-32bytes__";
 process.env.IOS_MAPS_TOKEN_SIGNING_KEY = "test-maps-signing-key-32bytes___";
 
 import { McpJsonRpcResponse, McpManifest, McpRatingResult, RATING_DISCLAIMER } from "@mapvest/core";
-import { app } from "../src/index.js";
+import apiServer, { app } from "../src/index.js";
+import { MCP_IDLE_TIMEOUT_S } from "../src/lib/mcp-tools.js";
 import { __resetMetrics } from "../src/lib/metrics.js";
 import { _clearRatingCache } from "../src/lib/rating.js";
 import { _clearSearchIntentCache } from "../src/lib/search-intent.js";
@@ -65,12 +66,17 @@ function offlineExceptLoopback() {
 
 type Seen = { headers: Record<string, string>; body: { id?: number; method: string } };
 
-/** A stand-in for the lattice hub: records what reaches it, answers like an MCP server. */
-function startHub(answer = "the lattice says hi") {
+/**
+ * A stand-in for the lattice hub: records what reaches it, answers like an MCP
+ * server, and takes `delayMs` to do it (the real animals take 5 to 20 s).
+ */
+function startHub(answer = "the lattice says hi", delayMs = 0) {
   const seen: Seen[] = [];
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
+    // The real hub has no 10 s idle limit; without this Bun would cut a slow stub reply itself.
+    idleTimeout: 30,
     async fetch(req) {
       const body = JSON.parse(await req.text()) as Seen["body"];
       const headers: Record<string, string> = {};
@@ -79,6 +85,7 @@ function startHub(answer = "the lattice says hi") {
       });
       seen.push({ headers, body });
       if (body.id === undefined) return new Response(null, { status: 202 });
+      if (delayMs > 0) await Bun.sleep(delayMs);
       if (body.method === "tools/list") {
         return Response.json({
           jsonrpc: "2.0",
@@ -543,6 +550,53 @@ describe("the constellation: relays and the hop rule", () => {
 });
 
 // ---------------------------------------------------------------- nothing else moved
+
+describe("the server's idle timeout: the animals take longer than Bun's 10 s default", () => {
+  test("the Bun export carries the idle timeout the MCP relies on, above Bun's 10 s default", () => {
+    expect(apiServer.idleTimeout).toBe(MCP_IDLE_TIMEOUT_S);
+    expect(apiServer.idleTimeout).toBeGreaterThan(10);
+    expect(typeof apiServer.fetch).toBe("function");
+  });
+
+  test("a hub that takes 14 s to answer still gets its answer back through the real server, as a tool call and as a relay", async () => {
+    // 14 s: past the 12 s at which Bun's idle timer cuts (it counts in 4 s steps, so its
+    // 10 s default lands at 12), and inside the animals' 5 to 20 s. On the Bun versions tried
+    // (1.2.23, 1.3.11, 1.3.13) a POST with a body is not cut even without the setting, so
+    // this pins the outcome: the answer comes back, and no cap on the wait has crept back.
+    // The test above pins the setting itself.
+    const hub = startHub("a slow answer from the animals", 14_000);
+    useHub(hub);
+    // The real export on a free loopback port: Bun's own idle timer is what is under test,
+    // and `app.fetch` alone would never meet it.
+    const server = Bun.serve({ ...apiServer, port: 0, hostname: "127.0.0.1" });
+    stubs.push(server);
+    const call = async (path: string, body: unknown) => {
+      const res = await originalFetch(`http://127.0.0.1:${server.port}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, json: await res.json() };
+    };
+
+    const started = Date.now();
+    const [tool, relay] = await Promise.all([
+      call("/mcp", toolCall("ask_lattice_animals", { question: "take your time" })),
+      call(
+        "/mcp/lattice",
+        msg(2, "tools/call", { name: "ask_the_minds", arguments: { question: "take your time" } }),
+      ),
+    ]);
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(13_500);
+    expect(tool.status).toBe(200);
+    expect(tool.json.result.isError).toBeUndefined();
+    expect(tool.json.result.content[0].text).toBe("a slow answer from the animals");
+    expect(relay.status).toBe(200);
+    expect(relay.json.result.content[0].text).toBe("a slow answer from the animals");
+    expect(hub.seen).toHaveLength(2);
+  }, 40_000);
+});
 
 describe("the API's existing routes still answer", () => {
   test("health and config", async () => {

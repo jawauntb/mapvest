@@ -23,7 +23,7 @@ import type { JevAnswer, JevBatchResult } from "../src/lib/jev-client.js";
 import { HUB_URL, type Mcp, type Post, type PostResult } from "../src/lib/mcp-lite.mjs";
 import {
   MCP_DEFAULT_ORIGIN,
-  MCP_PEER_TIMEOUT_MS,
+  MCP_IDLE_TIMEOUT_S,
   MCP_TOOL_DEADLINE_MS,
   type McpToolDeps,
   WITHHELD_SUMMARY,
@@ -621,9 +621,14 @@ describe("rating", () => {
     expect(r.text).toContain("cached once done");
   });
 
-  test("the deadline sits under Bun's 10 s idle timeout, and so does the peer timeout", () => {
-    expect(MCP_TOOL_DEADLINE_MS).toBeLessThan(8_000);
-    expect(MCP_PEER_TIMEOUT_MS).toBeLessThanOrEqual(8_000);
+  test("the quick tools keep their own 7 s budget, well inside the server's idle timeout", () => {
+    expect(MCP_TOOL_DEADLINE_MS).toBe(7_000);
+    expect(MCP_TOOL_DEADLINE_MS).toBeLessThan(MCP_IDLE_TIMEOUT_S * 1_000);
+  });
+
+  test("the idle timeout is well above Bun's 10 s default and the animals' slowest answers", () => {
+    expect(MCP_IDLE_TIMEOUT_S).toBeGreaterThan(20);
+    expect(MCP_IDLE_TIMEOUT_S).toBe(30);
   });
 
   test("fresh ratings are capped per UTC day; a cached one is free and the day resets the cap", async () => {
@@ -740,8 +745,11 @@ describe("ask_lattice_animals", () => {
       name: "ask_the_minds",
       arguments: { question: "what are you?", to: "app" },
     });
-    // The wait for the hub is capped under Bun's 10 s idle timeout (the library's default is 25 s).
-    expect(sent[0]?.timeoutMs).toBe(MCP_PEER_TIMEOUT_MS);
+    // The wait for the hub is the library's own, not a cap of ours: long enough for the animals
+    // (5 to 20 s, past Bun's old 10 s), and shorter than the server's idle timeout so Bun does
+    // not close the connection first.
+    expect(sent[0]?.timeoutMs).toBeGreaterThan(20_000);
+    expect(sent[0]?.timeoutMs).toBeLessThan(MCP_IDLE_TIMEOUT_S * 1_000);
   });
 
   test("an empty question, a bad addressee or a stray key is refused before anything goes out", async () => {

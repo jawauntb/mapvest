@@ -337,14 +337,26 @@ of the protocol: `apps/api/src/routes/mcp.ts` mounts the library,
   no redirects, and plain http on loopback only when `MCP_ALLOW_LOCAL=1`.
   Anything else is not in the registry (`404`), and a peer with no usable
   address is listed as not configured, never guessed.
-- **Bounds.** Bun closes a connection that has been silent for 10 s, so every
-  tool answers inside 7 s and the wait for another site is capped at 8 s. A
-  `rating` that is slower (nine sources at 3 s each, then Jev) is cut off with
-  an error result while its computation carries on into the one-hour cache, so
-  the retry is instant. A fresh rating is the one tool that can spend upstream,
-  so a process computes at most 200 a UTC day for MCP callers (a cached one is
-  free and does not count). `ask_lattice_animals` waits at most 8 s for the hub;
-  a slower answer comes back as `did not answer (timeout)`.
+- **Bounds.** The lattice animals take 5 to 20 s to answer, so the wait for
+  another site (`ask_lattice_animals`, `/mcp/lattice`) is the library's own
+  25 s, not a cap of ours; a silent hub comes back as `did not answer
+  (timeout)`. To match, the API's Bun server sets `idleTimeout: 30` in its
+  export (`apps/api/src/index.ts`). Why: Bun's default closes a connection that
+  has been idle for 10 s (it counts in 4 s steps, so the cut lands at 12 s) and
+  a reply is idle until its handler is done. The setting is per server, so it
+  applies to every route (a slow GET now gets about 32 s, not 12). We measured
+  on Bun 1.2.23, 1.3.11 and 1.3.13 that the cut applies to a request with no
+  body (a GET, an empty POST) and not to a POST that carries one, even at 70 s;
+  every MCP call is such a POST, so today the setting is a guard rather than
+  what lets a slow answer through. A test sends a 14 s answer through the real
+  server and another pins the setting. The quick tools (`search_intent`,
+  `rating`) keep their own 7 s budget so a slow upstream never leaves a caller
+  waiting on a tool meant to be fast: a `rating` that runs past it (nine
+  sources at 3 s each, then Jev) is cut off with an error result while its
+  computation carries on into the one-hour cache, so the retry is instant. A
+  fresh rating is the one tool that can spend upstream, so a process computes
+  at most 200 a UTC day for MCP callers (a cached one is free and does not
+  count).
 - **Configuration** (all optional, none secret; see `docs/SECRETS.md`).
   `MCP_PUBLIC_ORIGIN` is the origin the manifest advertises (default
   `https://api-production-4b27.up.railway.app`, so `endpoint` is
