@@ -51,6 +51,13 @@ python3 infra/doppler/setup-local-repos.py   # scope local sibling checkouts (no
 | `MCP_PUBLIC_ORIGIN` | Mapvest configuration | Non-secret, optional. The origin the MCP manifest (`/.well-known/mcp.json`) advertises, so `endpoint` is `<origin>/mcp`. Defaults to `https://api-production-4b27.up.railway.app`; set it only if the public address changes. |
 | `LATTICE_MCP_URL` | Lattice animals (the constellation hub) | Non-secret, optional. The hub's MCP address, used by `POST /mcp/lattice` and the `ask_lattice_animals` tool. https only, no credentials in the URL. Defaults to `https://latticeanimal-production.up.railway.app/mcp`. |
 | `MCP_ALLOW_LOCAL` | Mapvest configuration | Non-secret, optional. `1` lets a peer address be plain http on loopback (a laptop or a test). Leave it unset in production. |
+| `SCHWAB_APP_KEY` / `SCHWAB_APP_SECRET` | Schwab developer app | `apps/portfolio-alerts` only. Doppler `mapvest/prd_portfolio_alerts`. |
+| `SCHWAB_REFRESH_TOKEN` / `SCHWAB_REFRESH_TOKEN_ISSUED_AT` | Schwab OAuth | Written by `bun run auth -- --doppler …`; expires 7 days after each login. Never paste it anywhere else. |
+| `SCHWAB_ACCOUNT_HASH` | Schwab | Which account to watch (encrypted id, not the account number). Set by `bun run auth` when there is exactly one. |
+| `PORTFOLIO_RULES_JSON` | self | The alert rules (see `apps/portfolio-alerts/rules.example.json`). Kept in Doppler because the real thresholds are personal and this repo is public. |
+| `PORTFOLIO_ALERTS_STATE_DIR` | self | Non-secret. `/data` on Railway (a volume). |
+| `RESEND_API_KEY`, `ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO` | Resend | Portfolio alert email. `ALERT_EMAIL_FROM` must be on a verified Resend domain. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `ALERT_SMS_TO` | Twilio | Portfolio alert SMS. Or set `ALERT_SMS_GATEWAY_EMAIL` (carrier email-to-SMS address) to send SMS through Resend instead. |
 
 ### Massive market data
 

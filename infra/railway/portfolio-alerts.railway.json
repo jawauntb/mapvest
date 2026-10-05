@@ -1,0 +1,19 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "service": {
+    "name": "portfolio-alerts",
+    "source": {
+      "root": "apps/portfolio-alerts"
+    }
+  },
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "bun install --production"
+  },
+  "deploy": {
+    "startCommand": "bun run start",
+    "cronSchedule": "0 16,17 * * 1-5",
+    "restartPolicyType": "NEVER",
+    "numReplicas": 1
+  }
+}
