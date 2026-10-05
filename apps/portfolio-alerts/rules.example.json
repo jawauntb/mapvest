@@ -2,37 +2,113 @@
   "version": 1,
   "timezone": "America/New_York",
   "runHour": 12,
-  "budget": { "startValue": 50000, "maxLoss": 20000 },
+  "budget": {
+    "startValue": 50000,
+    "maxLoss": 20000
+  },
   "reauthWarnHours": 48,
-  "fridaySummary": { "enabled": true, "channels": ["email", "sms"] },
+  "fridaySummary": {
+    "enabled": true,
+    "channels": ["email", "sms"]
+  },
+  "watchlist": [
+    "QQQ",
+    "$SPX",
+    "/CL",
+    "/VX@1",
+    "/VX@2",
+    {
+      "label": "VIX term spread (2nd \u2212 1st month)",
+      "value": {
+        "metric": "quote_spread",
+        "symbol": "/VX@2",
+        "minus": "/VX@1"
+      }
+    }
+  ],
   "rules": [
     {
       "id": "account-floor",
       "title": "Account below $40k",
-      "when": { "left": { "metric": "account_value" }, "op": "<", "right": 40000 },
+      "when": {
+        "left": {
+          "metric": "account_value"
+        },
+        "op": "<",
+        "right": 40000
+      },
       "action": "trim the tech sleeve (AAPL, MSFT) by half into a T-bill ETF",
-      "show": [{ "metric": "sleeve_value", "symbols": ["AAPL", "MSFT"] }]
+      "show": [
+        {
+          "metric": "sleeve_value",
+          "symbols": ["AAPL", "MSFT"]
+        }
+      ]
     },
     {
       "id": "aapl-150",
       "title": "AAPL close below $150",
-      "when": { "left": { "metric": "close", "symbol": "AAPL" }, "op": "<", "right": 150 },
+      "when": {
+        "left": {
+          "metric": "close",
+          "symbol": "AAPL"
+        },
+        "op": "<",
+        "right": 150
+      },
       "action": "add a small index hedge"
     },
     {
       "id": "qqq-50dma",
       "title": "QQQ below its 50-day SMA",
       "when": {
-        "left": { "metric": "close", "symbol": "QQQ" },
+        "left": {
+          "metric": "close",
+          "symbol": "QQQ"
+        },
         "op": "<",
-        "right": { "metric": "sma", "symbol": "QQQ", "period": 50 }
+        "right": {
+          "metric": "sma",
+          "symbol": "QQQ",
+          "period": 50
+        }
       },
       "action": "add a small index hedge"
     },
     {
+      "id": "spx-above-6000",
+      "title": "SPX closed above 6000",
+      "repeat": "on_trip",
+      "when": {
+        "left": {
+          "metric": "close",
+          "symbol": "$SPX"
+        },
+        "op": ">",
+        "right": 6000
+      },
+      "action": "note the cross above 6000"
+    },
+    {
+      "id": "spx-below-6000",
+      "title": "SPX closed below 6000",
+      "repeat": "on_trip",
+      "when": {
+        "left": {
+          "metric": "close",
+          "symbol": "$SPX"
+        },
+        "op": "<",
+        "right": 6000
+      },
+      "action": "note the cross below 6000"
+    },
+    {
       "id": "position-diff",
       "title": "Positions changed",
-      "when": { "positions_changed": true },
+      "when": {
+        "positions_changed": true
+      },
       "action": "confirm the changes were intended"
     },
     {
@@ -45,15 +121,28 @@
       "when": {
         "all": [
           {
-            "left": { "metric": "pct_change", "symbol": "QQQ", "days": 5 },
+            "left": {
+              "metric": "pct_change",
+              "symbol": "QQQ",
+              "days": 5
+            },
             "op": "<=",
             "right": -5
           },
           {
             "any": [
-              { "left": { "metric": "budget_used_pct" }, "op": ">=", "right": 50 },
               {
-                "left": { "metric": "sleeve_weight_pct", "symbols": ["AAPL", "MSFT"] },
+                "left": {
+                  "metric": "budget_used_pct"
+                },
+                "op": ">=",
+                "right": 50
+              },
+              {
+                "left": {
+                  "metric": "sleeve_weight_pct",
+                  "symbols": ["AAPL", "MSFT"]
+                },
                 "op": ">",
                 "right": 40
               }

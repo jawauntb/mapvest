@@ -1,6 +1,6 @@
 # portfolio-alerts
 
-A read-only watcher for one Schwab account. Weekdays at 12:00 ET it reads positions and balances from the Schwab Trader API and daily closes from Schwab market data. It checks the rules in one JSON config against **prior-session closes**. When a rule trips it sends email (Resend) and SMS. On days when nothing trips it sends nothing. Every Friday it sends a summary.
+A read-only watcher for one Schwab account. Weekdays at 12:00 ET it reads positions and balances from the Schwab Trader API plus daily closes and futures quotes from Schwab market data. It checks the rules in one JSON config against **prior-session closes**. When a rule trips it sends email (Resend) and SMS. On days when nothing trips it sends nothing. Every Friday it sends a summary.
 
 Every alert carries the drawdown against the loss budget (for example: `drawdown $8,000 from $80,000 = 26.7% of $30,000 loss budget · $22,000 left`).
 
@@ -11,7 +11,7 @@ This is not part of the Mapvest product and imports nothing from the rest of the
 Schwab's OAuth has no read-only scope. Any app approved for "Accounts and Trading" could trade if its code tried to. Read-only is enforced in this code instead:
 
 - `SchwabReadOnlyClient` only issues `GET`.
-- It only reaches three paths: `accounts/accountNumbers`, `accounts/{hash}` and `marketdata/pricehistory`.
+- It only reaches four paths: `accounts/accountNumbers`, `accounts/{hash}`, `marketdata/pricehistory` and `marketdata/quotes`.
 - There is no order code anywhere in the app. A test asserts that a full run makes only those GETs.
 
 The suggested actions in an alert are the text you wrote in your rules. A human decides what to move.
@@ -54,8 +54,30 @@ Adding a tripwire means adding an entry to `rules`. You don't touch any code.
 | `position_value` | `symbol` | quantity × prior close |
 | `sleeve_value` | `symbols[]` | sum of position values |
 | `sleeve_weight_pct` | `symbols[]` | sleeve ÷ account value × 100 |
+| `quote` | `symbol`, `field`: `last` (default), `prior_close` or `change_pct` | Schwab quote at run time (for futures) |
+| `quote_spread` | `symbol`, `minus`, `field` | `quote(symbol) − quote(minus)`, e.g. VIX back month minus front month |
 
-Top-level settings: `budget.startValue`, `budget.maxLoss`, `timezone`, `runHour`, `reauthWarnHours`, and `fridaySummary`.
+Top-level settings: `budget.startValue`, `budget.maxLoss`, `timezone`, `runHour`, `reauthWarnHours`, `fridaySummary`, and `watchlist`.
+
+### Symbols
+
+- **Stocks and ETFs** (`NVDA`, `SOXX`) and **indexes with a `$` prefix** (`$SPX`) use daily closes from Schwab price history.
+- **Futures** start with `/` and use a Schwab quote at run time. Schwab's price history doesn't cover them, so `close`, `sma` and `pct_change` don't apply; use `quote` and `quote_spread` instead.
+  - A root such as `/SB` (sugar #11) or `/ZS` (soybeans) gets Schwab's active contract, which is shown next to the symbol.
+  - An explicit contract such as `/VXX26` is root + month code + 2-digit year.
+  - `/VX@1` and `/VX@2` are the first and second VIX futures contracts that haven't expired yet. They're computed from the CFE calendar: expiry is the Wednesday 30 days before the next month's third Friday. A noon run on expiry day already rolls to the next contract. The rare holiday-shifted expiry isn't modelled.
+
+### Level crosses
+
+To get one alert each time a level is crossed, pair an above rule and a below rule, both with `"repeat": "on_trip"` (see `spx-above-6000` / `spx-below-6000` in the example). Each side fires on the first close past the level and stays quiet until price crosses back. The very first run announces whichever side price is on.
+
+### Watchlist
+
+`watchlist` entries never alert on their own. They're printed in every alert email and in the Friday summary.
+
+- A stock, ETF or `$` index gets its last close, 1-day and 5-day change, and position vs its 50-day SMA.
+- A future gets its last price, prior close and change.
+- `{ "label": "...", "value": <metric> }` prints any single metric, such as the VIX term spread.
 
 Some data can't be fetched, such as missing history or not enough closes for an SMA. When that happens the rule is reported as **unchecked**. It is never reported as clear.
 

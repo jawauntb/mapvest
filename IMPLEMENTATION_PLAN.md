@@ -345,6 +345,7 @@ Detail: `apps/portfolio-alerts/README.md`.
 - [x] Read-only Schwab client (GET-only path allowlist), OAuth refresh, `bun run auth` re-login that writes the token to Doppler
 - [x] Rules in one JSON config (comparisons, `all`/`any`, position diff), evaluated on prior-session closes
 - [x] Email (Resend) + SMS (Twilio, or a carrier gateway through Resend); silent days, Friday summary, drawdown vs loss budget on every alert, re-auth warning ahead of the 7-day expiry
+- [x] Watchlist (closes for stocks/ETFs/`$` indexes, Schwab quotes for futures incl. computed `/VX@1`/`/VX@2`), `quote`/`quote_spread` metrics, level-cross pattern (paired `on_trip` rules)
 - [ ] Schwab developer app approved; first `bun run auth`; Doppler config `mapvest/prd_portfolio_alerts` filled
 - [ ] Railway service from `infra/railway/portfolio-alerts.railway.json` with a volume at `/data`; first live run checked
 

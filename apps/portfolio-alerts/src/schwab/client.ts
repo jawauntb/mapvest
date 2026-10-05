@@ -13,6 +13,7 @@ const READ_ONLY_PATHS = [
   /^\/trader\/v1\/accounts\/accountNumbers$/,
   /^\/trader\/v1\/accounts\/[A-Za-z0-9]+$/,
   /^\/marketdata\/v1\/pricehistory$/,
+  /^\/marketdata\/v1\/quotes$/,
 ];
 
 export class SchwabAuthError extends Error {
@@ -152,6 +153,33 @@ export const priceHistorySchema = z
   .passthrough();
 export type PriceHistoryResponse = z.infer<typeof priceHistorySchema>;
 
+// Keyed by the requested symbol. Unknown symbols come back under "errors" instead.
+export const quotesSchema = z.record(
+  z
+    .object({
+      symbol: z.string().optional(),
+      assetMainType: z.string().optional(),
+      quote: z
+        .object({
+          lastPrice: num,
+          closePrice: num,
+          mark: num,
+          netPercentChange: num,
+        })
+        .passthrough()
+        .optional(),
+      reference: z
+        .object({
+          description: z.string().optional(),
+          futureActiveSymbol: z.string().optional(),
+        })
+        .passthrough()
+        .optional(),
+    })
+    .passthrough(),
+);
+export type QuotesResponse = z.infer<typeof quotesSchema>;
+
 export class SchwabReadOnlyClient {
   constructor(
     private readonly accessToken: string,
@@ -183,6 +211,14 @@ export class SchwabReadOnlyClient {
 
   account(hash: string) {
     return this.get(`/trader/v1/accounts/${hash}`, { fields: "positions" }, accountResponseSchema);
+  }
+
+  quotes(symbols: string[]) {
+    return this.get(
+      "/marketdata/v1/quotes",
+      { symbols: symbols.join(","), fields: "quote,reference" },
+      quotesSchema,
+    );
   }
 
   dailyHistory(symbol: string) {

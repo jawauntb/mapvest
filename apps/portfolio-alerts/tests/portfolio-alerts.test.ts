@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { codeFromRedirect } from "../src/auth.js";
-import { historyNeeds, parseConfig } from "../src/config.js";
+import { dataNeeds, parseConfig } from "../src/config.js";
 import { diffPositions } from "../src/evaluate.js";
+import { vixContract, vixExpiry } from "../src/futures.js";
 import { reauthNotice, runJob } from "../src/job.js";
 import { liveNotifier } from "../src/notify.js";
 import { MemoryStateStore, emptyState } from "../src/state.js";
@@ -61,7 +62,11 @@ describe("config", () => {
     const cfg = exampleConfig();
     expect(cfg.rules.length).toBeGreaterThan(3);
     // disabled composite rule's symbols are not fetched
-    expect(historyNeeds(cfg)).toEqual({ symbols: ["AAPL", "MSFT", "QQQ"], lookback: 50 });
+    expect(dataNeeds(cfg)).toEqual({
+      historySymbols: ["$SPX", "AAPL", "MSFT", "QQQ"],
+      quoteSymbols: ["/CL", "/VX@1", "/VX@2"],
+      lookback: 50,
+    });
   });
 
   test("duplicate ids and unknown metrics are rejected", () => {
@@ -329,4 +334,126 @@ test("live notifier: Resend email + Twilio SMS request shapes", async () => {
   });
   expect(unconfigured.sent).toEqual([]);
   expect(unconfigured.failed[0]!.error).toMatch(/sms not configured/);
+});
+
+describe("futures + watchlist", () => {
+  test("VIX contract calendar: Wednesday 30 days before next month's third Friday", () => {
+    expect(vixExpiry(2025, 9)).toBe("2025-09-17");
+    expect(vixExpiry(2026, 10)).toBe("2026-10-21");
+    expect(vixExpiry(2026, 12)).toBe("2026-12-16");
+    expect(vixContract(1, "2026-10-05")).toEqual({ symbol: "/VXV26", expiry: "2026-10-21" });
+    expect(vixContract(2, "2026-10-05")).toEqual({ symbol: "/VXX26", expiry: "2026-11-18" });
+    // On expiry day the October contract has settled; the front month rolls to November.
+    expect(vixContract(1, "2026-10-21").symbol).toBe("/VXX26");
+    expect(vixContract(2, "2026-12-20").symbol).toBe("/VXG27");
+  });
+
+  const watchCfg = () =>
+    semisConfig({
+      watchlist: [
+        "NVDA",
+        "$SPX",
+        "/SB",
+        "/ZS",
+        "/VX@1",
+        "/VX@2",
+        {
+          label: "VIX term spread (2nd − 1st)",
+          value: { metric: "quote_spread", symbol: "/VX@2", minus: "/VX@1" },
+        },
+      ],
+      rules: [
+        {
+          id: "spx-above",
+          title: "SPX closed above 5000",
+          repeat: "on_trip",
+          when: { left: { metric: "close", symbol: "$SPX" }, op: ">", right: 5000 },
+          action: "note the cross",
+        },
+        {
+          id: "spx-below",
+          title: "SPX closed below 5000",
+          repeat: "on_trip",
+          when: { left: { metric: "close", symbol: "$SPX" }, op: "<", right: 5000 },
+          action: "note the cross",
+        },
+      ],
+    });
+
+  const market = (today: string, spxLast: number): FakeSchwab => ({
+    ...calm(today),
+    closes: { NVDA: [...flat(59, 200), 210], $SPX: [...flat(59, 4990), spxLast] },
+    quotes: {
+      "/SB": { last: 18.42, close: 18.1, active: "/SBH27" },
+      "/VXV26": { last: 17.85, close: 17.2 },
+      "/VXX26": { last: 19.1, close: 18.9 },
+    },
+  });
+
+  test("dataNeeds splits closes from quotes", () => {
+    expect(dataNeeds(watchCfg())).toEqual({
+      historySymbols: ["$SPX", "NVDA"],
+      quoteSymbols: ["/SB", "/VX@1", "/VX@2", "/ZS"],
+      lookback: 50,
+    });
+  });
+
+  test("SPX crosses alert once each way; watchlist rides along", async () => {
+    const store = new MemoryStateStore();
+    const cfg = watchCfg();
+
+    const mon = await run(market("2026-10-05", 5012.5), { store, cfg });
+    expect(mon.result.status).toBe("alerted");
+    const text = mon.sent[0]!.text;
+    expect(mon.sent[0]!.subject).toBe("Portfolio alert: SPX closed above 5000");
+    expect(text).toContain("$SPX close (2026-10-02) 5,012.50 > 5,000.00");
+    expect(text).toContain(
+      "- NVDA: $210.00 (2026-10-02) · 1d +5.0% · 5d +5.0% · above 50d SMA $200.20",
+    );
+    expect(text).toContain("- $SPX: 5,012.50 (2026-10-02)");
+    expect(text).toContain("- /SB [/SBH27]: last 18.42 · prior close 18.10 · +1.8%");
+    expect(text).toContain("- /ZS: n/a (no Schwab quote for /ZS)");
+    expect(text).toContain(
+      "- /VX@1 [VXV26, expires 2026-10-21]: last 17.85 · prior close 17.20 · +3.8%",
+    );
+    expect(text).toContain("- /VX@2 [VXX26, expires 2026-11-18]: last 19.10");
+    expect(text).toContain("- VIX term spread (2nd − 1st): +1.25");
+
+    // Still above on Tuesday: on_trip stays quiet.
+    const tue = await run(market("2026-10-06", 5020), { store, cfg, now: TUE_NOON });
+    expect(tue.result.status).toBe("silent");
+
+    // Closes below on Wednesday: the other side fires, and "above" resets.
+    const wed = await run(market("2026-10-07", 4980), {
+      store,
+      cfg,
+      now: new Date("2026-10-07T16:05:00Z"),
+    });
+    expect(wed.sent[0]!.subject).toBe("Portfolio alert: SPX closed below 5000");
+    expect(store.state.activeRules["spx-above"]).toBeUndefined();
+    expect(store.state.activeRules["spx-below"]?.since).toBe("2026-10-07");
+  });
+
+  test("quote metrics can drive rules (VIX backwardation)", async () => {
+    const cfg = semisConfig({
+      rules: [
+        {
+          id: "vix-backwardation",
+          title: "VIX curve inverted",
+          when: {
+            left: { metric: "quote_spread", symbol: "/VX@2", minus: "/VX@1" },
+            op: "<",
+            right: 0,
+          },
+          action: "check hedges",
+        },
+      ],
+    });
+    const s = market("2026-10-05", 5000);
+    s.quotes = { "/VXV26": { last: 24, close: 22 }, "/VXX26": { last: 22.5, close: 21 } };
+    const { sent } = await run(s, { cfg });
+    expect(sent[0]!.text).toContain(
+      "/VX@2 [VXX26, expires 2026-11-18] − /VX@1 [VXV26, expires 2026-10-21] (last) -1.50 < +0.00",
+    );
+  });
 });

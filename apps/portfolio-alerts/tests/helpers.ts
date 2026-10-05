@@ -7,7 +7,7 @@ export const exampleConfig = (): AlertConfig =>
   parseConfig(JSON.parse(readFileSync(join(import.meta.dir, "..", "rules.example.json"), "utf8")));
 
 /** A typical sleeve setup with fixture numbers. */
-export const semisConfig = (overrides: Partial<AlertConfig> = {}): AlertConfig =>
+export const semisConfig = (overrides: Record<string, unknown> = {}): AlertConfig =>
   parseConfig({
     version: 1,
     budget: { startValue: 80000, maxLoss: 30000 },
@@ -68,6 +68,8 @@ export type FakeSchwab = {
   tokenStatus?: number;
   rotateRefreshToken?: string;
   historyStatus?: Record<string, number>;
+  // Schwab quotes keyed by the symbol Schwab is asked for (e.g. "/VXV26", "/SB").
+  quotes?: Record<string, { last?: number; close?: number; active?: string }>;
 };
 
 export type Call = { method: string; url: string };
@@ -137,6 +139,25 @@ export function fakeFetch(s: FakeSchwab) {
         datetime: Date.parse(`${s.today}T05:00:00Z`),
       });
       return json({ symbol, empty: false, candles });
+    }
+    if (url.pathname === "/marketdata/v1/quotes") {
+      const out: Record<string, unknown> = {};
+      const invalid: string[] = [];
+      for (const sym of (url.searchParams.get("symbols") ?? "").split(",")) {
+        const q = s.quotes?.[sym];
+        if (!q) {
+          invalid.push(sym);
+          continue;
+        }
+        out[sym] = {
+          symbol: sym,
+          assetMainType: "FUTURE",
+          quote: { lastPrice: q.last, closePrice: q.close },
+          reference: q.active ? { futureActiveSymbol: q.active } : {},
+        };
+      }
+      if (invalid.length) out.errors = { invalidSymbols: invalid };
+      return json(out);
     }
     if (url.hostname === "api.resend.com" || url.hostname === "api.twilio.com") {
       return json({ id: "ok" });

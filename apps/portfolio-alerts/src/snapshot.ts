@@ -1,6 +1,8 @@
+import { type ResolvedQuoteSymbol, resolveQuoteSymbol } from "./futures.js";
 import {
   type AccountResponse,
   type PriceHistoryResponse,
+  type QuotesResponse,
   type SchwabReadOnlyClient,
   maskAccountNumber,
 } from "./schwab/client.js";
@@ -30,6 +32,17 @@ export type Snapshot = {
   // Completed sessions only (date < today), oldest first.
   closes: Record<string, DailyClose[]>;
   historyErrors: Record<string, string>;
+  // Keyed by the symbol as written in the config ("/VX@1", "/SB", …).
+  quotes: Record<string, Quote>;
+  quoteErrors: Record<string, string>;
+};
+
+export type Quote = {
+  symbol: string; // what Schwab was asked for
+  contract?: string; // active contract Schwab reports for a root, or the computed one
+  note?: string;
+  last?: number;
+  priorClose?: number;
 };
 
 export function normalizeAccount(res: AccountResponse): Pick<Snapshot, "account" | "positions"> {
@@ -75,6 +88,7 @@ export async function fetchSnapshot(opts: {
   client: SchwabReadOnlyClient;
   accountHash: string;
   symbols: string[];
+  quoteSymbols?: string[];
   now: Date;
   timeZone: string;
 }): Promise<Snapshot> {
@@ -92,13 +106,67 @@ export async function fetchSnapshot(opts: {
       }
     }),
   );
+  const { quotes, quoteErrors } = await fetchQuotes(opts.client, opts.quoteSymbols ?? [], today);
   return {
     fetchedAt: opts.now.toISOString(),
     today,
     ...normalizeAccount(accountRes),
     closes,
     historyErrors,
+    quotes,
+    quoteErrors,
   };
+}
+
+export function normalizeQuotes(
+  res: QuotesResponse,
+  resolved: ResolvedQuoteSymbol[],
+): Pick<Snapshot, "quotes" | "quoteErrors"> {
+  const quotes: Snapshot["quotes"] = {};
+  const quoteErrors: Snapshot["quoteErrors"] = {};
+  for (const r of resolved) {
+    const entry = res[r.symbol];
+    const q = entry?.quote;
+    if (!q || (q.lastPrice === undefined && q.closePrice === undefined)) {
+      quoteErrors[r.requested] = `no Schwab quote for ${r.symbol}`;
+      continue;
+    }
+    const active = entry.reference?.futureActiveSymbol;
+    quotes[r.requested] = {
+      symbol: r.symbol,
+      contract: active && active !== r.symbol ? active : undefined,
+      note: r.note,
+      last: q.lastPrice ?? q.mark,
+      priorClose: q.closePrice,
+    };
+  }
+  return { quotes, quoteErrors };
+}
+
+async function fetchQuotes(
+  client: SchwabReadOnlyClient,
+  requested: string[],
+  today: string,
+): Promise<Pick<Snapshot, "quotes" | "quoteErrors">> {
+  if (requested.length === 0) return { quotes: {}, quoteErrors: {} };
+  const resolved: ResolvedQuoteSymbol[] = [];
+  const quoteErrors: Snapshot["quoteErrors"] = {};
+  for (const sym of requested) {
+    try {
+      resolved.push(resolveQuoteSymbol(sym, today));
+    } catch (err) {
+      quoteErrors[sym] = err instanceof Error ? err.message : String(err);
+    }
+  }
+  try {
+    const res = await client.quotes(resolved.map((r) => r.symbol));
+    const out = normalizeQuotes(res, resolved);
+    return { quotes: out.quotes, quoteErrors: { ...quoteErrors, ...out.quoteErrors } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    for (const r of resolved) quoteErrors[r.requested] = msg;
+    return { quotes: {}, quoteErrors };
+  }
 }
 
 export async function resolveAccountHash(

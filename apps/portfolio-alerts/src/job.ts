@@ -1,4 +1,4 @@
-import { type AlertConfig, historyNeeds } from "./config.js";
+import { type AlertConfig, dataNeeds } from "./config.js";
 import { type RuleOutcome, diffPositions, evaluateRules } from "./evaluate.js";
 import { composeFailure, composeReauthRequired, composeReport } from "./format.js";
 import type { Message, Notifier } from "./notify.js";
@@ -147,11 +147,12 @@ export async function runJob(deps: JobDeps): Promise<JobResult> {
       client,
       env.SCHWAB_ACCOUNT_HASH?.trim() || undefined,
     );
-    const needs = historyNeeds(cfg);
+    const needs = dataNeeds(cfg);
     const snap = await fetchSnapshot({
       client,
       accountHash,
-      symbols: needs.symbols,
+      symbols: needs.historySymbols,
+      quoteSymbols: needs.quoteSymbols,
       now,
       timeZone: cfg.timezone,
     });

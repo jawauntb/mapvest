@@ -36,6 +36,20 @@ export const metricSchema = z.discriminatedUnion("metric", [
   z.object({ metric: z.literal("sleeve_value"), symbols: z.array(symbol).min(1) }),
   // Sleeve value as a percent of prior-close account value.
   z.object({ metric: z.literal("sleeve_weight_pct"), symbols: z.array(symbol).min(1) }),
+  // Schwab quote at run time. For futures (/SB, /ZS, /VX@1 …), which have no daily history here.
+  // last = last trade, prior_close = prior close / settlement, change_pct = last vs prior_close.
+  z.object({
+    metric: z.literal("quote"),
+    symbol,
+    field: z.enum(["last", "prior_close", "change_pct"]).default("last"),
+  }),
+  // quote(symbol) − quote(minus), e.g. VIX back month minus front month.
+  z.object({
+    metric: z.literal("quote_spread"),
+    symbol,
+    minus: symbol,
+    field: z.enum(["last", "prior_close"]).default("last"),
+  }),
 ]);
 export type Metric = z.infer<typeof metricSchema>;
 
@@ -94,6 +108,12 @@ export const configSchema = z
       maxLoss: z.number().positive(),
     }),
     reauthWarnHours: z.number().positive().default(48),
+    // Shown in every alert and the Friday summary; never alerts on its own.
+    // A string symbol gets a summary row: closes (stocks, ETFs, $SPX-style indexes) or a quote
+    // ("/"-prefixed futures). An object prints one metric under its label.
+    watchlist: z
+      .array(z.union([symbol, z.object({ label: z.string().min(1), value: metricSchema })]))
+      .default([]),
     fridaySummary: z
       .object({
         enabled: z.boolean().default(true),
@@ -147,30 +167,44 @@ export function loadConfig(env: Record<string, string | undefined>): AlertConfig
   return parseConfig(JSON.parse(text));
 }
 
-/** Every symbol whose daily history a config needs, and the deepest lookback. */
-export function historyNeeds(cfg: AlertConfig): { symbols: string[]; lookback: number } {
-  const symbols = new Set<string>();
+export const WATCHLIST_SMA = 50;
+
+/** What a config needs fetched: daily history per symbol, and Schwab quotes (futures). */
+export function dataNeeds(cfg: AlertConfig): {
+  historySymbols: string[];
+  quoteSymbols: string[];
+  lookback: number;
+} {
+  const history = new Set<string>();
+  const quotes = new Set<string>();
   let lookback = 1;
   const visitMetric = (m: Metric) => {
     switch (m.metric) {
       case "close":
-        symbols.add(m.symbol);
+        history.add(m.symbol);
         lookback = Math.max(lookback, m.daysAgo + 1);
         break;
       case "sma":
-        symbols.add(m.symbol);
+        history.add(m.symbol);
         lookback = Math.max(lookback, m.period);
         break;
       case "pct_change":
-        symbols.add(m.symbol);
+        history.add(m.symbol);
         lookback = Math.max(lookback, m.days + 1);
         break;
       case "position_value":
-        symbols.add(m.symbol);
+        history.add(m.symbol);
         break;
       case "sleeve_value":
       case "sleeve_weight_pct":
-        for (const s of m.symbols) symbols.add(s);
+        for (const s of m.symbols) history.add(s);
+        break;
+      case "quote":
+        quotes.add(m.symbol);
+        break;
+      case "quote_spread":
+        quotes.add(m.symbol);
+        quotes.add(m.minus);
         break;
       default:
         break;
@@ -188,5 +222,13 @@ export function historyNeeds(cfg: AlertConfig): { symbols: string[]; lookback: n
     visit(rule.when);
     rule.show.forEach(visitMetric);
   }
-  return { symbols: [...symbols].sort(), lookback };
+  for (const item of cfg.watchlist) {
+    if (typeof item !== "string") visitMetric(item.value);
+    else if (item.startsWith("/")) quotes.add(item);
+    else {
+      history.add(item);
+      lookback = Math.max(lookback, WATCHLIST_SMA);
+    }
+  }
+  return { historySymbols: [...history].sort(), quoteSymbols: [...quotes].sort(), lookback };
 }

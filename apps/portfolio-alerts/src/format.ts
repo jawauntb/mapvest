@@ -1,5 +1,12 @@
 import type { AlertConfig, Channel } from "./config.js";
-import { type PositionDiff, type RuleOutcome, budgetLine, budgetShort, money } from "./evaluate.js";
+import {
+  type PositionDiff,
+  type RuleOutcome,
+  budgetLine,
+  budgetShort,
+  money,
+  watchlistLines,
+} from "./evaluate.js";
 import type { Message } from "./notify.js";
 import type { Snapshot } from "./snapshot.js";
 
@@ -93,9 +100,17 @@ export function composeReport(r: Report): Message {
     }
   }
 
+  if (r.cfg.watchlist.length > 0) {
+    lines.push(
+      "",
+      "WATCHLIST (closes = last completed session; futures = Schwab quote at run time)",
+    );
+    for (const l of watchlistLines(r.cfg, r.snap, r.diff)) lines.push(`- ${l}`);
+  }
+
   lines.push(
     "",
-    `Sources: Schwab Trader API accounts + positions, Schwab market data daily price history (fetched ${r.snap.fetchedAt}).`,
+    `Sources: Schwab Trader API accounts + positions, Schwab market data daily price history and quotes (fetched ${r.snap.fetchedAt}).`,
     "Read-only job: actions come from your rules config; nothing is traded automatically.",
   );
 

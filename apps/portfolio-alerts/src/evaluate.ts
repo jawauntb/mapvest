@@ -1,4 +1,10 @@
-import type { AlertConfig, Condition, Metric, Rule } from "./config.js";
+import {
+  type AlertConfig,
+  type Condition,
+  type Metric,
+  type Rule,
+  WATCHLIST_SMA,
+} from "./config.js";
 import type { Position, Snapshot } from "./snapshot.js";
 
 // ---------- formatting ----------
@@ -12,6 +18,13 @@ const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD"
 export const money = (n: number) => (Math.abs(n) >= 1000 ? usd0.format(n) : usd2.format(n));
 export const price = (n: number) => usd2.format(n);
 export const pct = (n: number) => `${n.toFixed(1)}%`;
+const signedPct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+export const plain = (n: number) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const signedPlain = (n: number) => `${n >= 0 ? "+" : ""}${plain(n)}`;
+// Indexes ($SPX) and futures (/SB) are points or contract units, not dollars.
+export const priceFor = (symbol: string) =>
+  symbol.startsWith("$") || symbol.startsWith("/") ? plain : price;
 const qty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/0+$/, ""));
 
 // ---------- position diff ----------
@@ -170,22 +183,23 @@ export function evaluateMetric(m: Metric, ctx: Ctx): MetricValue {
         m.daysAgo === 0
           ? `${m.symbol} close${when}`
           : `${m.symbol} close ${m.daysAgo} sessions back${when}`;
-      return done(label, c.point?.close, price, c.error);
+      return done(label, c.point?.close, priceFor(m.symbol), c.error);
     }
     case "sma": {
       const label = `${m.symbol} ${m.period}-day SMA`;
       const series = snap.closes[m.symbol];
-      if (!series) return done(label, undefined, price, closeAt(snap, m.symbol, 0).error);
+      if (!series)
+        return done(label, undefined, priceFor(m.symbol), closeAt(snap, m.symbol, 0).error);
       if (series.length < m.period) {
         return done(
           label,
           undefined,
-          price,
+          priceFor(m.symbol),
           `only ${series.length} closes for ${m.symbol}, need ${m.period}`,
         );
       }
       const window = series.slice(-m.period);
-      return done(label, window.reduce((s, c) => s + c.close, 0) / m.period, price);
+      return done(label, window.reduce((s, c) => s + c.close, 0) / m.period, priceFor(m.symbol));
     }
     case "pct_change": {
       const label = `${m.symbol} ${m.days}-session change`;
@@ -197,6 +211,39 @@ export function evaluateMetric(m: Metric, ctx: Ctx): MetricValue {
         label,
         ((latest.point.close - earlier.point.close) / earlier.point.close) * 100,
         pct,
+      );
+    }
+    case "quote": {
+      const q = snap.quotes[m.symbol];
+      const name = quoteName(m.symbol, q);
+      const missing = q ? `${name}: Schwab quote has no ${m.field}` : quoteError(snap, m.symbol);
+      if (m.field === "change_pct") {
+        const v =
+          q?.last !== undefined && q.priorClose
+            ? ((q.last - q.priorClose) / q.priorClose) * 100
+            : undefined;
+        return done(`${name} change vs prior close`, v, pct, missing);
+      }
+      const v = m.field === "last" ? q?.last : q?.priorClose;
+      return done(`${name} ${m.field === "last" ? "last" : "prior close"}`, v, plain, missing);
+    }
+    case "quote_spread": {
+      const a = snap.quotes[m.symbol];
+      const b = snap.quotes[m.minus];
+      const pick = (q: typeof a) => (m.field === "last" ? q?.last : q?.priorClose);
+      const va = pick(a);
+      const vb = pick(b);
+      const label = `${quoteName(m.symbol, a)} − ${quoteName(m.minus, b)} (${m.field === "last" ? "last" : "prior close"})`;
+      const missing = !a
+        ? quoteError(snap, m.symbol)
+        : !b
+          ? quoteError(snap, m.minus)
+          : `Schwab quote has no ${m.field}`;
+      return done(
+        label,
+        va === undefined || vb === undefined ? undefined : va - vb,
+        signedPlain,
+        missing,
       );
     }
     case "position_quantity":
@@ -217,6 +264,52 @@ export function evaluateMetric(m: Metric, ctx: Ctx): MetricValue {
       return done(label, (s.value / a) * 100, pct);
     }
   }
+}
+
+function quoteName(requested: string, q: Snapshot["quotes"][string] | undefined): string {
+  const detail = q?.note ?? q?.contract;
+  return detail ? `${requested} [${detail}]` : requested;
+}
+
+const quoteError = (snap: Snapshot, symbol: string) =>
+  snap.quoteErrors[symbol] ?? `no quote for ${symbol}`;
+
+/** One line per watchlist entry. Missing data reads n/a with the reason, never a guess. */
+export function watchlistLines(cfg: AlertConfig, snap: Snapshot, diff: PositionDiff): string[] {
+  const ctx = { snap, cfg, diff };
+  return cfg.watchlist.map((item) => {
+    if (typeof item !== "string") {
+      const v = evaluateMetric(item.value, ctx);
+      return `${item.label}: ${v.display}${v.error ? ` (${v.error})` : ""}`;
+    }
+    if (item.startsWith("/")) {
+      const q = snap.quotes[item];
+      if (!q) return `${item}: n/a (${quoteError(snap, item)})`;
+      const parts: string[] = [];
+      if (q.last !== undefined) parts.push(`last ${plain(q.last)}`);
+      if (q.priorClose !== undefined) parts.push(`prior close ${plain(q.priorClose)}`);
+      if (q.last !== undefined && q.priorClose) {
+        parts.push(signedPct(((q.last - q.priorClose) / q.priorClose) * 100));
+      }
+      return `${quoteName(item, q)}: ${parts.join(" · ")}`;
+    }
+    const series = snap.closes[item];
+    const last = series?.[series.length - 1];
+    if (!series || !last) {
+      return `${item}: n/a (${snap.historyErrors[item] ?? "no price history"})`;
+    }
+    const fmt = priceFor(item);
+    const change = (n: number) => {
+      const prev = series[series.length - 1 - n];
+      return prev ? signedPct(((last.close - prev.close) / prev.close) * 100) : "n/a";
+    };
+    const parts = [`${fmt(last.close)} (${last.date})`, `1d ${change(1)}`, `5d ${change(5)}`];
+    if (series.length >= WATCHLIST_SMA) {
+      const sma = series.slice(-WATCHLIST_SMA).reduce((t, c) => t + c.close, 0) / WATCHLIST_SMA;
+      parts.push(`${last.close >= sma ? "above" : "below"} ${WATCHLIST_SMA}d SMA ${fmt(sma)}`);
+    }
+    return `${item}: ${parts.join(" · ")}`;
+  });
 }
 
 // ---------- conditions ----------
