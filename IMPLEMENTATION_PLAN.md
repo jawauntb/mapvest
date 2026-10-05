@@ -331,3 +331,22 @@ and the 26 constellation vectors pass; `GET /mcp` is 405 with a JSON-RPC body;
 `tools/call quote` is `-32602`; `rating` with no scoring key says
 `insufficient_signal`, not a rating; at `x-mcp-hop: 2` `ask_lattice_animals` is
 refused as `too-deep` and nothing leaves the process.
+
+---
+
+## Side-car — Portfolio alerts (`apps/portfolio-alerts`)
+
+Not part of the Mapvest product: a read-only Schwab watcher run as a Railway
+cron service. It imports nothing from other workspaces, so it can move to its
+own private repo unchanged. The real rules carry account-specific numbers, so
+they live in Doppler (`PORTFOLIO_RULES_JSON`), not in this public repo.
+Detail: `apps/portfolio-alerts/README.md`.
+
+- [x] Read-only Schwab client (GET-only path allowlist), OAuth refresh, `bun run auth` re-login that writes the token to Doppler
+- [x] Rules in one JSON config (comparisons, `all`/`any`, position diff), evaluated on prior-session closes
+- [x] Email (Resend) + SMS (Twilio, or a carrier gateway through Resend); silent days, Friday summary, drawdown vs loss budget on every alert, re-auth warning ahead of the 7-day expiry
+- [ ] Schwab developer app approved; first `bun run auth`; Doppler config `mapvest/prd_portfolio_alerts` filled
+- [ ] Railway service from `infra/railway/portfolio-alerts.railway.json` with a volume at `/data`; first live run checked
+
+**Acceptance**: `bun test apps/portfolio-alerts` green; a forced live run
+(`bun run start -- --force --dry-run`) prints a summary built from real Schwab data.
