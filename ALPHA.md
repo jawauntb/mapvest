@@ -6,7 +6,7 @@ Extraction run on 2026-10-05 from Jawaun's three sibling repos (private, GitHub)
 - [the-human-internet-app](https://github.com/jawauntb/the-human-internet-app) — SwiftUI iOS
 - [the-human-internet-backend](https://github.com/jawauntb/the-human-internet-backend) — Rust Lambda + Supabase Edge Functions Each repo's `CLAUDE.md` is the authoritative source. Items are ordered by expected ROI for *this* repo — Mapvest, the "world as watchlist" product (Bun monorepo, iOS app at `apps/ios`, OpenAPI spec at the root, finance-agent / analytics / find pipeline).
 
-Nothing in this doc modifies code. Pick, read the source, apply what fits.
+**Default behavior for a coding agent reading this**: implement every section. One PR per section, each on its own `git worktree` branched from `main` — see `AGENTS.md` → ALPHA.md for the exact flow. Only skip a section with a written reason inside a strike-through.
 
 Mapvest's shape is unusually close to the trio's: a camera-based identify-and-save pipeline, a server-authoritative resolution step (brand → ticker, with sources), a per-user accumulating universe of "finds", and a shareable public artefact. Several of the trio's patterns transfer almost verbatim — especially §1 (the durable optimistic queue) and §2 (attestation gating on the identify endpoint).
 
@@ -171,6 +171,6 @@ Source: `the-human-internet-app/CLAUDE.md` → "Shipping (TestFlight)" four-poin
 
 ## How to use this doc
 
-Treat each numbered item as a candidate, not a prescription. For Mapvest specifically, **§1 (durable optimistic queue)** and **§2 (attestation gating on identify)** are the fastest high-leverage borrows — the queue because capture→identify→resolve is a long pipeline that currently either blocks the UI or loses finds on bad network, and attestation because the identify endpoint is the one thing that must only accept real-user real-capture traffic.
+**Implement every numbered item.** For Mapvest specifically, start with **§1 (durable optimistic queue)** and **§2 (attestation gating on identify)** — the queue because capture→identify→resolve is a long pipeline that currently either blocks the UI or loses finds on bad network, and attestation because the identify endpoint is the one thing that must only accept real-user real-capture traffic. Then work through the rest, one PR per section, each on its own worktree branched from `main`. Only skip an item with a written reason inside a strike-through.
 
 Written by Claude on 2026-10-05 from the state of the three sibling repos on that date.

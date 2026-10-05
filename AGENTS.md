@@ -119,17 +119,19 @@ If the current instruction contradicts this file, this file wins — and open an
 
 ## ALPHA.md
 
-`ALPHA.md` at the repo root is a one-time extraction (2026-10-05) of reusable patterns from Jawaun's the-human-internet-{app,backend,website} (private: `jawauntb/the-human-internet*`). Items are candidates, not prescriptions — adopt each one only when the invariant it protects actually binds here yet.
+`ALPHA.md` at the repo root lists reusable patterns from Jawaun's the-human-internet-{app,backend,website} (private: `jawauntb/the-human-internet*`). **Default: implement every item.** Work through the whole list; don't cherry-pick, don't wait for permission, don't decide "this one doesn't fit" without evidence.
 
-**When implementing an item from `ALPHA.md`, do it on a `git worktree` branched from `main`**, not on whatever branch is currently checked out. These are quality-of-life borrows, not emergency slices, and they must not collide with in-flight feature work on the main checkout.
+**Each item ships on its own `git worktree` branched from `main`**, not on whatever branch is currently checked out — these must not collide with in-flight feature work on the main checkout. Multiple worktrees can run in parallel.
 
 ```bash
 WT="$(mktemp -d)/alpha-<short-name>"
 git worktree add "$WT" -b alpha/<short-name> main
-# edit, test, commit in $WT; keep each PR to one ALPHA.md section
+# edit, test, commit in $WT; one PR per ALPHA.md section
 git -C "$WT" push -u origin alpha/<short-name>
 # open the PR, merge when green, then:
 git worktree remove "$WT"
 ```
 
-One PR per `ALPHA.md` section. Reference its section number in the PR title (e.g. `alpha(§3): trigger-guarded columns on the claim-ledger label`). When a section is adopted, strike it through in `ALPHA.md` with `~~…~~` and link the merged PR so later agents don't re-propose it.
+**One PR per `ALPHA.md` section**, titled `alpha(§N): <short name>` (e.g. `alpha(§3): trigger-guarded columns on the claim-ledger label`). When a section is adopted, strike it through in `ALPHA.md` with `~~…~~` and link the merged PR so later agents don't re-do it.
+
+**Only skip a section** when the invariant it protects provably doesn't bind here (e.g. no multi-user DB → no trigger-guarded columns needed). In that case, strike through *and* add a one-line reason. Never silently skip.
