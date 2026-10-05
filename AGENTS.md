@@ -116,3 +116,20 @@ bun run ios        # launches simulator
 ## 10. Escalation
 
 If the current instruction contradicts this file, this file wins — and open an issue tagged `agents-md-conflict` so it can be reconciled. Do not silently deviate.
+
+## ALPHA.md
+
+`ALPHA.md` at the repo root is a one-time extraction (2026-10-05) of reusable patterns from Jawaun's the-human-internet-{app,backend,website} (private: `jawauntb/the-human-internet*`). Items are candidates, not prescriptions — adopt each one only when the invariant it protects actually binds here yet.
+
+**When implementing an item from `ALPHA.md`, do it on a `git worktree` branched from `main`**, not on whatever branch is currently checked out. These are quality-of-life borrows, not emergency slices, and they must not collide with in-flight feature work on the main checkout.
+
+```bash
+WT="$(mktemp -d)/alpha-<short-name>"
+git worktree add "$WT" -b alpha/<short-name> main
+# edit, test, commit in $WT; keep each PR to one ALPHA.md section
+git -C "$WT" push -u origin alpha/<short-name>
+# open the PR, merge when green, then:
+git worktree remove "$WT"
+```
+
+One PR per `ALPHA.md` section. Reference its section number in the PR title (e.g. `alpha(§3): trigger-guarded columns on the claim-ledger label`). When a section is adopted, strike it through in `ALPHA.md` with `~~…~~` and link the merged PR so later agents don't re-propose it.
