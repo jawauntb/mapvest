@@ -1,0 +1,11 @@
+{
+  "ignore": ["**/@t@"],
+  "noCache": [
+    "apps/api/tests/identify-verdict.test.ts",
+    "apps/api/tests/mcp-route.test.ts",
+    "apps/api/tests/mcp-tools.test.ts",
+    "apps/api/tests/search-intent.test.ts",
+    "apps/demo-video/scripts/music-alternatives.test.ts",
+    "apps/ios/src/notif/signOutPolicy.test.ts"
+  ]
+}

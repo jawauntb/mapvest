@@ -90,6 +90,8 @@ bun run dev        # api :3001, landing :3000, expo :8081
 bun test           # runs all package + api tests
 ```
 
+CI (`.github/workflows/ci.yml`) runs the same test files one at a time under [testonce](https://github.com/jawauntb/testonce), which skips a file only when every file it read, program it ran and env var is byte-identical to a recorded pass. A test that reads the clock or random numbers in a way that changes its result goes in `noCache` in `testonce.json`.
+
 For the iOS app specifically:
 ```
 cd apps/ios

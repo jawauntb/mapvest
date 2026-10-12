@@ -31,3 +31,6 @@ eas-*.log
 
 # iOS build artifacts (never commit)
 *.ipa
+
+# testonce result cache (CI restores it via jawauntb/testonce)
+.testonce/

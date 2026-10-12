@@ -40,8 +40,27 @@ jobs:
         # developer runs this same command by hand.
         run: cd apps/ios && npm install --no-workspaces
 
+      - name: Set up testonce
+        # Installs strace, puts `testonce` on PATH and restores/saves `.testonce/`
+        # (keyed on the branch, falling back to main), so a re-run skips test
+        # files whose inputs are byte-identical to a recorded pass.
+        uses: jawauntb/testonce@main
+
       - name: Run tests (must pass)
-        run: bun test
+        # Same files `bun test` discovers, one `bun test ./<file>` each, under
+        # testonce. A file is skipped only when every file it read, every
+        # program it ran and every env var match a recorded pass; anything
+        # else runs. Any failing file still fails this step. Config (clock-
+        # dependent files that always run, ignored caches) is testonce.json.
+        # TESTONCE_FULL=1 runs everything.
+        run: |
+          mapfile -t files < <(git ls-files -- \
+            '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' \
+            '*_test.ts' '*_test.tsx' '*_test.js' '*_test.jsx' \
+            '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' \
+            '*_spec.ts' '*_spec.tsx' '*_spec.js' '*_spec.jsx')
+          test "${#files[@]}" -gt 0
+          testonce each "${files[@]}" -- bun test ./{}
 
       - name: Build api (best-effort — api is scaffold-only until Phase 2)
         run: bun run --filter '@mapvest/api' build || true
