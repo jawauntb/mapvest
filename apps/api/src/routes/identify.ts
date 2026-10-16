@@ -12,6 +12,7 @@ import { identifyFromImageWithUsage } from "@mapvest/vision";
 import { Hono } from "hono";
 import { recordCost } from "../lib/costTelemetry.js";
 import { stampIdentifyInvestables } from "../lib/dex.js";
+import { jevClaimVerifier } from "../lib/evidence-verifier.js";
 import { recordFind } from "../lib/finds-store.js";
 import { attachInvestableVerdicts } from "../lib/identify-verdict.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
@@ -263,7 +264,7 @@ identify.post("/", async (c) => {
         }
 
         const [comparables, etfs] = await Promise.all([
-          resolveComparable(d.brand, d.sector),
+          resolveComparable(d.brand, d.sector, { verify: jevClaimVerifier }),
           resolveEtfExposure(d.sector ?? d.brand),
         ]);
         return {

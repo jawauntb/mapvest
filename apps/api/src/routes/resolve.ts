@@ -1,6 +1,7 @@
 import type { ResolveComparableResponse } from "@mapvest/core";
 import { resolveComparable, resolveEtfExposure, resolveTicker } from "@mapvest/finance";
 import { Hono } from "hono";
+import { jevClaimVerifier } from "../lib/evidence-verifier.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 
 const resolve = new Hono();
@@ -27,10 +28,12 @@ resolve.post("/", async (c) => {
     const [comparables, etfs] = await Promise.all([
       brand.isPublic
         ? Promise.resolve([])
-        : resolveComparable(body.brand, body.hintSector).catch((err) => {
-            console.warn("[resolve] comparable failed", err);
-            return [];
-          }),
+        : resolveComparable(body.brand, body.hintSector, { verify: jevClaimVerifier }).catch(
+            (err) => {
+              console.warn("[resolve] comparable failed", err);
+              return [];
+            },
+          ),
       resolveEtfExposure(body.hintSector ?? body.brand).catch((err) => {
         console.warn("[resolve] etf exposure failed", err);
         return [];

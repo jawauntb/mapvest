@@ -22,6 +22,7 @@ import { type FilingRef, extractValueChain } from "@mapvest/finance";
 import { Hono } from "hono";
 import { listEdges, replaceEdges } from "../lib/edges-store.js";
 import { MONTHLY_PRICE_USD, getEntitlementState, recordGeneration } from "../lib/entitlements.js";
+import { jevClaimVerifier } from "../lib/evidence-verifier.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import { isTicker, upstreamFetch } from "../lib/underlying.js";
 import { optionalAuth } from "../middleware/optionalAuth.js";
@@ -71,7 +72,7 @@ async function fetchFilings(ticker: string): Promise<FilingRef[]> {
 async function generate(ticker: string): Promise<CompanyEdge[]> {
   try {
     const filings = await fetchFilings(ticker);
-    const extracted = await extractValueChain(ticker, { filings });
+    const extracted = await extractValueChain(ticker, { filings, verify: jevClaimVerifier });
     if (extracted.length === 0) {
       negativeCache.set(ticker, Date.now() + NEGATIVE_TTL_MS);
       return [];

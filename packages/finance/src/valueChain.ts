@@ -14,6 +14,13 @@
  */
 import { type CompanyEdge, CompanyEdgeType, type Source } from "@mapvest/core";
 import { type SearchResult, enrichTicker, toSource } from "@mapvest/search";
+import {
+  type ClaimCheck,
+  type ClaimVerifier,
+  checkable,
+  edgeStatement,
+  keepSupported,
+} from "./claimVerifier.js";
 import { isPlausibleTicker } from "./tickerSymbol.js";
 
 const PRIMARY_MODEL = "openai/gpt-5.6-terra";
@@ -124,7 +131,7 @@ export function parseEdgePicks(raw: string): EdgePick[] {
  */
 export async function extractValueChain(
   ticker: string,
-  opts?: { filings?: FilingRef[] },
+  opts?: { filings?: FilingRef[]; verify?: ClaimVerifier },
 ): Promise<CompanyEdgeInput[]> {
   const symbol = ticker.trim().toUpperCase();
   if (!symbol) return [];
@@ -191,7 +198,8 @@ export async function extractValueChain(
   }
 
   const now = new Date().toISOString();
-  const out: CompanyEdgeInput[] = [];
+  // Edges are staged with the claim that can be checked against their web evidence, then verified in one batch.
+  const staged: { item: CompanyEdgeInput; check?: ClaimCheck }[] = [];
   const seen = new Set<string>();
   for (const p of picks) {
     const parsedType = CompanyEdgeType.safeParse(p.relation);
@@ -233,17 +241,30 @@ export async function extractValueChain(
       };
     }
 
-    out.push({
-      dstTicker,
-      dstName,
-      edgeType,
-      weight: Math.min(1, Math.max(0, p.weight)),
-      reasoning: p.reasoning || `Cited via ${p.sourceUrl ?? "OpenRouter judge"}`,
-      sources: [source],
+    const statement = edgeStatement(symbol, dstName, edgeType);
+    const evidence = hit
+      ? { title: hit.title, url: hit.url, snippet: hit.snippet ?? "" }
+      : undefined;
+    staged.push({
+      item: {
+        dstTicker,
+        dstName,
+        edgeType,
+        weight: Math.min(1, Math.max(0, p.weight)),
+        reasoning: p.reasoning || `Cited via ${p.sourceUrl ?? "OpenRouter judge"}`,
+        sources: [source],
+      },
+      check:
+        statement && checkable(evidence)
+          ? { id: `e${staged.length}`, statement, evidence }
+          : undefined,
     });
-    if (out.length >= MAX_EDGES) break;
+    if (staged.length >= MAX_EDGES) break;
   }
-  return out;
+
+  // A second reading from outside the judge model: an edge whose own cited snippet does not support it is dropped.
+  // Filing citations carry no text to check, and any failure keeps every edge (verifyClaims never throws).
+  return keepSupported(staged, opts?.verify);
 }
 
 const SYSTEM_PROMPT = (symbol: string) => `You map the value chain of a public company for Mapvest.

@@ -1,0 +1,1066 @@
+{
+  "_meta": {
+    "what": "Real proposals from the value-chain and comparable agents, captured with the evidence snippet each one cites (Exa, 2026-10-16), labeled for whether THAT SNIPPET supports the statement.",
+    "labels": "S = the snippet says or clearly implies it. U = the snippet does not back it (it may still be true in the world: TSMC does supply AMD, the cited snippet just does not say so). A = ambiguous, excluded from rates.",
+    "labeler": "Claude, reading the snippet text, before seeing any Jev answer. Not a human. Treat as a first outside reading, not ground truth.",
+    "split": "dev (4 tickers, 4 brands) first fixed the threshold at 0.2. held (4+4) then showed a supported claim at 0.16-0.22, so the default was lowered to 0.1: held is NOT clean for 0.1. fresh (5 tickers, 5 brands, captured and labeled before any Jev score was seen, scored once at the pre-fixed 0.1) is the clean check.",
+    "subjects": {
+      "dev": ["NVDA", "AAPL", "TSLA", "KO", "Pokemon", "Chanel", "Lego", "Rolex"],
+      "held": ["AMD", "MSFT", "NFLX", "BA", "In-N-Out Burger", "Mars candy", "Bose", "Ikea"],
+      "fresh": [
+        "AMZN",
+        "WMT",
+        "PFE",
+        "F",
+        "DIS",
+        "Red Bull",
+        "Patagonia",
+        "Chick-fil-A",
+        "SpaceX",
+        "Dyson"
+      ]
+    },
+    "noise": "Jev's score for the same claim varies between runs (median spread 0.05, p90 0.10, max 0.16 over 6 repeats), so a single run is a snapshot."
+  },
+  "claims": [
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Taiwan Semiconductor Manufacturing Company Limited supplies components or services to NVDA (Taiwan Semiconductor Manufacturing Company Limited is a supplier or vendor of NVDA).",
+      "evidence": {
+        "title": "nvda-20220130",
+        "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581022000036/nvda-20220130.htm",
+        "snippet": "semiconductors used for our products. Instead, ... strategy, whereby ... we can avoid many of ... . While we\n...\nWe utilize industry-leading suppliers, such as Taiwan Semiconductor Manufacturing Company Limited and Samsung Electronics Co. L"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Samsung Electronics Co. Ltd. supplies components or services to NVDA (Samsung Electronics Co. Ltd. is a supplier or vendor of NVDA).",
+      "evidence": {
+        "title": "nvda-20220130",
+        "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581022000036/nvda-20220130.htm",
+        "snippet": "semiconductors used for our products. Instead, ... strategy, whereby ... we can avoid many of ... . While we\n...\nWe utilize industry-leading suppliers, such as Taiwan Semiconductor Manufacturing Company Limited and Samsung Electronics Co. L"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "AMD competes with NVDA.",
+      "evidence": {
+        "title": "AMD deal with OpenAI gives Nvidia a needed challenger in AI chips",
+        "url": "https://www.cnbc.com/2025/10/08/amd-deal-with-openai-gives-nvidia-a-needed-challenger-in-ai-chips.html",
+        "snippet": "- \"Right now, Nvidia almost has a monopoly,\" said Mandeep Singh, senior analyst at Bloomberg intelligence.\n...\n90s\n...\nAlmost three decades later, AMD may be serving a similar role for Nvidia Add To Watchlist, which controls over 90% of the"
+      },
+      "label": "A",
+      "note": "snippet only says AMD may serve a similar role"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Dell Technologies is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Hewlett Packard Enterprise is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Accenture is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "ServiceNow is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "SAP is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Cadence Design Systems is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Synopsys is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Siemens is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "NVDA",
+      "statement": "Foxconn is a partner or ecosystem complement of NVDA (its products make NVDA's products more valuable).",
+      "evidence": {
+        "title": "",
+        "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2025/annual/NVIDIA-2025-Annual-Report.pdf",
+        "snippet": "› Sovereign AI clusters in Japan ... France, India, and Canada ... partners including Dell, HPE, Accenture, ... , ServiceNow, SAP, and more ... Industrial AI partners including Cadence, Synopsys, Siemens, Foxconn, and more In ... coming yea"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "AAPL",
+      "statement": "Samsung competes with AAPL.",
+      "evidence": {
+        "title": "Samsung taking market share from Apple in U.S. as foldable phones gain momentum",
+        "url": "https://www.cnbc.com/2025/08/16/samsungs-us-market-share-apple-rivalry-foldable-phones.html",
+        "snippet": "- In the ... U.S., with ... % to 31%, according ... data from Canalys.\n...\nIn 20 ... duking it out to rule the U.\n...\nIn the second quarter, shipments from Samsung surged in the U.S., with its market share rising from 23% to 31% from the pr"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "AAPL",
+      "statement": "Xiaomi competes with AAPL.",
+      "evidence": {
+        "title": "Global Smartphone Market: Two Leaders, and the Fight to Challenge Them",
+        "url": "https://www.gsmaintelligence.com/blogs/global-smartphone-market-two-leaders-and-the-fight-to-challenge-them",
+        "snippet": "On the surface, Samsung and Apple stand out as leaders in the latest GSMA Intelligence data, together accounting for over 40% of the global smartphone market. But just as striking is the contest for the #3 spot — a space where Xiaomi, Vivo,"
+      },
+      "label": "A",
+      "note": "snippet: contest for #3 among Xiaomi, Vivo; not against Apple"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "AAPL",
+      "statement": "Vivo competes with AAPL.",
+      "evidence": {
+        "title": "Global Smartphone Market: Two Leaders, and the Fight to Challenge Them",
+        "url": "https://www.gsmaintelligence.com/blogs/global-smartphone-market-two-leaders-and-the-fight-to-challenge-them",
+        "snippet": "On the surface, Samsung and Apple stand out as leaders in the latest GSMA Intelligence data, together accounting for over 40% of the global smartphone market. But just as striking is the contest for the #3 spot — a space where Xiaomi, Vivo,"
+      },
+      "label": "A",
+      "note": "same as Xiaomi"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "TSLA",
+      "statement": "BYD competes with TSLA.",
+      "evidence": {
+        "title": "What Are Tesla's (TSLA) Main Competitors? - Investopedia",
+        "url": "https://www.investopedia.com/ask/answers/120314/who-are-teslas-tsla-main-competitors.asp",
+        "snippet": "- Competitors like BYD, Ford, and General Motors are gaining market share, challenging Tesla’s dominance with varied EV offerings.\n...\nIn the second quarter of 2024, Tesla’s market share in the U.S. fell below 50% for the first time. Tesla’"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "TSLA",
+      "statement": "Ford Motor Company competes with TSLA.",
+      "evidence": {
+        "title": "What Are Tesla's (TSLA) Main Competitors? - Investopedia",
+        "url": "https://www.investopedia.com/ask/answers/120314/who-are-teslas-tsla-main-competitors.asp",
+        "snippet": "- Competitors like BYD, Ford, and General Motors are gaining market share, challenging Tesla’s dominance with varied EV offerings.\n...\nIn the second quarter of 2024, Tesla’s market share in the U.S. fell below 50% for the first time. Tesla’"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "TSLA",
+      "statement": "General Motors competes with TSLA.",
+      "evidence": {
+        "title": "What Are Tesla's (TSLA) Main Competitors? - Investopedia",
+        "url": "https://www.investopedia.com/ask/answers/120314/who-are-teslas-tsla-main-competitors.asp",
+        "snippet": "- Competitors like BYD, Ford, and General Motors are gaining market share, challenging Tesla’s dominance with varied EV offerings.\n...\nIn the second quarter of 2024, Tesla’s market share in the U.S. fell below 50% for the first time. Tesla’"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "TSLA",
+      "statement": "Rivian Automotive competes with TSLA.",
+      "evidence": {
+        "title": "The Rise and Recent Decline of Tesla’s Share of the U.S. Electric Vehicle Market",
+        "url": "https://www.mdpi.com/2032-6653/16/2/90",
+        "snippet": "Moreover, our study highlights the proliferation of non-Tesla EV offerings, particularly in the First-Mover Erosion Period (2020–2024), when established automakers and start-ups (e.g., Rivian, Lucid) aggressively entered the EV market with "
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "TSLA",
+      "statement": "Lucid Group competes with TSLA.",
+      "evidence": {
+        "title": "The Rise and Recent Decline of Tesla’s Share of the U.S. Electric Vehicle Market",
+        "url": "https://www.mdpi.com/2032-6653/16/2/90",
+        "snippet": "Moreover, our study highlights the proliferation of non-Tesla EV offerings, particularly in the First-Mover Erosion Period (2020–2024), when established automakers and start-ups (e.g., Rivian, Lucid) aggressively entered the EV market with "
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "KO",
+      "statement": "PepsiCo competes with KO.",
+      "evidence": {
+        "title": "Coke vs. Pepsi: Who Rules the Beverage Industry?",
+        "url": "https://www.investopedia.com/ask/answers/060415/how-much-global-beverage-industry-controlled-coca-cola-and-pepsi.asp",
+        "snippet": "- Pepsi ranks second, followed by Keurig Dr. Pepper.\n- Both companies boast extensive product portfolios beyond soft drinks.\n- Their global reach impacts consumer choices worldwide, and both companies focus on adapting to changing consumer "
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "edge",
+      "subject": "KO",
+      "statement": "Keurig Dr Pepper competes with KO.",
+      "evidence": {
+        "title": "Coke vs. Pepsi: Who Rules the Beverage Industry?",
+        "url": "https://www.investopedia.com/ask/answers/060415/how-much-global-beverage-industry-controlled-coca-cola-and-pepsi.asp",
+        "snippet": "- Pepsi ranks second, followed by Keurig Dr. Pepper.\n- Both companies boast extensive product portfolios beyond soft drinks.\n- Their global reach impacts consumer choices worldwide, and both companies focus on adapting to changing consumer "
+      },
+      "label": "A",
+      "note": "snippet only ranks KDP after Pepsi"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Pokemon",
+      "statement": "Nintendo Co., Ltd. (NTDOY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Pokemon.",
+      "evidence": {
+        "title": "7974 任天堂 | 親会社・連結子会社等 - 株式会社ポケモン",
+        "url": "https://irbank.net/E02367/ac?m=%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%83%9D%E3%82%B1%E3%83%A2%E3%83%B3",
+        "snippet": "7974 任天堂 | 親会社・連結子会社等 - 株式会社ポケモン\n\n# 7974 任天堂\n...\n# 子会社等\n\n株式会社ポケモンの議決権を保有2025年3月31日時点の保有比率は32.00%\n\n- 株式会社ポケモン\n\n## ポケモン"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Chanel",
+      "statement": "LVMH Moët Hennessy Louis Vuitton SE (LVMUY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Chanel.",
+      "evidence": {
+        "title": "How to Invest in Chanel in 2026: A Realistic Guide | TickerSpark",
+        "url": "https://tickerspark.ai/market/chanel-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public alternatives shareholders look at are LVMH (LVMUY), Kering (PPRUY), and Hermès International (HESAY). LVMH is the broadest luxury conglomerate proxy, with exposure to fashion, leat"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Chanel",
+      "statement": "Kering SA (PPRUY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Chanel.",
+      "evidence": {
+        "title": "How to Invest in Chanel in 2026: A Realistic Guide | TickerSpark",
+        "url": "https://tickerspark.ai/market/chanel-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public alternatives shareholders look at are LVMH (LVMUY), Kering (PPRUY), and Hermès International (HESAY). LVMH is the broadest luxury conglomerate proxy, with exposure to fashion, leat"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Chanel",
+      "statement": "Hermès International SCA (HESAY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Chanel.",
+      "evidence": {
+        "title": "How to Invest in Chanel in 2026: A Realistic Guide | TickerSpark",
+        "url": "https://tickerspark.ai/market/chanel-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public alternatives shareholders look at are LVMH (LVMUY), Kering (PPRUY), and Hermès International (HESAY). LVMH is the broadest luxury conglomerate proxy, with exposure to fashion, leat"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Lego",
+      "statement": "Mattel, Inc. (MAT) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Lego.",
+      "evidence": {
+        "title": "No Lego Stock? Best Toy Stocks to Buy Instead (2026)",
+        "url": "https://bullishbears.com/lego-stock/",
+        "snippet": "What is Lego’s stock price, and are they publicly traded? Investors cannot purchase shares of Lego because it is a private company. Hasbro (NASDAQ: HAS), Mattel (NASDAQ: MAT), and Walt Disney (NYSE: DIS) are toy stock symbols that traders c"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Lego",
+      "statement": "Hasbro, Inc. (HAS) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Lego.",
+      "evidence": {
+        "title": "Competitors for Hasbro (Nasdaq:HAS) | FinancialContent",
+        "url": "https://www.financialcontent.com/quote/NQ:HAS/competitors",
+        "snippet": "Competitors for Hasbro (Nasdaq:HAS) | FinancialContent\n\n# Hasbro (HAS)\n...\nAlthough LEGO primarily focuses on building block toys, it competes indirectly with Hasbro by targeting the same age demographics and selling experiences and creativ"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Lego",
+      "statement": "Funko, Inc. (FNKO) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Lego.",
+      "evidence": {
+        "title": "Can You Buy Lego Stock? What You Need to Know!",
+        "url": "https://www.thestockdork.com/lego-stock/",
+        "snippet": "6LEGO Competitors You Can Invest In\n6.1Bandai Namco Holdings (OTCMKTS: NCBDY)\n6.2Mattel Inc. (NASDAQ: MAT)\n6.3Hasbro, Inc. (NASDAQ: HAS)\n6.4Funko (NASDAQ: FNKO)\n7LEGO Stock: Final Thoughts\n8LEGO Stock\n...\nUnfortunately, you cannot buy or se"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Rolex",
+      "statement": "The Swatch Group AG (UHR) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Rolex.",
+      "evidence": {
+        "title": "3 Public Stocks That Give You Rolex-Adjacent Exposure | TickerSpark",
+        "url": "https://tickerspark.ai/market/rolex-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public comp is Swatch Group AG (UHR.SW), a broad Swiss watchmaker with exposure to both luxury and mass-market watches. It is the most direct listed peer in Swiss horology, so investors l"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Rolex",
+      "statement": "Compagnie Financière Richemont SA (CFR) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Rolex.",
+      "evidence": {
+        "title": "Can I Buy Shares in Rolex? | Sunny Avenue",
+        "url": "https://www.sunnyavenue.co.uk/insight/can-i-buy-shares-in-rolex",
+        "snippet": "No. Rolex is owned by a private charitable foundation set up by its founder, Hans Wilsdorf, and has never been listed. There are no shares, no ticker and no public route in.\n...\nSwatch Group, Richemont\n...\n- Swatch Group: Omega, Longines, T"
+      },
+      "label": "S"
+    },
+    {
+      "set": "dev",
+      "kind": "comparable",
+      "subject": "Rolex",
+      "statement": "LVMH Moët Hennessy Louis Vuitton SE (MC) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Rolex.",
+      "evidence": {
+        "title": "The Swatch Group AG (UHR) - List of Industry Peers & Competitors - Fiscal.ai",
+        "url": "https://fiscal.ai/company/XSWX_UHR/industry/",
+        "snippet": "The Swatch Group AG (UHR) - List of Industry Peers & Competitors - Fiscal.ai\n\n# The Swatch Group AG\n\nXSWX-UHR\n...\nThe Swatch Group AG (UHR)\n\nLVMH Moët Hennessy - Louis Vuitton, Société Européenne (MC)\n\nFossil Group, Inc. (FOSL)\n\nMovado Grou"
+      },
+      "label": "U",
+      "note": "cited snippet is about Swatch's peers, not Rolex"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "Taiwan Semiconductor Manufacturing supplies components or services to AMD (Taiwan Semiconductor Manufacturing is a supplier or vendor of AMD).",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet names no supplier"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "GlobalFoundries supplies components or services to AMD (GlobalFoundries is a supplier or vendor of AMD).",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet names no supplier"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "United Microelectronics supplies components or services to AMD (United Microelectronics is a supplier or vendor of AMD).",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet names no supplier"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "Amkor Technology supplies components or services to AMD (Amkor Technology is a supplier or vendor of AMD).",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet names no supplier"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "Intel competes with AMD.",
+      "evidence": {
+        "title": "Who Are Advanced Micro Devices' (AMD) Main Competitors?",
+        "url": "https://www.investopedia.com/articles/markets/041816/who-are-advanced-micro-devices-main-competitors-amd.asp",
+        "snippet": "## Intel \n\n Intel Corporation (INTC) is one of the largest pure-play competitors to AMD on the list. The company creates, produces, and sells integrated digital technology platforms all over the world. \n\n As one of the leading players in th"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "NVIDIA competes with AMD.",
+      "evidence": {
+        "title": "AMD earnings report Q2 2026",
+        "url": "https://www.cnbc.com/2026/08/04/amd-earnings-report-q2-2026.html",
+        "snippet": "The chipmaker's ... has nearly tripled over the ... , branded Instinct, ... Nvidia Add To Watchlist ... which AMD sells under ... essential component for running\n...\nThe company will also start shipping Helios, its first rack AI system, thi"
+      },
+      "label": "A",
+      "note": "snippet fragmentary"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "Broadcom competes with AMD.",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet does not mention Broadcom"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "AMD",
+      "statement": "Qualcomm competes with AMD.",
+      "evidence": {
+        "title": "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)",
+        "url": "https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm",
+        "snippet": "offer component-level ... to AIB manufacturers who in turn build and ... board-level ... to system integrators (SIs), retailers and sub distributors. In most instances, our agreements with AIBs protect their inventory ... reductions. We als"
+      },
+      "label": "U",
+      "note": "snippet does not mention Qualcomm"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "MSFT",
+      "statement": "Amazon competes with MSFT.",
+      "evidence": {
+        "title": "UK says cloud computing market not working effectively",
+        "url": "https://www.reuters.com/technology/uk-says-cloud-computing-market-not-working-effectively-2025-01-28/",
+        "snippet": "LONDON, Jan 28 (Reuters) - The cloud computing market is not working effectively and Britain's antitrust watchdog should use new powers to investigate market leaders Amazon and Microsoft, with a focus on the latter's licensing practices, th"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "MSFT",
+      "statement": "Alphabet competes with MSFT.",
+      "evidence": {
+        "title": "Microsoft Azure Market Share & Buyer Landscape Report",
+        "url": "https://hginsights.com/blog/microsoft-azure-market-share-report/",
+        "snippet": "Microsoft launched Azure, an open and flexible cloud computing platform, in 2010 and positioned it as an alternative to Amazon EC2 and Google App Engine. To this day, Azure is locked in a heated competition — the so-called “Cloud Wars” — wi"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "NFLX",
+      "statement": "Cineverse Corp. supplies components or services to NFLX (Cineverse Corp. is a supplier or vendor of NFLX).",
+      "evidence": {
+        "title": "NFLX suppliers and customers, disclosed in SEC filings",
+        "url": "https://varamir.com/q/NFLX/chain",
+        "snippet": "Netflix Inc has 5 disclosed suppliers and 6 disclosed customers in SEC 10-K and 20-F filings (its own and its counterparties'), each cited to the sentence that discloses it.\n...\nF). Every row\n...\n5 disclosed: Cineverse Corp., Dolby Laborato"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "NFLX",
+      "statement": "Dolby Laboratories supplies components or services to NFLX (Dolby Laboratories is a supplier or vendor of NFLX).",
+      "evidence": {
+        "title": "NFLX suppliers and customers, disclosed in SEC filings",
+        "url": "https://varamir.com/q/NFLX/chain",
+        "snippet": "Netflix Inc has 5 disclosed suppliers and 6 disclosed customers in SEC 10-K and 20-F filings (its own and its counterparties'), each cited to the sentence that discloses it.\n...\nF). Every row\n...\n5 disclosed: Cineverse Corp., Dolby Laborato"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "NFLX",
+      "statement": "The Walt Disney Company competes with NFLX.",
+      "evidence": {
+        "title": "It’s Netflix’s world, rivals just stream in it",
+        "url": "https://www.reuters.com/breakingviews/its-netflixs-world-rivals-just-stream-it-2023-05-24/",
+        "snippet": "NEW YORK, May 24 (Reuters Breakingviews) - Netflix(NFLX.O), opens new tab boss Reed Hastings keeps rewriting the streaming script. His $160 billion company, along with rivals Walt Disney(DIS.N), opens new tab, Warner Bros Discovery(WBD.O), "
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "NFLX",
+      "statement": "Warner Bros. Discovery competes with NFLX.",
+      "evidence": {
+        "title": "It’s Netflix’s world, rivals just stream in it",
+        "url": "https://www.reuters.com/breakingviews/its-netflixs-world-rivals-just-stream-it-2023-05-24/",
+        "snippet": "NEW YORK, May 24 (Reuters Breakingviews) - Netflix(NFLX.O), opens new tab boss Reed Hastings keeps rewriting the streaming script. His $160 billion company, along with rivals Walt Disney(DIS.N), opens new tab, Warner Bros Discovery(WBD.O), "
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "edge",
+      "subject": "BA",
+      "statement": "U.S. Government is a customer of BA (U.S. Government buys BA's products or services).",
+      "evidence": {
+        "title": "Boeing Co (BA) 10-K Annual Report January 2026",
+        "url": "https://last10k.com/sec-filings/ba/0001628280-26-004357.htm",
+        "snippet": "BGS’ major customer, the U.S.... Read more\n...\nA number of our customers... Read more\n...\nContracts With Customers\n...\nAnd Operating Lease\n...\nAnd Revenue Information - Schedule Of Disaggregation Of Revenue (Details)\n\nSegment And Revenue In"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "In-N-Out Burger",
+      "statement": "The Wendy's Company (WEN) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, In-N-Out Burger.",
+      "evidence": {
+        "title": "How Much Would In-N-Out Stock Be Worth if It Went Public?",
+        "url": "https://247wallst.com/investing/2023/11/23/how-much-would-in-n-out-stock-be-worth-if-it-went-public/",
+        "snippet": "did go public\n...\nThis might be shocking, but the best company to compare In-N-Out to is Wendy’s (NASDAQ: WEN). Both stand-alone and aren’t owned by another company. They both are worth roughly $3 billion. Wendy’s revenue was higher than In"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "In-N-Out Burger",
+      "statement": "Jack in the Box Inc. (JACK) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, In-N-Out Burger.",
+      "evidence": {
+        "title": "Can You Buy In-N-Out Stock/IPO? Here’s What You Need to Know",
+        "url": "https://www.thestockdork.com/in-n-out-stock/",
+        "snippet": "International (NYSE: QSR)\n...\nin the Box (NASDAQ: JACK)\n...\nShack (NYSE: SHAK)\n...\nIn-N\n...\nIn-N-Out Stock\n...\n### Competitors You Can Invest In\n...\nis nearly impossible ... in In-n ... service industry might catch\n...\nHere are a few compan"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "In-N-Out Burger",
+      "statement": "Shake Shack Inc. (SHAK) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, In-N-Out Burger.",
+      "evidence": {
+        "title": "Can You Buy In-N-Out Stock/IPO? Here’s What You Need to Know",
+        "url": "https://www.thestockdork.com/in-n-out-stock/",
+        "snippet": "International (NYSE: QSR)\n...\nin the Box (NASDAQ: JACK)\n...\nShack (NYSE: SHAK)\n...\nIn-N\n...\nIn-N-Out Stock\n...\n### Competitors You Can Invest In\n...\nis nearly impossible ... in In-n ... service industry might catch\n...\nHere are a few compan"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Mars candy",
+      "statement": "The Hershey Company (HSY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Mars candy.",
+      "evidence": {
+        "title": "Is Mars Stock Available? Investment Guide for Candy Giant | Chart Guys",
+        "url": "https://www.chartguys.com/articles/mars-stock-investment-guide",
+        "snippet": "Mars stock isn ... , investors can gain\n...\n### Public Competitors\n\n- The Hershey Company (NYSE:HSY)\n- Nestlé (SWX:NESN)\n- Mondelez International (NASDAQ:MDLZ)\n...\n#### The Hershey Company (NYSE:HSY)\n\nAmerica's chocolate king serves as perh"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Mars candy",
+      "statement": "Mondelez International Inc. (MDLZ) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Mars candy.",
+      "evidence": {
+        "title": "Is Mars Stock Available? Investment Guide for Candy Giant | Chart Guys",
+        "url": "https://www.chartguys.com/articles/mars-stock-investment-guide",
+        "snippet": "Mars stock isn ... , investors can gain\n...\n### Public Competitors\n\n- The Hershey Company (NYSE:HSY)\n- Nestlé (SWX:NESN)\n- Mondelez International (NASDAQ:MDLZ)\n...\n#### The Hershey Company (NYSE:HSY)\n\nAmerica's chocolate king serves as perh"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Mars candy",
+      "statement": "Nestlé S.A. (NESN) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Mars candy.",
+      "evidence": {
+        "title": "Is Mars Stock Available? Investment Guide for Candy Giant | Chart Guys",
+        "url": "https://www.chartguys.com/articles/mars-stock-investment-guide",
+        "snippet": "Mars stock isn ... , investors can gain\n...\n### Public Competitors\n\n- The Hershey Company (NYSE:HSY)\n- Nestlé (SWX:NESN)\n- Mondelez International (NASDAQ:MDLZ)\n...\n#### The Hershey Company (NYSE:HSY)\n\nAmerica's chocolate king serves as perh"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Bose",
+      "statement": "Sonos, Inc. (SONO) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Bose.",
+      "evidence": {
+        "title": "Can You Actually Buy Bose Stock Right Now? | TickerSpark",
+        "url": "https://tickerspark.ai/market/bose-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public proxy is Sonos (SONO), which is the most direct consumer-audio pure play with speakers, soundbars, and home audio systems. Investors looking for Bose exposure often start here beca"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Bose",
+      "statement": "Apple Inc. (AAPL) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Bose.",
+      "evidence": {
+        "title": "Should You Invest in Bose Stock Or 3 Of Its Profitable Rivals?",
+        "url": "https://www.liberatedstocktrader.com/bose-stock/",
+        "snippet": "## 1. Apple Inc. (AAPL)\n\nApple (Ticker: AAPL) is Bose’s highest-profile competitor in the audio electronics sector. Apple designs and markets both speakers and headsets. Apple’s products include the popular AirPods, including AirPods Max—Ap"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Bose",
+      "statement": "Sony Group Corporation (SONY) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Bose.",
+      "evidence": {
+        "title": "Wireless speaker maker Sonos files for IPO as music streaming gets more and more popular | Financial Post",
+        "url": "https://financialpost.com/technology/personal-tech/update-1-wireless-speaker-maker-sonos-files-for-ipo",
+        "snippet": "Backed by KKR Stream Holdings LLC, Sonos has grown to become a big player in the competitive home audio market, battling established players such as Bang & Olufsen, Bose and Sony as well as iPhone maker Apple.\n...\nThe Santa Barbara, Califor"
+      },
+      "label": "A",
+      "note": "snippet: Sonos battles Bose and Sony; Sony vs Bose not stated"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Ikea",
+      "statement": "Wayfair Inc. (W) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Ikea.",
+      "evidence": {
+        "title": "Wayfair vs IKEA — AI Visibility Comparison | geo.sig.ai",
+        "url": "https://geo.sig.ai/compare/wayfair-vs-ikea",
+        "snippet": "Wayfair is a Boston-based online home goods retailer — listed on NYSE (NYSE: W) — operating the world's largest online destination for furniture, home décor, lighting, kitchen goods, and home improvement products across Wayfair.com, Joss & "
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Ikea",
+      "statement": "Williams-Sonoma, Inc. (WSM) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Ikea.",
+      "evidence": {
+        "title": "Williams-Sonoma, Inc. (WSM) Competitive Analysis & Comparison (2026)",
+        "url": "https://koalagains.com/stocks/NYSE/WSM/competition",
+        "snippet": "- ### IKEA (Ingka Group)\n\nIKEA, operated primarily by Ingka Group, is the world's largest home-furnishings retailer and a private company, with retail revenue around `€39B` (`~$45B`), roughly `6x` WSM's size. It competes globally on afforda"
+      },
+      "label": "S"
+    },
+    {
+      "set": "held",
+      "kind": "comparable",
+      "subject": "Ikea",
+      "statement": "La-Z-Boy Incorporated (LZB) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Ikea.",
+      "evidence": {
+        "title": "No IKEA Stock? Best Retail Stocks to Buy Instead (2026)",
+        "url": "https://bullishbears.com/ikea-stock/",
+        "snippet": "What is IKEA’s stock price, and are they publicly traded? IKEA is one of the largest privately owned brands in the world. Williams-Sonoma (NYSE: WSM), Restoration Hardware (NYSE: RH), and La-Z-Boy (NYSE: LZB) are publicly traded home furnis"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "AMZN",
+      "statement": "Walmart competes with AMZN.",
+      "evidence": {
+        "title": "Why does Amazon have no Western rivals?",
+        "url": "https://www.bbc.com/news/articles/cg7p5nr307mo",
+        "snippet": "First, to be sure, Amazon isn't without competitors in any of the segments it is in, including e-commerce. Major US retailers like Walmart and Target both have broad-based, rapidly expanding online retail arms, and offer their own versions "
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "AMZN",
+      "statement": "Target competes with AMZN.",
+      "evidence": {
+        "title": "Why does Amazon have no Western rivals?",
+        "url": "https://www.bbc.com/news/articles/cg7p5nr307mo",
+        "snippet": "First, to be sure, Amazon isn't without competitors in any of the segments it is in, including e-commerce. Major US retailers like Walmart and Target both have broad-based, rapidly expanding online retail arms, and offer their own versions "
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "WMT",
+      "statement": "Kroger competes with WMT.",
+      "evidence": {
+        "title": "Is Walmart’s grocery share lead insurmountable?",
+        "url": "https://www.supermarketnews.com/grocery-operations/is-walmart-s-grocery-share-lead-insurmountable-",
+        "snippet": "Retail giant’s closest competitor, Kroger, continues to trail by double digits\n...\nWalmart continues to hold a commanding lead in the grocery industry, according to the latest data released by Numerator on Tuesday. The Bentonville, Ark.-bas"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "PFE",
+      "statement": "AbbVie competes with PFE.",
+      "evidence": {
+        "title": "What to Watch in Pfizer's Non-Oncology Portfolio This Earnings Season - The Globe and Mail",
+        "url": "https://www.theglobeandmail.com/investing/markets/stocks/PFE/pressreleases/3385611/what-to-watch-in-pfizers-non-oncology-portfolio-this-earnings-season/",
+        "snippet": "## Pfizer’s Key Competitors\n\nIn inflammation & immunology, Pfizer’s key competitors include AbbVie, Johnson & Johnson, Amgen and Novartis. In areas such as diabetes, cardiovascular disease, obesity, and other chronic conditions, Pfizer face"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "PFE",
+      "statement": "Johnson & Johnson competes with PFE.",
+      "evidence": {
+        "title": "What to Watch in Pfizer's Non-Oncology Portfolio This Earnings Season - The Globe and Mail",
+        "url": "https://www.theglobeandmail.com/investing/markets/stocks/PFE/pressreleases/3385611/what-to-watch-in-pfizers-non-oncology-portfolio-this-earnings-season/",
+        "snippet": "## Pfizer’s Key Competitors\n\nIn inflammation & immunology, Pfizer’s key competitors include AbbVie, Johnson & Johnson, Amgen and Novartis. In areas such as diabetes, cardiovascular disease, obesity, and other chronic conditions, Pfizer face"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "PFE",
+      "statement": "Amgen competes with PFE.",
+      "evidence": {
+        "title": "What to Watch in Pfizer's Non-Oncology Portfolio This Earnings Season - The Globe and Mail",
+        "url": "https://www.theglobeandmail.com/investing/markets/stocks/PFE/pressreleases/3385611/what-to-watch-in-pfizers-non-oncology-portfolio-this-earnings-season/",
+        "snippet": "## Pfizer’s Key Competitors\n\nIn inflammation & immunology, Pfizer’s key competitors include AbbVie, Johnson & Johnson, Amgen and Novartis. In areas such as diabetes, cardiovascular disease, obesity, and other chronic conditions, Pfizer face"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "PFE",
+      "statement": "Novartis competes with PFE.",
+      "evidence": {
+        "title": "What to Watch in Pfizer's Non-Oncology Portfolio This Earnings Season - The Globe and Mail",
+        "url": "https://www.theglobeandmail.com/investing/markets/stocks/PFE/pressreleases/3385611/what-to-watch-in-pfizers-non-oncology-portfolio-this-earnings-season/",
+        "snippet": "## Pfizer’s Key Competitors\n\nIn inflammation & immunology, Pfizer’s key competitors include AbbVie, Johnson & Johnson, Amgen and Novartis. In areas such as diabetes, cardiovascular disease, obesity, and other chronic conditions, Pfizer face"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "F",
+      "statement": "Ford Otomotiv Sanayi A.Ş. (Ford Otosan) supplies components or services to F (Ford Otomotiv Sanayi A.Ş. (Ford Otosan) is a supplier or vendor of F).",
+      "evidence": {
+        "title": "F Suppliers | Null Exposure",
+        "url": "https://www.nullexposure.com/suppliers/f",
+        "snippet": "- Ford Otomotiv Sanayi Anonim Sirketi (Ford Otosan) is a Türkiye joint venture (Ford 41%, Koc 41%) that is the sole supplier of Transit/Transit Custom/Transit Courier and Puma for Europe and the exclusive Ford distributor in Türkiye (Ford 2"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "DIS",
+      "statement": "Netflix competes with DIS.",
+      "evidence": {
+        "title": "The Walt Disney Company (DIS) Competitive Analysis & Comparison (2026)",
+        "url": "https://koalagains.com/stocks/NYSE/DIS/competition",
+        "snippet": "A comprehensive competitive analysis of The Walt Disney Company (DIS) in the Studios Networks Franchises (Media & Entertainment) within the US stock market, comparing it against Netflix, Inc., Warner Bros. Discovery, Inc., Comcast Corporati"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "DIS",
+      "statement": "Warner Bros. Discovery competes with DIS.",
+      "evidence": {
+        "title": "The Walt Disney Company (DIS) Competitive Analysis & Comparison (2026)",
+        "url": "https://koalagains.com/stocks/NYSE/DIS/competition",
+        "snippet": "A comprehensive competitive analysis of The Walt Disney Company (DIS) in the Studios Networks Franchises (Media & Entertainment) within the US stock market, comparing it against Netflix, Inc., Warner Bros. Discovery, Inc., Comcast Corporati"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "DIS",
+      "statement": "Comcast competes with DIS.",
+      "evidence": {
+        "title": "The Walt Disney Company (DIS) Competitive Analysis & Comparison (2026)",
+        "url": "https://koalagains.com/stocks/NYSE/DIS/competition",
+        "snippet": "A comprehensive competitive analysis of The Walt Disney Company (DIS) in the Studios Networks Franchises (Media & Entertainment) within the US stock market, comparing it against Netflix, Inc., Warner Bros. Discovery, Inc., Comcast Corporati"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "DIS",
+      "statement": "Reliance Industries is a partner or ecosystem complement of DIS (its products make DIS's products more valuable).",
+      "evidence": {
+        "title": "Disney-Reliance deal: What were India's antitrust concerns? | Reuters",
+        "url": "https://www.reuters.com/business/media-telecom/indias-antitrust-concerns-over-disney-reliance-deal-2024-08-28/",
+        "snippet": "NEW DELHI, Aug 29 (Reuters) - Walt Disney Co(DIS.N), opens new tab and Reliance Industries(RELI.NS), opens new tab won approval from the Competition Commission of India (CCI) on Wednesday for an $8.5 billion merger of their Indian media ass"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "edge",
+      "subject": "DIS",
+      "statement": "Tata Play Limited is a partner or ecosystem complement of DIS (its products make DIS's products more valuable).",
+      "evidence": {
+        "title": "FISCAL YEAR 2024 ANNUAL FINANCIAL REPORT",
+        "url": "https://www.sec.gov/Archives/edgar/data/1744489/000174448925000058/ars_2024.pdf",
+        "snippet": "services by Industrial ... with Content Sales/Lic\n...\n• National Geographic magazine and online business (owned 73% by ... ) \n• A 30% ownership interest in Tata Play Limited, which operates a direct-to-home satellite distribution platform i"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Red Bull",
+      "statement": "Monster Beverage Corp (MNST) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Red Bull.",
+      "evidence": {
+        "title": "12 Biggest Energy Drink Stocks in the US",
+        "url": "https://finance.yahoo.com/news/12-biggest-energy-drink-stocks-135603894.html",
+        "snippet": "However, out of the top three companies identified above, only Monster Beverage Corporation (NASDAQ:MNST)'s drinks made it to the list of the best selling energy drinks in the U.S. as of May 2022. Data from Information Resources Inc. (IRI) "
+      },
+      "label": "U",
+      "note": "snippet is about energy-drink stocks and never names Red Bull"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Red Bull",
+      "statement": "The Coca-Cola Company (KO) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Red Bull.",
+      "evidence": {
+        "title": "Can You Buy Red Bull Stock Pre-IPO? What to Know | The Motley Fool",
+        "url": "https://www.fool.com/investing/how-to-invest/stocks/how-to-invest-in-red-bull-stock/",
+        "snippet": "Red Bull is not publicly traded on the stock market. This means you cannot directly buy shares of Red Bull as you could with a publicly traded company like Coca-Cola (KO +1.27%) or PepsiCo (PEP +1.21%). Red Bull operates as a private compan"
+      },
+      "label": "A",
+      "note": "snippet only names Coca-Cola as an example of a public company"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Red Bull",
+      "statement": "PepsiCo Inc (PEP) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Red Bull.",
+      "evidence": {
+        "title": "Can You Buy Red Bull Stock Pre-IPO? What to Know | The Motley Fool",
+        "url": "https://www.fool.com/investing/how-to-invest/stocks/how-to-invest-in-red-bull-stock/",
+        "snippet": "Red Bull is not publicly traded on the stock market. This means you cannot directly buy shares of Red Bull as you could with a publicly traded company like Coca-Cola (KO +1.27%) or PepsiCo (PEP +1.21%). Red Bull operates as a private compan"
+      },
+      "label": "A",
+      "note": "snippet only names PepsiCo as an example of a public company"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Patagonia",
+      "statement": "Columbia Sportswear Co. (COLM) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Patagonia.",
+      "evidence": {
+        "title": "Patagonia Isn’t Public. Here’s How to Get Exposure Anyway. | TickerSpark",
+        "url": "https://tickerspark.ai/market/patagonia-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public-market proxies are Columbia Sportswear (COLM), Deckers Outdoor (DECK), and VF Corp. (VFC). Columbia is the most direct category match because it sells outdoor apparel and gear tied"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Patagonia",
+      "statement": "VF Corp. (VFC) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Patagonia.",
+      "evidence": {
+        "title": "The North Face Revenue & Market Share 2026 $3.7B | Consumer Lifestyle & Wellness",
+        "url": "https://geo.sig.ai/brands/the-north-face",
+        "snippet": "NYSE: VFC (VF Corporation); $3.7B revenue FY2024; fastest-growing VF brand with 12% quarterly growth; FUTURELIGHT waterproof fabric; strong DTC and Asia expansion; 50+ countries\n...\nCompetes with\n\nColumbia Sportswear Patagonia\n...\nThe North"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Patagonia",
+      "statement": "Deckers Outdoor Corp. (DECK) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Patagonia.",
+      "evidence": {
+        "title": "Patagonia Isn’t Public. Here’s How to Get Exposure Anyway. | TickerSpark",
+        "url": "https://tickerspark.ai/market/patagonia-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public-market proxies are Columbia Sportswear (COLM), Deckers Outdoor (DECK), and VF Corp. (VFC). Columbia is the most direct category match because it sells outdoor apparel and gear tied"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Chick-fil-A",
+      "statement": "Restaurant Brands International Inc. (QSR) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Chick-fil-A.",
+      "evidence": {
+        "title": "When it comes to Chick-fil-A versus Popeyes, Tyson Foods wins: Cramer",
+        "url": "https://www.cnbc.com/2019/08/26/when-it-comes-to-chick-fil-a-versus-popeyes-tyson-foods-wins-cramer.html",
+        "snippet": "Popeyes, which is a subsidiary of the publicly traded Restaurant Brands International Add To Watchlist, rolled out the first chicken sandwich on its menu nationwide earlier this month. Many of its locations had sold out of both its mild and"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Chick-fil-A",
+      "statement": "McDonald's Corp. (MCD) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Chick-fil-A.",
+      "evidence": {
+        "title": "No Chick-fil-A Stock? Best Restaurant Stocks to Buy Instead (2026)",
+        "url": "https://bullishbears.com/chick-fil-a-stock/",
+        "snippet": "What is Chick-fil-A’s stock price, and are they publicly traded? Investors cannot purchase shares of Chick-fil-A because it is a private company. However, investors can purchase their competitor McDonald’s shares under the stock symbol(NYSE"
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "SpaceX",
+      "statement": "Space Exploration Technologies Corp. (SPCX) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, SpaceX.",
+      "evidence": {
+        "title": "Document",
+        "url": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026042466/spaceexplorationtechnologi.htm",
+        "snippet": "Space Exploration Technologies Corp.\n...\n| Issuer: | Space Exploration Technologies Corp. |\n| --- | --- |\n| Symbol: | SPCX (Nasdaq and Nasdaq Texas) |\n| Size: | $74,999,999,925 |\n| Shares Offered: | 555,555,555 shares of Class A common stoc"
+      },
+      "label": "A",
+      "note": "the snippet is SpaceX's own listing, not a comparable"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "SpaceX",
+      "statement": "Rocket Lab USA, Inc. (RKLB) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, SpaceX.",
+      "evidence": {
+        "title": "SpaceX vs. Rocket Lab: How Do They Compare as Investments? | The Motley Fool",
+        "url": "https://www.fool.com/investing/2026/06/09/spacex-vs-rocket-lab-how-do-they-compare-as-invest/",
+        "snippet": "But for years now, retail traders have turned to Rocket Lab (RKLB -14.39%) as the closest publicly available proxy. So, now that they will both be available, which is the better investment? The scrappy challenger? Or the space behemoth?\n..."
+      },
+      "label": "S"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "SpaceX",
+      "statement": "AST SpaceMobile, Inc. (ASTS) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, SpaceX.",
+      "evidence": {
+        "title": "Compare Space Stocks",
+        "url": "https://www.marketbeat.com/compare-stocks/space-stocks/",
+        "snippet": "NASDAQ:ASTS NASDAQ:IRDM NASDAQ:LUNR NASDAQ:RKLB NASDAQ:SPCX NASDAQ:VSAT NYSE:NOC NYSE:PL NYSE:SPCE TSE:MDA\n...\n### AST SpaceMobile NASDAQ:ASTS\n...\n### Iridium Communications NASDAQ:IRDM\n...\n### Intuitive Machines NASDAQ:LUNR\n...\n### Rocket "
+      },
+      "label": "A",
+      "note": "snippet is a ticker list, no stated relation"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Dyson",
+      "statement": "SharkNinja, Inc. (SN) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Dyson.",
+      "evidence": {
+        "title": "SharkNinja (NYSE: SN) Profile 2026: Financials, AI Strategy & Dyson, BISSELL, Hoover Comparison",
+        "url": "https://dexteragent.ai/companies/sharkninja-1771247177",
+        "snippet": "SharkNinja is a publicly traded company based in Needham, Massachusetts, founded in 1994 by Mark Rosenzweig. It operates in the home appliances industry, offering products like vacuum cleaners, steam mops, air purifiers, and hair care produ"
+      },
+      "label": "U",
+      "note": "snippet profiles SharkNinja and never names Dyson"
+    },
+    {
+      "set": "fresh",
+      "kind": "comparable",
+      "subject": "Dyson",
+      "statement": "Helen of Troy Ltd. (HELE) is a publicly traded company that is a close competitor of, or the parent or IP licensor of, Dyson.",
+      "evidence": {
+        "title": "When Will Dyson Go Public? IPO Outlook + Smart Workarounds | TickerSpark",
+        "url": "https://tickerspark.ai/market/dyson-stock",
+        "snippet": "## Closest publicly-traded alternatives\n\nThe closest public alternative shareholders look at is SharkNinja (SN), which is the cleanest proxy for vacuum cleaners, floorcare, and small home devices. Helen of Troy (HELE) is another relevant na"
+      },
+      "label": "S"
+    }
+  ]
+}
