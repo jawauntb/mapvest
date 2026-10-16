@@ -32,6 +32,7 @@
 import { CreateRivalryRequest, type RivalriesResponse } from "@mapvest/core";
 import { isPlausibleTicker, resolveComparable } from "@mapvest/finance";
 import { Hono } from "hono";
+import { jevClaimVerifier } from "../lib/evidence-verifier.js";
 import { safeExecuteWithSpan } from "../lib/logfire.js";
 import {
   MAX_RIVALRIES_PER_USER,
@@ -98,7 +99,7 @@ rivalries.post("/", async (c) => {
       // Server-side opponent selection: top comparable from the existing
       // pipeline. Never invented — an empty or implausible result is a 422.
       const comps = await Promise.race([
-        resolveComparable(ticker).catch(() => []),
+        resolveComparable(ticker, undefined, { verify: jevClaimVerifier }).catch(() => []),
         new Promise<[]>((r) => setTimeout(() => r([]), RESOLVE_TIMEOUT_MS)),
       ]);
       const top = (Array.isArray(comps) ? comps : []).find(

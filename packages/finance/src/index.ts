@@ -2,6 +2,14 @@ export { resolveTicker } from "./ticker.js";
 export { resolveComparable } from "./comparable.js";
 export { resolveEtfExposure } from "./etf.js";
 export { extractValueChain, parseEdgePicks } from "./valueChain.js";
+export {
+  checkable,
+  comparableStatement,
+  edgeStatement,
+  keepSupported,
+  verifyClaims,
+} from "./claimVerifier.js";
+export type { ClaimCheck, ClaimEvidence, ClaimVerdict, ClaimVerifier } from "./claimVerifier.js";
 export type { CompanyEdgeInput, EdgePick, FilingRef } from "./valueChain.js";
 export { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 export { getQuote, parseYahooChart, QUOTE_DISCLAIMER, _clearQuoteCache } from "./quote.js";

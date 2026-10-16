@@ -44,6 +44,8 @@ const HIDDEN_SLUGS = new Set<string>([
   // Situate (reforms Prism) likewise names its upstream provider and internal
   // module surface — operational, kept off the public site for the same reason.
   "situate",
+  // Names the Jev endpoint, env vars and the eval method: operational, like prism and situate.
+  "jev-claim-check",
   "readme",
   "secrets",
   "system-design",

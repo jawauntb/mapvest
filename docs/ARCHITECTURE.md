@@ -253,6 +253,13 @@ request**, bounded context, and an in-process TTL cache.
   response never waits on Jev longer than 4 s. The camera result card shows
   "Investable via parent · NKE · 88%" / "Proxy exposure via XLY" and
   emphasizes Save when `worth_a_look >= 0.7`.
+- **Claim check** — the value-chain and comparable agents' proposals each cite
+  one evidence snippet; Jev answers one yes/no per claim ("does this text itself
+  support the statement?") and a claim it is confident does not is dropped
+  (`apps/api/src/lib/evidence-verifier.ts`, `packages/finance/src/claimVerifier.ts`).
+  It can only remove, fails open on every error, and is off with
+  `JEV_CLAIM_CHECK=off`. Measured numbers, limits and the labeling method:
+  `docs/JEV_CLAIM_CHECK.md`.
 - **Search intent** — `POST /v1/search/intent { q, lat?, lng? }` →
   `SearchIntentResponse { intent, probability, resolved, route, method }`
   (`apps/api/src/lib/search-intent.ts`). Deterministic first: cashtag or

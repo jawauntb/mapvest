@@ -1,5 +1,12 @@
 import type { Comparable, Source } from "@mapvest/core";
 import { type SearchResult, enrichTicker, searchBrand, toSource } from "@mapvest/search";
+import {
+  type ClaimCheck,
+  type ClaimVerifier,
+  checkable,
+  comparableStatement,
+  keepSupported,
+} from "./claimVerifier.js";
 import { extractListedTicker, isPlausibleTicker } from "./tickerSymbol.js";
 
 const PRIMARY_MODEL = "openai/gpt-5.6-terra";
@@ -23,7 +30,11 @@ type AgentPick = {
  *      judges the Exa evidence and picks up to 3 real listed tickers
  *      (must be plausible; never invents NYP/MOUNT-style junk).
  */
-export async function resolveComparable(brand: string, hintSector?: string): Promise<Comparable[]> {
+export async function resolveComparable(
+  brand: string,
+  hintSector?: string,
+  opts?: { verify?: ClaimVerifier },
+): Promise<Comparable[]> {
   const sector = (hintSector ?? "").trim();
   const queries = [
     `${brand} closest publicly traded competitor stock ticker NYSE NASDAQ`,
@@ -62,7 +73,7 @@ export async function resolveComparable(brand: string, hintSector?: string): Pro
   }
 
   const picks = agentPicks.length > 0 ? agentPicks : heuristic;
-  const out: Comparable[] = [];
+  const staged: { item: Comparable; check?: ClaimCheck }[] = [];
   const seen = new Set<string>();
   for (const p of picks) {
     const ticker = p.ticker.toUpperCase();
@@ -76,16 +87,32 @@ export async function resolveComparable(brand: string, hintSector?: string): Pro
           fetchedAt: new Date().toISOString(),
           confidence: p.score >= 0.7 ? "high" : "medium",
         };
-    out.push({
-      ticker,
-      name: p.name,
-      score: Math.min(1, Math.max(0.3, p.score)),
-      reasoning: p.reasoning,
-      sources: [source],
+    const evidence = hit
+      ? { title: hit.title, url: hit.url, snippet: hit.snippet ?? "" }
+      : undefined;
+    staged.push({
+      item: {
+        ticker,
+        name: p.name,
+        score: Math.min(1, Math.max(0.3, p.score)),
+        reasoning: p.reasoning,
+        sources: [source],
+      },
+      // Only the agent's picks are checked: the heuristic's tickers were read straight out of the snippet.
+      check:
+        agentPicks.length > 0 && checkable(evidence)
+          ? {
+              id: `c${staged.length}`,
+              statement: comparableStatement(brand, p.name, ticker),
+              evidence,
+            }
+          : undefined,
     });
-    if (out.length >= 3) break;
+    if (staged.length >= 3) break;
   }
-  return out;
+
+  // A second reading from outside the agent: a pick whose own cited snippet does not support it is dropped.
+  return keepSupported(staged, opts?.verify);
 }
 
 function heuristicFromHits(hits: SearchResult[]): AgentPick[] {
