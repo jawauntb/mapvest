@@ -1,0 +1,4 @@
+# Real rules carry account-specific numbers; this repo is public. Keep them in Doppler
+# (PORTFOLIO_RULES_JSON) or this local file.
+rules.json
+.state/

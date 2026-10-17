@@ -1,0 +1,21 @@
+{
+  "name": "@mapvest/portfolio-alerts",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dry-run": "bun run src/index.ts --dry-run --force",
+    "auth": "bun run src/auth.ts",
+    "build": "echo 'no build for bun'",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
+  }
+}
